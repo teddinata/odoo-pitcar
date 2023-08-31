@@ -45,9 +45,9 @@
                                 <field name="engine_number"/>
                             </group>
                             <group>
-                                <field name="transmission"/>
                                 <field name="brand"/>
                                 <field name="brand_type"/>
+                                <field name="transmission"/>
                                 <field name="color"/>
                                 <field name="year"/>
                             </group>

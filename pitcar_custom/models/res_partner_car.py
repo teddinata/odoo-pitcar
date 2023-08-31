@@ -29,13 +29,13 @@ class ResPartnerCar(models.Model):
     _order = 'name'
 
     name = fields.Char(string="Name", required=True, compute='_compute_name')
-    number_plate = fields.Char(string="Number Plat", required=True)
-    frame_number = fields.Char(string="Frame Number", required=True)
-    engine_number = fields.Char(string="Engine Number", required=True)
+    number_plate = fields.Char(string="Number Plate", required=True)
+    frame_number = fields.Char(string="Frame Number")
+    engine_number = fields.Char(string="Engine Number")
     brand = fields.Many2one('res.partner.car.brand', string="Brand", required=True)
     brand_type = fields.Many2one('res.partner.car.type', string="Type", required=True, domain="[('brand','=',brand)]")
     color = fields.Char(string="Color")
-    year = fields.Integer(string="Year", default=date.today().year, required=True)
+    year = fields.Char(string="Year", default=date.today().year, required=True)
     transmission = fields.Many2one('res.partner.car.transmission', string="Transmission", required=True)
     comment = fields.Html(string='Notes')
     partner_id = fields.Many2one('res.partner', string="Customer", required=True)

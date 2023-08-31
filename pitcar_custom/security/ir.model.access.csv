@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+pitcar_custom.access_res_partner_source,access_res_partner_source,pitcar_custom.model_res_partner_source,base.group_user,1,1,1,1
+pitcar_custom.access_res_partner_car_transmission,access_res_partner_car_transmission,pitcar_custom.model_res_partner_car_transmission,base.group_user,1,1,1,1
+pitcar_custom.access_res_partner_car_brand,access_res_partner_car_brand,pitcar_custom.model_res_partner_car_brand,base.group_user,1,1,1,1
+pitcar_custom.access_res_partner_car_type,access_res_partner_car_type,pitcar_custom.model_res_partner_car_type,base.group_user,1,1,1,1
+pitcar_custom.access_res_partner_car,access_res_partner_car,pitcar_custom.model_res_partner_car,base.group_user,1,1,1,1

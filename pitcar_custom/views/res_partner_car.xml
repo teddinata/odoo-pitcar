@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Partner Cars -->
+        <record id="action_partner_car_contact" model="ir.actions.act_window">
+            <field name="name">Contact cars</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="res_model">res.partner.car</field>
+            <field name="view_mode">tree,form</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Create a car
+                </p><p>
+                    Manage Contact cars as well.
+                </p>
+            </field>
+        </record>
+
+        <record id="view_partner_car_tree" model="ir.ui.view">
+            <field name="name">res.partner.car.tree</field>
+            <field name="model">res.partner.car</field>
+            <field name="arch" type="xml">
+                <tree string="Partner cars">
+                    <field name="number_plate"/>
+                    <field name="partner_id"/>
+                    <field name="brand"/>
+                    <field name="brand_type"/>
+                    <field name="color"/>
+                    <field name="year"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="view_partner_car_form" model="ir.ui.view">
+            <field name="name">res.partner.car.form</field>
+            <field name="model">res.partner.car</field>
+            <field name="arch" type="xml">
+                <form string="Partner cars">
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="partner_id"/>
+                                <field name="number_plate"/>
+                                <field name="frame_number"/>
+                                <field name="engine_number"/>
+                            </group>
+                            <group>
+                                <field name="transmission"/>
+                                <field name="brand"/>
+                                <field name="brand_type"/>
+                                <field name="color"/>
+                                <field name="year"/>
+                            </group>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+    </data>
+</odoo>

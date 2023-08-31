@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- INHERITED FROM SALES (MAIN USER MENU) -->
+    <menuitem
+        id="res_partner_menu_customer"
+        name="Customer Cars"
+        parent="crm.crm_menu_sales"
+        action="action_partner_car_contact"
+        sequence="6"/>
+</odoo>

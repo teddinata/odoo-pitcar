@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!--
+        Resource: res.partner.source
+        -->
+        <record id="res_partner_source_maps" model="res.partner.source">
+            <field name="name">Google Maps</field>
+        </record>
+        <record id="res_partner_source_website" model="res.partner.source">
+            <field name="name">Web</field>
+        </record>
+        <record id="res_partner_source_relation" model="res.partner.source">
+            <field name="name">Relation</field>
+        </record>
+        <record id="res_partner_source_referral" model="res.partner.source">
+            <field name="name">Referral</field>
+        </record>
+
+    </data>
+</odoo>

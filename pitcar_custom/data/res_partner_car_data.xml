@@ -1,0 +1,647 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data noupdate="1">
+        <!--
+        Resource: res.partner.car.transmission
+        -->
+        <record id="res_partner_car_transmission_manual" model="res.partner.car.transmission">
+            <field name="name">Manual</field>
+        </record>
+        <record id="res_partner_car_transmission_matic_konvensional" model="res.partner.car.transmission">
+            <field name="name">Matic Konvensional</field>
+        </record>
+        <record id="res_partner_car_transmission_matic_cvt" model="res.partner.car.transmission">
+            <field name="name">Matic CVT</field>
+        </record>
+        <record id="res_partner_car_transmission_dual_clutch" model="res.partner.car.transmission">
+            <field name="name">Dual Clutch</field>
+        </record>
+
+        <!--
+        Resource: res.partner.car.brand
+        -->
+        <record id="res_partner_car_brand_toyota" model="res.partner.car.brand">
+            <field name="name">Toyota</field>
+        </record>
+        <record id="res_partner_car_brand_bmw" model="res.partner.car.brand">
+            <field name="name">BMW</field>
+        </record>
+        <record id="res_partner_car_brand_timor" model="res.partner.car.brand">
+            <field name="name">Timor</field>
+        </record>
+        <record id="res_partner_car_brand_daihatsu" model="res.partner.car.brand">
+            <field name="name">Daihatsu</field>
+        </record>
+        <record id="res_partner_car_brand_honda" model="res.partner.car.brand">
+            <field name="name">Honda</field>
+        </record>
+        <record id="res_partner_car_brand_mitsubishi" model="res.partner.car.brand">
+            <field name="name">Mitsubishi</field>
+        </record>
+        <record id="res_partner_car_brand_wuling" model="res.partner.car.brand">
+            <field name="name">Wuling</field>
+        </record>
+        <record id="res_partner_car_brand_suzuki" model="res.partner.car.brand">
+            <field name="name">Suzuki</field>
+        </record>
+        <record id="res_partner_car_brand_cherry" model="res.partner.car.brand">
+            <field name="name">Cherry</field>
+        </record>
+        <record id="res_partner_car_brand_hyundai" model="res.partner.car.brand">
+            <field name="name">Hyundai</field>
+        </record>
+        <record id="res_partner_car_brand_nissan" model="res.partner.car.brand">
+            <field name="name">Nissan</field>
+        </record>
+        <record id="res_partner_car_brand_chevrolet" model="res.partner.car.brand">
+            <field name="name">Chevrolet</field>
+        </record>
+        <record id="res_partner_car_brand_datsun" model="res.partner.car.brand">
+            <field name="name">Datsun</field>
+        </record>
+        <record id="res_partner_car_brand_isuzu" model="res.partner.car.brand">
+            <field name="name">Isuzu</field>
+        </record>
+        <record id="res_partner_car_brand_kia" model="res.partner.car.brand">
+            <field name="name">Kia</field>
+        </record>
+        <record id="res_partner_car_brand_ford" model="res.partner.car.brand">
+            <field name="name">Ford</field>
+        </record>
+        <record id="res_partner_car_brand_peugeot" model="res.partner.car.brand">
+            <field name="name">Peugeot</field>
+        </record>
+        <record id="res_partner_car_brand_mazda" model="res.partner.car.brand">
+            <field name="name">Mazda</field>
+        </record>
+        <record id="res_partner_car_brand_eksakta" model="res.partner.car.brand">
+            <field name="name">Eksakta</field>
+        </record>
+
+        <!--
+        Resource: res.partner.car.type
+        -->
+
+        <!-- Toyota -->
+        <record id="res_partner_car_type_toyota_avanza" model="res.partner.car.type">
+            <field name="name">Avanza</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_hilox" model="res.partner.car.type">
+            <field name="name">Hilox</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_ethioz" model="res.partner.car.type">
+            <field name="name">Ethioz</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_innova" model="res.partner.car.type">
+            <field name="name">Innova</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_agya" model="res.partner.car.type">
+            <field name="name">Agya</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_land_cruiser" model="res.partner.car.type">
+            <field name="name">Land Cruiser</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_calya" model="res.partner.car.type">
+            <field name="name">Calya</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_alphard" model="res.partner.car.type">
+            <field name="name">Alphard</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_fortuner" model="res.partner.car.type">
+            <field name="name">Fortuner</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_corolla_altis" model="res.partner.car.type">
+            <field name="name">Corolla Altis</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_vios_limo" model="res.partner.car.type">
+            <field name="name">Vios Limo</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_vios" model="res.partner.car.type">
+            <field name="name">Vios</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_soluna" model="res.partner.car.type">
+            <field name="name">Soluna</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_kijang_innova" model="res.partner.car.type">
+            <field name="name">Kijang Innova</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_veloz" model="res.partner.car.type">
+            <field name="name">Veloz</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_yaris" model="res.partner.car.type">
+            <field name="name">Yaris</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_corolla" model="res.partner.car.type">
+            <field name="name">Corolla</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_twincam" model="res.partner.car.type">
+            <field name="name">Twincam</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_hiace" model="res.partner.car.type">
+            <field name="name">Hiace</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_camry" model="res.partner.car.type">
+            <field name="name">Camry</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_stream" model="res.partner.car.type">
+            <field name="name">Stream</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_sienta" model="res.partner.car.type">
+            <field name="name">Sienta</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_rush" model="res.partner.car.type">
+            <field name="name">Rush</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_raize" model="res.partner.car.type">
+            <field name="name">Raize</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_corolla_dx" model="res.partner.car.type">
+            <field name="name">Corolla DX</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_greed" model="res.partner.car.type">
+            <field name="name">Greed</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+        <record id="res_partner_car_type_toyota_grid_corolla" model="res.partner.car.type">
+            <field name="name">Grid Corolla</field>
+            <field name="brand" ref="res_partner_car_brand_toyota"/>
+        </record>
+
+        <!-- BMW -->
+        <record id="res_partner_car_type_bmw_321i" model="res.partner.car.type">
+            <field name="name">321i</field>
+            <field name="brand" ref="res_partner_car_brand_bmw"/>
+        </record>
+
+        <!-- Timor -->
+        <record id="res_partner_car_type_timor_timor" model="res.partner.car.type">
+            <field name="name">Timor</field>
+            <field name="brand" ref="res_partner_car_brand_timor"/>
+        </record>
+
+        <!-- Daihatsu -->
+        <record id="res_partner_car_type_daihatsu_luxio" model="res.partner.car.type">
+            <field name="name">Luxio</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_taruna" model="res.partner.car.type">
+            <field name="name">Taruna</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_xenia" model="res.partner.car.type">
+            <field name="name">Xenia</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_ayla" model="res.partner.car.type">
+            <field name="name">Ayla</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_sigra" model="res.partner.car.type">
+            <field name="name">Sigra</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_grandmax" model="res.partner.car.type">
+            <field name="name">Grandmax</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_espas" model="res.partner.car.type">
+            <field name="name">Espas</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_terios" model="res.partner.car.type">
+            <field name="name">Terios</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_sirion" model="res.partner.car.type">
+            <field name="name">Sirion</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_charade" model="res.partner.car.type">
+            <field name="name">Charade</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_roxy" model="res.partner.car.type">
+            <field name="name">Roxy</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_calya" model="res.partner.car.type">
+            <field name="name">Calya</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+        <record id="res_partner_car_type_daihatsu_ceria" model="res.partner.car.type">
+            <field name="name">Ceria</field>
+            <field name="brand" ref="res_partner_car_brand_daihatsu"/>
+        </record>
+
+        <!-- Honda -->
+        <record id="res_partner_car_type_honda_city" model="res.partner.car.type">
+            <field name="name">City</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_brio" model="res.partner.car.type">
+            <field name="name">Brio</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_odyssey" model="res.partner.car.type">
+            <field name="name">Odyssey</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_mobilio" model="res.partner.car.type">
+            <field name="name">Mobilio</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_crv" model="res.partner.car.type">
+            <field name="name">CRV</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_hrv" model="res.partner.car.type">
+            <field name="name">HRV</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_brv" model="res.partner.car.type">
+            <field name="name">BRV</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_jazz" model="res.partner.car.type">
+            <field name="name">Jazz</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_stream" model="res.partner.car.type">
+            <field name="name">Stream</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_civic" model="res.partner.car.type">
+            <field name="name">Civic</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_city_vtec" model="res.partner.car.type">
+            <field name="name">City VTEC</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_sx4" model="res.partner.car.type">
+            <field name="name">SX4</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_freed" model="res.partner.car.type">
+            <field name="name">Freed</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+        <record id="res_partner_car_type_honda_accord" model="res.partner.car.type">
+            <field name="name">Accord</field>
+            <field name="brand" ref="res_partner_car_brand_honda"/>
+        </record>
+
+        <!-- Mitsubishi -->
+        <record id="res_partner_car_type_mitsubishi_pajero" model="res.partner.car.type">
+            <field name="name">Pajero</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_kuda" model="res.partner.car.type">
+            <field name="name">Kuda</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_xpander" model="res.partner.car.type">
+            <field name="name">Xpander</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_lancer" model="res.partner.car.type">
+            <field name="name">Lancer</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_triton" model="res.partner.car.type">
+            <field name="name">Triton</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_grandis" model="res.partner.car.type">
+            <field name="name">Grandis</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_realvan" model="res.partner.car.type">
+            <field name="name">Realvan</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_l300" model="res.partner.car.type">
+            <field name="name">L300</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_t120ss" model="res.partner.car.type">
+            <field name="name">T120SS</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_outlander" model="res.partner.car.type">
+            <field name="name">Outlander</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+        <record id="res_partner_car_type_mitsubishi_mirage" model="res.partner.car.type">
+            <field name="name">Mirage</field>
+            <field name="brand" ref="res_partner_car_brand_mitsubishi"/>
+        </record>
+
+        <!-- Wuling -->
+        <record id="res_partner_car_type_wuling_confero" model="res.partner.car.type">
+            <field name="name">Confero</field>
+            <field name="brand" ref="res_partner_car_brand_wuling"/>
+        </record>
+        <record id="res_partner_car_type_wuling_cortez" model="res.partner.car.type">
+            <field name="name">Cortez</field>
+            <field name="brand" ref="res_partner_car_brand_wuling"/>
+        </record>
+
+        <!-- Suzuki -->
+        <record id="res_partner_car_type_suzuki_aerio" model="res.partner.car.type">
+            <field name="name">Aerio</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_apv" model="res.partner.car.type">
+            <field name="name">APV</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_ertiga" model="res.partner.car.type">
+            <field name="name">Ertiga</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_katana" model="res.partner.car.type">
+            <field name="name">Katana</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_x_over" model="res.partner.car.type">
+            <field name="name">X-Over</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_estilo" model="res.partner.car.type">
+            <field name="name">Estilo</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_karimun" model="res.partner.car.type">
+            <field name="name">Karimun</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_celerio" model="res.partner.car.type">
+            <field name="name">Celerio</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_carry" model="res.partner.car.type">
+            <field name="name">Carry</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_sx4" model="res.partner.car.type">
+            <field name="name">SX4</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_splash" model="res.partner.car.type">
+            <field name="name">Splash</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_swift" model="res.partner.car.type">
+            <field name="name">Swift</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_avi" model="res.partner.car.type">
+            <field name="name">AVI</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_esteem" model="res.partner.car.type">
+            <field name="name">Esteem</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_ignis" model="res.partner.car.type">
+            <field name="name">Ignis</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_new_carry" model="res.partner.car.type">
+            <field name="name">New Carry</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_futura" model="res.partner.car.type">
+            <field name="name">Futura</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_realvan" model="res.partner.car.type">
+            <field name="name">Realvan</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_baleno" model="res.partner.car.type">
+            <field name="name">Baleno</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+        <record id="res_partner_car_type_suzuki_escudo" model="res.partner.car.type">
+            <field name="name">Escudo</field>
+            <field name="brand" ref="res_partner_car_brand_suzuki"/>
+        </record>
+
+        <!-- Cherry -->
+        <record id="res_partner_car_type_cherry_qq" model="res.partner.car.type">
+            <field name="name">QQ</field>
+            <field name="brand" ref="res_partner_car_brand_cherry"/>
+        </record>
+
+        <!-- Hyundai -->
+        <record id="res_partner_car_type_hyundai_i10" model="res.partner.car.type">
+            <field name="name">i10</field>
+            <field name="brand" ref="res_partner_car_brand_hyundai"/>
+        </record>
+        <record id="res_partner_car_type_hyundai_accent" model="res.partner.car.type">
+            <field name="name">Accent</field>
+            <field name="brand" ref="res_partner_car_brand_hyundai"/>
+        </record>
+        <record id="res_partner_car_type_hyundai_elantra" model="res.partner.car.type">
+            <field name="name">Elantra</field>
+            <field name="brand" ref="res_partner_car_brand_hyundai"/>
+        </record>
+        <record id="res_partner_car_type_hyundai_santa" model="res.partner.car.type">
+            <field name="name">Santa</field>
+            <field name="brand" ref="res_partner_car_brand_hyundai"/>
+        </record>
+        <record id="res_partner_car_type_hyundai_getz" model="res.partner.car.type">
+            <field name="name">Getz</field>
+            <field name="brand" ref="res_partner_car_brand_hyundai"/>
+        </record>
+        <record id="res_partner_car_type_hyundai_atoz" model="res.partner.car.type">
+            <field name="name">Atoz</field>
+            <field name="brand" ref="res_partner_car_brand_hyundai"/>
+        </record>
+        <record id="res_partner_car_type_hyundai_avega" model="res.partner.car.type">
+            <field name="name">Avega</field>
+            <field name="brand" ref="res_partner_car_brand_hyundai"/>
+        </record>
+
+        <!-- Nissan -->
+        <record id="res_partner_car_type_nissan_livina" model="res.partner.car.type">
+            <field name="name">Livina</field>
+            <field name="brand" ref="res_partner_car_brand_nissan"/>
+        </record>
+        <record id="res_partner_car_type_nissan_almera" model="res.partner.car.type">
+            <field name="name">Almera</field>
+            <field name="brand" ref="res_partner_car_brand_nissan"/>
+        </record>
+        <record id="res_partner_car_type_nissan_march" model="res.partner.car.type">
+            <field name="name">March</field>
+            <field name="brand" ref="res_partner_car_brand_nissan"/>
+        </record>
+        <record id="res_partner_car_type_nissan_xtrail" model="res.partner.car.type">
+            <field name="name">Xtrail</field>
+            <field name="brand" ref="res_partner_car_brand_nissan"/>
+        </record>
+        <record id="res_partner_car_type_nissan_grand_livina" model="res.partner.car.type">
+            <field name="name">Grand Livina</field>
+            <field name="brand" ref="res_partner_car_brand_nissan"/>
+        </record>
+        <record id="res_partner_car_type_nissan_livina_x_gear" model="res.partner.car.type">
+            <field name="name">Livina X-Gear</field>
+            <field name="brand" ref="res_partner_car_brand_nissan"/>
+        </record>
+        <record id="res_partner_car_type_nissan_evalia" model="res.partner.car.type">
+            <field name="name">Evalia</field>
+            <field name="brand" ref="res_partner_car_brand_nissan"/>
+        </record>
+        <record id="res_partner_car_type_nissan_navara" model="res.partner.car.type">
+            <field name="name">Navara</field>
+            <field name="brand" ref="res_partner_car_brand_nissan"/>
+        </record>
+        <record id="res_partner_car_type_nissan_juke" model="res.partner.car.type">
+            <field name="name">Juke</field>
+            <field name="brand" ref="res_partner_car_brand_nissan"/>
+        </record>
+
+        <!-- Chevrolet -->
+        <record id="res_partner_car_type_chevrolet_opc" model="res.partner.car.type">
+            <field name="name">OPC</field>
+            <field name="brand" ref="res_partner_car_brand_chevrolet"/>
+        </record>
+        <record id="res_partner_car_type_chevrolet_spin" model="res.partner.car.type">
+            <field name="name">Spin</field>
+            <field name="brand" ref="res_partner_car_brand_chevrolet"/>
+        </record>
+        <record id="res_partner_car_type_chevrolet_captiva" model="res.partner.car.type">
+            <field name="name">Captiva</field>
+            <field name="brand" ref="res_partner_car_brand_chevrolet"/>
+        </record>
+        <record id="res_partner_car_type_chevrolet_aveo_lt" model="res.partner.car.type">
+            <field name="name">Aveo LT</field>
+            <field name="brand" ref="res_partner_car_brand_chevrolet"/>
+        </record>
+        <record id="res_partner_car_type_chevrolet_alereo" model="res.partner.car.type">
+            <field name="name">Alereo</field>
+            <field name="brand" ref="res_partner_car_brand_chevrolet"/>
+        </record>
+
+        <!-- Datsun -->
+        <record id="res_partner_car_type_datsun_go" model="res.partner.car.type">
+            <field name="name">Go</field>
+            <field name="brand" ref="res_partner_car_brand_datsun"/>
+        </record>
+        <record id="res_partner_car_type_datsun_go_+_panca" model="res.partner.car.type">
+            <field name="name">Go + Panca</field>
+            <field name="brand" ref="res_partner_car_brand_datsun"/>
+        </record>
+
+        <!-- Isuzu -->
+        <record id="res_partner_car_type_isuzu_71" model="res.partner.car.type">
+            <field name="name">71</field>
+            <field name="brand" ref="res_partner_car_brand_isuzu"/>
+        </record>
+        <record id="res_partner_car_type_isuzu_panther" model="res.partner.car.type">
+            <field name="name">Panther</field>
+            <field name="brand" ref="res_partner_car_brand_isuzu"/>
+        </record>
+
+        <!-- KIA -->
+        <record id="res_partner_car_type_kia_carens" model="res.partner.car.type">
+            <field name="name">Carens</field>
+            <field name="brand" ref="res_partner_car_brand_kia"/>
+        </record>
+        <record id="res_partner_car_type_kia_picanto" model="res.partner.car.type">
+            <field name="name">Picanto</field>
+            <field name="brand" ref="res_partner_car_brand_kia"/>
+        </record>
+        <record id="res_partner_car_type_kia_visto" model="res.partner.car.type">
+            <field name="name">Visto</field>
+            <field name="brand" ref="res_partner_car_brand_kia"/>
+        </record>
+        <record id="res_partner_car_type_kia_all_new_carens" model="res.partner.car.type">
+            <field name="name">All New Carens</field>
+            <field name="brand" ref="res_partner_car_brand_kia"/>
+        </record>
+        <record id="res_partner_car_type_kia_rio" model="res.partner.car.type">
+            <field name="name">Rio</field>
+            <field name="brand" ref="res_partner_car_brand_kia"/>
+        </record>
+        <record id="res_partner_car_type_kia_sportage" model="res.partner.car.type">
+            <field name="name">Sportage</field>
+            <field name="brand" ref="res_partner_car_brand_kia"/>
+        </record>
+        <record id="res_partner_car_type_kia_sportage_gen_ii" model="res.partner.car.type">
+            <field name="name">Sportage Gen II</field>
+            <field name="brand" ref="res_partner_car_brand_kia"/>
+        </record>
+
+        <!-- Ford -->
+        <record id="res_partner_car_type_ford_viesta" model="res.partner.car.type">
+            <field name="name">Viesta</field>
+            <field name="brand" ref="res_partner_car_brand_ford"/>
+        </record>
+        <record id="res_partner_car_type_ford_range_base_4x4" model="res.partner.car.type">
+            <field name="name">Range Base 4x4</field>
+            <field name="brand" ref="res_partner_car_brand_ford"/>
+        </record>
+        <record id="res_partner_car_type_ford_everest" model="res.partner.car.type">
+            <field name="name">Everest</field>
+            <field name="brand" ref="res_partner_car_brand_ford"/>
+        </record>
+
+        <!-- Peugeot -->
+        <record id="res_partner_car_type_peugeot_406" model="res.partner.car.type">
+            <field name="name">406</field>
+            <field name="brand" ref="res_partner_car_brand_peugeot"/>
+        </record>
+
+        <!-- Mazda -->
+        <record id="res_partner_car_type_mazda_cx5" model="res.partner.car.type">
+            <field name="name">CX5</field>
+            <field name="brand" ref="res_partner_car_brand_mazda"/>
+        </record>
+        <record id="res_partner_car_type_mazda_mr90" model="res.partner.car.type">
+            <field name="name">MR90</field>
+            <field name="brand" ref="res_partner_car_brand_mazda"/>
+        </record>
+        <record id="res_partner_car_type_mazda_mx5" model="res.partner.car.type">
+            <field name="name">MX5</field>
+            <field name="brand" ref="res_partner_car_brand_mazda"/>
+        </record>
+        <record id="res_partner_car_type_mazda_2" model="res.partner.car.type">
+            <field name="name">2</field>
+            <field name="brand" ref="res_partner_car_brand_mazda"/>
+        </record>
+
+        <!-- Eksakta -->
+        <record id="res_partner_car_type_eksakta_1" model="res.partner.car.type">
+            <field name="name">1</field>
+            <field name="brand" ref="res_partner_car_brand_eksakta"/>
+        </record>
+    </data>
+</odoo>

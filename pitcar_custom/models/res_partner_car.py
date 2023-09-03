@@ -1,5 +1,5 @@
 from datetime import date
-from odoo import models, fields, api, _
+from odoo import models, fields, api, _, exceptions
 
 class ResPartnerCarTransmission(models.Model):
     _name='res.partner.car.transmission'
@@ -40,12 +40,34 @@ class ResPartnerCar(models.Model):
     comment = fields.Html(string='Notes')
     partner_id = fields.Many2one('res.partner', string="Customer", required=True)
 
+    # if brand changed, type will be reset
     @api.onchange('brand')
     def _onchange_brand(self):
         self.brand_type = False
         return {'domain': {'brand_type': [('brand','=',self.brand.id)]}}
 
+    # Name Computation from Brand and Type
     @api.depends('brand','brand_type')
     def _compute_name(self):
         for rec in self:
             rec.name = rec.brand.name + ' ' + rec.brand_type.name
+
+    # Number Plate Validation for Unique
+    @api.constrains('number_plate')
+    def _check_number_plate(self):
+        for rec in self:
+            if rec.number_plate:
+                if self.env['res.partner.car'].search_count([('number_plate','=',rec.number_plate)]) > 1:
+                    raise exceptions.ValidationError(_("Number Plate must be unique!"))
+                
+    # Year Validation
+    @api.constrains('year')
+    def _check_year(self):
+        for rec in self:
+            if rec.year:
+                if rec.year.isdigit() == False:
+                    raise exceptions.ValidationError(_("Year must be a number between 1900 and $1".format(date.today().year)))
+                if int(rec.year) > date.today().year:
+                    raise exceptions.ValidationError(_("Year must be less than or equal to $1".format(date.today().year)))
+                if int(rec.year) < 1900:
+                    raise exceptions.ValidationError(_("Year must be greater than or equal to 1900!"))

@@ -63,15 +63,25 @@
             <field name="arch" type="xml">
                 <page name="contact_addresses" position="after">
                     <page string="Cars" name="cars">
-                        <field name="car_ids" options='{"no_create": True}'>
-                            <tree string="Cars">
-                                <field name="number_plate"/>
-                                <field name="brand"/>
-                                <field name="brand_type"/>
-                                <field name="color"/>
-                                <field name="year"/>
-                            </tree>
-                        </field>
+                        <group>
+                            <group string="Cars">
+                            <field name="car_ids" nolabel="1" colspan="4" options='{"no_create": True, "no_delete": True}'>
+                                <tree>
+                                    <field name="number_plate"/>
+                                    <field name="brand"/>
+                                    <field name="brand_type"/>
+                                    <field name="color"/>
+                                    <field name="year"/>
+                                </tree>
+                            </field>
+                            <button type="action" class="btn-link"
+                                name="%(action_partner_car_contact)d"
+                                context="{'search_default_partner_id': active_id, 'default_partner_id': active_id}"
+                                string="View car detail"
+                                colspan="2"
+                            />
+                            </group>
+                        </group>
                     </page>
                 </page>
             </field>

@@ -7,4 +7,12 @@
         parent="crm.crm_menu_sales"
         action="action_partner_car_contact"
         sequence="6"/>
+
+    <menuitem 
+        id="res_partner_menu"
+        name="Customer Cars"
+        parent="sale.sale_order_menu"
+        action="action_partner_car_contact"
+        groups="sales_team.group_sale_salesman"
+        sequence="40"/>
 </odoo>

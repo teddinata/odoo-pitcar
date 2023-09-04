@@ -65,8 +65,8 @@
                     <page string="Cars" name="cars">
                         <group>
                             <group string="Cars">
-                            <field name="car_ids" nolabel="1" colspan="4" options='{"no_create": True, "no_delete": True}'>
-                                <tree>
+                            <field name="car_ids" nolabel="1" colspan="4" options='{"no_create": True}'>
+                                <tree delete="0">
                                     <field name="number_plate"/>
                                     <field name="brand"/>
                                     <field name="brand_type"/>

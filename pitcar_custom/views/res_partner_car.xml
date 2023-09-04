@@ -22,7 +22,7 @@
             <field name="arch" type="xml">
                 <tree string="Partner cars">
                     <field name="number_plate"/>
-                    <field name="partner_id"/>
+                    <field name="partner_id" invisible="context.get('active_id')"/>
                     <field name="brand"/>
                     <field name="brand_type"/>
                     <field name="color"/>

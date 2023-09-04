@@ -66,8 +66,8 @@ class ResPartnerCar(models.Model):
         for rec in self:
             if rec.year:
                 if rec.year.isdigit() == False:
-                    raise exceptions.ValidationError(_("Year must be a number between 1900 and $1".format(date.today().year)))
+                    raise exceptions.ValidationError(_("Year must be a number between 1900 and {year}".format(year = date.today().year)))
                 if int(rec.year) > date.today().year:
-                    raise exceptions.ValidationError(_("Year must be less than or equal to $1".format(date.today().year)))
+                    raise exceptions.ValidationError(_("Year must be less than or equal to {year}".format(year = date.today().year)))
                 if int(rec.year) < 1900:
                     raise exceptions.ValidationError(_("Year must be greater than or equal to 1900!"))

@@ -37,6 +37,7 @@
             <field name="arch" type="xml">
                 <form string="Partner cars">
                     <sheet>
+                        <field name="image" widget="image" class="oe_avatar"/>
                         <group>
                             <group>
                                 <field name="partner_id"/>

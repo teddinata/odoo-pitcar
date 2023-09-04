@@ -37,6 +37,7 @@ class ResPartnerCar(models.Model):
     color = fields.Char(string="Color")
     year = fields.Char(string="Year", default=date.today().year, required=True)
     transmission = fields.Many2one('res.partner.car.transmission', string="Transmission", required=True)
+    image = fields.Binary(string="Image")
     comment = fields.Html(string='Notes')
     partner_id = fields.Many2one('res.partner', string="Customer", required=True)
 

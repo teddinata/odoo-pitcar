@@ -5,7 +5,8 @@
     'summary':'Pitcar\'s Customization for Odoo',
     'maintainer': 'Odoo Mates',
     'depends': [
-        'base'
+        'base',
+        'sale'
     ],
     'data': [
         'data/res_partner_data.xml',
@@ -15,6 +16,7 @@
 
         'views/res_partner.xml',
         'views/res_partner_car.xml',
+        'views/sale_order.xml',
         'views/menu.xml',
     ],
     'installable': True,

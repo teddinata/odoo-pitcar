@@ -1,5 +1,6 @@
 from datetime import date
 from odoo import models, fields, api, _, exceptions
+import re
 
 class ResPartnerCarTransmission(models.Model):
     _name='res.partner.car.transmission'
@@ -26,9 +27,9 @@ class ResPartnerCarType(models.Model):
 class ResPartnerCar(models.Model):
     _name='res.partner.car'
     _description = 'Cars of partner'
-    _order = 'name'
+    _order = 'name asc'
 
-    name = fields.Char(string="Name", required=True, compute='_compute_name')
+    name = fields.Char(string="Name", required=True, compute='_compute_name', store=True)
     number_plate = fields.Char(string="Number Plate", required=True)
     frame_number = fields.Char(string="Frame Number")
     engine_number = fields.Char(string="Engine Number")
@@ -50,8 +51,9 @@ class ResPartnerCar(models.Model):
     # Name Computation from Brand and Type
     @api.depends('brand','brand_type')
     def _compute_name(self):
+        names = dict(self.with_context({}).name_get())
         for rec in self:
-            rec.name = rec.brand.name + ' ' + rec.brand_type.name
+            rec.name = names.get(rec.id)
 
     # Number Plate Validation for Unique
     @api.constrains('number_plate')
@@ -72,3 +74,26 @@ class ResPartnerCar(models.Model):
                     raise exceptions.ValidationError(_("Year must be less than or equal to {year}".format(year = date.today().year)))
                 if int(rec.year) < 1900:
                     raise exceptions.ValidationError(_("Year must be greater than or equal to 1900!"))
+
+    def name_get(self):
+        res = []
+        for rec in self:
+            name = rec._get_name()
+            res.append((rec.id, name))
+        return res
+
+    def _get_name(self):
+        car = self
+        name = '{brand} {brand_type}'.format(
+            brand=car.brand.name,
+            brand_type=car.brand_type.name,
+        ) or ''
+
+        if self.env.context.get('show_details'):
+            name = name + '\n' + '{number_plate} {name}'.format(
+                number_plate=car.number_plate,
+                name=name,
+            )
+        name = re.sub(r'\s+\n', '\n', name)
+        return name.strip()
+

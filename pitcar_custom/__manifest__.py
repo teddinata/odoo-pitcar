@@ -6,7 +6,8 @@
     'maintainer': 'Odoo Mates',
     'depends': [
         'base',
-        'sale'
+        'sale',
+        'stock',
     ],
     'data': [
         'data/res_partner_data.xml',
@@ -17,6 +18,7 @@
         'views/res_partner.xml',
         'views/res_partner_car.xml',
         'views/sale_order.xml',
+        'views/stock_picking.xml',
         'views/menu.xml',
     ],
     'installable': True,

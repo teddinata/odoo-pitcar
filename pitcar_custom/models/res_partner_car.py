@@ -84,16 +84,17 @@ class ResPartnerCar(models.Model):
 
     def _get_name(self):
         car = self
-        name = '{brand} {brand_type}'.format(
+        name = '{number_plate} {brand} {brand_type}'.format(
+            number_plate=car.number_plate,
             brand=car.brand.name,
             brand_type=car.brand_type.name,
         ) or ''
 
-        if self.env.context.get('show_details'):
-            name = name + '\n' + '{number_plate} {name}'.format(
-                number_plate=car.number_plate,
-                name=name,
-            )
+        # if self.env.context.get('show_details'):
+        #     name = name + '\n' + '{number_plate} {name}'.format(
+        #         number_plate=car.number_plate,
+        #         name=name,
+        #     )
         name = re.sub(r'\s+\n', '\n', name)
         return name.strip()
 

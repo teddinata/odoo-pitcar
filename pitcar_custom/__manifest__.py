@@ -15,8 +15,8 @@
 
         'security/ir.model.access.csv',
 
-        'views/res_partner.xml',
         'views/res_partner_car.xml',
+        'views/res_partner.xml',
         'views/sale_order.xml',
         'views/stock_picking.xml',
         'views/menu.xml',

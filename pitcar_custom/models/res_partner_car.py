@@ -62,7 +62,13 @@ class ResPartnerCar(models.Model):
             if rec.number_plate:
                 if self.env['res.partner.car'].search_count([('number_plate','=',rec.number_plate)]) > 1:
                     raise exceptions.ValidationError(_("Number Plate must be unique!"))
-                
+
+    # Number Plate Remove space in create and update
+    @api.onchange('number_plate')
+    def _onchange_number_plate(self):
+        if self.number_plate:
+            self.number_plate = self.number_plate.replace(" ", "")
+
     # Year Validation
     @api.constrains('year')
     def _check_year(self):

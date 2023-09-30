@@ -8,6 +8,7 @@
         'base',
         'sale',
         'stock',
+        'account',
     ],
     'data': [
         'data/res_partner_data.xml',
@@ -15,6 +16,7 @@
 
         'security/ir.model.access.csv',
 
+        'views/account_move.xml',
         'views/res_partner_car.xml',
         'views/res_partner.xml',
         'views/sale_order.xml',

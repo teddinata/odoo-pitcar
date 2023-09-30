@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- inherit sale.report_saleorder_document and add field res_partner_car -->
+    <template id="report_saleorder_document_inherit" inherit_id="sale.report_saleorder_document">
+        <!-- replace div which contains "Salesperson" -->
+            <xpath expr="//div[@id='informations']" class="row mt-4 mb-4" position="replace">
+                <!-- <div t-if="doc.client_order_ref" class="col-auto col-3 mw-100 mb-2" name="informations_reference">
+                    <strong>Your Reference:</strong>
+                    <p class="m-0" t-field="doc.client_order_ref"/>
+                </div> -->
+                <div t-if="doc.date_order" class="col-auto col-4 mw-100 mb-2" name="informations_date">
+                    <strong t-if="doc.state in ['draft', 'sent']">Quotation Date:</strong>
+                    <strong t-else="">Order Date:</strong>
+                    <p class="m-0" t-field="doc.date_order" t-options='{"widget": "date"}'/>
+                </div>
+                <div t-if="doc.validity_date and doc.state in ['draft', 'sent']"
+                    class="col-auto col-4 mw-100 mb-2"
+                    name="expiration_date">
+                    <strong>Expiration:</strong>
+                    <p class="m-0" t-field="doc.validity_date"/>
+                </div>
+                <div t-if="doc.partner_car_id" class="col-auto col-4 mw-100 mb-2">
+                    <strong>Car:</strong>
+                    <p class="m-0" t-field="doc.partner_car_id"/>
+                </div>
+                <!-- <div t-if="doc.user_id.name" class="col-auto col-3 mw-100 mb-2">
+                    <strong>Salesperson:</strong>
+                    <p class="m-0" t-field="doc.user_id"/>
+                </div> -->
+            </xpath>
+    </template>
+</odoo>

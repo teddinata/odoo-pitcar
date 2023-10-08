@@ -15,6 +15,7 @@
         'data/res_partner_car_data.xml',
 
         'report/ir_actions_report_templates.xml',
+        'report/ir_actions_report.xml',
         'report/report_invoice.xml',
 
         'security/ir.model.access.csv',

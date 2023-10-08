@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="action_report_work_order" model="ir.actions.report">
+        <field name="name">Work Order</field>
+        <field name="model">sale.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">pitcar_custom.report_saleorder_workorder</field>
+        <field name="report_file">pitcar_custom.report_saleorder_workorder</field>
+        <field name="print_report_name">'WORK ORDER - %s' % (object.name)</field>
+        <field name="binding_model_id" ref="model_sale_order"/>
+        <field name="binding_type">report</field>
+        <!-- <field name="groups_id" eval="[(4, ref('sale.group_proforma_sales'))]"/> -->
+    </record>
+</odoo>

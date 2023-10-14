@@ -5,7 +5,10 @@
             <xpath expr="//div[@name='reference']" class="row mt-4 mb-4" position="after">
                 <div t-if="o.partner_car_id" class="col-auto col-4 mw-100 mb-2">
                     <strong>Car:</strong>
-                    <p class="m-0" t-field="o.partner_car_id"/>
+                    <p class="m-0" t-field="o.partner_car_id.name"/> 
+                    <p class="m-0">
+                        Odometer: <span t-field="o.partner_car_odometer"/>
+                    </p>
                 </div>
             </xpath>
         </template>

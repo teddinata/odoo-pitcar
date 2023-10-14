@@ -11,5 +11,6 @@ class StockPicking(models.Model):
         index=True,
     )
     partner_car_odometer = fields.Float(string="Odometer", tracking=True)
+    car_mechanic_id = fields.Many2one('pitcar.mechanic', string="Mechanic", index=True)
 
 

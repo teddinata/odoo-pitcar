@@ -8,6 +8,8 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='partner_id']" position="after">
                 <field name="partner_car_id" widget="many2one"/>
+                <field name="partner_car_odometer"/>
+                <field name="car_mechanic_id"/>
             </xpath>
         </field>
     </record>

@@ -19,3 +19,10 @@ class ResPartner(models.Model):
     dob = fields.Date(string="Date of Birth")
     car_ids = fields.One2many('res.partner.car', 'partner_id', string="Cars")
 
+class PitcarMechanic(models.Model):
+    _name = 'pitcar.mechanic'
+    _description = 'Mechanic'
+    _order = 'name'
+
+    name = fields.Char(string="Name", required=True)
+

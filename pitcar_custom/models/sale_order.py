@@ -12,6 +12,12 @@ class SaleOrder(models.Model):
     partner_car_odometer = fields.Float(
         string="Odometer",
     )
+    car_mechanic_id = fields.Many2one(
+        'pitcar.mechanic',
+        string="Mechanic",
+        tracking=True,
+        index=True,
+    )
 
 
     # Copying car information from sales order to delivery data when sales confirmed
@@ -22,6 +28,7 @@ class SaleOrder(models.Model):
             for picking in order.picking_ids:
                 picking.partner_car_id = order.partner_car_id
                 picking.partner_car_odometer = order.partner_car_odometer
+                picking.car_mechanic_id = order.car_mechanic_id
         return res
 
     # Copying car information from sales order to invoice data when invoice created
@@ -32,4 +39,5 @@ class SaleOrder(models.Model):
             for invoice in order.invoice_ids:
                 invoice.partner_car_id = order.partner_car_id
                 invoice.partner_car_odometer = order.partner_car_odometer
+                invoice.car_mechanic_id = order.car_mechanic_id
         return res

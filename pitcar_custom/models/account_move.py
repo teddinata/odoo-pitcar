@@ -13,3 +13,8 @@ class AccountMove(models.Model):
     partner_car_odometer = fields.Float(
         string="Odometer",
     )
+    car_mechanic_id = fields.Many2one(
+        'pitcar.mechanic',
+        string="Mechanic",
+        index=True,
+    )

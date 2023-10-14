@@ -8,6 +8,7 @@ class StockPicking(models.Model):
         string="Serviced Car",
         domain="[('partner_id','=',partner_id)]",
         tracking=True,
+        index=True,
     )
     partner_car_odometer = fields.Float(string="Odometer", tracking=True)
 

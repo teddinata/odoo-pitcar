@@ -40,7 +40,7 @@ class ResPartnerCar(models.Model):
     transmission = fields.Many2one('res.partner.car.transmission', string="Transmission", required=True)
     image = fields.Binary(string="Image")
     comment = fields.Html(string='Notes')
-    partner_id = fields.Many2one('res.partner', string="Customer", required=True)
+    partner_id = fields.Many2one('res.partner', string="Customer", required=True, index=True)
 
     # if brand changed, type will be reset
     @api.onchange('brand')

@@ -7,10 +7,12 @@ class SaleOrder(models.Model):
         'res.partner.car',
         string="Serviced Car",
         domain="[('partner_id','=',partner_id)]",
+        index=True,
     )
     partner_car_odometer = fields.Float(
         string="Odometer",
     )
+
 
     # Copying car information from sales order to delivery data when sales confirmed
     # model : stock.picking

@@ -2,13 +2,111 @@
 <odoo>
     <data>
         <template id="report_invoice_document" inherit_id="account.report_invoice_document">
-            <xpath expr="//div[@name='reference']" class="row mt-4 mb-4" position="after">
-                <div t-if="o.partner_car_id" class="col-auto col-4 mw-100 mb-2">
-                    <strong>Car:</strong>
-                    <p class="m-0" t-field="o.partner_car_id.name"/> 
-                    <p class="m-0">
-                        Odometer: <span t-field="o.partner_car_odometer"/>
-                    </p>
+
+            <!-- replace div which contains Invoice Information -->
+            <xpath expr="//div[@id='informations']" position="replace">
+                <div id="informations" class="mt-4 mb-4">
+                    <div class="row">
+                        <!-- Invoice Date -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Date</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.invoice_date">
+                                    <span t-field="o.invoice_date" t-options='{"widget": "date", "format": "dd/MM/yyyy"}' />
+                                </t>
+                            </p>
+                        </div>
+
+                        <!-- Brand -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Brand</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.partner_car_id and o.partner_car_id.brand">
+                                    <span t-field="o.partner_car_id.brand" />
+                                </t>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Customer -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Customer</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.partner_id">
+                                    <span t-field="o.partner_id" />
+                                </t>
+                            </p>
+                        </div>
+
+                        <!-- Type and Year -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Type</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.partner_car_id">
+                                    <span t-field="o.partner_car_id.brand_type" />
+                                    <span> / </span>
+                                    <span t-field="o.partner_car_id.year" />
+                                </t>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Plate Number -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Plate Number</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.partner_car_id and o.partner_car_id.number_plate">
+                                    <span t-field="o.partner_car_id.number_plate" />
+                                </t>
+                            </p>
+                        </div>
+
+                        <!-- Odometer -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Odometer</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.partner_car_id and o.partner_car_odometer">
+                                    <span t-field="o.partner_car_odometer" />
+                                    <strong> KM</strong>
+                                </t>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Mechanics -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Mechanics</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.car_mechanic_id">
+                                    <span t-field="o.car_mechanic_id" />
+                                </t>
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </xpath>
         </template>

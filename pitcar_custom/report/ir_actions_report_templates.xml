@@ -22,42 +22,117 @@
                 <span t-elif="env.context.get('work_order', False) or is_work_order">Work Order # </span>
                 <span t-elif="doc.state in ['draft','sent']">Quotation # </span>
                 <span t-else="">Order # </span>
-                <span t-field="doc.name"/>
+                <span t-field="doc.name" />
             </h2>
         </xpath>
 
+        <!-- replace div contains order information -->
+        <xpath expr="//div[@id='informations']" position="replace">
+            <div id="informations" class="mt-4 mb-4">
+                <div class="row">
+                    <!-- Quotation / Order Date -->
+                    <div class="col-2 mw-100 mb-2">
+                        <strong t-if="doc.state in ['draft', 'sent']">Quotation Date</strong>
+                        <strong t-else="">Order Date</strong>
+                    </div>
+                    <div class="col-4 mw-100 mb-2">
+                        <p class="m-0">
+                            <span> : </span>
+                            <t t-if="doc.date_order">
+                                <span t-field="doc.date_order" t-options='{"widget": "date", "format": "dd/MM/yyyy"}' />
+                            </t>
+                        </p>
+                    </div>
 
-        <!-- replace div which contains "Salesperson" -->
-        <xpath expr="//div[@id='informations']" class="row mt-4 mb-4" position="replace">
-            <!-- <div t-if="doc.client_order_ref" class="col-auto col-3 mw-100 mb-2"
-            name="informations_reference">
-                    <strong>Your Reference:</strong>
-                    <p class="m-0" t-field="doc.client_order_ref"/>
-                </div> -->
-            <div t-if="doc.date_order" class="col-auto col-4 mw-100 mb-2" name="informations_date">
-                <strong t-if="doc.state in ['draft', 'sent']">Quotation Date:</strong>
-                <strong t-else="">Order Date:</strong>
-                <p class="m-0" t-field="doc.date_order" t-options='{"widget": "date", "format": "dd-MM-yyyy"}' />
+                    <!-- Brand -->
+                    <div class="col-2 mw-100 mb-2">
+                        <strong>Brand</strong>
+                    </div>
+                    <div class="col-4 mw-100 mb-2">
+                        <p class="m-0">
+                            <span> : </span>
+                            <t t-if="doc.partner_car_id and doc.partner_car_id.brand">
+                                <span t-field="doc.partner_car_id.brand" />
+                            </t>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <!-- Customer -->
+                    <div class="col-2 mw-100 mb-2">
+                        <strong>Customer</strong>
+                    </div>
+                    <div class="col-4 mw-100 mb-2">
+                        <p class="m-0">
+                            <span> : </span>
+                            <t t-if="doc.partner_id">
+                                <span t-field="doc.partner_id" />
+                            </t>
+                        </p>
+                    </div>
+
+                    <!-- Type and Year -->
+                    <div class="col-2 mw-100 mb-2">
+                        <strong>Type</strong>
+                    </div>
+                    <div class="col-4 mw-100 mb-2">
+                        <p class="m-0">
+                            <span> : </span>
+                            <t t-if="doc.partner_car_id">
+                                <span t-field="doc.partner_car_id.brand_type" />
+                                <span> / </span>
+                                <span t-field="doc.partner_car_id.year" />
+                            </t>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <!-- Plate Number -->
+                    <div class="col-2 mw-100 mb-2">
+                        <strong>Plate Number</strong>
+                    </div>
+                    <div class="col-4 mw-100 mb-2">
+                        <p class="m-0">
+                            <span> : </span>
+                            <t t-if="doc.partner_car_id and doc.partner_car_id.number_plate">
+                                <span t-field="doc.partner_car_id.number_plate" />
+                            </t>
+                        </p>
+                    </div>
+
+                    <!-- Odometer -->
+                    <div class="col-2 mw-100 mb-2">
+                        <strong>Odometer</strong>
+                    </div>
+                    <div class="col-4 mw-100 mb-2">
+                        <p class="m-0">
+                            <span> : </span>
+                            <t t-if="doc.partner_car_id and doc.partner_car_odometer">
+                                <span t-field="doc.partner_car_odometer" />
+                                <strong> KM</strong>
+                            </t>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <!-- Mechanics -->
+                    <div class="col-2 mw-100 mb-2">
+                        <strong>Mechanics</strong>
+                    </div>
+                    <div class="col-4 mw-100 mb-2">
+                        <p class="m-0">
+                            <span> : </span>
+                            <t t-if="doc.car_mechanic_id">
+                                <span t-field="doc.car_mechanic_id" />
+                            </t>
+                        </p>
+                    </div>
+                </div>
             </div>
-            <div t-if="doc.validity_date and doc.state in ['draft', 'sent']"
-                class="col-auto col-4 mw-100 mb-2"
-                name="expiration_date">
-                <strong>Expiration:</strong>
-                <p class="m-0" t-field="doc.validity_date" />
-            </div>
-            <div t-if="doc.partner_car_id" class="col-auto col-4 mw-100 mb-2">
-                <strong>Car:</strong>
-                <p class="m-0" t-field="doc.partner_car_id" />
-                <p class="m-0">
-                    Odometer : <span t-field="doc.partner_car_odometer"/>
-                </p>
-            </div>
-            <!-- <div t-if="doc.user_id.name" class="col-auto col-3 mw-100 mb-2">
-                    <strong>Salesperson:</strong>
-                    <p class="m-0" t-field="doc.user_id"/>
-                </div> -->
         </xpath>
-
 
         <!-- Replace original table with additional condition (work_order) -->
         <xpath expr="//table[@class='table table-sm o_main_table table-borderless mt-4']" position="replace">

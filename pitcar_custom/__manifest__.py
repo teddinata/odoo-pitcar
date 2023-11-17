@@ -9,6 +9,7 @@
         'sale',
         'stock',
         'account',
+        'crm',
     ],
     'data': [
         'data/res_partner_data.xml',

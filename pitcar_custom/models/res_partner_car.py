@@ -49,11 +49,12 @@ class ResPartnerCar(models.Model):
         return {'domain': {'brand_type': [('brand','=',self.brand.id)]}}
 
     # Name Computation from Brand and Type
-    @api.depends('brand','brand_type')
+    @api.depends('brand','brand_type','number_plate')
     def _compute_name(self):
-        names = dict(self.with_context({}).name_get())
-        for rec in self:
-            rec.name = names.get(rec.id)
+        self.name = '{brand} {brand_type}'.format(
+            brand=self.brand.name,
+            brand_type=self.brand_type.name,
+        ) or ''
 
     # Number Plate Validation for Unique
     @api.constrains('number_plate')
@@ -80,27 +81,4 @@ class ResPartnerCar(models.Model):
                     raise exceptions.ValidationError(_("Year must be less than or equal to {year}".format(year = date.today().year)))
                 if int(rec.year) < 1900:
                     raise exceptions.ValidationError(_("Year must be greater than or equal to 1900!"))
-
-    def name_get(self):
-        res = []
-        for rec in self:
-            name = rec._get_name()
-            res.append((rec.id, name))
-        return res
-
-    def _get_name(self):
-        car = self
-        name = '{number_plate} {brand} {brand_type}'.format(
-            number_plate=car.number_plate,
-            brand=car.brand.name,
-            brand_type=car.brand_type.name,
-        ) or ''
-
-        # if self.env.context.get('show_details'):
-        #     name = name + '\n' + '{number_plate} {name}'.format(
-        #         number_plate=car.number_plate,
-        #         name=name,
-        #     )
-        name = re.sub(r'\s+\n', '\n', name)
-        return name.strip()
 

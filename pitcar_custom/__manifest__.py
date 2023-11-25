@@ -3,13 +3,16 @@
     'author':'Pitcar',
     'website':'https://www.pitcar.co.id',
     'summary':'Pitcar\'s Customization for Odoo',
-    'maintainer': 'Odoo Mates',
+    'maintainer': 'Ahmad Husein Hambali',
+    'sequence': 1,
     'depends': [
         'base',
         'sale',
         'stock',
         'account',
         'crm',
+        'sale_management',
+        'purchase'
     ],
     'data': [
         'data/res_partner_data.xml',

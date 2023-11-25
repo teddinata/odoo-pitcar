@@ -29,7 +29,7 @@ class ResPartnerCar(models.Model):
     _description = 'Cars of partner'
     _order = 'name asc'
 
-    name = fields.Char(string="Name", required=True, compute='_compute_name', store=True)
+    name = fields.Char(string="Name", compute='_compute_name')
     number_plate = fields.Char(string="Number Plate", required=True)
     frame_number = fields.Char(string="Frame Number")
     engine_number = fields.Char(string="Engine Number")
@@ -51,10 +51,11 @@ class ResPartnerCar(models.Model):
     # Name Computation from Brand and Type
     @api.depends('brand','brand_type','number_plate')
     def _compute_name(self):
-        self.name = '{brand} {brand_type}'.format(
-            brand=self.brand.name,
-            brand_type=self.brand_type.name,
-        ) or ''
+        self.name = '{number_plate} {brand} {brand_type}'.format(
+            brand=self.brand.name, 
+            brand_type=self.brand_type.name, 
+            number_plate=self.number_plate
+        ) 
 
     # Number Plate Validation for Unique
     @api.constrains('number_plate')

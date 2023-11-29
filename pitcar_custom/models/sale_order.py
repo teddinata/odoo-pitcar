@@ -25,10 +25,11 @@ class SaleOrder(models.Model):
     def _action_confirm(self):
         res = super(SaleOrder, self)._action_confirm()
         for order in self:
-            for picking in order.picking_ids:
-                picking.partner_car_id = order.partner_car_id
-                picking.partner_car_odometer = order.partner_car_odometer
-                picking.car_mechanic_id = order.car_mechanic_id
+            if order.picking_ids:
+                for picking in order.picking_ids:
+                    picking.partner_car_id = order.partner_car_id
+                    picking.partner_car_odometer = order.partner_car_odometer
+                    picking.car_mechanic_id = order.car_mechanic_id
         return res
 
     # Copying car information from sales order to invoice data when invoice created

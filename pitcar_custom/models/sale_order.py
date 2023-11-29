@@ -25,7 +25,7 @@ class SaleOrder(models.Model):
     def _action_confirm(self):
         res = super(SaleOrder, self)._action_confirm()
         for order in self:
-            if order.picking_ids:
+            if hasattr(order, 'picking_ids'):
                 for picking in order.picking_ids:
                     picking.partner_car_id = order.partner_car_id
                     picking.partner_car_odometer = order.partner_car_odometer

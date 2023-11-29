@@ -9,6 +9,7 @@
         'base',
         'sale',
         'stock',
+        'sale_stock',
         'account',
         'crm',
         'sale_management',
@@ -35,5 +36,5 @@
     'application': True,
     'auto_install': False,
     'license': 'LGPL-3',
-    'version':'16.0.3'
+    'version':'16.0.4'
 }

@@ -51,11 +51,12 @@ class ResPartnerCar(models.Model):
     # Name Computation from Brand and Type
     @api.depends('brand','brand_type','number_plate')
     def _compute_name(self):
-        self.name = '{number_plate} {brand} {brand_type}'.format(
-            brand=self.brand.name, 
-            brand_type=self.brand_type.name, 
-            number_plate=self.number_plate
-        ) 
+        for rec in self:
+            rec.name = '{number_plate} {brand} {brand_type}'.format(
+                brand=rec.brand.name, 
+                brand_type=rec.brand_type.name, 
+                number_plate=rec.number_plate
+            ) 
 
     # Number Plate Validation for Unique
     @api.constrains('number_plate')

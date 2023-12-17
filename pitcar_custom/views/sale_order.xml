@@ -1,6 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
+        <!-- SALE ORDER TABLE -->
+        <record id="sale_order_tree_view_inherit" model="ir.ui.view">
+            <field name="name">sale.order.tree.inherit</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_tree"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="partner_car_id" optional="show"/>
+                    <field name="partner_car_odometer" optional="hide"/>
+                    <field name="car_mechanic_id" optional="hide"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- QUOTATION TABLE -->
+        <record id="sale_order_view_quotation_tree_inherit" model="ir.ui.view">
+            <field name="name">sale.order.view.quotation.tree.inherit</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_quotation_tree"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="partner_car_id" optional="show"/>
+                    <field name="partner_car_odometer" optional="hide"/>
+                    <field name="car_mechanic_id" optional="hide"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- FILTER SALE ORDER -->
+        <record id="sale_order_filter_inherit" model="ir.ui.view">
+            <field name="name">sale.order.filter.inherit</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="partner_car_id"/>
+                </xpath>
+                <xpath expr="//filter[@name='customer']" position="after">
+                    <filter string="Car" name="car" domain="[('partner_car_id', '!=', False)]" context="{'group_by': 'partner_car_id'}"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- FORM SALE ORDER -->
         <record id="sale_order_form_view_inherit" model="ir.ui.view">
             <field name="name">sale.order.form.inherit</field>
             <field name="model">sale.order</field>

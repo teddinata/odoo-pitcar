@@ -29,7 +29,7 @@ class ResPartnerCar(models.Model):
     _description = 'Cars of partner'
     _order = 'name asc'
 
-    name = fields.Char(string="Name", compute='_compute_name')
+    name = fields.Char(string="Name", compute='_compute_name', store=True)
     number_plate = fields.Char(string="Number Plate", required=True)
     frame_number = fields.Char(string="Frame Number")
     engine_number = fields.Char(string="Engine Number")

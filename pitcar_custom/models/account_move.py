@@ -16,5 +16,6 @@ class AccountMove(models.Model):
     car_mechanic_id = fields.Many2one(
         'pitcar.mechanic',
         string="Mechanic",
+        tracking=True,
         index=True,
     )

@@ -36,5 +36,5 @@
     'application': True,
     'auto_install': False,
     'license': 'LGPL-3',
-    'version':'16.0.5'
+    'version':'16.0.6'
 }

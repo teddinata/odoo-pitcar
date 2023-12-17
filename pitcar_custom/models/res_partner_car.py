@@ -70,7 +70,7 @@ class ResPartnerCar(models.Model):
     @api.onchange('number_plate')
     def _onchange_number_plate(self):
         if self.number_plate:
-            self.number_plate = self.number_plate.replace(" ", "")
+            self.number_plate = self.number_plate.replace(" ", "").upper()
 
     # Year Validation
     @api.constrains('year')

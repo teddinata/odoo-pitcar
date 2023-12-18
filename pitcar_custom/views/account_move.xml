@@ -15,6 +15,21 @@
             </field>
         </record>
 
+        <!-- FILTER ACCOUNT INVOICE -->
+        <record id="view_account_invoice_filter_inherit" model="ir.ui.view">
+            <field name="name">view.account.invoice.filter.inherit</field>
+            <field name="model">account.move</field>
+            <field name="inherit_id" ref="account.view_account_invoice_filter"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='name']" position="after">
+                    <field name="partner_car_id"/>
+                </xpath>
+                <xpath expr="//filter[@name='salesperson']" position="before">
+                    <filter string="Car" name="car" domain="[('partner_car_id', '!=', False)]" context="{'group_by': 'partner_car_id'}"/>
+                </xpath>
+            </field>
+        </record>
+
         <!-- ACCOUNT MOVE FORM -->
         <record id="account_move_form_view_inherit" model="ir.ui.view">
             <field name="name">account.move.form.inherit</field>

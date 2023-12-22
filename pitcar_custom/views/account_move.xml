@@ -21,6 +21,15 @@
             <field name="model">account.move</field>
             <field name="inherit_id" ref="account.view_account_invoice_filter"/>
             <field name="arch" type="xml">
+                <xpath expr="//field[@name='name']" position="replace">
+                    <field name="name" string="Invoice"
+                           filter_domain="[
+                                '|', '|' , '|', '|', '|',
+                                ('name', 'ilike', self), ('invoice_origin', 'ilike', self),
+                                ('ref', 'ilike', self), ('payment_reference', 'ilike', self),
+                                ('partner_id', 'child_of', self),
+                                ('partner_car_id', 'ilike', self)]"/>
+                </xpath>
                 <xpath expr="//field[@name='name']" position="after">
                     <field name="partner_car_id"/>
                 </xpath>

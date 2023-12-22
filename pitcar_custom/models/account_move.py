@@ -10,6 +10,16 @@ class AccountMove(models.Model):
         tracking=True,
         index=True,
     )
+    partner_car_brand = fields.Many2one(
+        string="Car Brand",
+        related="partner_car_id.brand",
+        store=True,
+    )
+    partner_car_brand_type = fields.Many2one(
+        string="Car Brand Type",
+        related="partner_car_id.brand_type",
+        store=True,
+    )
     partner_car_odometer = fields.Float(
         string="Odometer",
     )

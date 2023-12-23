@@ -37,6 +37,7 @@
                     <filter string="Car Brand" name="group_car_brand" domain="[('partner_car_brand', '!=', False)]" context="{'group_by': 'partner_car_brand'}"/>
                     <filter string="Car Brand Type" name="group_car_brand_type" domain="[('partner_car_brand_type', '!=', False)]" context="{'group_by': 'partner_car_brand_type'}"/>
                     <filter string="Car" name="car" domain="[('partner_car_id', '!=', False)]" context="{'group_by': 'partner_car_id'}"/>
+                    <filter string="Car Year" name="group_car_year" domain="[('partner_car_year', '!=', False)]" context="{'group_by': 'partner_car_year'}"/>
                 </xpath>
             </field>
         </record>

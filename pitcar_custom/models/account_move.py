@@ -20,6 +20,11 @@ class AccountMove(models.Model):
         related="partner_car_id.brand_type",
         store=True,
     )
+    partner_car_year = fields.Char(
+        string="Car Year",
+        related="partner_car_id.year",
+        store=True,
+    )
     partner_car_odometer = fields.Float(
         string="Odometer",
     )

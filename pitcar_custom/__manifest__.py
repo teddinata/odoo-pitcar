@@ -26,10 +26,12 @@
         'security/ir.model.access.csv',
 
         'views/account_move.xml',
+        'views/res_partner_category.xml',
         'views/res_partner_car.xml',
         'views/res_partner.xml',
         'views/sale_order.xml',
         'views/stock_picking.xml',
+        'views/product_views.xml',
         'views/menu.xml',
     ],
     'installable': True,

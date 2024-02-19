@@ -15,4 +15,13 @@
         action="action_partner_car_contact"
         groups="sales_team.group_sale_salesman"
         sequence="40"/>
+
+    <menuitem
+        id="res_partner_category_menu"
+        name="Customer Tags"
+        parent="sale.sale_order_menu"
+        action="action_res_partner_category"
+        groups="sales_team.group_sale_salesman"
+        sequence="50"/>
+        
 </odoo>

@@ -1,5 +1,16 @@
 from odoo import models, fields, api, _, exceptions
 
+class PartnerCategory(models.Model):
+    _inherit = 'res.partner.category'
+
+    partner_count = fields.Integer(string="Partner Count", compute='_compute_partner_count')
+
+    @api.depends('partner_ids')
+    def _compute_partner_count(self):
+        for category in self:
+            category.partner_count = len(category.partner_ids)
+
+
 class ResPartnerSource(models.Model):
     _name = 'res.partner.source'
     _description = 'Source of partner'

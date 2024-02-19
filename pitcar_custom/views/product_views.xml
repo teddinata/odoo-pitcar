@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="product_search_form_view_stock_report_inherit" model="ir.ui.view">
+        <field name="name">product.search.form.view.stock.report.inherit</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="stock.product_search_form_view_stock_report"/>
+        <field name="arch" type="xml">
+            <xpath expr="//filter[@name='categ_id']" position="replace">
+                <filter name="template_categ_id" context="{'group_by':'template_categ_id'}" string="Template Category"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

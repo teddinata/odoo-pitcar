@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+	<record id="view_res_partner_category_tree" model="ir.ui.view">
+		<field name="name">res.partner.category.tree</field>
+		<field name="model">res.partner.category</field>
+		<field name="inherit_id" ref="base.view_partner_category_list"/>
+		<field name="arch" type="xml">
+			<xpath expr="//field[@name='display_name']" position="before">
+				<field name="partner_count"/>
+			</xpath>
+		</field>
+	</record>
+
+	<record id="action_res_partner_category" model="ir.actions.act_window">
+		<field name="name">Customer Tags</field>
+		<field name="type">ir.actions.act_window</field>
+		<field name="res_model">res.partner.category</field>
+		<field name="view_mode">tree,form</field>
+		<field name="help" type="html">
+			<p class="o_view_nocontent_smiling_face">
+				Tags Automatically added by assigning a category to a customer.
+			</p>
+		</field>
+	</record>
+</odoo>

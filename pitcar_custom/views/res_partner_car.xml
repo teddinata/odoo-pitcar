@@ -25,6 +25,7 @@
                     <field name="partner_id" invisible="context.get('active_id')"/>
                     <field name="brand"/>
                     <field name="brand_type"/>
+                    <field name="engine_type"/>
                     <field name="color"/>
                     <field name="year"/>
                 </tree>
@@ -39,6 +40,7 @@
                     <field name="number_plate" filter_domain="['|', ('number_plate','ilike',self), ('partner_id.name','ilike',self)]" string="Number plate"/>
                     <field name="brand"/>
                     <field name="brand_type"/>
+                    <field name="engine_type"/>
                     <field name="color"/>
                     <field name="year"/>
                     <field name="partner_id" invisible="context.get('active_id')"/>
@@ -59,6 +61,7 @@
                                 <field name="number_plate"/>
                                 <field name="frame_number"/>
                                 <field name="engine_number"/>
+                                <field name="engine_type"/>
                             </group>
                             <group>
                                 <field name="brand"/>

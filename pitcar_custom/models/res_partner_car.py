@@ -41,6 +41,14 @@ class ResPartnerCar(models.Model):
     image = fields.Binary(string="Image")
     comment = fields.Html(string='Notes')
     partner_id = fields.Many2one('res.partner', string="Customer", required=True, index=True)
+    engine_type = fields.Selection([
+        ('petrol', 'Petrol'),
+        ('diesel', 'Diesel'),
+        ('electric', 'Electric'),
+        ('hybrid', 'Hybrid'),
+        ('gas', 'Gas'),
+        ('other', 'Other'),
+    ], string='Engine Type')
 
     # if brand changed, type will be reset
     @api.onchange('brand')

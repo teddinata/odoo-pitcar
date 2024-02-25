@@ -33,6 +33,7 @@
         'views/stock_picking.xml',
         'views/product_views.xml',
         'views/product_tag_views.xml',
+        'views/crm_tag_views.xml',
         'views/menu.xml',
     ],
     'installable': True,

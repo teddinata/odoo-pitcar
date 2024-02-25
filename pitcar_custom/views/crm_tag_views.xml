@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+	<record id="view_crm_tag_tree" model="ir.ui.view">
+		<field name="name">crm.tag.tree</field>
+		<field name="model">crm.tag</field>
+		<field name="inherit_id" ref="sales_team.sales_team_crm_tag_view_tree"/>
+		<field name="arch" type="xml">
+			<xpath expr="//field[@name='name']" position="before">
+				<field name="crm_lead_ids_count" />
+			</xpath>
+		</field>
+	</record>
+</odoo>

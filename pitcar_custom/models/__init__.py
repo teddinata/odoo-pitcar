@@ -5,3 +5,4 @@ from . import account_move
 from . import sale_order
 from . import product_product
 from . import product_tag
+from . import crm_tag

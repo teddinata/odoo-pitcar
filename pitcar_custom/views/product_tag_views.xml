@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+	<record id="view_product_tag_tree" model="ir.ui.view">
+		<field name="name">product.tag.tree</field>
+		<field name="model">product.tag</field>
+		<field name="inherit_id" ref="product.product_tag_tree_view"/>
+		<field name="arch" type="xml">
+			<xpath expr="//field[@name='name']" position="before">
+				<field name="product_ids_count"/>
+			</xpath>
+		</field>
+	</record>
+
+	<record id="action_product_tag" model="ir.actions.act_window">
+		<field name="name">Product Tags</field>
+		<field name="type">ir.actions.act_window</field>
+		<field name="res_model">product.tag</field>
+		<field name="view_mode">tree,form</field>
+		<field name="help" type="html">
+			<p class="o_view_nocontent_smiling_face">
+				Tags are used to search product for a given theme.
+			</p>
+		</field>
+	</record>
+</odoo>

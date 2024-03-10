@@ -29,6 +29,27 @@ class SaleOrder(models.Model):
         string="Odometer",
         tracking=True,
     )
+    partner_car_transmission = fields.Many2one(
+        'res.partner.car.transmission',
+        string="Transmission",
+        related="partner_car_id.transmission",
+        store=True,
+    )
+    partner_car_engine_type = fields.Selection(
+        string="Engine Type",
+        related="partner_car_id.engine_type",
+        store=True,
+    )
+    partner_car_engine_number = fields.Char(
+        string="Engine Number",
+        related="partner_car_id.engine_number",
+        store=True,
+    )
+    partner_car_frame_number = fields.Char(
+        string="Frame Number",
+        related="partner_car_id.frame_number",
+        store=True,
+    )
     car_mechanic_id = fields.Many2one(
         'pitcar.mechanic',
         string="Mechanic",

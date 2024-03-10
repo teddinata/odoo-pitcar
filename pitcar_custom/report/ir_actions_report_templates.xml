@@ -104,6 +104,22 @@
                             </p>
                         </div>
 
+                        <!-- Transmission -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Transmission</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="doc.partner_car_id and doc.partner_car_transmission">
+                                    <span t-field="doc.partner_car_transmission" />
+                                    <strong> KM</strong>
+                                </t>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="row">
                         <!-- Odometer -->
                         <div class="col-2 mw-100 mb-2">
                             <strong>Odometer</strong>
@@ -114,6 +130,19 @@
                                 <t t-if="doc.partner_car_id and doc.partner_car_odometer">
                                     <span t-field="doc.partner_car_odometer" />
                                     <strong> KM</strong>
+                                </t>
+                            </p>
+                        </div>
+
+                        <!-- Engine Type -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Engine Type</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="doc.partner_car_engine_type">
+                                    <span t-field="doc.partner_car_engine_type" />
                                 </t>
                             </p>
                         </div>
@@ -132,7 +161,49 @@
                                 </t>
                             </p>
                         </div>
+
+                        <!-- Frame Number -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Frame Number</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="doc.partner_car_frame_number">
+                                    <span t-field="doc.partner_car_frame_number" />
+                                </t>
+                            </p>
+                        </div>
                     </div>
+
+                    <div class="row">
+                        <!-- Empty Field -->
+                        <div class="col-2 mw-100 mb-2">
+                            <!-- <strong>Label</strong> -->
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <!-- <p class="m-0">
+                                <span> : </span>
+                                <t t-if="doc.label_name">
+                                    <span t-field="doc.label_name" />
+                                </t>
+                            </p> -->
+                        </div>
+
+                        <!-- Engine Number -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Engine Number</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="doc.partner_car_engine_number">
+                                    <span t-field="doc.partner_car_engine_number" />
+                                </t>
+                            </p>
+                        </div>
+                    </div>
+
                 </div>
 
                 <!-- Is there a discount on at least one line? -->

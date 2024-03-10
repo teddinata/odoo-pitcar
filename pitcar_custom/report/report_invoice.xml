@@ -3,6 +3,8 @@
     <data>
         <template id="report_invoice_document" inherit_id="account.report_invoice_document">
 
+            <xpath expr="//t[@t-set='address']"  position="replace"></xpath>
+
             <!-- replace div which contains Invoice Information -->
             <xpath expr="//div[@id='informations']" position="replace">
                 <div id="informations" class="mt-4 mb-4">

@@ -113,7 +113,6 @@
                                 <span> : </span>
                                 <t t-if="doc.partner_car_id and doc.partner_car_transmission">
                                     <span t-field="doc.partner_car_transmission" />
-                                    <strong> KM</strong>
                                 </t>
                             </p>
                         </div>

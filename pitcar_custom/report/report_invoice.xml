@@ -141,48 +141,19 @@
                             </p>
                         </div>
 
-                        <!-- Frame Number -->
+                        <!-- Color -->
                         <div class="col-2 mw-100 mb-2">
-                            <strong>Frame Number</strong>
+                            <strong>Color / Warna</strong>
                         </div>
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="o.partner_car_id and o.partner_car_id.frame_number">
-                                    <span t-field="o.partner_car_id.frame_number" />
+                                <t t-if="o.partner_car_id and o.partner_car_id.color">
+                                    <span t-field="o.partner_car_id.color" />
                                 </t>
                             </p>
                         </div>
 
-                    </div>
-                    <div class="row">
-
-                        <!-- [FIELD NAME] -->
-                        <div class="col-2 mw-100 mb-2">
-                            <!-- <strong>[LABEL]</strong> -->
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <!-- <p class="m-0">
-                                <span> : </span>
-                                <t t-if="o.[FIELD_NAME]">
-                                    <span t-field="o.[FIELD_NAME]" />
-                                </t>
-                            </p> -->
-                        </div>
-
-                        <!-- Engine Number -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Engine Number</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="o.partner_car_id and o.partner_car_id.engine_number">
-                                    <span t-field="o.partner_car_id.engine_number" />
-                                </t>
-                            </p>
-                        </div>
-                        
                     </div>
                 </div>
             </xpath>

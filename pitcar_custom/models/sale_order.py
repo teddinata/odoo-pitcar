@@ -50,6 +50,11 @@ class SaleOrder(models.Model):
         related="partner_car_id.frame_number",
         store=True,
     )
+    partner_car_color = fields.Char(
+        string="Color",
+        related="partner_car_id.color",
+        store=True,
+    )
     car_mechanic_id = fields.Many2one(
         'pitcar.mechanic',
         string="Mechanic",

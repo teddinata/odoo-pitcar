@@ -54,7 +54,7 @@ class ResPartnerCarType(models.Model):
     _order = 'name'
 
     name = fields.Char(string="Name", required=True)
-    formatted_name = fields.Char(string="Combined Brand and Type Name", compute='_compute_formatted_name')
+    formatted_name = fields.Char(string="Combined Brand and Type Name", compute='_compute_formatted_name', store=True, index="trigram")
     brand = fields.Many2one('res.partner.car.brand', string="Brand", required=True)
     
     car_ids = fields.One2many('res.partner.car', 'brand_type', string="Cars")

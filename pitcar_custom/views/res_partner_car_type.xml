@@ -12,6 +12,20 @@
         </field>
     </record>
 
+    <record id="view_res_partner_car_type_tree_filter" model="ir.ui.view">
+        <field name="name">view.res.partner.car.type.tree.filter</field>
+        <field name="model">res.partner.car.type</field>
+        <field name="arch" type="xml">
+            <search string="Car Brand Type">
+                <field 
+                    name="name"
+                    string="Car Brand Type"
+                    filter_domain="[('formatted_name', 'ilike', self)]"
+                    />
+            </search>
+        </field>
+    </record>
+
     <record id="view_res_partner_car_type_tree" model="ir.ui.view">
         <field name="name">res.partner.car.type.tree</field>
         <field name="model">res.partner.car.type</field>

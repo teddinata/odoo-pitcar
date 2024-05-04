@@ -17,6 +17,27 @@
         sequence="40"/>
 
     <menuitem
+        id="res_partner_car_menu"
+        name="Car Management"
+        parent="sale.menu_sale_config"
+        groups="sales_team.group_sale_salesman"
+        sequence="25">
+
+        <menuitem
+            id="res_car_brand_menu"
+            name="Car Brands"
+            action="action_res_partner_car_brand"
+            sequence="10"/>
+
+        <menuitem
+            id="res_car_type_menu"
+            name="Car Types"
+            action="action_res_partner_car_type"
+            sequence="20"/>
+        
+    </menuitem>
+    
+    <menuitem
         id="res_partner_category_menu"
         name="Customer Tags"
         parent="sale.menu_sales_config"
@@ -29,5 +50,7 @@
         parent="sale.menu_sales_config"
         action="action_product_tag"
         sequence="31"/>
+
+    
         
 </odoo>

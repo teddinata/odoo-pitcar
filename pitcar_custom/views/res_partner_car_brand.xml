@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="action_res_partner_car_brand" model="ir.actions.act_window">
+        <field name="name">Car Brands</field>
+        <field name="res_model">res.partner.car.brand</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[]</field>
+        <field name="help" type="html">
+            <p class="oe_view_nocontent_create">
+                Create a car brand
+            </p>
+            <p>
+                Manage car brands as well.
+            </p>
+        </field>
+    </record>
+
+    <record id="view_res_partner_car_brand_tree" model="ir.ui.view">
+        <field name="name">res.partner.car.brand.tree</field>
+        <field name="model">res.partner.car.brand</field>
+        <field name="arch" type="xml">
+            <tree string="Car Brands">
+                <field name="name"/>
+				<field name="brand_type_count_string" optional="show" />
+				<field name="car_count_string" optional="show" />
+				<field name="brand_type_count" optional="hide" />
+				<field name="car_count" optional="hide" />
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_res_partner_car_brand_form" model="ir.ui.view">
+        <field name="name">res.partner.car.brand.form</field>
+        <field name="model">res.partner.car.brand</field>
+        <field name="arch" type="xml">
+            <form string="Car Brands" duplicate="0">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+	</record>
+</odoo>

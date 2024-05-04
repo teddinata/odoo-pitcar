@@ -52,7 +52,7 @@
             <field name="name">res.partner.car.form</field>
             <field name="model">res.partner.car</field>
             <field name="arch" type="xml">
-                <form string="Partner cars">
+                <form string="Partner cars" duplicate="0">
                     <sheet>
                         <field name="image" widget="image" class="oe_avatar"/>
                         <group>

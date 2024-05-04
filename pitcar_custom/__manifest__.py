@@ -26,6 +26,8 @@
         'security/ir.model.access.csv',
 
         'views/account_move.xml',
+        'views/res_partner_car_brand.xml',
+        'views/res_partner_car_type.xml',
         'views/res_partner_category.xml',
         'views/res_partner_car.xml',
         'views/res_partner.xml',

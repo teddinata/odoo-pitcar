@@ -1,14 +1,20 @@
 from odoo import models, fields, api, _, exceptions
 
+READONLY_FIELD_STATES = {
+    state: [('readonly', True)]
+    for state in {'sale', 'done', 'cancel'}
+}
+
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
     partner_car_id = fields.Many2one(
         'res.partner.car',
         string="Serviced Car",
-        domain="[('partner_id','=',partner_id)]",
         tracking=True,
         index=True,
+        readonly=False,
+        states=READONLY_FIELD_STATES,
     )
     partner_car_brand = fields.Many2one(
         string="Car Brand",
@@ -68,7 +74,25 @@ class SaleOrder(models.Model):
         tracking=True,
         index=True,
     )
-                
+    
+    @api.onchange('partner_car_id')
+    def _onchange_partner_car_id(self):
+        for order in self:
+            order.partner_id = order.partner_car_id.partner_id.id
+            
+    @api.onchange('partner_id')
+    def _onchange_partner_id(self):
+        for order in self:
+            if order.partner_id:
+                return {
+                    'domain': {
+                        'partner_car_id': [
+                            ('partner_id', '=', order.partner_id.id)
+                        ]
+                    }
+                }
+            return 
+    
     # Copying car information from sales order to delivery data when sales confirmed
     # model : stock.picking
     def _action_confirm(self):
@@ -91,3 +115,4 @@ class SaleOrder(models.Model):
                 invoice.partner_car_odometer = order.partner_car_odometer
                 invoice.car_mechanic_id = order.car_mechanic_id
         return res
+    

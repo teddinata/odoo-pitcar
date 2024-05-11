@@ -11,6 +11,7 @@
                     <field name="partner_car_id" optional="show"/>
                     <field name="partner_car_odometer" optional="hide"/>
                     <field name="car_mechanic_id" optional="hide"/>
+                    <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
                 </xpath>
             </field>
         </record>
@@ -25,6 +26,7 @@
                     <field name="partner_car_id" optional="show"/>
                     <field name="partner_car_odometer" optional="hide"/>
                     <field name="car_mechanic_id" optional="hide"/>
+                    <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
                 </xpath>
             </field>
         </record>
@@ -58,9 +60,10 @@
             <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
                 <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="partner_car_id" widget="many2one" options='{"always_reload": True}'/>
+                    <field name="partner_car_id" widget="many2one"/>
                     <field name="partner_car_odometer"/>
                     <field name="car_mechanic_id"/>
+                    <field name="car_mechanic_id_new" widget="many2many_tags"/>
                 </xpath>
             </field>
         </record>

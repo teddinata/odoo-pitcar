@@ -135,7 +135,12 @@
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="o.car_mechanic_id">
+                                <t t-if="o.car_mechanic_id_new">
+                                    <span t-foreach="o.car_mechanic_id_new" t-as="mechanic" t-attf-title="mechanic.name" t-attf-style="background-color: #{mechanic.color}; color: white; padding: 2px; border-radius: 5px; margin-right: 5px;">
+                                        <t t-esc="mechanic.name" separator=", " />
+                                    </span>
+                                </t>
+                                <t t-elif="o.car_mechanic_id">
                                     <span t-field="o.car_mechanic_id" />
                                 </t>
                             </p>

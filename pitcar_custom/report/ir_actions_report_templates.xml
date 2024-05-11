@@ -155,7 +155,17 @@
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="doc.car_mechanic_id">
+                                <t t-if="doc.car_mechanic_id_new">
+                                    <span t-foreach="doc.car_mechanic_id_new" t-as="mechanic">
+                                        <t t-if="mechanic_index != (len(doc.car_mechanic_id_new) - 1)">
+                                            <t t-esc="'{}, '.format(mechanic.name)"/>
+                                        </t>
+                                        <t t-else="">
+                                            <t t-out="mechanic.name"/>
+                                        </t>
+                                    </span>
+                                </t>
+                                <t t-elif="doc.car_mechanic_id">
                                     <span t-field="doc.car_mechanic_id" />
                                 </t>
                             </p>

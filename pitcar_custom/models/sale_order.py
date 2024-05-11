@@ -57,12 +57,18 @@ class SaleOrder(models.Model):
     )
     car_mechanic_id = fields.Many2one(
         'pitcar.mechanic',
+        string="Mechanic (Old Input)",
+        tracking=True,
+        index=True,
+        readonly=True,
+    )
+    car_mechanic_id_new = fields.Many2many(
+        'pitcar.mechanic.new',
         string="Mechanic",
         tracking=True,
         index=True,
     )
-
-
+                
     # Copying car information from sales order to delivery data when sales confirmed
     # model : stock.picking
     def _action_confirm(self):

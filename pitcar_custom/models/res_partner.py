@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _, exceptions
+from random import randint
 
 class PartnerCategory(models.Model):
     _inherit = 'res.partner.category'
@@ -36,4 +37,19 @@ class PitcarMechanic(models.Model):
     _order = 'name'
 
     name = fields.Char(string="Name", required=True)
+    
+class PitcarMechanicNew(models.Model):
+    _name = 'pitcar.mechanic.new'
+    _description = 'Mechanic New'
+    _order = 'name'
+    
+    def _get_default_color(self):
+        return randint(1, 11)
+
+    name = fields.Char(string="Name", required=True)
+    color = fields.Integer('Color', default=_get_default_color)
+    
+    _sql_constraints = [
+        ('name_uniq', 'unique (name)', "Mechanic name already exists !"),
+    ]
 

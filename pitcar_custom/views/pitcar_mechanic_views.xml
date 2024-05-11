@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<odoo>
+	<record id="action_pitcar_mechanic_new" model="ir.actions.act_window">
+        <field name="name">Mechanic Teams</field>
+        <field name="res_model">pitcar.mechanic.new</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[]</field>
+        <field name="help" type="html">
+            <p class="oe_view_nocontent_create">
+                Create a mechanic team
+			</p>
+        </field>
+    </record>
+
+	<record id="view_pitcar_mechanic_new_tree" model="ir.ui.view">
+		<field name="name">pitcar.mechanic.new.tree</field>
+		<field name="model">pitcar.mechanic.new</field>
+		<field name="arch" type="xml">
+			<tree string="Mechanic Teams">
+				<field name="name"/>
+				<field name="color"/>
+			</tree>
+		</field>
+	</record>
+
+	<record id="view_pitcar_mechanic_new_form" model="ir.ui.view">
+		<field name="name">pitcar.mechanic.new.form</field>
+		<field name="model">pitcar.mechanic.new</field>
+		<field name="arch" type="xml">
+			<form string="Mechanic Teams" duplicate="0">
+				<sheet>
+					<group>
+						<field name="name"/>
+						<field name="color" required="True" widget="color_picker"/>
+					</group>
+				</sheet>
+			</form>
+		</field>
+	</record>
+</odoo>

@@ -4,4 +4,5 @@ pitcar_custom.access_res_partner_car_transmission,access_res_partner_car_transmi
 pitcar_custom.access_res_partner_car_brand,access_res_partner_car_brand,pitcar_custom.model_res_partner_car_brand,base.group_user,1,1,1,1
 pitcar_custom.access_res_partner_car_type,access_res_partner_car_type,pitcar_custom.model_res_partner_car_type,base.group_user,1,1,1,1
 pitcar_custom.access_res_partner_car,access_res_partner_car,pitcar_custom.model_res_partner_car,base.group_user,1,1,1,1
-pitcar_custom.access_pitcar_mechanic,access_pitcar_mechanic,pitcar_custom.model_pitcar_mechanic,base.group_user,1,1,1,1
+pitcar_custom.access_pitcar_mechanic,access_pitcar_mechanic,pitcar_custom.model_pitcar_mechanic,base.group_user,1,0,0,0
+pitcar_custom.access_pitcar_mechanic_new,access_pitcar_mechanic_new,pitcar_custom.model_pitcar_mechanic_new,base.group_user,1,1,1,1

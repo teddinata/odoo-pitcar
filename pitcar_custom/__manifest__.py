@@ -26,6 +26,7 @@
         'security/ir.model.access.csv',
 
         'views/account_move.xml',
+        'views/pitcar_mechanic_views.xml',
         'views/res_partner_car_brand.xml',
         'views/res_partner_car_type.xml',
         'views/res_partner_category.xml',

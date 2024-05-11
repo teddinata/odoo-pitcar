@@ -144,4 +144,3 @@ class ResPartnerCar(models.Model):
                     raise exceptions.ValidationError(_("Year must be less than or equal to {year}".format(year = date.today().year)))
                 if int(rec.year) < 1900:
                     raise exceptions.ValidationError(_("Year must be greater than or equal to 1900!"))
-

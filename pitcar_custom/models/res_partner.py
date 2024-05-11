@@ -46,7 +46,7 @@ class PitcarMechanicNew(models.Model):
     def _get_default_color(self):
         return randint(1, 11)
 
-    name = fields.Char(string="Name", required=True)
+    name = fields.Char(string="Name", required=True, tracking=True)
     color = fields.Integer('Color', default=_get_default_color)
     
     _sql_constraints = [

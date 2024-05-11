@@ -45,8 +45,6 @@ class ResPartnerCarBrand(models.Model):
         for rec in self:
             rec.brand_type_count_string = f"{rec.brand_type_count} Type{'s' if rec.brand_type_count != 1 else ''}"
 
-            
-
 
 class ResPartnerCarType(models.Model):
     _name='res.partner.car.type'

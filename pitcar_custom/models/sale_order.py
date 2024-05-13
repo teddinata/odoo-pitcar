@@ -70,10 +70,20 @@ class SaleOrder(models.Model):
     )
     car_mechanic_id_new = fields.Many2many(
         'pitcar.mechanic.new',
-        string="Mechanic",
+        string="Mechanic (New input)",
         tracking=True,
         index=True,
     )
+    generated_mechanic_team = fields.Char(
+        string="Mechanic",
+        compute="_compute_generated_mechanic_team",
+        store=True,
+    )
+    
+    @api.depends('car_mechanic_id_new')
+    def _compute_generated_mechanic_team(self):
+        for order in self:
+            order.generated_mechanic_team = ', '.join(order.car_mechanic_id_new.mapped('name'))
     
     @api.onchange('partner_car_id')
     def _onchange_partner_car_id(self):

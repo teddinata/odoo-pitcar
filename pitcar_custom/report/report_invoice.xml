@@ -136,14 +136,7 @@
                             <p class="m-0">
                                 <span> : </span>
                                 <t t-if="o.car_mechanic_id_new">
-                                    <span t-foreach="o.car_mechanic_id_new" t-as="mechanic">
-                                        <t t-if="mechanic_index != (len(o.car_mechanic_id_new) - 1)">
-                                            <t t-esc="'{}, '.format(mechanic.name)"/>
-                                        </t>
-                                        <t t-else="">
-                                            <t t-out="mechanic.name"/>
-                                        </t>
-                                    </span>
+                                    <span t-field="o.generated_mechanic_team" />
                                 </t>
                                 <t t-elif="o.car_mechanic_id">
                                     <span t-field="o.car_mechanic_id" />

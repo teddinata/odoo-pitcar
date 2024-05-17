@@ -11,6 +11,22 @@ class StockPicking(models.Model):
         index=True,
     )
     partner_car_odometer = fields.Float(string="Odometer", tracking=True)
-    car_mechanic_id = fields.Many2one('pitcar.mechanic', string="Mechanic", index=True)
+    car_mechanic_id = fields.Many2one('pitcar.mechanic', string="Mechanic (Old Input)", index=True)
+    car_mechanic_id_new = fields.Many2many(
+        'pitcar.mechanic.new',
+        string="Mechanic (New input)",
+        index=True,
+        readonly=True,
+    )
+    generated_mechanic_team = fields.Char(
+        string="Mechanic",
+        compute="_compute_generated_mechanic_team",
+        store=True,
+    )
+    
+    @api.depends('car_mechanic_id_new')
+    def _compute_generated_mechanic_team(self):
+        for order in self:
+            order.generated_mechanic_team = ', '.join(order.car_mechanic_id_new.mapped('name'))
 
 

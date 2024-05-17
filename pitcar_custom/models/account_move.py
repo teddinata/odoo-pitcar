@@ -30,7 +30,23 @@ class AccountMove(models.Model):
     )
     car_mechanic_id = fields.Many2one(
         'pitcar.mechanic',
-        string="Mechanic",
+        string="Mechanic (Old Input)",
         tracking=True,
         index=True,
     )
+    car_mechanic_id_new = fields.Many2many(
+        'pitcar.mechanic.new',
+        string="Mechanic (New input)",
+        index=True,
+        readonly=True,
+    )
+    generated_mechanic_team = fields.Char(
+        string="Mechanic",
+        compute="_compute_generated_mechanic_team",
+        store=True,
+    )
+    
+    @api.depends('car_mechanic_id_new')
+    def _compute_generated_mechanic_team(self):
+        for account in self:
+            account.generated_mechanic_team = ', '.join(account.car_mechanic_id_new.mapped('name'))

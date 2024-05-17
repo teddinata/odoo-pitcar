@@ -11,6 +11,7 @@
                 <field name="partner_car_id" attrs="{'invisible': [('sale_id', '=', False)]}" />
                 <field name="partner_car_odometer" attrs="{'invisible': [('sale_id', '=', False)]}" />
                 <field name="car_mechanic_id" attrs="{'invisible': [('sale_id', '=', False)]}" />
+                <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}" attrs="{'invisible': [('sale_id', '=', False)]}" />
             </xpath>
         </field>
     </record>

@@ -113,6 +113,8 @@ class SaleOrder(models.Model):
                     picking.partner_car_id = order.partner_car_id
                     picking.partner_car_odometer = order.partner_car_odometer
                     picking.car_mechanic_id = order.car_mechanic_id
+                    picking.car_mechanic_id_new = order.car_mechanic_id_new
+                    picking.generated_mechanic_team = order.generated_mechanic_team
         return res
 
     # Copying car information from sales order to invoice data when invoice created
@@ -124,5 +126,7 @@ class SaleOrder(models.Model):
                 invoice.partner_car_id = order.partner_car_id
                 invoice.partner_car_odometer = order.partner_car_odometer
                 invoice.car_mechanic_id = order.car_mechanic_id
+                invoice.car_mechanic_id_new = order.car_mechanic_id_new
+                invoice.generated_mechanic_team = order.generated_mechanic_team
         return res
     

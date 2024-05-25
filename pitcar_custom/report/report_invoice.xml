@@ -128,18 +128,15 @@
 
                     <div class="row">
 
-                        <!-- Mechanics -->
+                        <!-- Sales Advisor -->
                         <div class="col-2 mw-100 mb-2">
-                            <strong>Mechanics</strong>
+                            <strong>Sales Advisor</strong>
                         </div>
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="o.car_mechanic_id_new">
-                                    <span t-field="o.generated_mechanic_team" />
-                                </t>
-                                <t t-elif="o.car_mechanic_id">
-                                    <span t-field="o.car_mechanic_id" />
+                                <t t-if="o.user_id">
+                                    <span t-field="o.user_id" />
                                 </t>
                             </p>
                         </div>
@@ -158,6 +155,28 @@
                         </div>
 
                     </div>
+
+                    <div class="row">
+
+                        <!-- Mechanics -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Mechanics</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.car_mechanic_id_new">
+                                    <span t-field="o.generated_mechanic_team" />
+                                </t>
+                                <t t-elif="o.car_mechanic_id">
+                                    <span t-field="o.car_mechanic_id" />
+                                </t>
+                            </p>
+                        </div>
+
+                    </div>
+
+
                 </div>
             </xpath>
         </template>

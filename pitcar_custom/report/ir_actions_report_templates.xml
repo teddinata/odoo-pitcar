@@ -148,18 +148,15 @@
                     </div>
 
                     <div class="row">
-                        <!-- Mechanics -->
+                        <!-- Service Advisor -->
                         <div class="col-2 mw-100 mb-2">
-                            <strong>Mechanics</strong>
+                            <strong>Service Advisor</strong>
                         </div>
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="doc.car_mechanic_id_new">
-                                    <span t-field="doc.generated_mechanic_team" />
-                                </t>
-                                <t t-elif="doc.car_mechanic_id">
-                                    <span t-field="doc.car_mechanic_id" />
+                                <t t-if="doc.user_id">
+                                    <span t-field="doc.user_id" />
                                 </t>
                             </p>
                         </div>
@@ -176,6 +173,25 @@
                                 </t>
                             </p>
                         </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Mechanics -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Mechanics</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="doc.car_mechanic_id_new">
+                                    <span t-field="doc.generated_mechanic_team" />
+                                </t>
+                                <t t-elif="doc.car_mechanic_id">
+                                    <span t-field="doc.car_mechanic_id" />
+                                </t>
+                            </p>
+                        </div>
+
                     </div>
 
                 </div>

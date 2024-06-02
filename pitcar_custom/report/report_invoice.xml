@@ -17,7 +17,35 @@
                             <p class="m-0">
                                 <span> : </span>
                                 <t t-if="o.invoice_date">
-                                    <span t-field="o.invoice_date" t-options='{"widget": "date", "format": "dd/MM/yyyy"}' />
+                                    <span t-field="o.invoice_date" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}' />
+                                </t>
+                            </p>
+                        </div>
+
+                        <!-- Completed Date -->
+                        <t t-if="o.date_completed">
+                            <div class="col-2 mw-100 mb-2">
+                                <strong>Completed Date</strong>
+                            </div>
+                            <div class="col-4 mw-100 mb-2">
+                                <p class="m-0">
+                                    <span> : </span>
+                                    <span t-field="o.date_completed" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                </p>
+                            </div>
+                        </t>
+                    </div>
+
+                    <div class="row">
+                        <!-- Customer -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Customer</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.partner_id">
+                                    <span t-field="o.partner_id" />
                                 </t>
                             </p>
                         </div>
@@ -37,15 +65,15 @@
                     </div>
 
                     <div class="row">
-                        <!-- Customer -->
+                        <!-- Plate Number -->
                         <div class="col-2 mw-100 mb-2">
-                            <strong>Customer</strong>
+                            <strong>Plate Number</strong>
                         </div>
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="o.partner_id">
-                                    <span t-field="o.partner_id" />
+                                <t t-if="o.partner_car_id and o.partner_car_id.number_plate">
+                                    <span t-field="o.partner_car_id.number_plate" />
                                 </t>
                             </p>
                         </div>
@@ -61,34 +89,6 @@
                                     <span t-field="o.partner_car_id.brand_type" />
                                     <span> / </span>
                                     <span t-field="o.partner_car_id.year" />
-                                </t>
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <!-- Plate Number -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Plate Number</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="o.partner_car_id and o.partner_car_id.number_plate">
-                                    <span t-field="o.partner_car_id.number_plate" />
-                                </t>
-                            </p>
-                        </div>
-
-                        <!-- Transmission -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Transmission</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="o.partner_car_id and o.partner_car_id.transmission">
-                                    <span t-field="o.partner_car_id.transmission" />
                                 </t>
                             </p>
                         </div>
@@ -111,15 +111,15 @@
                             </p>
                         </div>
 
-                        <!-- Engine Type -->
+                        <!-- Transmission -->
                         <div class="col-2 mw-100 mb-2">
-                            <strong>Engine Type</strong>
+                            <strong>Transmission</strong>
                         </div>
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="o.partner_car_id and o.partner_car_id.engine_type">
-                                    <span t-field="o.partner_car_id.engine_type" />
+                                <t t-if="o.partner_car_id and o.partner_car_id.transmission">
+                                    <span t-field="o.partner_car_id.transmission" />
                                 </t>
                             </p>
                         </div>
@@ -141,15 +141,15 @@
                             </p>
                         </div>
 
-                        <!-- Color -->
+                        <!-- Engine Type -->
                         <div class="col-2 mw-100 mb-2">
-                            <strong>Color / Warna</strong>
+                            <strong>Engine Type</strong>
                         </div>
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="o.partner_car_id and o.partner_car_id.color">
-                                    <span t-field="o.partner_car_id.color" />
+                                <t t-if="o.partner_car_id and o.partner_car_id.engine_type">
+                                    <span t-field="o.partner_car_id.engine_type" />
                                 </t>
                             </p>
                         </div>
@@ -170,6 +170,19 @@
                                 </t>
                                 <t t-elif="o.car_mechanic_id">
                                     <span t-field="o.car_mechanic_id" />
+                                </t>
+                            </p>
+                        </div>
+
+                        <!-- Color -->
+                        <div class="col-2 mw-100 mb-2">
+                            <strong>Color / Warna</strong>
+                        </div>
+                        <div class="col-4 mw-100 mb-2">
+                            <p class="m-0">
+                                <span> : </span>
+                                <t t-if="o.partner_car_id and o.partner_car_id.color">
+                                    <span t-field="o.partner_car_id.color" />
                                 </t>
                             </p>
                         </div>

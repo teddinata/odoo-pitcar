@@ -14,6 +14,9 @@
                     <field name="car_mechanic_id" optional="hide"/>
                     <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
                 </xpath>
+                <xpath expr="//field[@name='expected_date']" position="after">
+                    <field name="date_completed" optional="show" widget="date"/>
+                </xpath>
             </field>
         </record>
 
@@ -29,6 +32,9 @@
                     <field name="generated_mechanic_team" optional="show"/>
                     <field name="car_mechanic_id" optional="hide"/>
                     <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                </xpath>
+                <xpath expr="//field[@name='expected_date']" position="after">
+                    <field name="date_completed" optional="show" widget="date"/>
                 </xpath>
             </field>
         </record>
@@ -66,6 +72,9 @@
                     <field name="partner_car_odometer"/>
                     <field name="car_mechanic_id" attrs="{'invisible': [('car_mechanic_id', '=', False)]}"/>
                     <field name="car_mechanic_id_new" widget="many2many_tags"/>
+                </xpath>
+                <xpath expr="//field[@name='show_update_pricelist']" position="before">
+                    <field name="date_completed"/>
                 </xpath>
             </field>
         </record>

@@ -79,6 +79,11 @@ class SaleOrder(models.Model):
         compute="_compute_generated_mechanic_team",
         store=True,
     )
+    date_completed = fields.Datetime(
+        string="Completed Date",
+        required=False, readonly=True, copy=False, tracking=True,
+        help="date on which invoice is generated",
+    )
     
     @api.depends('car_mechanic_id_new')
     def _compute_generated_mechanic_team(self):
@@ -122,6 +127,7 @@ class SaleOrder(models.Model):
     def _create_invoices(self, grouped=False, final=False):
         res = super(SaleOrder, self)._create_invoices(grouped=grouped, final=final)
         for order in self:
+            order.date_completed = fields.Datetime.now()
             for invoice in order.invoice_ids:
                 invoice.partner_car_id = order.partner_car_id
                 invoice.partner_car_odometer = order.partner_car_odometer

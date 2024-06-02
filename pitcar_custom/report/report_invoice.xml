@@ -17,20 +17,20 @@
                             <p class="m-0">
                                 <span> : </span>
                                 <t t-if="o.invoice_date">
-                                    <span t-field="o.invoice_date" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}' />
+                                    <span t-field="o.invoice_date" t-options='{"widget": "date", "format": "dd/MM/yyyy"}' />
                                 </t>
                             </p>
                         </div>
 
                         <!-- Completed Date -->
-                        <t t-if="o.date_completed">
+                        <t t-if="o.date_sale_completed">
                             <div class="col-2 mw-100 mb-2">
                                 <strong>Completed Date</strong>
                             </div>
                             <div class="col-4 mw-100 mb-2">
                                 <p class="m-0">
                                     <span> : </span>
-                                    <span t-field="o.date_completed" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                    <span t-field="o.date_sale_completed" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
                                 </p>
                             </div>
                         </t>

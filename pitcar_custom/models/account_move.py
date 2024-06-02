@@ -45,6 +45,11 @@ class AccountMove(models.Model):
         compute="_compute_generated_mechanic_team",
         store=True,
     )
+    date_sale_completed = fields.Datetime(
+        string="Sale Completed Date",
+        readonly=True,
+        help="Date when the sale is completed"
+    )
     
     @api.depends('car_mechanic_id_new')
     def _compute_generated_mechanic_team(self):

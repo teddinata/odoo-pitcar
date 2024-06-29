@@ -39,8 +39,8 @@
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="doc.date_order">
-                                    <span t-field="doc.date_order"
+                                <t t-if="doc.create_date">
+                                    <span t-field="doc.create_date"
                                         t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}' />
                                 </t>
                             </p>

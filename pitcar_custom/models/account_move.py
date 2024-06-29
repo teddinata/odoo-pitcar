@@ -50,6 +50,11 @@ class AccountMove(models.Model):
         readonly=True,
         help="Date when the sale is completed"
     )
+    date_sale_quotation = fields.Datetime(
+        string="Sale Quotation Date",
+        readonly=True,
+        help="Date when the sale is quoted"
+    )
     
     @api.depends('car_mechanic_id_new')
     def _compute_generated_mechanic_team(self):

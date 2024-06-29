@@ -11,13 +11,13 @@
                     <div class="row">
                         <!-- Invoice Date -->
                         <div class="col-2 mw-100 mb-2">
-                            <strong>Date</strong>
+                            <strong>Date Created</strong>
                         </div>
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="o.invoice_date">
-                                    <span t-field="o.invoice_date" t-options='{"widget": "date", "format": "dd/MM/yyyy"}' />
+                                <t t-if="o.date_sale_quotation">
+                                    <span t-field="o.date_sale_quotation" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}' />
                                 </t>
                             </p>
                         </div>

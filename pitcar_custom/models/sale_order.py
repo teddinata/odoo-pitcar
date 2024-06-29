@@ -130,6 +130,7 @@ class SaleOrder(models.Model):
             order.date_completed = fields.Datetime.now()
             for invoice in order.invoice_ids:
                 invoice.date_sale_completed = order.date_completed
+                invoice.date_sale_quotation = order.create_date
                 invoice.partner_car_id = order.partner_car_id
                 invoice.partner_car_odometer = order.partner_car_odometer
                 invoice.car_mechanic_id = order.car_mechanic_id

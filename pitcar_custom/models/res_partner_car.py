@@ -86,8 +86,8 @@ class ResPartnerCar(models.Model):
     engine_number = fields.Char(string="Engine Number")
     brand = fields.Many2one('res.partner.car.brand', string="Brand", required=True, index="btree_not_null")
     brand_type = fields.Many2one('res.partner.car.type', string="Type", required=True, domain="[('brand','=',brand)]", index="btree_not_null",)
-    color = fields.Char(string="Color")
-    year = fields.Char(string="Year", default=date.today().year, required=True)
+    color = fields.Char(string="Color", required=True)
+    year = fields.Char(string="Year", required=True)
     transmission = fields.Many2one('res.partner.car.transmission', string="Transmission", required=True)
     image = fields.Binary(string="Image")
     comment = fields.Html(string='Notes')
@@ -99,7 +99,7 @@ class ResPartnerCar(models.Model):
         ('hybrid', 'Hybrid'),
         ('gas', 'Gas'),
         ('other', 'Other'),
-    ], string='Engine Type')
+    ], string='Engine Type', required=True)
 
     # if brand changed, type will be reset
     @api.onchange('brand')

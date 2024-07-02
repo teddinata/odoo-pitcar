@@ -30,6 +30,9 @@ class ResPartner(models.Model):
     source = fields.Many2one('res.partner.source', string="Source")
     dob = fields.Date(string="Date of Birth")
     car_ids = fields.One2many('res.partner.car', 'partner_id', string="Cars")
+    category_id = fields.Many2many('res.partner.category', column1='partner_id',
+                                    column2='category_id', string='Tags', required=True)
+    phone = fields.Char(unaccent=False, required=True)
 
 class PitcarMechanic(models.Model):
     _name = 'pitcar.mechanic'

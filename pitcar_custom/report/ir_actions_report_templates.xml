@@ -150,16 +150,28 @@
                     <div class="row">
                         <!-- Service Advisor -->
                         <div class="col-2 mw-100 mb-2">
-                            <strong>Service Advisor</strong>
+                            <strong>Service Advisors</strong>
                         </div>
                         <div class="col-4 mw-100 mb-2">
                             <p class="m-0">
                                 <span> : </span>
-                                <t t-if="doc.user_id">
-                                    <span t-field="doc.user_id" />
+                                <!-- Fetch the related service advisors from the pivot table -->
+                                <t t-set="advisors" t-value="env['pitcar.service.advisor'].search([('id', 'in', doc.service_advisor_id.ids)])" />
+
+                                <!-- Check if there are any advisors found -->
+                                <t t-if="advisors">
+                                    <!-- Use ORM to concatenate advisor names -->
+                                    <t t-esc="', '.join(advisors.mapped('name'))" />
+                                </t>
+
+                                <!-- If no advisors are found, display a placeholder -->
+                                <t t-if="not advisors">
+                                    <span>No service advisors assigned</span>
                                 </t>
                             </p>
                         </div>
+
+
 
                         <!-- Engine Type -->
                         <div class="col-2 mw-100 mb-2">

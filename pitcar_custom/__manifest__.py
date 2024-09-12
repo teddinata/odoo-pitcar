@@ -2,7 +2,7 @@
     'name':'Pitcar\'s Customization',
     'author':'Pitcar',
     'website':'https://www.pitcar.co.id',
-    'summary':'Pitcar\'s Customization for Odoo',
+    'summary':'Pitcar\'s Customization for Odoo 2024',
     'maintainer': 'Ahmad Husein Hambali',
     'sequence': 1,
     'depends': [
@@ -27,6 +27,7 @@
 
         'views/account_move.xml',
         'views/pitcar_mechanic_views.xml',
+        'views/pitcar_service_advisor_views.xml',  # View untuk Service Advisor
         'views/res_partner_car_brand.xml',
         'views/res_partner_car_type.xml',
         'views/res_partner_category.xml',
@@ -43,5 +44,5 @@
     'application': True,
     'auto_install': False,
     'license': 'LGPL-3',
-    'version':'16.0.6'
+    'version':'16.0.7'
 }

@@ -79,6 +79,18 @@
             </field>
         </record>
 
+        <record id="sale_order_form_custom" model="ir.ui.view">
+            <field name="name">sale.order.form.custom</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <!-- <field name="campaign"/> -->
+                    <!-- <field name="campaign" attrs="{'invisible': [('id', '!=', False)]}"/>  -->
+                </xpath>
+            </field>
+        </record>
+
         <record id="view_order_form_inherit_service_advisor" model="ir.ui.view">
             <field name="name">sale.order.form.inherit.service.advisor</field>
             <field name="model">sale.order</field>

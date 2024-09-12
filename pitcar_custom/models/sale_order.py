@@ -8,17 +8,18 @@ READONLY_FIELD_STATES = {
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
-    # campaign = fields.Selection(
-    #     [
-    #         ('facebook', 'Facebook'),
-    #         ('instagram', 'Instagram'),
-    #         ('youtube', 'YouTube'),
-    #         ('tiktok', 'TikTok'),
-    #     ],
-    #     string="Campaign",
-    #     help="Select the source of information on how the customer found us",
-    #     tracking=True,
-    # )
+    campaign = fields.Selection(
+        [
+            ('facebook', 'Facebook'),
+            ('instagram', 'Instagram'),
+            ('youtube', 'YouTube'),
+            ('tiktok', 'TikTok'),
+        ],
+        string="Campaign",
+        help="Select the source of information on how the customer found us",
+        tracking=True,
+    )
+    
 
     # Field baru untuk Service Advisor yang merujuk ke model 'pitcar.service.advisor'
     service_advisor_id = fields.Many2many(

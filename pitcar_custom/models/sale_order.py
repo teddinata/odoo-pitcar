@@ -8,6 +8,26 @@ READONLY_FIELD_STATES = {
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
+    campaign = fields.Selection(
+        [
+            ('facebook', 'Facebook'),
+            ('instagram', 'Instagram'),
+            ('youtube', 'YouTube'),
+            ('tiktok', 'TikTok'),
+        ],
+        string="Campaign",
+        help="Select the source of information on how the customer found us",
+        tracking=True,
+    )
+    
+
+    # Field baru untuk Service Advisor yang merujuk ke model 'pitcar.service.advisor'
+    service_advisor_id = fields.Many2many(
+        'pitcar.service.advisor',
+        string="Service Advisors",
+        help="Select multiple Service Advisors for this sales order"
+    )
+
     partner_car_id = fields.Many2one(
         'res.partner.car',
         string="Serviced Car",
@@ -120,6 +140,7 @@ class SaleOrder(models.Model):
                     picking.car_mechanic_id = order.car_mechanic_id
                     picking.car_mechanic_id_new = order.car_mechanic_id_new
                     picking.generated_mechanic_team = order.generated_mechanic_team
+                    picking.service_advisor_id = order.service_advisor_id  
         return res
 
     # Copying car information from sales order to invoice data when invoice created
@@ -136,5 +157,6 @@ class SaleOrder(models.Model):
                 invoice.car_mechanic_id = order.car_mechanic_id
                 invoice.car_mechanic_id_new = order.car_mechanic_id_new
                 invoice.generated_mechanic_team = order.generated_mechanic_team
+                invoice.service_advisor_id = order.service_advisor_id
         return res
     

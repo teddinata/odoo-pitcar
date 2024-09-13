@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<odoo>
+    <!-- Action untuk membuka tampilan Service Advisor -->
+    <record id="action_pitcar_service_advisor" model="ir.actions.act_window">
+        <field name="name">Service Advisors</field>
+        <field name="res_model">pitcar.service.advisor</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[]</field>
+        <field name="help" type="html">
+            <p class="oe_view_nocontent_create">
+                Create a Service Advisor
+            </p>
+        </field>
+    </record>
+
+    <!-- Tree View untuk Service Advisor -->
+    <record id="view_pitcar_service_advisor_tree" model="ir.ui.view">
+        <field name="name">pitcar.service.advisor.tree</field>
+        <field name="model">pitcar.service.advisor</field>
+        <field name="arch" type="xml">
+            <tree string="Service Advisor">
+                <field name="user_id" string="Service Advisor Name"/>
+                <field name="color"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View untuk Service Advisor -->
+    <record id="view_pitcar_service_advisor_form" model="ir.ui.view">
+        <field name="name">pitcar.service.advisor.form</field>
+        <field name="model">pitcar.service.advisor</field>
+        <field name="arch" type="xml">
+            <form string="Service Advisor" duplicate="0">
+                <sheet>
+                    <group>
+                        <field name="user_id" string="Service Advisor" options="{'no_create': False}"/>
+                        <field name="color" widget="color_picker"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>

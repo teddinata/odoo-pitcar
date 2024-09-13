@@ -16,6 +16,14 @@
         groups="sales_team.group_sale_salesman"
         sequence="40"/>
 
+    <!-- Menu untuk Service Advisor -->
+    <menuitem 
+        id="res_pitcar_service_advisor_menu"
+        name="Service Advisors"
+        action="action_pitcar_service_advisor"
+        parent="sale.menu_sale_config"
+        sequence="19"/>
+
     <menuitem
         id="res_partner_car_mechanic_menu"
         name="Mechanics Teams"

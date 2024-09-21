@@ -7,3 +7,4 @@ from . import product_product
 from . import product_tag
 from . import crm_tag
 from . import service_advisor
+from . import project_task

@@ -4,7 +4,6 @@ class ProjectTask(models.Model):
     _inherit = 'project.task'
 
     entry_date = fields.Date(string='Entry Date')
-    # invoice_id = fields.Many2one('account.move', string='Invoice')
     invoice_id = fields.Many2one('account.move', string='Invoice', domain="[('partner_id', '=', partner_id), ('state', '=', 'posted'), ('move_type', '=', 'out_invoice')]")
     invoice_total = fields.Monetary(string='Invoice Total', compute='_compute_invoice_total', store=True)
     currency_id = fields.Many2one('res.currency', related='company_id.currency_id')
@@ -25,5 +24,3 @@ class ProjectTask(models.Model):
     @api.onchange('partner_id')
     def _onchange_partner_id(self):
         self.invoice_id = False
-
-    

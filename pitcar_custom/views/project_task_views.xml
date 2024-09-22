@@ -38,8 +38,6 @@
                     <t t-name="kanban-box">
                         <div t-attf-class="oe_kanban_card oe_kanban_global_click">
                             <div class="oe_kanban_content">
-                                
-
                                 <!-- Title and Customer Info -->
                                 <div class="o_kanban_record_top">
                                     <div class="o_kanban_record_headings">
@@ -60,10 +58,10 @@
                                 <!-- Deadline Date -->
                                 <div class="o_kanban_record_body mb-2">
                                     <div>
-                                        <span style="font-weight: 500;">Entry Date:</span> <field name="entry_date"/>
+                                        <span class="fw-semibold">Entry Date:</span> <field name="entry_date"/>
                                     </div>
                                     <div class="mb-2">
-                                        <span style="font-weight: 500;">Deadline:</span> <field name="date_deadline"/>
+                                        <span class="fw-semibold">Deadline:</span> <field name="date_deadline"/>
                                     </div>
 
                                     <!-- Invoice Total (Updated for safety) -->

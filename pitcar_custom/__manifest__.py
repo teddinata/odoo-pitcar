@@ -3,7 +3,7 @@
     'author':'Pitcar',
     'website':'https://www.pitcar.co.id',
     'summary':'Pitcar\'s Customization for Odoo 2024',
-    'maintainer': 'Ahmad Husein Hambali',
+    'maintainer': 'Ahmad Husein Hambali, Teddinata Kusuma',
     'sequence': 1,
     'depends': [
         'base',
@@ -13,7 +13,8 @@
         'account',
         'crm',
         'sale_management',
-        'purchase'
+        'purchase',
+        'project',
     ],
     'data': [
         'data/res_partner_data.xml',
@@ -38,11 +39,12 @@
         'views/product_views.xml',
         'views/product_tag_views.xml',
         'views/crm_tag_views.xml',
+        'views/project_task_views.xml',
         'views/menu.xml',
     ],
     'installable': True,
     'application': True,
     'auto_install': False,
     'license': 'LGPL-3',
-    'version':'16.0.7'
+    'version':'16.0.8'
 }

@@ -5,8 +5,6 @@ class ProjectTask(models.Model):
     _inherit = 'project.task'
 
     entry_date = fields.Date(string='Entry Date', default=fields.Date.today)
-    # invoice_id = fields.Many2one('account.move', string='Invoice', domain="[('partner_id', '=', partner_id), ('state', '=', 'posted'), ('move_type', '=', 'out_invoice')]")
-    # invoice_total = fields.Monetary(string='Invoice Total', compute='_compute_invoice_total', store=True)
     sale_order_id = fields.Many2one(
         'sale.order',
         string='Quotation/Order',
@@ -23,19 +21,6 @@ class ProjectTask(models.Model):
     color = fields.Integer(string='Color Index')
     days_until_deadline = fields.Integer(string='Days Until Deadline', compute='_compute_days_until_deadline')
     deadline_status = fields.Char(string='Deadline Status', compute='_compute_days_until_deadline')
-
-    # @api.depends('invoice_id', 'invoice_id.amount_total')
-    # def _compute_invoice_total(self):
-    #     for task in self:
-    #         try:
-    #             if task.invoice_id and task.invoice_id.amount_total:
-    #                 task.invoice_total = task.invoice_id.amount_total
-    #             else:
-    #                 task.invoice_total = 0
-    #         except Exception as e:
-    #             task.invoice_total = 0
-    #             # Log the error for debugging
-    #             _logger.error(f"Error computing invoice_total for task {task.id}: {str(e)}")
 
     state = fields.Selection([
         ('draft', 'Draft'),

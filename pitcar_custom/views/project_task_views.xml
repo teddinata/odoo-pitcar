@@ -66,12 +66,6 @@
 
                                 <!-- Deadline Date -->
                                 <div class="o_kanban_record_body mb-2">
-                                    <!-- <div>
-                                        <span class="fw-semibold">Entry Date:</span> <field name="entry_date"/>
-                                    </div>
-                                    <div class="mb-2">
-                                        <span class="fw-semibold">Deadline:</span> <field name="date_deadline"/>
-                                    </div> -->
                                     <field name="days_until_deadline" invisible="1"/>
                                     <div class="mb-2">
                                         <field name="deadline_status" class="fw-bold" 

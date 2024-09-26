@@ -8,3 +8,4 @@ from . import product_tag
 from . import crm_tag
 from . import service_advisor
 from . import project_task
+from . import feedback_classification

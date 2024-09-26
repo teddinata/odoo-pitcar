@@ -7,3 +7,4 @@ pitcar_custom.access_res_partner_car,access_res_partner_car,pitcar_custom.model_
 pitcar_custom.access_pitcar_mechanic,access_pitcar_mechanic,pitcar_custom.model_pitcar_mechanic,base.group_user,1,0,0,0
 pitcar_custom.access_pitcar_mechanic_new,access_pitcar_mechanic_new,pitcar_custom.model_pitcar_mechanic_new,base.group_user,1,1,1,1
 pitcar_custom.access_pitcar_service_advisor,access_pitcar_service_advisor,pitcar_custom.model_pitcar_service_advisor,base.group_user,1,1,1,1
+pitcar_custom.access_feedback_classification,access_feedback_classification,pitcar_custom.model_feedback_classification,base.group_user,1,1,1,1

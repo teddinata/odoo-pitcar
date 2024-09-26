@@ -97,6 +97,8 @@
                                     <div class="oe_kanban_bottom_right">
                                         <!-- Task State -->
                                         <field name="kanban_state" widget="state_selection"/> 
+                                        <!-- Add Assignees here -->
+                                        <field name="user_ids" widget="many2many_avatar_user" options="{'limit': 3}"/>
                                     </div>
                                 </div>
                             </div>

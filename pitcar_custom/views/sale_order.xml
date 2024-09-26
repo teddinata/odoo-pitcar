@@ -1,6 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
+        <record id="view_sales_order_filter_custom" model="ir.ui.view">
+            <field name="name">sale.order.list.select.custom</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+            <field name="arch" type="xml">
+                <filter name="my_sale_orders_filter" position="after">
+                    <filter string="Reminder 3 Days - Hari ini" name="reminder_3_days" 
+                    domain="[('next_follow_up_3_days', '=', context_today())]"/>
+                    <filter string="Reminder 3 Bulan - Hari ini" name="reminder_3_months"
+                    domain="[('next_follow_up_3_months', '=', context_today())]"/>
+                    <filter string="Reminder 6 Bulan - Hari ini" name="reminder_6_months"
+                    domain="[('next_follow_up_6_months', '=', context_today())]"/>
+                </filter>
+            </field>
+        </record>
         <!-- SALE ORDER TABLE -->
         <record id="sale_order_tree_view_inherit" model="ir.ui.view">
             <field name="name">sale.order.tree.inherit</field>
@@ -16,6 +31,9 @@
                 </xpath>
                 <xpath expr="//field[@name='expected_date']" position="after">
                     <field name="date_completed" optional="show" widget="date"/>
+                    <field name="next_follow_up_3_days" optional="show" widget="date"/>
+                    <field name="next_follow_up_3_months" optional="hide" widget="date"/>
+                    <field name="next_follow_up_6_months" optional="hide" widget="date"/>
                 </xpath>
             </field>
         </record>
@@ -35,6 +53,9 @@
                 </xpath>
                 <xpath expr="//field[@name='expected_date']" position="after">
                     <field name="date_completed" optional="show" widget="date"/>
+                    <field name="next_follow_up_3_days" optional="show" widget="date"/>
+                    <field name="next_follow_up_3_months" optional="hide" widget="date"/>
+                    <field name="next_follow_up_6_months" optional="hide" widget="date"/>
                 </xpath>
             </field>
         </record>
@@ -75,6 +96,157 @@
                 </xpath>
                 <xpath expr="//field[@name='show_update_pricelist']" position="before">
                     <field name="date_completed"/>
+                </xpath>
+                <xpath expr="//notebook" position="inside">
+                    <page string="After Service" name="after_service">
+                        <div class="row">
+                            <div class="col-lg-6 col-md-6 col-sm-12">
+                                <div class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small">Customer Feedback</div>
+                                <group>
+                                    <field name="is_willing_to_feedback" widget="radio" options="{'horizontal': True}"/>
+                                </group>
+                                <div attrs="{'invisible': [('is_willing_to_feedback', '!=', 'yes')]}">
+                                    <group>
+                                        <field name="customer_rating" widget="radio" options="{'horizontal': True}"/>
+                                        <field name="customer_satisfaction" widget="selection" readonly="1"/>
+                                        <field name="show_complaint_action" invisible="1"/>
+                                        <field name="customer_feedback" string="Customer Feedback" widget="text"/>
+                                        <field name="feedback_classification_ids" widget="many2many_tags" string="Feedback Classification"/>
+                                        <field name="review_google" widget="radio" options="{'horizontal': True}"/>
+                                        <field name="follow_instagram" widget="radio" options="{'horizontal': True}"/>
+                                    </group>
+                                    <div class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small" 
+                                        attrs="{'invisible': [('show_complaint_action', '=', False)]}">
+                                        Complaint Action
+                                    </div>
+                                    <group attrs="{'invisible': [('show_complaint_action', '=', False)]}">
+                                        <field name="complaint_action"/>
+                                        <field name="complaint_status" widget="radio" options="{'horizontal': True}"/>
+                                    </group>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12">
+                                <div attrs="{'invisible': [('is_willing_to_feedback', '!=', 'no')]}">
+                                    <div class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small">
+                                        Reason for No Feedback
+                                    </div>
+                                    <group>
+                                        <field name="no_feedback_reason" widget="text" placeholder="Please provide a reason why the customer doesn't want to give feedback"/>
+                                    </group>
+                                </div>
+                            </div>
+                        </div>
+                    </page>
+                </xpath>
+                <!-- Tambahkan tab baru "Follow Up - Setelah 3 hari servis" di sini -->
+                <xpath expr="//notebook" position="inside">
+                    <page string="Follow Up" name="follow_up">
+                        <div class="row">
+                            <div class="col-lg-6 col-md-6 col-sm-12">
+                                <div class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small">Follow Up After 3 Days</div>
+                                <div class="alert alert-info" role="alert">
+                                    <strong>Next Follow Up: </strong>
+                                      <field name="notif_follow_up_3_days" 
+                                        decoration-danger="'Late' in notif_follow_up_3_days"
+                                        decoration-warning="'Reminder today' in notif_follow_up_3_days"
+                                        decoration-success="'Upcoming' in notif_follow_up_3_days"
+                                        decoration-info="notif_follow_up_3_days in ('Not Set', 'Error')"/>
+                                </div>
+                                 <group>
+                                    <field name="is_follow_up" widget="radio" options="{'horizontal': True}"/>
+                                </group>
+                                    <div attrs="{'invisible': [('is_follow_up', '!=', 'yes')]}">
+                                        <group string="Follow Up - Customer Feedback">
+                                            <field name="customer_feedback_follow_up" widget="text"/>
+                                            <field name="follow_up_evidence" widget="text"/>
+                                        </group>
+                                    </div>
+                                </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12">
+                                 <div attrs="{'invisible': [('is_follow_up', '!=', 'no')]}">
+                                    <group string="Reason for No Follow Up">
+                                        <field name="no_follow_up_reason" widget="text"/>
+                                    </group>
+                                </div>
+                            </div>
+                        </div>
+                    </page>
+                </xpath>
+
+                <xpath expr="//notebook" position="inside">
+                    <page string="Reminder 3 Bulan" name="reminder_3_months">
+                        <div class="row">
+                            <div class="col-lg-6 col-md-6 col-sm-12">
+                                <div class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small">3 Month Reminder</div>
+                                <div class="alert alert-info" role="alert">
+                                    <strong>Next Reminder: </strong>
+                                    <field name="notif_follow_up_3_months" 
+                                        decoration-danger="'Late' in notif_follow_up_3_months"
+                                        decoration-warning="'Due Today' in notif_follow_up_3_months"
+                                        decoration-success="'Upcoming' in notif_follow_up_3_months"
+                                        decoration-info="notif_follow_up_3_months in ('Not Set', 'Error')"/>
+                                </div>
+                                <group>
+                                    <field name="reminder_3_months" widget="radio" options="{'horizontal': True}"/>
+                                </group>
+                                <div attrs="{'invisible': [('reminder_3_months', '!=', 'yes')]}">
+                                    <group string="3 Month Reminder - Customer Feedback">
+                                        <field name="date_follow_up_3_months"/>
+                                        <field name="category_3_months" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                                        <field name="is_response_3_months" widget="radio" options="{'horizontal': True}"/>
+                                        <field name="feedback_3_months" attrs="{'invisible': [('is_response_3_months', '!=', 'yes')]}"/>
+                                        <field name="is_booking_3_months" widget="radio" options="{'horizontal': True}" attrs="{'invisible': [('is_response_3_months', '!=', 'yes')]}"/>
+                                        <field name="booking_date_3_months" attrs="{'invisible': [('is_booking_3_months', '!=', 'yes')]}"/>
+                                    </group>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12">
+                                <div attrs="{'invisible': [('reminder_3_months', '!=', 'no')]}">
+                                    <group string="Reason for No Reminder">
+                                        <field name="no_reminder_reason_3_months" widget="text"/>
+                                    </group>
+                                </div>
+                            </div>
+                        </div>
+                    </page>
+                </xpath>
+
+                <xpath expr="//notebook" position="inside">
+                    <page string="Reminder 6 Bulan" name="reminder_6_months">
+                        <div class="row">
+                            <div class="col-lg-6 col-md-6 col-sm-12">
+                                <div class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small">6 Month Reminder</div>
+                                <div class="alert alert-info" role="alert">
+                                    <strong>Next Reminder: </strong>
+                                    <field name="notif_follow_up_6_months" 
+                                        decoration-danger="'Late' in notif_follow_up_6_months"
+                                        decoration-warning="'Due Today' in notif_follow_up_6_months"
+                                        decoration-success="'Upcoming' in notif_follow_up_6_months"
+                                        decoration-info="notif_follow_up_6_months in ('Not Set', 'Error')"/>
+                                </div>
+                                <group>
+                                    <field name="reminder_6_months" widget="radio" options="{'horizontal': True}"/>
+                                </group>
+                                <div attrs="{'invisible': [('reminder_6_months', '!=', 'yes')]}">
+                                    <group string="6 Month Reminder - Customer Feedback">
+                                        <field name="date_follow_up_6_months"/>
+                                        <field name="category_6_months" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                                        <field name="is_response_6_months" widget="radio" options="{'horizontal': True}"/>
+                                        <field name="feedback_6_months" attrs="{'invisible': [('is_response_6_months', '!=', 'yes')]}"/>
+                                        <field name="is_booking_6_months" widget="radio" options="{'horizontal': True}" attrs="{'invisible': [('is_response_6_months', '!=', 'yes')]}"/>
+                                        <field name="booking_date_6_months" attrs="{'invisible': [('is_booking_6_months', '!=', 'yes')]}"/>
+                                    </group>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12">
+                                <div attrs="{'invisible': [('reminder_6_months', '!=', 'no')]}">
+                                    <group string="Reason for No Reminder">
+                                        <field name="no_reminder_reason_6_months" widget="text"/>
+                                    </group>
+                                </div>
+                            </div>
+                        </div>
+                    </page>
                 </xpath>
             </field>
         </record>

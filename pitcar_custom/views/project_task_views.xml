@@ -66,11 +66,22 @@
 
                                 <!-- Deadline Date -->
                                 <div class="o_kanban_record_body mb-2">
-                                    <field name="days_until_deadline" invisible="1"/>
-                                    <div class="mb-2">
-                                        <field name="deadline_status" class="fw-bold" 
-                                            decoration-danger="days_until_deadline &lt; 0" 
-                                            decoration-warning="days_until_deadline &gt;= 0 and days_until_deadline &lt;= 3" 
+                                    <div class="d-flex align-items-center mb-2"  attrs="{'invisible': [('date_deadline', '=', False)]}">
+                                        <span class="fa fa-clock-o me-1"/>
+                                        <field name="days_until_deadline" invisible="1"/>
+                                        <field name="deadline_status" widget="badge" class="me-1"
+                                            decoration-danger="days_until_deadline &lt; 0"
+                                            decoration-warning="days_until_deadline == 0"
+                                            decoration-info="days_until_deadline &gt; 0 and days_until_deadline &lt;= 3"
+                                            decoration-success="days_until_deadline &gt; 3"/>
+                                    </div>
+                                    <!-- add date deadline with badge with conditional color if today is deadline -->
+                                    <div class="d-flex align-items-center mb-2" attrs="{'invisible': [('date_deadline', '=', False)]}">
+                                        <span class="fa fa-calendar-check-o me-1"/>
+                                        <field name="date_deadline" widget="badge" class="me-1"
+                                            decoration-danger="days_until_deadline &lt; 0"
+                                            decoration-warning="days_until_deadline == 0"
+                                            decoration-info="days_until_deadline &gt; 0 and days_until_deadline &lt;= 3"
                                             decoration-success="days_until_deadline &gt; 3"/>
                                     </div>
                                     <!-- Order Total -->

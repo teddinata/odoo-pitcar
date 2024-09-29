@@ -28,6 +28,44 @@
                     <field name="generated_mechanic_team" optional="show"/>
                     <field name="car_mechanic_id" optional="hide"/>
                     <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                    <field name="service_advisor_id" optional="show" widget="many2many_tags"/>
+                    <field name="is_willing_to_feedback" optional="hide"/>
+                    <field name="no_feedback_reason" optional="hide"/>
+                    <field name="customer_rating" optional="hide"/>
+                    <field name="customer_satisfaction" optional="hide"/>
+                    <field name="customer_feedback" optional="hide"/>
+                    <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
+                    <field name="review_google" optional="hide"/>
+                    <field name="follow_instagram" optional="hide"/>
+                    <field name="complaint_action" optional="hide"/>
+                    <field name="complaint_status" optional="hide"/>
+                    <field name="is_follow_up" optional="hide"/>
+                    <field name="customer_feedback_follow_up" optional="hide"/>
+                    <field name="notif_follow_up_3_days" optional="hide"/>
+                    <field name="next_follow_up_3_days" optional="hide"/>
+                    <field name="follow_up_evidence" optional="hide"/>
+                    <field name="no_follow_up_reason" optional="hide"/>
+                    <field name="show_complaint_action" optional="hide"/>
+                    <field name="reminder_3_months" optional="hide"/>
+                    <field name="date_follow_up_3_months" optional="hide"/>
+                    <field name="notif_follow_up_3_months" optional="hide"/>
+                    <field name="category_3_months" widget="many2many_tags" optional="hide"/>
+                    <field name="is_response_3_months" optional="hide"/>
+                    <field name="feedback_3_months" optional="hide"/>
+                    <field name="is_booking_3_months" optional="hide"/>
+                    <field name="booking_date_3_months" optional="hide"/>
+                    <field name="no_reminder_reason_3_months" optional="hide"/>
+                    <field name="reminder_6_months" optional="hide"/>
+                    <field name="date_follow_up_6_months" optional="hide"/>
+                    <field name="notif_follow_up_6_months" optional="hide"/>
+                    <field name="category_6_months" widget="many2many_tags" optional="hide"/>
+                    <field name="is_response_6_months" optional="hide"/>
+                    <field name="feedback_6_months" optional="hide"/>
+                    <field name="is_booking_6_months" optional="hide"/>
+                    <field name="booking_date_6_months" optional="hide"/>
+                    <field name="no_reminder_reason_6_months" optional="hide"/>
+                    <field name="next_follow_up_3_months" optional="hide"/>
+                    <field name="next_follow_up_6_months" optional="hide"/>
                 </xpath>
                 <xpath expr="//field[@name='expected_date']" position="after">
                     <field name="date_completed" optional="show" widget="date"/>
@@ -50,6 +88,44 @@
                     <field name="generated_mechanic_team" optional="show"/>
                     <field name="car_mechanic_id" optional="hide"/>
                     <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                    <field name="service_advisor_id" optional="show" widget="many2many_tags"/>
+                    <field name="is_willing_to_feedback" optional="hide"/>
+                    <field name="no_feedback_reason" optional="hide"/>
+                    <field name="customer_rating" optional="hide"/>
+                    <field name="customer_satisfaction" optional="hide"/>
+                    <field name="customer_feedback" optional="hide"/>
+                    <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
+                    <field name="review_google" optional="hide"/>
+                    <field name="follow_instagram" optional="hide"/>
+                    <field name="complaint_action" optional="hide"/>
+                    <field name="complaint_status" optional="hide"/>
+                    <field name="is_follow_up" optional="hide"/>
+                    <field name="customer_feedback_follow_up" optional="hide"/>
+                    <field name="notif_follow_up_3_days" optional="hide"/>
+                    <field name="next_follow_up_3_days" optional="hide"/>
+                    <field name="follow_up_evidence" optional="hide"/>
+                    <field name="no_follow_up_reason" optional="hide"/>
+                    <field name="show_complaint_action" optional="hide"/>
+                    <field name="reminder_3_months" optional="hide"/>
+                    <field name="date_follow_up_3_months" optional="hide"/>
+                    <field name="notif_follow_up_3_months" optional="hide"/>
+                    <field name="category_3_months" widget="many2many_tags" optional="hide"/>
+                    <field name="is_response_3_months" optional="hide"/>
+                    <field name="feedback_3_months" optional="hide"/>
+                    <field name="is_booking_3_months" optional="hide"/>
+                    <field name="booking_date_3_months" optional="hide"/>
+                    <field name="no_reminder_reason_3_months" optional="hide"/>
+                    <field name="reminder_6_months" optional="hide"/>
+                    <field name="date_follow_up_6_months" optional="hide"/>
+                    <field name="notif_follow_up_6_months" optional="hide"/>
+                    <field name="category_6_months" widget="many2many_tags" optional="hide"/>
+                    <field name="is_response_6_months" optional="hide"/>
+                    <field name="feedback_6_months" optional="hide"/>
+                    <field name="is_booking_6_months" optional="hide"/>
+                    <field name="booking_date_6_months" optional="hide"/>
+                    <field name="no_reminder_reason_6_months" optional="hide"/>
+                    <field name="next_follow_up_3_months" optional="hide"/>
+                    <field name="next_follow_up_6_months" optional="hide"/>
                 </xpath>
                 <xpath expr="//field[@name='expected_date']" position="after">
                     <field name="date_completed" optional="show" widget="date"/>
@@ -69,6 +145,7 @@
                 <xpath expr="//field[@name='name']" position="replace">
                     <field name="name" string="Order"
                     filter_domain="['|', '|', '|', ('name', 'ilike', self), ('client_order_ref', 'ilike', self), ('partner_id', 'child_of', self), ('partner_car_id', 'ilike', self)]"/>
+                    <field name="service_advisor_id" string="Service Advisor" filter_domain="[('service_advisor_id', 'ilike', self)]"/>
                 </xpath>
                 <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="partner_car_id"/>
@@ -78,6 +155,7 @@
                     <filter string="Car Brand Type" name="group_car_brand_type" domain="[('partner_car_brand_type', '!=', False)]" context="{'group_by': 'partner_car_brand_type'}"/>
                     <filter string="Car" name="group_car" domain="[('partner_car_id', '!=', False)]" context="{'group_by': 'partner_car_id'}"/>
                     <filter string="Car Year" name="group_car_year" domain="[('partner_car_year', '!=', False)]" context="{'group_by': 'partner_car_year'}"/>
+                    <filter string="Service Advisor" name="service_advisor" domain="[]" context="{'group_by': 'service_advisor_id'}"/>
                 </xpath>
             </field>
         </record>

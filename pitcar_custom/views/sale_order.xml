@@ -48,7 +48,6 @@
                     <field name="is_follow_up" optional="hide"/>
                     <field name="customer_feedback_follow_up" optional="hide"/>
                     <field name="notif_follow_up_3_days" optional="hide"/>
-                    <field name="next_follow_up_3_days" optional="hide"/>
                     <field name="follow_up_evidence" optional="hide"/>
                     <field name="no_follow_up_reason" optional="hide"/>
                     <field name="show_complaint_action" optional="hide"/>
@@ -70,8 +69,6 @@
                     <field name="is_booking_6_months" optional="hide"/>
                     <field name="booking_date_6_months" optional="hide"/>
                     <field name="no_reminder_reason_6_months" optional="hide"/>
-                    <field name="next_follow_up_3_months" optional="hide"/>
-                    <field name="next_follow_up_6_months" optional="hide"/>
                 </xpath>
                 <xpath expr="//field[@name='expected_date']" position="after">
                     <field name="date_completed" optional="show" widget="date"/>
@@ -115,7 +112,6 @@
                     <field name="is_follow_up" optional="hide"/>
                     <field name="customer_feedback_follow_up" optional="hide"/>
                     <field name="notif_follow_up_3_days" optional="hide"/>
-                    <field name="next_follow_up_3_days" optional="hide"/>
                     <field name="follow_up_evidence" optional="hide"/>
                     <field name="no_follow_up_reason" optional="hide"/>
                     <field name="show_complaint_action" optional="hide"/>
@@ -137,8 +133,6 @@
                     <field name="is_booking_6_months" optional="hide"/>
                     <field name="booking_date_6_months" optional="hide"/>
                     <field name="no_reminder_reason_6_months" optional="hide"/>
-                    <field name="next_follow_up_3_months" optional="hide"/>
-                    <field name="next_follow_up_6_months" optional="hide"/>
                 </xpath>
                 <xpath expr="//field[@name='expected_date']" position="after">
                     <field name="date_completed" optional="show" widget="date"/>

@@ -62,6 +62,10 @@ class AccountMove(models.Model):
         readonly=True,
         help="Date when the sale is quoted"
     )
+    car_arrival_time = fields.Datetime(
+        string="Car Arrival Time",
+        help="Record the time when the car arrived."
+    )
     
     @api.depends('car_mechanic_id_new')
     def _compute_generated_mechanic_team(self):

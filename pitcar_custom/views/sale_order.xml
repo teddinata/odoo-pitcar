@@ -31,8 +31,14 @@
                     <field name="service_advisor_id" optional="show" widget="many2many_tags"/>
                     <field name="is_willing_to_feedback" optional="hide"/>
                     <field name="no_feedback_reason" optional="hide"/>
-                    <field name="customer_rating" optional="hide"/>
-                    <field name="customer_satisfaction" optional="hide"/>
+                    <field name="customer_rating" widget="badge" class="me-1"
+                            decoration-danger="customer_rating in ('1', '2')"
+                            decoration-warning="customer_rating == '3'"
+                            decoration-success="customer_rating in ('4', '5')"/>
+                    <field name="customer_satisfaction" widget="badge" class="me-1"
+                            decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
+                            decoration-warning="customer_satisfaction == 'neutral'"
+                            decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
                     <field name="customer_feedback" optional="hide"/>
                     <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
                     <field name="review_google" optional="hide"/>
@@ -91,8 +97,15 @@
                     <field name="service_advisor_id" optional="show" widget="many2many_tags"/>
                     <field name="is_willing_to_feedback" optional="hide"/>
                     <field name="no_feedback_reason" optional="hide"/>
-                    <field name="customer_rating" optional="hide"/>
-                    <field name="customer_satisfaction" optional="hide"/>
+                    <field name="customer_rating" widget="badge" class="me-1"
+                            decoration-danger="customer_rating in ('1', '2')"
+                            decoration-warning="customer_rating == '3'"
+                            decoration-success="customer_rating in ('4', '5')"/>
+                    
+                    <field name="customer_satisfaction" widget="badge" class="me-1"
+                            decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
+                            decoration-warning="customer_satisfaction == 'neutral'"
+                            decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
                     <field name="customer_feedback" optional="hide"/>
                     <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
                     <field name="review_google" optional="hide"/>
@@ -174,6 +187,10 @@
                 </xpath>
                 <xpath expr="//field[@name='show_update_pricelist']" position="before">
                     <field name="date_completed"/>
+                </xpath>
+                <!-- Menambahkan car_arrival_time di bawah payment terms -->
+                <xpath expr="//field[@name='payment_term_id']" position="after">
+                    <field name="car_arrival_time" />
                 </xpath>
                 <xpath expr="//notebook" position="inside">
                     <page string="After Service" name="after_service">

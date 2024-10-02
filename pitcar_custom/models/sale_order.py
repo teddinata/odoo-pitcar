@@ -108,6 +108,12 @@ class SaleOrder(models.Model):
         required=False, readonly=True, copy=False, tracking=True,
         help="date on which invoice is generated",
     )
+    car_arrival_time = fields.Datetime(
+        string="Car Arrival Time",
+        help="Record the time when the car arrived",
+        required=False,  # Tidak wajib diisi
+        tracking=True,   # Jika ingin melacak perubahan field ini
+    )
 
     is_willing_to_feedback = fields.Selection([
         ('yes', 'Yes'),
@@ -268,11 +274,11 @@ class SaleOrder(models.Model):
      # Ubah field kategori untuk 3 bulan
     category_3_months = fields.Many2many(
         'feedback.classification', 
-        string='Feedback Classification (3 Bulan)',
+        string='Reminder Tags (3 Bulan)',
         relation='sale_order_feedback_3_months_rel',
         column1='sale_order_id',
         column2='feedback_classification_id',
-        help='Ini digunakan untuk mengklasifikasikan feedback yang diberikan oleh customer setelah 3 bulan.'
+        help='Ini digunakan untuk mengklasifikasikan reminder yang diberikan oleh customer setelah 3 bulan.'
     )
 
     is_response_3_months = fields.Selection([('yes', 'Yes'), ('no', 'No')], string="Response? (3 Bulan)")
@@ -292,11 +298,11 @@ class SaleOrder(models.Model):
      # Ubah field kategori untuk 6 bulan
     category_6_months = fields.Many2many(
         'feedback.classification', 
-        string='Feedback Classification (6 Bulan)',
+        string='Reminder Tags (6 Bulan)',
         relation='sale_order_feedback_6_months_rel',
         column1='sale_order_id',
         column2='feedback_classification_id',
-        help='Ini digunakan untuk mengklasifikasikan feedback yang diberikan oleh customer setelah 6 bulan.'
+        help='Ini digunakan untuk mengklasifikasikan reminder yang diberikan oleh customer setelah 6 bulan.'
     )
 
     is_response_6_months = fields.Selection([('yes', 'Yes'), ('no', 'No')], string="Response? (6 Bulan)")
@@ -410,6 +416,7 @@ class SaleOrder(models.Model):
                     picking.car_mechanic_id_new = order.car_mechanic_id_new
                     picking.generated_mechanic_team = order.generated_mechanic_team
                     picking.service_advisor_id = order.service_advisor_id  
+                    picking.car_arrival_time = order.car_arrival_time
         return res
 
     # Copying car information from sales order to invoice data when invoice created
@@ -427,5 +434,6 @@ class SaleOrder(models.Model):
                 invoice.car_mechanic_id_new = order.car_mechanic_id_new
                 invoice.generated_mechanic_team = order.generated_mechanic_team
                 invoice.service_advisor_id = order.service_advisor_id
+                invoice.car_arrival_time = order.car_arrival_time
         return res
     

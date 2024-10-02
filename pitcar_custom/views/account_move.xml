@@ -10,6 +10,7 @@
                     <field name="partner_car_id" optional="hide"/>
                     <field name="partner_car_odometer" optional="hide"/>
                     <field name="car_mechanic_id" optional="hide"/>
+                    <field name="car_arrival_time" optional="hide"/>
                 </xpath>
                 
             </field>
@@ -56,6 +57,7 @@
                     <field name="partner_car_odometer"/>
                     <field name="car_mechanic_id"/>
                     <field name="car_mechanic_id_new" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                    <field name="car_arrival_time"/>
                 </xpath>
             </field>
         </record>

@@ -15,10 +15,13 @@
         'sale_management',
         'purchase',
         'project',
+        # 'product',
+        # 'stock_quant',
     ],
     'data': [
         'data/res_partner_data.xml',
         'data/res_partner_car_data.xml',
+        # 'data/cron_jobs.xml',
 
         'report/ir_actions_report_templates.xml',
         'report/ir_actions_report.xml',
@@ -41,10 +44,12 @@
         'views/crm_tag_views.xml',
         'views/project_task_views.xml',
         'views/menu.xml',
+        # 'views/product_template_views.xml',
+        # 'views/stock_quant_views.xml',
     ],
     'installable': True,
     'application': True,
     'auto_install': False,
     'license': 'LGPL-3',
-    'version':'16.0.10'
+    'version':'16.0.11'
 }

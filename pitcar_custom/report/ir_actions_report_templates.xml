@@ -31,195 +31,160 @@
 
                 <div id="informations" class="mt-4 mb-4">
                     <div class="row">
-                        <!-- Quotation / Order Date -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong t-if="doc.state in ['draft', 'sent']">Quotation Date</strong>
-                            <strong t-else="">Order Date</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.create_date">
-                                    <span t-field="doc.create_date"
-                                        t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}' />
-                                </t>
-                            </p>
-                        </div>
-
-                        <!-- Completed Date -->
-                        <t t-if="doc.date_completed">
-                            <div class="col-2 mw-100 mb-2">
-                                <strong>Completed Date</strong>
+                        <div class="col-6">
+                            <!-- Quotation / Order Date -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong t-if="doc.state in ['draft', 'sent']">Quotation Date</strong><strong t-else="">Order Date</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.create_date">
+                                        <span t-field="doc.create_date" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                    </t>
+                                </div>
                             </div>
-                            <div class="col-4 mw-100 mb-2">
-                                <p class="m-0">
-                                    <span> : </span>
-                                    <span t-field="doc.date_completed" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
-                                </p>
+
+                            <!-- Car Arrival Time -->
+                            <t t-if="doc.car_arrival_time">
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Car Arrival Time</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <span t-field="doc.car_arrival_time" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                    </div>
+                                </div>
+                            </t>
+
+                            <!-- Completed Date -->
+                            <t t-if="doc.date_completed">
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Completed Date</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <span t-field="doc.date_completed" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                    </div>
+                                </div>
+                            </t>
+
+                            <!-- Customer -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Customer</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.partner_id">
+                                        <span t-field="doc.partner_id" />
+                                    </t>
+                                </div>
                             </div>
-                        </t>
-                    </div>
 
-                    <div class="row">
-                        <!-- Customer -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Customer</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.partner_id">
-                                    <span t-field="doc.partner_id" />
-                                </t>
-                            </p>
-                        </div>
+                            <!-- Service Advisors -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Service Advisors</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-set="advisors" t-value="env['pitcar.service.advisor'].search([('id', 'in', doc.service_advisor_id.ids)])" />
+                                    <t t-if="advisors">
+                                        <span t-esc="', '.join(advisors.mapped('name'))" />
+                                    </t>
+                                    <t t-if="not advisors">No service advisors assigned</t>
+                                </div>
+                            </div>
 
-                        <!-- Brand -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Brand</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.partner_car_id and doc.partner_car_id.brand">
-                                    <span t-field="doc.partner_car_id.brand" />
-                                </t>
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <!-- Plate Number -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Plate Number</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.partner_car_id and doc.partner_car_id.number_plate">
-                                    <span t-field="doc.partner_car_id.number_plate" />
-                                </t>
-                            </p>
+                            <!-- Mechanics -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Mechanics</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.car_mechanic_id_new">
+                                        <span t-field="doc.generated_mechanic_team" />
+                                    </t>
+                                    <t t-elif="doc.car_mechanic_id">
+                                        <span t-field="doc.car_mechanic_id" />
+                                    </t>
+                                </div>
+                            </div>
                         </div>
 
-                        <!-- Type and Year -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Type</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.partner_car_id">
-                                    <span t-field="doc.partner_car_id.brand_type" />
-                                    <span> / </span>
-                                    <span t-field="doc.partner_car_id.year" />
-                                </t>
-                            </p>
-                        </div>
-                    </div>
+                        <div class="col-6">
+                            <!-- Plate Number -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Plate Number</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.partner_car_id and doc.partner_car_id.number_plate">
+                                        <span t-field="doc.partner_car_id.number_plate" />
+                                    </t>
+                                </div>
+                            </div>
 
-                    <div class="row">
-                        <!-- Odometer -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Odometer</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.partner_car_id and doc.partner_car_odometer">
-                                    <span t-field="doc.partner_car_odometer" />
-                                    <strong> KM</strong>
-                                </t>
-                            </p>
-                        </div>
+                            <!-- Odometer -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Odometer</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.partner_car_id and doc.partner_car_odometer">
+                                        <span t-field="doc.partner_car_odometer" /> KM
+                                    </t>
+                                </div>
+                            </div>
 
-                        <!-- Transmission -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Transmission</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.partner_car_id and doc.partner_car_transmission">
-                                    <span t-field="doc.partner_car_transmission" />
-                                </t>
-                            </p>
-                        </div>
-                    </div>
+                            <!-- Brand -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Brand</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.partner_car_id and doc.partner_car_id.brand">
+                                        <span t-field="doc.partner_car_id.brand" />
+                                    </t>
+                                </div>
+                            </div>
 
-                    <div class="row">
-                        <!-- Service Advisor -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Service Advisors</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <!-- Fetch the related service advisors from the pivot table -->
-                                <t t-set="advisors" t-value="env['pitcar.service.advisor'].search([('id', 'in', doc.service_advisor_id.ids)])" />
+                            <!-- Type and Year -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Type / Year</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.partner_car_id">
+                                        <span t-field="doc.partner_car_id.brand_type" /> / <span t-field="doc.partner_car_id.year" />
+                                    </t>
+                                </div>
+                            </div>
 
-                                <!-- Check if there are any advisors found -->
-                                <t t-if="advisors">
-                                    <!-- Use ORM to concatenate advisor names -->
-                                    <t t-esc="', '.join(advisors.mapped('name'))" />
-                                </t>
+                            <!-- Transmission -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Transmission</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.partner_car_id and doc.partner_car_transmission">
+                                        <span t-field="doc.partner_car_transmission" />
+                                    </t>
+                                </div>
+                            </div>
 
-                                <!-- If no advisors are found, display a placeholder -->
-                                <t t-if="not advisors">
-                                    <span>No service advisors assigned</span>
-                                </t>
-                            </p>
-                        </div>
+                            <!-- Engine Type -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Engine Type</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.partner_car_engine_type">
+                                        <span t-field="doc.partner_car_engine_type" />
+                                    </t>
+                                </div>
+                            </div>
 
-
-
-                        <!-- Engine Type -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Engine Type</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.partner_car_engine_type">
-                                    <span t-field="doc.partner_car_engine_type" />
-                                </t>
-                            </p>
+                            <!-- Color -->
+                            <div class="row mb-2">
+                                <div class="col-5 text-start"><strong>Color / Warna</strong></div>
+                                <div class="col-7 text-start">
+                                    <span>:</span>
+                                    <t t-if="doc.partner_car_color">
+                                        <span t-field="doc.partner_car_color" />
+                                    </t>
+                                </div>
+                            </div>
                         </div>
                     </div>
-
-                    <div class="row">
-                        <!-- Mechanics -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Mechanics</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.car_mechanic_id_new">
-                                    <span t-field="doc.generated_mechanic_team" />
-                                </t>
-                                <t t-elif="doc.car_mechanic_id">
-                                    <span t-field="doc.car_mechanic_id" />
-                                </t>
-                            </p>
-                        </div>
-
-                        <!-- Frame Number -->
-                        <div class="col-2 mw-100 mb-2">
-                            <strong>Color / Warna</strong>
-                        </div>
-                        <div class="col-4 mw-100 mb-2">
-                            <p class="m-0">
-                                <span> : </span>
-                                <t t-if="doc.partner_car_color">
-                                    <span t-field="doc.partner_car_color" />
-                                </t>
-                            </p>
-                        </div>
-
-                    </div>
-
                 </div>
+
 
                 <!-- Is there a discount on at least one line? -->
                 <t t-set="lines_to_report" t-value="doc._get_order_lines_to_report()" />

@@ -28,17 +28,18 @@
                     <field name="generated_mechanic_team" optional="show"/>
                     <field name="car_mechanic_id" optional="hide"/>
                     <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
-                    <field name="service_advisor_id" optional="show" widget="many2many_tags"/>
+                    <field name="service_advisor_id" widget="many2many_tags" options="{'color_field': 'color'}" string="Service Advisors" optional="hide"/>
                     <field name="is_willing_to_feedback" optional="hide"/>
                     <field name="no_feedback_reason" optional="hide"/>
-                    <field name="customer_rating" widget="badge" class="me-1"
-                            decoration-danger="customer_rating in ('1', '2')"
-                            decoration-warning="customer_rating == '3'"
-                            decoration-success="customer_rating in ('4', '5')"/>
-                    <field name="customer_satisfaction" widget="badge" class="me-1"
-                            decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
-                            decoration-warning="customer_satisfaction == 'neutral'"
-                            decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
+                    <field name="customer_rating" widget="badge" optional="hide" string="Customer Rating"
+                       decoration-danger="customer_rating in ('1', '2')"
+                       decoration-warning="customer_rating == '3'"
+                       decoration-success="customer_rating in ('4', '5')"/>
+                    <field name="customer_satisfaction" widget="badge" optional="hide" string="Customer Satisfaction"
+                       decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
+                       decoration-warning="customer_satisfaction == 'neutral'"
+                       decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
+                    <field name="user_id" string="Salesperson" optional="hide"/>
                     <field name="customer_feedback" optional="hide"/>
                     <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
                     <field name="review_google" optional="hide"/>
@@ -91,18 +92,18 @@
                     <field name="generated_mechanic_team" optional="show"/>
                     <field name="car_mechanic_id" optional="hide"/>
                     <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
-                    <field name="service_advisor_id" optional="show" widget="many2many_tags"/>
+                    <field name="service_advisor_id" widget="many2many_tags" options="{'color_field': 'color'}" string="Service Advisors" optional="hide"/>
                     <field name="is_willing_to_feedback" optional="hide"/>
                     <field name="no_feedback_reason" optional="hide"/>
-                    <field name="customer_rating" widget="badge" class="me-1"
-                            decoration-danger="customer_rating in ('1', '2')"
-                            decoration-warning="customer_rating == '3'"
-                            decoration-success="customer_rating in ('4', '5')"/>
-                    
-                    <field name="customer_satisfaction" widget="badge" class="me-1"
-                            decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
-                            decoration-warning="customer_satisfaction == 'neutral'"
-                            decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
+                    <field name="customer_rating" widget="badge" optional="hide" string="Customer Rating"
+                       decoration-danger="customer_rating in ('1', '2')"
+                       decoration-warning="customer_rating == '3'"
+                       decoration-success="customer_rating in ('4', '5')"/>
+                    <field name="customer_satisfaction" widget="badge" optional="hide" string="Customer Satisfaction"
+                       decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
+                       decoration-warning="customer_satisfaction == 'neutral'"
+                       decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
+                    <field name="user_id" string="Salesperson" optional="hide"/>
                     <field name="customer_feedback" optional="hide"/>
                     <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
                     <field name="review_google" optional="hide"/>

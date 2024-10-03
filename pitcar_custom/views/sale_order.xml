@@ -39,7 +39,6 @@
                        decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
                        decoration-warning="customer_satisfaction == 'neutral'"
                        decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
-                    <field name="user_id" string="Salesperson" optional="hide"/>
                     <field name="customer_feedback" optional="hide"/>
                     <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
                     <field name="review_google" optional="hide"/>
@@ -103,7 +102,6 @@
                        decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
                        decoration-warning="customer_satisfaction == 'neutral'"
                        decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
-                    <field name="user_id" string="Salesperson" optional="hide"/>
                     <field name="customer_feedback" optional="hide"/>
                     <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
                     <field name="review_google" optional="hide"/>
@@ -282,7 +280,9 @@
                                 <div attrs="{'invisible': [('reminder_3_months', '!=', 'yes')]}">
                                     <group string="3 Month Reminder - Customer Feedback">
                                         <field name="date_follow_up_3_months"/>
-                                        <field name="category_3_months" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                                        <field name="category_3_months" widget="many2many_tags" 
+                                            options="{'placeholder': 'Contoh: Ganti oli, Cek rem, Rotasi ban'}"
+                                            help="Pilih atau buat tag untuk menandai jenis reminder 3 bulan. Contoh: Ganti oli, Cek rem, Rotasi ban"/>
                                         <field name="is_response_3_months" widget="radio" options="{'horizontal': True}"/>
                                         <field name="feedback_3_months" attrs="{'invisible': [('is_response_3_months', '!=', 'yes')]}"/>
                                         <field name="is_booking_3_months" widget="radio" options="{'horizontal': True}" attrs="{'invisible': [('is_response_3_months', '!=', 'yes')]}"/>
@@ -320,7 +320,9 @@
                                 <div attrs="{'invisible': [('reminder_6_months', '!=', 'yes')]}">
                                     <group string="6 Month Reminder - Customer Feedback">
                                         <field name="date_follow_up_6_months"/>
-                                        <field name="category_6_months" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                                        <field name="category_6_months" widget="many2many_tags" 
+                                            options="{'placeholder': 'Contoh: Tune-up mesin, Ganti filter udara, Cek suspensi'}"
+                                            help="Pilih atau buat tag untuk menandai jenis reminder 6 bulan. Contoh: Tune-up mesin, Ganti filter udara, Cek suspensi"/>
                                         <field name="is_response_6_months" widget="radio" options="{'horizontal': True}"/>
                                         <field name="feedback_6_months" attrs="{'invisible': [('is_response_6_months', '!=', 'yes')]}"/>
                                         <field name="is_booking_6_months" widget="radio" options="{'horizontal': True}" attrs="{'invisible': [('is_response_6_months', '!=', 'yes')]}"/>

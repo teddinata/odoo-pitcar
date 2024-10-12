@@ -183,7 +183,16 @@
                 </xpath>
                 <!-- Menambahkan car_arrival_time di bawah payment terms -->
                 <xpath expr="//field[@name='payment_term_id']" position="after">
-                    <field name="car_arrival_time" />
+                     <label for="car_arrival_time" string="Car Arrival Time"/>
+                    <div>
+                        <field name="car_arrival_time" readonly="1" nolabel="1" class="oe_inline"/>
+                        <button name="action_record_car_arrival_time" 
+                                string="Klik untuk rekam waktu kedatangan mobil" 
+                                type="object" 
+                                class="btn btn-primary"
+                                attrs="{'invisible': [('car_arrival_time', '!=', False)]}"
+                        />
+                    </div>
                 </xpath>
                 <xpath expr="//notebook" position="inside">
                     <page string="After Service" name="after_service">
@@ -364,6 +373,222 @@
                 <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="service_advisor_id" widget="many2many_tags"/>
                 </xpath>
+            </field>
+        </record>
+
+        <record id="view_order_form_inherit_lead_time" model="ir.ui.view">
+            <field name="name">sale.order.form.inherit.lead.time</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//page[@name='after_service']" position="before">
+                    <page string="Lead Time" name="lead_time">
+                        <group>
+                            <group string="Service Advisor (SA)" class="o_group_controller">
+                                <field name="service_category" widget="radio" options="{'horizontal': true}"/>
+                                <label for="sa_jam_masuk" string="Jam Masuk"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_record_car_arrival_time" string="Jam Masuk" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin merekam jam masuk?"/>
+                                    <field name="sa_jam_masuk" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                                
+                                <label for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_record_sa_mulai_penerimaan" string="Mulai Penerimaan" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                                
+                                <label for="sa_cetak_pkb" string="Cetak PKB"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_print_work_order" string="Cetak PKB" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="sa_cetak_pkb" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                            </group>
+                            <group string="Final Output (FO)" class="o_group_controller">
+                                <label for="fo_unit_keluar" string="Unit Keluar"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_record_fo_unit_keluar" string="Unit Keluar" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="fo_unit_keluar" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                            </group>
+                        </group>
+                        
+                        <group string="Controller" class="o_group_controller">
+                            <group>
+                                <field name="controller_estimasi_mulai" string="Estimasi Pekerjaan Mulai" widget="datetime" class="o_input_controller"/>
+                                <field name="controller_estimasi_selesai" string="Estimasi Pekerjaan Selesai" widget="datetime" class="o_input_controller"/>
+                                 <!-- Tombol untuk Tunggu Konfirmasi Mulai -->
+                                <label for="controller_tunggu_konfirmasi_mulai" string="Tunggu Konfirmasi Mulai"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_tunggu_konfirmasi_mulai" string="Mulai Tunggu Konfirmasi" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 150px;" 
+                                            confirm="Apakah Anda yakin ingin memulai tunggu konfirmasi?"/>
+                                    <field name="controller_tunggu_konfirmasi_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <!-- Tombol untuk Tunggu Konfirmasi Selesai -->
+                                <label for="controller_tunggu_konfirmasi_selesai" string="Tunggu Konfirmasi Selesai"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_tunggu_konfirmasi_selesai" string="Selesai Tunggu Konfirmasi" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 150px;" 
+                                            confirm="Apakah Anda yakin ingin menyelesaikan tunggu konfirmasi?"/>
+                                    <field name="controller_tunggu_konfirmasi_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                                
+                                <label for="controller_mulai_servis" string="Mulai Servis"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_mulai_servis" string="Mulai Servis" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="controller_mulai_servis" readonly="1" nolabel="1" class="ms-2" widget="lead_time_widget"/>
+                                </div>
+
+                                <label for="controller_selesai" string="Selesai Servis"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_selesai_servis" string="Selesai Servis" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="controller_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                            </group>
+                            <group>
+                                <label for="controller_tunggu_part1_mulai" string="Tunggu Part 1" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_part1_mulai" string="MULAI TUNGGU" type="object" 
+                                            class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;" 
+                                            confirm="Apakah anda yakin ingin memulai tunggu part 1?"/>
+                                    <field name="controller_tunggu_part1_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_part1_selesai" string="Selesai Tunggu Part 1" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_part1_selesai" string="SELESAI TUNGGU" type="object" 
+                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin menyelesaikan tunggu part 1?"/>
+                                    <field name="controller_tunggu_part1_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_part2_mulai" string="Tunggu Part 2" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_part2_mulai" string="MULAI TUNGGU" type="object" 
+                                            class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin memulai tunggu part 2?"/>
+                                    <field name="controller_tunggu_part2_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_part2_selesai" string="Selesai Tunggu Part 2" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_part2_selesai" string="SELESAI TUNGGU" type="object" 
+                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin menyelesaikan tunggu part 2?"/>
+                                    <field name="controller_tunggu_part2_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                                
+                                <label for="controller_istirahat_shift1_mulai" string="Istirahat" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_istirahat_shift1_mulai" string="MULAI ISTIRAHAT" type="object" 
+                                            class="btn btn-info btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin memulai istirahat?"/>
+                                    <field name="controller_istirahat_shift1_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_istirahat_shift1_selesai" string="Selesai Istirahat" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_istirahat_shift1_selesai" string="SELESAI ISTIRAHAT" type="object" 
+                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin menyelesaikan istirahat?"/>
+                                    <field name="controller_istirahat_shift1_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_sublet_mulai" string="Tunggu Sublet" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_sublet_mulai" string="MULAI TUNGGU" type="object" 
+                                            class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin memulai tunggu sublet?"/>
+                                    <field name="controller_tunggu_sublet_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_sublet_selesai" string="Selesai Tunggu Sublet" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_sublet_selesai" string="SELESAI TUNGGU" type="object" 
+                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin menyelesaikan tunggu sublet?"/>
+                                    <field name="controller_tunggu_sublet_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                            </group>
+                        </group>
+                        
+                        <group string="Lead Time Summary" class="o_group_controller">
+                            <group>
+                                <field name="lead_time_tunggu_penerimaan" widget="float_time" string="Lead Time Tunggu Penerimaan"  class="o_input_controller"/>
+                                <field name="lead_time_penerimaan" widget="float_time" string="Lead Time Penerimaan" class="o_input_controller"/>
+                                <field name="lead_time_tunggu_servis" widget="float_time" string="Lead Time Tunggu Servis" class="o_input_controller"/>
+                                <field name="estimasi_durasi_pengerjaan" widget="float_time" string="Estimasi Durasi Pengerjaan" class="o_input_controller"/>
+                                <field name="lead_time_tunggu_konfirmasi" widget="float_time" string="Lead Time Tunggu Konfirmasi" class="o_input_controller"/>
+                                <field name="lead_time_tunggu_part1" widget="float_time" string="Lead Time Tunggu Part 1" class="o_input_controller"/>
+                                <field name="lead_time_tunggu_part2" widget="float_time" string="Lead Time Tunggu Part 2" class="o_input_controller"/>
+                                <field name="lead_time_istirahat" widget="float_time" string="Lead Time Istirahat" class="o_input_controller"/>
+                                <field name="lead_time_servis" widget="float_time" string="Lead Time Servis" class="o_input_controller"/>
+                            </group>
+                            <group>
+                                <field name="total_lead_time" widget="float_time" string="Total Lead Time" class="o_input_controller"/>
+                                <field name="lead_time_progress" widget="percentpie" string="Lead Time Progress" class="o_input_controller"/>
+                                <field name="lead_time_stage" widget="badge" 
+                                        decoration-info="lead_time_stage in ('not_started', 'category_selected', 'check_in', 'reception')"
+                                        decoration-warning="lead_time_stage in ('pkb_printed', 'estimation', 'waiting_confirmation', 'waiting_parts')"
+                                        decoration-success="lead_time_stage in ('in_service', 'service_done', 'waiting_pickup')"
+                                        decoration-primary="lead_time_stage == 'completed'"/>
+                            </group>
+                        </group>
+                        
+                        <group string="Catatan">
+                            <field name="lead_time_catatan"/>
+                        </group>
+                    </page>
+                </xpath>
+            </field>
+        </record>
+
+        <record id="view_sale_order_lead_time_kanban" model="ir.ui.view">
+            <field name="name">sale.order.lead.time.kanban</field>
+            <field name="model">sale.order</field>
+            <field name="arch" type="xml">
+                <kanban>
+                    <field name="name"/>
+                    <field name="partner_id"/>
+                    <field name="lead_time_stage"/>
+                    <field name="lead_time_progress"/>
+                    <templates>
+                        <t t-name="kanban-box">
+                            <div class="oe_kanban_global_click">
+                                <div class="oe_kanban_details">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="name"/>
+                                    </strong>
+                                    <div class="o_kanban_tags_section">
+                                        <field name="partner_id"/>
+                                    </div>
+                                    <div class="o_kanban_record_bottom">
+                                        <field name="lead_time_stage"/>
+                                        <field name="lead_time_progress" widget="progressbar"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+                    </templates>
+                </kanban>
+            </field>
+        </record>
+
+        <record id="view_sale_order_lead_time_gantt" model="ir.ui.view">
+            <field name="name">sale.order.lead.time.gantt</field>
+            <field name="model">sale.order</field>
+            <field name="arch" type="xml">
+                <gantt date_start="sa_jam_masuk" date_stop="fo_unit_keluar" string="Lead Time" default_group_by="partner_id">
+                </gantt>
             </field>
         </record>
 

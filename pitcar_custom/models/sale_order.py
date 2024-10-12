@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _, exceptions
+from odoo.exceptions import ValidationError
 from datetime import timedelta, date, datetime
 import logging
 
@@ -111,9 +112,17 @@ class SaleOrder(models.Model):
     car_arrival_time = fields.Datetime(
         string="Car Arrival Time",
         help="Record the time when the car arrived",
-        required=False,  # Tidak wajib diisi
-        tracking=True,   # Jika ingin melacak perubahan field ini
+        required=False,
+        tracking=True,
     )
+
+    def action_record_car_arrival_time(self):
+        current_time = fields.Datetime.now()
+        self.write({
+            'car_arrival_time': current_time,
+            'sa_jam_masuk': current_time
+        })
+        return True
 
     is_willing_to_feedback = fields.Selection([
         ('yes', 'Yes'),
@@ -437,3 +446,398 @@ class SaleOrder(models.Model):
                 invoice.car_arrival_time = order.car_arrival_time
         return res
     
+    # Fields untuk tracking lead time
+    service_category = fields.Selection([
+        ('maintenance', 'Perawatan'),
+        ('repair', 'Perbaikan')
+    ], string="Kategori Servis", required=True, default='maintenance')
+    sa_jam_masuk = fields.Datetime("Jam Masuk")
+    sa_mulai_penerimaan = fields.Datetime("Mulai Penerimaan")
+    sa_cetak_pkb = fields.Datetime("Cetak PKB")
+    
+    controller_estimasi_mulai = fields.Datetime("Estimasi Pekerjaan Mulai")
+    controller_estimasi_selesai = fields.Datetime("Estimasi Pekerjaan Selesai")
+    controller_mulai_servis = fields.Datetime(string="Mulai Servis", readonly=True)
+    controller_selesai = fields.Datetime(string="Selesai Servis", readonly=True)
+    controller_tunggu_konfirmasi_mulai = fields.Datetime("Tunggu Konfirmasi Mulai")
+    controller_tunggu_konfirmasi_selesai = fields.Datetime("Tunggu Konfirmasi Selesai")
+    controller_tunggu_part1_mulai = fields.Datetime("Tunggu Part 1 Mulai")
+    controller_tunggu_part1_selesai = fields.Datetime("Tunggu Part 1 Selesai")
+    controller_tunggu_part2_mulai = fields.Datetime("Tunggu Part 2 Mulai")
+    controller_tunggu_part2_selesai = fields.Datetime("Tunggu Part 2 Selesai")
+    controller_istirahat_shift1_mulai = fields.Datetime("Istirahat Shift 1 Mulai")
+    controller_istirahat_shift1_selesai = fields.Datetime("Istirahat Shift 1 Selesai")
+    controller_tunggu_sublet_mulai = fields.Datetime("Tunggu Sublet Mulai")
+    controller_tunggu_sublet_selesai = fields.Datetime("Tunggu Sublet Selesai")
+    
+    fo_unit_keluar = fields.Datetime("Unit Keluar")
+    
+    lead_time_catatan = fields.Text("Catatan Lead Time")
+    
+    total_lead_time = fields.Float(string="Total Lead Time (hours)", compute="_compute_total_lead_time", store=True)
+    lead_time_progress = fields.Float(string="Lead Time Progress", compute="_compute_lead_time_progress", store=True)
+    lead_time_stage = fields.Selection([
+        ('not_started', 'Belum Dimulai'),
+        ('category_selected', 'Kategori Dipilih'),
+        ('check_in', 'Check In'),
+        ('reception', 'Penerimaan'),
+        ('pkb_printed', 'PKB Dicetak'),
+        ('estimation', 'Estimasi'),
+        ('waiting_confirmation', 'Menunggu Konfirmasi'),
+        ('waiting_parts', 'Menunggu Sparepart'),
+        ('in_service', 'Dalam Servis'),
+        ('service_done', 'Servis Selesai'),
+        ('waiting_pickup', 'Menunggu Pengambilan'),
+        ('completed', 'Selesai')
+    ], string="Tahapan Servis", compute='_compute_lead_time_stage', store=True)
+
+    def action_mulai_servis(self):
+        for record in self:
+            if not record.sa_jam_masuk:
+                raise exceptions.ValidationError("Tidak dapat memulai servis. Mobil belum masuk.")
+            if not record.sa_mulai_penerimaan:
+                raise exceptions.ValidationError("Tidak dapat memulai servis. Customer belum diterima/dilayani.")
+            if not record.sa_cetak_pkb:
+                raise exceptions.ValidationError("Tidak dapat memulai servis. PKB belum dicetak.")
+            if record.controller_mulai_servis:
+                raise exceptions.ValidationError("Servis sudah dimulai sebelumnya.")
+            if record.state not in ['sale', 'done']:
+                raise exceptions.ValidationError("Tidak dapat memulai servis. Status order tidak valid.")
+            
+            record.controller_mulai_servis = fields.Datetime.now()
+
+    def action_selesai_servis(self):
+        for record in self:
+            if not record.controller_mulai_servis:
+                raise exceptions.ValidationError("Tidak dapat menyelesaikan servis. Servis belum dimulai.")
+            if record.controller_selesai:
+                raise exceptions.ValidationError("Servis sudah selesai sebelumnya.")
+            
+            record.controller_selesai = fields.Datetime.now()
+
+    @api.depends('sa_jam_masuk', 'fo_unit_keluar')
+    def _compute_total_lead_time(self):
+        for order in self:
+            if order.sa_jam_masuk and order.fo_unit_keluar:
+                delta = order.fo_unit_keluar - order.sa_jam_masuk
+                order.total_lead_time = delta.total_seconds() / 3600
+            else:
+                order.total_lead_time = 0
+
+    @api.depends('sa_jam_masuk', 'sa_mulai_penerimaan', 'sa_cetak_pkb',
+                 'controller_estimasi_mulai', 'controller_estimasi_selesai',
+                 'controller_mulai_servis', 'controller_selesai',
+                 'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
+                 'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
+                 'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
+                 'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai',
+                 'controller_tunggu_sublet_mulai', 'controller_tunggu_sublet_selesai',
+                 'fo_unit_keluar')
+    def _compute_lead_time_progress(self):
+        for order in self:
+            if not order.sa_jam_masuk:
+                order.lead_time_progress = 0
+                continue
+
+            now = fields.Datetime.now()
+            steps = [
+                ('sa_jam_masuk', order.sa_jam_masuk),
+                ('sa_mulai_penerimaan', order.sa_mulai_penerimaan),
+                ('sa_cetak_pkb', order.sa_cetak_pkb),
+                ('controller_estimasi_selesai', order.controller_estimasi_selesai),
+                ('controller_mulai_servis', order.controller_mulai_servis),
+                ('controller_selesai', order.controller_selesai),
+                ('fo_unit_keluar', order.fo_unit_keluar)
+            ]
+
+            # Add conditional steps
+            if order.controller_tunggu_konfirmasi_mulai:
+                steps.append(('tunggu_konfirmasi', order.controller_tunggu_konfirmasi_selesai))
+            if order.controller_tunggu_part1_mulai:
+                steps.append(('tunggu_part1', order.controller_tunggu_part1_selesai))
+            if order.controller_tunggu_part2_mulai:
+                steps.append(('tunggu_part2', order.controller_tunggu_part2_selesai))
+            if order.controller_tunggu_sublet_mulai:
+                steps.append(('tunggu_sublet', order.controller_tunggu_sublet_selesai))
+
+            total_steps = len(steps)
+            completed_steps = sum(1 for _, value in steps if value)
+
+            # If all steps are completed, set progress to 100%
+            if completed_steps == total_steps and order.fo_unit_keluar:
+                order.lead_time_progress = 100
+            else:
+                # Calculate progress
+                end_time = order.fo_unit_keluar or now
+                total_time = (end_time - order.sa_jam_masuk).total_seconds()
+                
+                if total_time <= 0:
+                    order.lead_time_progress = 0
+                    continue
+
+                waiting_time = order.calc_waiting_time().total_seconds()
+                active_time = max(total_time - waiting_time, 0)
+                
+                step_progress = (completed_steps / total_steps) * 100
+                time_progress = (active_time / total_time) * 100
+
+                # Combine step progress and time progress, giving more weight to step progress
+                order.lead_time_progress = min(max((step_progress * 0.7 + time_progress * 0.3), 0), 99.99)
+
+    def calc_waiting_time(self):
+        waiting_time = timedelta()
+        waiting_time += self.calc_interval(self.controller_tunggu_konfirmasi_mulai, self.controller_tunggu_konfirmasi_selesai)
+        waiting_time += self.calc_interval(self.controller_tunggu_part1_mulai, self.controller_tunggu_part1_selesai)
+        waiting_time += self.calc_interval(self.controller_tunggu_part2_mulai, self.controller_tunggu_part2_selesai)
+        waiting_time += self.calc_interval(self.controller_istirahat_shift1_mulai, self.controller_istirahat_shift1_selesai)
+        waiting_time += self.calc_interval(self.controller_tunggu_sublet_mulai, self.controller_tunggu_sublet_selesai)
+        return waiting_time
+
+    @api.model
+    def calc_interval(self, start, end):
+        if start and end and end > start:
+            return end - start
+        return timedelta()
+
+    @api.depends('service_category', 'sa_jam_masuk', 'sa_mulai_penerimaan', 'sa_cetak_pkb',
+                 'controller_estimasi_mulai', 'controller_estimasi_selesai',
+                 'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
+                 'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
+                 'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
+                 'controller_mulai_servis', 'controller_selesai',
+                 'fo_unit_keluar')
+    def _compute_lead_time_stage(self):
+        for order in self:
+            if not order.service_category:
+                order.lead_time_stage = 'not_started'
+            elif order.service_category and not order.sa_jam_masuk:
+                order.lead_time_stage = 'category_selected'
+            elif order.sa_jam_masuk and not order.sa_mulai_penerimaan:
+                order.lead_time_stage = 'check_in'
+            elif order.sa_mulai_penerimaan and not order.sa_cetak_pkb:
+                order.lead_time_stage = 'reception'
+            elif order.sa_cetak_pkb and not order.controller_estimasi_mulai:
+                order.lead_time_stage = 'pkb_printed'
+            elif order.controller_estimasi_mulai and not order.controller_estimasi_selesai:
+                order.lead_time_stage = 'estimation'
+            elif order.controller_estimasi_selesai:
+                if order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai:
+                    order.lead_time_stage = 'waiting_confirmation'
+                elif (order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai) or \
+                     (order.controller_tunggu_part2_mulai and not order.controller_tunggu_part2_selesai):
+                    order.lead_time_stage = 'waiting_parts'
+                elif order.controller_mulai_servis and not order.controller_selesai:
+                    order.lead_time_stage = 'in_service'
+                elif order.controller_selesai and not order.fo_unit_keluar:
+                    order.lead_time_stage = 'service_done'
+                elif order.fo_unit_keluar:
+                    order.lead_time_stage = 'completed'
+                else:
+                    order.lead_time_stage = 'waiting_pickup'
+            else:
+                order.lead_time_stage = 'waiting_pickup'
+
+    @api.constrains('sa_jam_masuk', 'fo_unit_keluar', 'controller_estimasi_mulai', 'controller_estimasi_selesai')
+    def _check_lead_time_order(self):
+        for order in self:
+            if order.sa_jam_masuk and order.fo_unit_keluar and order.sa_jam_masuk > order.fo_unit_keluar:
+                raise ValidationError("Jam masuk tidak boleh lebih besar dari jam unit keluar.")
+            if order.controller_estimasi_mulai and order.controller_estimasi_selesai and order.controller_estimasi_mulai > order.controller_estimasi_selesai:
+                raise ValidationError("Waktu mulai estimasi tidak boleh lebih besar dari waktu selesai estimasi.")
+            if order.sa_jam_masuk and order.fo_unit_keluar and order.sa_jam_masuk > order.fo_unit_keluar:
+                raise ValidationError("Waktu mulai SA tidak boleh lebih besar dari waktu selesai FO.")
+            if order.controller_selesai:
+                if order.sa_jam_masuk and order.controller_selesai < order.sa_jam_masuk:
+                    raise ValidationError("Waktu selesai Controller tidak boleh lebih kecil dari waktu mulai SA.")
+                if order.fo_unit_keluar and order.controller_selesai > order.fo_unit_keluar:
+                    raise ValidationError("Waktu selesai Controller tidak boleh lebih besar dari waktu selesai FO.")
+
+    def action_print_work_order(self):
+        self.write({
+            'sa_cetak_pkb': fields.Datetime.now()
+        })
+        return self.env.ref('pitcar_custom.action_report_work_order').report_action(self)
+
+    def action_record_time(self, field_name):
+        self.ensure_one()
+        self.write({field_name: fields.Datetime.now()})
+
+    def action_record_sa_jam_masuk(self):
+        self.sa_jam_masuk = fields.Datetime.now()
+
+    def action_record_sa_mulai_penerimaan(self):
+        return self.action_record_time('sa_mulai_penerimaan')
+
+    def action_record_sa_cetak_pkb(self):
+        return self.action_record_time('sa_cetak_pkb')
+    
+    def action_tunggu_part1_mulai(self):
+        self.controller_tunggu_part1_mulai = fields.Datetime.now()
+
+    def action_tunggu_part1_selesai(self):
+        self.controller_tunggu_part1_selesai = fields.Datetime.now()
+
+    def action_tunggu_part2_mulai(self):
+        self.controller_tunggu_part2_mulai = fields.Datetime.now()
+
+    def action_tunggu_part2_selesai(self):
+        self.controller_tunggu_part2_selesai = fields.Datetime.now()
+
+    def action_istirahat_shift1_mulai(self):
+        self.controller_istirahat_shift1_mulai = fields.Datetime.now()
+
+    def action_istirahat_shift1_selesai(self):
+        self.controller_istirahat_shift1_selesai = fields.Datetime.now()
+
+    def action_tunggu_sublet_mulai(self):
+        self.controller_tunggu_sublet_mulai = fields.Datetime.now()
+
+    def action_tunggu_sublet_selesai(self):
+        self.controller_tunggu_sublet_selesai = fields.Datetime.now()
+
+    # Aksi untuk memulai tunggu konfirmasi
+    def action_tunggu_konfirmasi_mulai(self):
+        for record in self:
+            if record.controller_tunggu_konfirmasi_mulai:
+                raise ValidationError("Tunggu konfirmasi sudah dimulai sebelumnya.")
+            record.controller_tunggu_konfirmasi_mulai = fields.Datetime.now()
+
+    # Aksi untuk menyelesaikan tunggu konfirmasi
+    def action_tunggu_konfirmasi_selesai(self):
+        for record in self:
+            if not record.controller_tunggu_konfirmasi_mulai:
+                raise ValidationError("Anda tidak dapat menyelesaikan tunggu konfirmasi sebelum memulainya.")
+            if record.controller_tunggu_konfirmasi_selesai:
+                raise ValidationError("Tunggu konfirmasi sudah diselesaikan sebelumnya.")
+            record.controller_tunggu_konfirmasi_selesai = fields.Datetime.now()
+
+    # You might want to add some validation or additional logic
+    @api.constrains('controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai')
+    def _check_tunggu_part1_times(self):
+        for record in self:
+            if record.controller_tunggu_part1_mulai and record.controller_tunggu_part1_selesai:
+                if record.controller_tunggu_part1_selesai < record.controller_tunggu_part1_mulai:
+                    raise ValidationError("Waktu selesai tunggu part 1 tidak boleh lebih awal dari waktu mulai.")
+    
+    def action_record_fo_unit_keluar(self):
+        for record in self:
+            if not record.controller_mulai_servis:
+                raise exceptions.ValidationError("Tidak dapat mencatat waktu. Servis belum dimulai.")
+            if not record.sa_mulai_penerimaan:
+                raise exceptions.ValidationError("Tidak dapat mencatat waktu. Customer belum diterima/dilayani.")
+            if not record.sa_cetak_pkb:
+                raise exceptions.ValidationError("Tidak dapat mencatat waktu. PKB belum dicetak.")
+            if not record.controller_selesai:
+                raise exceptions.ValidationError("Tidak dapat mencatat waktu. Servis belum selesai.")
+            if record.fo_unit_keluar:
+                raise exceptions.ValidationError("Waktu unit keluar sudah dicatat sebelumnya.")
+            record.fo_unit_keluar = fields.Datetime.now()
+
+    # PERHITUNGAN LEAD TIME
+    # 1. LEAD TIME TUNGGU PENERIMAAN
+    lead_time_tunggu_penerimaan = fields.Float(string="Lead Time Tunggu Penerimaan (hours)", compute="_compute_lead_time_tunggu_penerimaan", store=True)
+
+    @api.depends('sa_jam_masuk', 'sa_mulai_penerimaan')
+    def _compute_lead_time_tunggu_penerimaan(self):
+        for order in self:
+            if order.sa_jam_masuk and order.sa_mulai_penerimaan:
+                delta = order.sa_mulai_penerimaan - order.sa_jam_masuk
+                order.lead_time_tunggu_penerimaan = delta.total_seconds() / 3600
+            else:
+                order.lead_time_tunggu_penerimaan = 0
+
+    # 2. LEAD TIME PENERIMAAN
+    lead_time_penerimaan = fields.Float(string="Lead Time Penerimaan (hours)", compute="_compute_lead_time_penerimaan", store=True)
+
+    @api.depends('sa_mulai_penerimaan', 'sa_cetak_pkb')
+    def _compute_lead_time_penerimaan(self):
+        for order in self:
+            if order.sa_mulai_penerimaan and order.sa_cetak_pkb:
+                delta = order.sa_cetak_pkb - order.sa_mulai_penerimaan
+                order.lead_time_penerimaan = delta.total_seconds() / 3600
+            else:
+                order.lead_time_penerimaan = 0
+
+    # 3. LEAD TIME TUNGGU SERVIS
+    lead_time_tunggu_servis = fields.Float(string="Lead Time Tunggu Servis (hours)", compute="_compute_lead_time_tunggu_servis", store=True)
+
+    @api.depends('sa_cetak_pkb', 'controller_mulai_servis')
+    def _compute_lead_time_tunggu_servis(self):
+        for order in self:
+            if order.sa_cetak_pkb and order.controller_mulai_servis:
+                delta = order.controller_mulai_servis - order.sa_cetak_pkb
+                order.lead_time_tunggu_servis = delta.total_seconds() / 3600
+            else:
+                order.lead_time_tunggu_servis = 0
+
+    # 4. LEAD TIME ESTIMASI DURASI PENGERJAAN
+    estimasi_durasi_pengerjaan = fields.Float(string="Estimasi Durasi Pengerjaan (hours)", compute="_compute_estimasi_durasi_pengerjaan", store=True)
+
+    @api.depends('controller_estimasi_mulai', 'controller_estimasi_selesai')
+    def _compute_estimasi_durasi_pengerjaan(self):
+        for order in self:
+            if order.controller_estimasi_mulai and order.controller_estimasi_selesai:
+                delta = order.controller_estimasi_selesai - order.controller_estimasi_mulai
+                order.estimasi_durasi_pengerjaan = delta.total_seconds() / 3600
+            else:
+                order.estimasi_durasi_pengerjaan = 0
+
+    # 5. LEAD TIME TUNGGU KONFIRMASI 
+    lead_time_tunggu_konfirmasi = fields.Float(string="Lead Time Tunggu Konfirmasi (hours)", compute="_compute_lead_time_tunggu_konfirmasi", store=True)
+
+    @api.depends('controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai')
+    def _compute_lead_time_tunggu_konfirmasi(self):
+        for order in self:
+            if order.controller_tunggu_konfirmasi_mulai and order.controller_tunggu_konfirmasi_selesai:
+                delta = order.controller_tunggu_konfirmasi_selesai - order.controller_tunggu_konfirmasi_mulai
+                order.lead_time_tunggu_konfirmasi = delta.total_seconds() / 3600
+            else:
+                order.lead_time_tunggu_konfirmasi = 0
+
+    # 6. LEAD TIME TUNGGU PART 1
+    lead_time_tunggu_part1 = fields.Float(string="Lead Time Tunggu Part 1 (hours)", compute="_compute_lead_time_tunggu_part1", store=True)
+
+    @api.depends('controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai')
+    def _compute_lead_time_tunggu_part1(self):
+        for order in self:
+            if order.controller_tunggu_part1_mulai and order.controller_tunggu_part1_selesai:
+                delta = order.controller_tunggu_part1_selesai - order.controller_tunggu_part1_mulai
+                order.lead_time_tunggu_part1 = delta.total_seconds() / 3600
+            else:
+                order.lead_time_tunggu_part1 = 0
+
+    # 7. LEAD TIME TUNGGU PART 2
+    lead_time_tunggu_part2 = fields.Float(string="Lead Time Tunggu Part 2 (hours)", compute="_compute_lead_time_tunggu_part2", store=True)
+
+    @api.depends('controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai')
+    def _compute_lead_time_tunggu_part2(self):
+        for order in self:
+            if order.controller_tunggu_part2_mulai and order.controller_tunggu_part2_selesai:
+                delta = order.controller_tunggu_part2_selesai - order.controller_tunggu_part2_mulai
+                order.lead_time_tunggu_part2 = delta.total_seconds() / 3600
+            else:
+                order.lead_time_tunggu_part2 = 0
+
+    # 8. LEAD TIME ISTIRAHAT SHIFT 1
+    lead_time_istirahat = fields.Float(string="Lead Time Istirahat (hours)", compute="_compute_lead_time_istirahat", store=True)
+
+    @api.depends('controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai')
+    def _compute_lead_time_istirahat(self):
+        for order in self:
+            if order.controller_istirahat_shift1_mulai and order.controller_istirahat_shift1_selesai:
+                delta = order.controller_istirahat_shift1_selesai - order.controller_istirahat_shift1_mulai
+                order.lead_time_istirahat = delta.total_seconds() / 3600
+            else:
+                order.lead_time_istirahat = 0
+
+    # 9. LEAD TIME SERVIS
+    lead_time_servis = fields.Float(string="Lead Time Servis (hours)", compute="_compute_lead_time_servis", store=True)
+
+    @api.depends('controller_mulai_servis', 'controller_selesai')
+    def _compute_lead_time_servis(self):
+        for order in self:
+            if order.controller_mulai_servis and order.controller_selesai:
+                delta = order.controller_selesai - order.controller_mulai_servis
+                order.lead_time_servis = delta.total_seconds() / 3600
+            else:
+                order.lead_time_servis = 0

@@ -10,6 +10,7 @@ class ProductProduct(models.Model):
         store=True,
         index=True,
     )
+    # inventory_age_days = fields.Integer(related='product_tmpl_id.inventory_age_days', readonly=True)
     
     def read_group(self, domain, fields, groupby, offset=0, limit=None, orderby=False, lazy=True):
         # Adding total_value field to show in group by

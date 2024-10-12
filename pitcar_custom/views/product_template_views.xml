@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="product_template_form_view_inventory_age" model="ir.ui.view">
+        <field name="name">product.template.form.inventory.age</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_only_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='options']" position="after">
+                <group string="Inventory Aging">
+                    <field name="entry_date"/>
+                    <field name="inventory_age"/>
+                    <field name="inventory_age_days"/>
+                    <button name="update_entry_date" string="Set Entry Date to Now" type="object" class="oe_highlight"/>
+                    <button name="force_recompute_inventory_age" string="Recompute Inventory Age" type="object" class="oe_highlight"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="product_template_tree_view_inventory_age" model="ir.ui.view">
+        <field name="name">product.template.tree.inventory.age</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_tree_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//tree" position="attributes">
+                <attribute name="decoration-info">1==1</attribute>
+            </xpath>
+            <xpath expr="//tree" position="inside">
+                <header>
+                    <button name="action_update_all_inventory_age" string="Update Inventory" type="object" class="btn-primary"/>
+                </header>
+                <button name="action_update_inventory_age"
+                        string="Perbarui Lama Simpan"
+                        type="object"
+                        class="oe_highlight"/>
+            </xpath>
+            <field name="name" position="after">
+                <field name="entry_date" optional="show"/>
+                <field name="inventory_age" optional="show"/>
+                <field name="inventory_age_days" optional="show"/>
+                <field name="inventory_age_category" optional="show"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Existing action server definition -->
+    <record id="action_update_all_inventory_ages" model="ir.actions.server">
+        <field name="name">Update All Inventory Ages</field>
+        <field name="type">ir.actions.server</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="state">code</field>
+        <field name="code">
+            action = model.action_update_all_inventory_age()
+        </field>
+    </record>
+
+    <!-- Add menu item for the action -->
+    <menuitem id="menu_update_all_inventory_ages"
+              name="Update All Inventory Ages"
+              action="action_update_all_inventory_ages"
+              parent="stock.menu_stock_inventory_control"
+              sequence="100"/>
+
+    <record id="product_template_search_view_inventory_age" model="ir.ui.view">
+        <field name="name">product.template.search.inventory.age</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_search_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <filter string="Update All Inventory Ages" name="update_inventory_ages" help="Update inventory ages for all products" context="{'update_inventory_ages': True}"/>
+            </xpath>
+            <filter name="consumable" position="after">
+                <separator/>
+                <filter string="1+ Month in Inventory" name="one_month" domain="[('inventory_age_days', '&gt;=', 30)]"/>
+                <filter string="3+ Months in Inventory" name="three_months" domain="[('inventory_age_days', '&gt;=', 90)]"/>
+                <filter string="6+ Months in Inventory" name="six_months" domain="[('inventory_age_days', '&gt;=', 180)]"/>
+                <filter string="New Inventory" name="new_inventory" domain="[('inventory_age_category', '=', 'new')]"/>
+                <filter string="Medium Age Inventory" name="medium_inventory" domain="[('inventory_age_category', '=', 'medium')]"/>
+                <filter string="Old Inventory" name="old_inventory" domain="[('inventory_age_category', '=', 'old')]"/>
+                <filter string="Very Old Inventory" name="very_old_inventory" domain="[('inventory_age_category', '=', 'very_old')]"/>
+            </filter>
+        </field>
+    </record>
+
+    <record id="view_product_template_tree" model="ir.ui.view">
+        <field name="name">product.template.tree</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_tree_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//tree" position="attributes">
+                <attribute name="js_class">product_template_list</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="product_template_kanban_view" model="ir.ui.view">
+        <field name="name">product.template.kanban</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_kanban_view"/>
+        <field name="arch" type="xml">
+            <kanban position="attributes">
+                <attribute name="js_class">product_template_kanban</attribute>
+            </kanban>
+        </field>
+    </record>
+</odoo>

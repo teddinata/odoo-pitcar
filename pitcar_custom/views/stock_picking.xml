@@ -12,7 +12,26 @@
                 <field name="partner_car_odometer" attrs="{'invisible': [('sale_id', '=', False)]}" />
                 <field name="car_mechanic_id" attrs="{'invisible': [('sale_id', '=', False)]}" />
                 <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}" attrs="{'invisible': [('sale_id', '=', False)]}" />
+                <field name="service_advisor_id" widget="many2many_tags" attrs="{'invisible': [('sale_id', '=', False)]}" />
             </xpath>
+<!-- 
+            <xpath expr="//field[@name='origin']" position="after">
+                <field name="entry_date" />
+                <field name="inventory_age" />
+            </xpath>
+            
+            <notebook position="inside">
+                <page string="Inventory Aging" attrs="{'invisible': [('entry_date', '=', False)]}">
+                    <group>
+                        <field name="one_month_date" />
+                        <field name="two_month_date" />
+                        <field name="three_month_date" />
+                        <field name="four_month_date" />
+                        <field name="five_month_date" />
+                        <field name="six_month_date" />
+                    </group>
+                </page>
+            </notebook> -->
         </field>
     </record>
 </odoo>

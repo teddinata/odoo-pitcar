@@ -35,15 +35,14 @@ class StockPicking(models.Model):
         help="Record the time when the car arrived."
     )
 
-    # def button_validate(self):
-    #     res = super(StockPicking, self).button_validate()
-    #     for picking in self:
-    #         if picking.picking_type_code == 'incoming':
-    #             for move in picking.move_ids:
-    #                 product_tmpl = move.product_id.product_tmpl_id
-    #                 if not product_tmpl.first_receipt_date or picking.date_done < product_tmpl.first_receipt_date:
-    #                     product_tmpl.first_receipt_date = picking.date_done
-    #     return res
+    def button_validate(self):
+        res = super(StockPicking, self).button_validate()
+        for picking in self:
+            if picking.picking_type_code == 'incoming':
+                update_date = picking.date_done or fields.Datetime.now()
+                for move in picking.move_ids:
+                    move.product_id.product_tmpl_id.update_entry_date(update_date)
+        return res
     
     # def button_validate(self):
     #     res = super(StockPicking, self).button_validate()

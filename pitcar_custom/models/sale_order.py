@@ -1,6 +1,6 @@
 from odoo import models, fields, api, _, exceptions
 from odoo.exceptions import ValidationError
-from datetime import timedelta, date, datetime
+from datetime import timedelta, date, datetime, time
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -10,6 +10,37 @@ READONLY_FIELD_STATES = {
     for state in {'sale', 'done', 'cancel'}
 }
 
+BENGKEL_BUKA = time(8, 0)  # 08:00
+BENGKEL_TUTUP = time(22, 0)  # 22:00
+ISTIRAHAT_1_MULAI = time(12, 0)  # 12:00
+ISTIRAHAT_1_SELESAI = time(13, 0)  # 13:00
+ISTIRAHAT_2_MULAI = time(18, 0)  # 18:00
+ISTIRAHAT_2_SELESAI = time(19, 0)  # 19:00
+JAM_KERJA_PER_HARI = timedelta(hours=14)  # 22:00 - 08:00
+ISTIRAHAT_PER_HARI = timedelta(hours=2)  # (13:00 - 12:00) + (19:00 - 18:00)
+
+def hitung_waktu_kerja_efektif(waktu_mulai, waktu_selesai):
+    total_waktu = waktu_selesai - waktu_mulai
+    hari_kerja = (waktu_selesai.date() - waktu_mulai.date()).days + 1
+    waktu_kerja = timedelta()
+    
+    for hari in range(hari_kerja):
+        hari_ini = waktu_mulai.date() + timedelta(days=hari)
+        mulai_hari_ini = max(datetime.combine(hari_ini, BENGKEL_BUKA), waktu_mulai)
+        selesai_hari_ini = min(datetime.combine(hari_ini, BENGKEL_TUTUP), waktu_selesai)
+        
+        if mulai_hari_ini < selesai_hari_ini:
+            waktu_kerja_hari_ini = selesai_hari_ini - mulai_hari_ini
+            
+            # Kurangi waktu istirahat
+            if mulai_hari_ini.time() <= ISTIRAHAT_1_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_1_SELESAI:
+                waktu_kerja_hari_ini -= timedelta(hours=1)
+            if mulai_hari_ini.time() <= ISTIRAHAT_2_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_2_SELESAI:
+                waktu_kerja_hari_ini -= timedelta(hours=1)
+            
+            waktu_kerja += waktu_kerja_hari_ini
+    
+    return waktu_kerja
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
@@ -110,12 +141,12 @@ class SaleOrder(models.Model):
         help="date on which invoice is generated",
     )
     car_arrival_time = fields.Datetime(
-        string="Car Arrival Time",
+        string="Jam Kedatangan Mobil",
         help="Record the time when the car arrived",
         required=False,
         tracking=True,
+        inverse="_inverse_car_arrival_time"
     )
-
     def action_record_car_arrival_time(self):
         current_time = fields.Datetime.now()
         self.write({
@@ -451,7 +482,7 @@ class SaleOrder(models.Model):
         ('maintenance', 'Perawatan'),
         ('repair', 'Perbaikan')
     ], string="Kategori Servis", required=True, default='maintenance')
-    sa_jam_masuk = fields.Datetime("Jam Masuk")
+    sa_jam_masuk = fields.Datetime("Jam Masuk", inverse="_inverse_sa_jam_masuk")
     sa_mulai_penerimaan = fields.Datetime("Mulai Penerimaan")
     sa_cetak_pkb = fields.Datetime("Cetak PKB")
     
@@ -474,7 +505,9 @@ class SaleOrder(models.Model):
     
     lead_time_catatan = fields.Text("Catatan Lead Time")
     
-    total_lead_time = fields.Float(string="Total Lead Time (hours)", compute="_compute_total_lead_time", store=True)
+    lead_time_servis = fields.Float(string="Lead Time Servis (jam)", compute="_compute_lead_time_servis", store=True)
+    total_lead_time_servis = fields.Float(string="Total Lead Time Servis (jam)", compute="_compute_lead_time_servis", store=True)
+    is_overnight = fields.Boolean(string="Menginap", compute="_compute_lead_time_servis", store=True)
     lead_time_progress = fields.Float(string="Lead Time Progress", compute="_compute_lead_time_progress", store=True)
     lead_time_stage = fields.Selection([
         ('not_started', 'Belum Dimulai'),
@@ -490,6 +523,34 @@ class SaleOrder(models.Model):
         ('waiting_pickup', 'Menunggu Pengambilan'),
         ('completed', 'Selesai')
     ], string="Tahapan Servis", compute='_compute_lead_time_stage', store=True)
+
+    need_other_job_stop = fields.Selection([
+        ('yes', 'Ya'),
+        ('no', 'Tidak')
+    ], default='no')
+    controller_job_stop_lain_mulai = fields.Datetime("Job Stop Lain Mulai")
+    controller_job_stop_lain_selesai = fields.Datetime("Job Stop Lain Selesai")
+    job_stop_lain_keterangan = fields.Text("Keterangan Job Stop Lain")
+
+    @api.onchange('sa_jam_masuk')
+    def _onchange_sa_jam_masuk(self):
+        if self.sa_jam_masuk and not self.car_arrival_time:
+            self.car_arrival_time = self.sa_jam_masuk
+
+    @api.onchange('car_arrival_time')
+    def _onchange_car_arrival_time(self):
+        if self.car_arrival_time and not self.sa_jam_masuk:
+            self.sa_jam_masuk = self.car_arrival_time
+
+    def _inverse_sa_jam_masuk(self):
+        for record in self:
+            if record.sa_jam_masuk and record.sa_jam_masuk != record.car_arrival_time:
+                record.car_arrival_time = record.sa_jam_masuk
+
+    def _inverse_car_arrival_time(self):
+        for record in self:
+            if record.car_arrival_time and record.car_arrival_time != record.sa_jam_masuk:
+                record.sa_jam_masuk = record.car_arrival_time
 
     def action_mulai_servis(self):
         for record in self:
@@ -514,15 +575,6 @@ class SaleOrder(models.Model):
                 raise exceptions.ValidationError("Servis sudah selesai sebelumnya.")
             
             record.controller_selesai = fields.Datetime.now()
-
-    @api.depends('sa_jam_masuk', 'fo_unit_keluar')
-    def _compute_total_lead_time(self):
-        for order in self:
-            if order.sa_jam_masuk and order.fo_unit_keluar:
-                delta = order.fo_unit_keluar - order.sa_jam_masuk
-                order.total_lead_time = delta.total_seconds() / 3600
-            else:
-                order.total_lead_time = 0
 
     @api.depends('sa_jam_masuk', 'sa_mulai_penerimaan', 'sa_cetak_pkb',
                  'controller_estimasi_mulai', 'controller_estimasi_selesai',
@@ -733,6 +785,14 @@ class SaleOrder(models.Model):
                 raise exceptions.ValidationError("Waktu unit keluar sudah dicatat sebelumnya.")
             record.fo_unit_keluar = fields.Datetime.now()
 
+    def action_job_stop_lain_mulai(self):
+        self.ensure_one()
+        self.controller_job_stop_lain_mulai = fields.Datetime.now()
+
+    def action_job_stop_lain_selesai(self):
+        self.ensure_one()
+        self.controller_job_stop_lain_selesai = fields.Datetime.now()
+
     # PERHITUNGAN LEAD TIME
     # 1. LEAD TIME TUNGGU PENERIMAAN
     lead_time_tunggu_penerimaan = fields.Float(string="Lead Time Tunggu Penerimaan (hours)", compute="_compute_lead_time_tunggu_penerimaan", store=True)
@@ -831,13 +891,85 @@ class SaleOrder(models.Model):
                 order.lead_time_istirahat = 0
 
     # 9. LEAD TIME SERVIS
-    lead_time_servis = fields.Float(string="Lead Time Servis (hours)", compute="_compute_lead_time_servis", store=True)
+    overall_lead_time = fields.Float(string="Overall Lead Time (jam)", compute="_compute_overall_lead_time", store=True)
 
-    @api.depends('controller_mulai_servis', 'controller_selesai')
+    @api.depends('sa_jam_masuk', 'fo_unit_keluar')
+    def _compute_overall_lead_time(self):
+        for order in self:
+            if order.sa_jam_masuk and order.fo_unit_keluar:
+                # Hitung selisih waktu antara mobil masuk dan unit keluar
+                delta = order.fo_unit_keluar - order.sa_jam_masuk
+                
+                # Konversi selisih waktu ke jam
+                order.overall_lead_time = delta.total_seconds() / 3600
+            else:
+                order.overall_lead_time = 0
+    
+    # 10. LEAD TIME BERSIH dan KOTOR
+    @api.depends('sa_jam_masuk', 'controller_selesai',
+                 'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
+                 'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
+                 'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai',
+                 'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai')
     def _compute_lead_time_servis(self):
         for order in self:
-            if order.controller_mulai_servis and order.controller_selesai:
-                delta = order.controller_selesai - order.controller_mulai_servis
-                order.lead_time_servis = delta.total_seconds() / 3600
-            else:
+            if not order.sa_jam_masuk or not order.controller_selesai:
                 order.lead_time_servis = 0
+                order.total_lead_time_servis = 0
+                order.is_overnight = False
+                continue
+
+            # Hitung waktu kerja efektif
+            waktu_kerja_efektif = order.hitung_waktu_kerja_efektif(order.sa_jam_masuk, order.controller_selesai)
+
+            # Hitung total lead time servis (kotor)
+            total_lead_time_servis = order.controller_selesai - order.sa_jam_masuk
+            order.total_lead_time_servis = total_lead_time_servis.total_seconds() / 3600  # Konversi ke jam
+
+            # Hitung waktu tunggu
+            waktu_tunggu = timedelta()
+            waktu_tunggu += order.hitung_interval(order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai)
+            waktu_tunggu += order.hitung_interval(order.controller_tunggu_part2_mulai, order.controller_tunggu_part2_selesai)
+            waktu_tunggu += order.hitung_interval(order.controller_istirahat_shift1_mulai, order.controller_istirahat_shift1_selesai)
+            waktu_tunggu += order.hitung_interval(order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai)
+
+            # Hitung lead time servis bersih
+            lead_time_servis_bersih = max(waktu_kerja_efektif - waktu_tunggu, timedelta())
+
+            order.lead_time_servis = lead_time_servis_bersih.total_seconds() / 3600  # Konversi ke jam
+            order.is_overnight = (order.controller_selesai.date() - order.sa_jam_masuk.date()).days > 0
+
+    def hitung_interval(self, mulai, selesai):
+        if mulai and selesai and selesai > mulai:
+            return self.hitung_waktu_kerja_efektif(mulai, selesai)
+        return timedelta()
+
+    def hitung_waktu_kerja_efektif(self, waktu_mulai, waktu_selesai):
+        BENGKEL_BUKA = time(8, 0)
+        BENGKEL_TUTUP = time(22, 0)
+        ISTIRAHAT_1_MULAI = time(12, 0)
+        ISTIRAHAT_1_SELESAI = time(13, 0)
+        ISTIRAHAT_2_MULAI = time(18, 0)
+        ISTIRAHAT_2_SELESAI = time(19, 0)
+
+        total_waktu = waktu_selesai - waktu_mulai
+        hari_kerja = (waktu_selesai.date() - waktu_mulai.date()).days + 1
+        waktu_kerja = timedelta()
+        
+        for hari in range(hari_kerja):
+            hari_ini = waktu_mulai.date() + timedelta(days=hari)
+            mulai_hari_ini = max(datetime.combine(hari_ini, BENGKEL_BUKA), waktu_mulai)
+            selesai_hari_ini = min(datetime.combine(hari_ini, BENGKEL_TUTUP), waktu_selesai)
+            
+            if mulai_hari_ini < selesai_hari_ini:
+                waktu_kerja_hari_ini = selesai_hari_ini - mulai_hari_ini
+                
+                # Kurangi waktu istirahat
+                if mulai_hari_ini.time() <= ISTIRAHAT_1_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_1_SELESAI:
+                    waktu_kerja_hari_ini -= timedelta(hours=1)
+                if mulai_hari_ini.time() <= ISTIRAHAT_2_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_2_SELESAI:
+                    waktu_kerja_hari_ini -= timedelta(hours=1)
+                
+                waktu_kerja += waktu_kerja_hari_ini
+        
+        return waktu_kerja

@@ -6,7 +6,7 @@ class LeadTimeController(http.Controller):
     def get_lead_time_summary(self, order_id):
         order = request.env['sale.order'].browse(int(order_id))
         return {
-            'total_lead_time': order.total_lead_time,
+            'total_lead_time_servis': order.total_lead_time_servis,
             'lead_time_progress': order.lead_time_progress,
             'lead_time_stage': order.lead_time_stage,
         }

@@ -76,6 +76,33 @@
                     <field name="next_follow_up_3_months" optional="hide" widget="date"/>
                     <field name="next_follow_up_6_months" optional="hide" widget="date"/>
                 </xpath>
+                <xpath expr="//field[@name='company_id']" position="after">
+                    <!-- Waktu Masuk dan Keluar -->
+                    <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
+                    <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
+                    
+                    <!-- Waktu Proses -->
+                    <field name="controller_mulai_servis" optional="hide" string="Mulai Servis"/>
+                    <field name="controller_selesai" optional="hide" string="Selesai Servis"/>
+                    
+                    <!-- Waktu Tunggu -->
+                    <field name="controller_tunggu_part1_mulai" optional="hide" string="Tunggu Part 1 Mulai"/>
+                    <field name="controller_tunggu_part1_selesai" optional="hide" string="Tunggu Part 1 Selesai"/>
+                    <field name="controller_tunggu_part2_mulai" optional="hide" string="Tunggu Part 2 Mulai"/>
+                    <field name="controller_tunggu_part2_selesai" optional="hide" string="Tunggu Part 2 Selesai"/>
+                    <field name="controller_tunggu_konfirmasi_mulai" optional="hide" string="Tunggu Konfirmasi Mulai"/>
+                    <field name="controller_tunggu_konfirmasi_selesai" optional="hide" string="Tunggu Konfirmasi Selesai"/>
+                    <field name="controller_istirahat_shift1_mulai" optional="hide" string="Istirahat Mulai"/>
+                    <field name="controller_istirahat_shift1_selesai" optional="hide" string="Istirahat Selesai"/>
+                    
+                    <!-- Perhitungan Lead Time -->
+                    <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
+                    <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
+                    <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Servis"/>
+                    
+                    <!-- Informasi Tambahan -->
+                    <field name="is_overnight" optional="hide" string="Menginap"/>
+                </xpath>
             </field>
         </record>
 
@@ -139,6 +166,33 @@
                     <field name="next_follow_up_3_months" optional="hide" widget="date"/>
                     <field name="next_follow_up_6_months" optional="hide" widget="date"/>
                 </xpath>
+                <xpath expr="//field[@name='company_id']" position="after">
+                    <!-- Waktu Masuk dan Keluar -->
+                    <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
+                    <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
+                    
+                    <!-- Waktu Proses -->
+                    <field name="controller_mulai_servis" optional="hide" string="Mulai Servis"/>
+                    <field name="controller_selesai" optional="hide" string="Selesai Servis"/>
+                    
+                    <!-- Waktu Tunggu -->
+                    <field name="controller_tunggu_part1_mulai" optional="hide" string="Tunggu Part 1 Mulai"/>
+                    <field name="controller_tunggu_part1_selesai" optional="hide" string="Tunggu Part 1 Selesai"/>
+                    <field name="controller_tunggu_part2_mulai" optional="hide" string="Tunggu Part 2 Mulai"/>
+                    <field name="controller_tunggu_part2_selesai" optional="hide" string="Tunggu Part 2 Selesai"/>
+                    <field name="controller_tunggu_konfirmasi_mulai" optional="hide" string="Tunggu Konfirmasi Mulai"/>
+                    <field name="controller_tunggu_konfirmasi_selesai" optional="hide" string="Tunggu Konfirmasi Selesai"/>
+                    <field name="controller_istirahat_shift1_mulai" optional="hide" string="Istirahat Mulai"/>
+                    <field name="controller_istirahat_shift1_selesai" optional="hide" string="Istirahat Selesai"/>
+                    
+                    <!-- Perhitungan Lead Time -->
+                    <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
+                    <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
+                    <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Servis"/>
+                    
+                    <!-- Informasi Tambahan -->
+                    <field name="is_overnight" optional="hide" string="Menginap"/>
+                </xpath>
             </field>
         </record>
 
@@ -163,6 +217,21 @@
                     <filter string="Car Year" name="group_car_year" domain="[('partner_car_year', '!=', False)]" context="{'group_by': 'partner_car_year'}"/>
                     <filter string="Service Advisor" name="service_advisor" domain="[]" context="{'group_by': 'service_advisor_id'}"/>
                 </xpath>
+                <xpath expr="//field[@name='name']" position="after">
+                    <field name="sa_jam_masuk"/>
+                    <field name="fo_unit_keluar"/>
+                    <field name="overall_lead_time"/>
+                    <field name="lead_time_servis"/>
+                    <field name="total_lead_time_servis"/>
+                    <filter string="Menginap" name="overnight" domain="[('is_overnight', '=', True)]"/>
+                </xpath>
+                <xpath expr="//group" position="inside">
+                    <filter string="Jam Masuk" name="group_sa_jam_masuk" context="{'group_by': 'sa_jam_masuk'}"/>
+                    <filter string="Jam Keluar" name="group_fo_unit_keluar" context="{'group_by': 'fo_unit_keluar'}"/>
+                    <filter string="Overall Lead Time" name="group_overall_lead_time" context="{'group_by': 'overall_lead_time'}"/>
+                    <filter string="Lead Time Servis" name="group_lead_time_servis" context="{'group_by': 'lead_time_servis'}"/>
+                    <filter string="Menginap" name="group_is_overnight" context="{'group_by': 'is_overnight'}"/>
+                </xpath>
             </field>
         </record>
 
@@ -183,9 +252,9 @@
                 </xpath>
                 <!-- Menambahkan car_arrival_time di bawah payment terms -->
                 <xpath expr="//field[@name='payment_term_id']" position="after">
-                     <label for="car_arrival_time" string="Car Arrival Time"/>
+                     <label for="car_arrival_time" string="Jam Kedatangan Mobil"/>
                     <div>
-                        <field name="car_arrival_time" readonly="1" nolabel="1" class="oe_inline"/>
+                        <field name="car_arrival_time" string="Jam Kedatangan Mobil" readonly="0" width="120" placeholder="Isi di sini untuk rekam manual"/>
                         <button name="action_record_car_arrival_time" 
                                 string="Klik untuk rekam waktu kedatangan mobil" 
                                 type="object" 
@@ -391,7 +460,7 @@
                                     <button name="action_record_car_arrival_time" string="Jam Masuk" type="object" 
                                             class="btn btn-primary btn-sm me-2" style="width: 120px;"
                                             confirm="Apakah anda yakin ingin merekam jam masuk?"/>
-                                    <field name="sa_jam_masuk" readonly="1" nolabel="1" class="ms-2"/>
+                                    <field name="sa_jam_masuk" readonly="0" nolabel="1" class="ms-2"/>
                                 </div>
                                 
                                 <label for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
@@ -422,6 +491,15 @@
                             <group>
                                 <field name="controller_estimasi_mulai" string="Estimasi Pekerjaan Mulai" widget="datetime" class="o_input_controller"/>
                                 <field name="controller_estimasi_selesai" string="Estimasi Pekerjaan Selesai" widget="datetime" class="o_input_controller"/>
+
+                                <!-- Mulai Servis -->
+                                <label for="controller_mulai_servis" string="Mulai Servis" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-2">
+                                    <button name="action_mulai_servis" string="Mulai Servis" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="controller_mulai_servis" readonly="1" nolabel="1" class="ms-2" widget="lead_time_widget"/>
+                                </div>
+
                                  <!-- Tombol untuk Tunggu Konfirmasi Mulai -->
                                 <label for="controller_tunggu_konfirmasi_mulai" string="Tunggu Konfirmasi Mulai"/>
                                 <div class="d-flex align-items-center">
@@ -438,13 +516,6 @@
                                             class="btn btn-primary btn-sm me-2" style="width: 150px;" 
                                             confirm="Apakah Anda yakin ingin menyelesaikan tunggu konfirmasi?"/>
                                     <field name="controller_tunggu_konfirmasi_selesai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-                                
-                                <label for="controller_mulai_servis" string="Mulai Servis"/>
-                                <div class="d-flex align-items-center">
-                                    <button name="action_mulai_servis" string="Mulai Servis" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
-                                    <field name="controller_mulai_servis" readonly="1" nolabel="1" class="ms-2" widget="lead_time_widget"/>
                                 </div>
 
                                 <label for="controller_selesai" string="Selesai Servis"/>
@@ -518,12 +589,28 @@
                                             confirm="Apakah anda yakin ingin menyelesaikan tunggu sublet?"/>
                                     <field name="controller_tunggu_sublet_selesai" readonly="1" nolabel="1" class="ms-2"/>
                                 </div>
-                            </group>
+
+                                <field name="need_other_job_stop" widget="radio" options="{'horizontal': True}" class="o_radio_controller" />
+
+                                <label for="controller_job_stop_lain_mulai" string="Job Stop Lain Mulai" class="fw-bold mb-2" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}" />
+                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}">
+                                    <button name="action_job_stop_lain_mulai" string="MULAI JOB STOP" type="object" class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;" confirm="Apakah anda yakin ingin memulai job stop lain?"/>
+                                    <field name="controller_job_stop_lain_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_job_stop_lain_selesai" string="Job Stop Lain Selesai" class="fw-bold mb-2" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}" />
+                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}">
+                                    <button name="action_job_stop_lain_selesai" string="SELESAI JOB STOP" type="object" class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;" confirm="Apakah anda yakin ingin menyelesaikan job stop lain?"/>
+                                    <field name="controller_job_stop_lain_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <field name="job_stop_lain_keterangan" placeholder="Jelaskan mengapa perlu job stop lain" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}"/>
+                            </group> 
                         </group>
                         
-                        <group string="Lead Time Summary" class="o_group_controller">
+                        <group string="Lead Time Summary" class="o_group_controller2">
                             <group>
-                                <field name="lead_time_tunggu_penerimaan" widget="float_time" string="Lead Time Tunggu Penerimaan"  class="o_input_controller"/>
+                                <field name="lead_time_tunggu_penerimaan" widget="float_time" string="Lead Time Tunggu Penerimaan"  class="o_input_controller2"/>
                                 <field name="lead_time_penerimaan" widget="float_time" string="Lead Time Penerimaan" class="o_input_controller"/>
                                 <field name="lead_time_tunggu_servis" widget="float_time" string="Lead Time Tunggu Servis" class="o_input_controller"/>
                                 <field name="estimasi_durasi_pengerjaan" widget="float_time" string="Estimasi Durasi Pengerjaan" class="o_input_controller"/>
@@ -531,16 +618,18 @@
                                 <field name="lead_time_tunggu_part1" widget="float_time" string="Lead Time Tunggu Part 1" class="o_input_controller"/>
                                 <field name="lead_time_tunggu_part2" widget="float_time" string="Lead Time Tunggu Part 2" class="o_input_controller"/>
                                 <field name="lead_time_istirahat" widget="float_time" string="Lead Time Istirahat" class="o_input_controller"/>
-                                <field name="lead_time_servis" widget="float_time" string="Lead Time Servis" class="o_input_controller"/>
+                                <field name="lead_time_servis" widget="float_time" string="Lead Time Servis"/>
+                                <field name="total_lead_time_servis" widget="float_time" string="Total Lead Time Servis"/>
                             </group>
                             <group>
-                                <field name="total_lead_time" widget="float_time" string="Total Lead Time" class="o_input_controller"/>
                                 <field name="lead_time_progress" widget="percentpie" string="Lead Time Progress" class="o_input_controller"/>
                                 <field name="lead_time_stage" widget="badge" 
                                         decoration-info="lead_time_stage in ('not_started', 'category_selected', 'check_in', 'reception')"
                                         decoration-warning="lead_time_stage in ('pkb_printed', 'estimation', 'waiting_confirmation', 'waiting_parts')"
                                         decoration-success="lead_time_stage in ('in_service', 'service_done', 'waiting_pickup')"
                                         decoration-primary="lead_time_stage == 'completed'"/>
+                                <field name="overall_lead_time" widget="float_time" string="Overall Lead Time" class="o_input_controller"/>
+                                <field name="is_overnight" string="Status Menginap"/>
                             </group>
                         </group>
                         

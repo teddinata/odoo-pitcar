@@ -47,11 +47,10 @@
 }
 
 .o_group_controller .o_form_label {
-  width: 50% !important;
+  width: auto !important; /* Set width ke auto agar tidak mempengaruhi layout */
   max-width: none;
-  min-width: 200px;
+  min-width: auto;
 }
-
 .o_group_controller .o_input_controller {
   width: 50% !important;
   min-width: 200px;
@@ -84,4 +83,19 @@
 
 .o_group_controller .o_group > tbody > tr > td {
   flex: 1;
+}
+
+.o_group_controller2 .o_form_label {
+  width: 100%; /* Set width ke auto agar tidak mempengaruhi layout */
+  max-width: none;
+  min-width: 200px;
+}
+
+/* radio */
+.o_group_controller .o_radio_container {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px; /* Mengatur jarak antara radio button dan label */
+  min-width: auto !important; /* Memastikan kontainer tidak terlalu lebar */
+  margin-right: 10px; /* Sesuaikan jarak antara label Ya dan Tidak */
 }

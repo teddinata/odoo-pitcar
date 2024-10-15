@@ -244,7 +244,7 @@
                 <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="partner_car_id" widget="many2one"/>
                     <field name="partner_car_odometer"/>
-                    <field name="car_mechanic_id" attrs="{'invisible': [('car_mechanic_id', '=', False)]}"/>
+                    <!-- <field name="car_mechanic_id" attrs="{'invisible': [('car_mechanic_id', '=', False)]}"/> -->
                     <field name="car_mechanic_id_new" widget="many2many_tags"/>
                 </xpath>
                 <xpath expr="//field[@name='show_update_pricelist']" position="before">

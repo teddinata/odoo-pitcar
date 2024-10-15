@@ -126,7 +126,7 @@ class SaleOrder(models.Model):
     )
     car_mechanic_id_new = fields.Many2many(
         'pitcar.mechanic.new',
-        string="Mechanic (New input)",
+        string="Mechanic",
         tracking=True,
         index=True,
     )

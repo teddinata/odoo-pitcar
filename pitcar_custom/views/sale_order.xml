@@ -467,7 +467,7 @@
                                 <div class="d-flex align-items-center">
                                     <button name="action_record_sa_mulai_penerimaan" string="Mulai Penerimaan" type="object" 
                                             class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
-                                    <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2"/>
+                                    <field name="sa_mulai_penerimaan" readonly="0" nolabel="1" class="ms-2"/>
                                 </div>
                                 
                                 <label for="sa_cetak_pkb" string="Cetak PKB"/>

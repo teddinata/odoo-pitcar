@@ -562,8 +562,6 @@ class SaleOrder(models.Model):
                 raise exceptions.ValidationError("Tidak dapat memulai servis. PKB belum dicetak.")
             if record.controller_mulai_servis:
                 raise exceptions.ValidationError("Servis sudah dimulai sebelumnya.")
-            if record.state not in ['sale', 'done']:
-                raise exceptions.ValidationError("Tidak dapat memulai servis. Status order tidak valid.")
             
             record.controller_mulai_servis = fields.Datetime.now()
 

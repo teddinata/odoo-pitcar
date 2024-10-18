@@ -7,11 +7,11 @@
         <field name="arch" type="xml">
             <xpath expr="//div[@name='options']" position="after">
                 <group string="Inventory Aging">
-                    <field name="entry_date"/>
-                    <field name="inventory_age"/>
-                    <field name="inventory_age_days"/>
-                    <button name="update_entry_date" string="Set Entry Date to Now" type="object" class="oe_highlight"/>
-                    <button name="force_recompute_inventory_age" string="Recompute Inventory Age" type="object" class="oe_highlight"/>
+                    <field name="oldest_stock_entry_date" readonly="1"/>
+                    <field name="inventory_age" readonly="1"/>
+                    <field name="inventory_age_days" readonly="1"/>
+                    <field name="inventory_age_category" readonly="1"/>
+                    <button name="action_update_inventory_age" string="Perbarui Umur Persediaan" type="object" class="oe_highlight"/>
                 </group>
             </xpath>
         </field>
@@ -27,18 +27,15 @@
             </xpath>
             <xpath expr="//tree" position="inside">
                 <header>
-                    <button name="action_update_all_inventory_age" string="Update Inventory" type="object" class="btn-primary"/>
+                    <button name="action_update_all_inventory_age" string="Perbarui Semua Umur Persediaan" type="object" class="btn-primary"/>
                 </header>
-                <button name="action_update_inventory_age"
-                        string="Perbarui Lama Simpan"
-                        type="object"
-                        class="oe_highlight"/>
             </xpath>
             <field name="name" position="after">
-                <field name="entry_date" optional="show"/>
+                <field name="oldest_stock_entry_date" optional="show"/>
                 <field name="inventory_age" optional="show"/>
                 <field name="inventory_age_days" optional="show"/>
                 <field name="inventory_age_category" optional="show"/>
+                <button name="action_update_inventory_age" string="Perbarui" type="object" class="oe_highlight"/>
             </field>
         </field>
     </record>

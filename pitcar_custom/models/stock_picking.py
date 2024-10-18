@@ -37,12 +37,19 @@ class StockPicking(models.Model):
 
     def button_validate(self):
         res = super(StockPicking, self).button_validate()
-        for picking in self:
-            if picking.picking_type_code == 'incoming':
-                update_date = picking.date_done or fields.Datetime.now()
-                for move in picking.move_ids:
-                    move.product_id.product_tmpl_id.update_entry_date(update_date)
+        affected_products = self.move_ids.mapped('product_id.product_tmpl_id')
+        affected_products.with_context(force_compute=True)._compute_oldest_stock_entry_date()
+        affected_products._compute_inventory_age()
         return res
+
+    # def button_validate(self):
+    #     res = super(StockPicking, self).button_validate()
+    #     for picking in self:
+    #         if picking.picking_type_code == 'incoming':
+    #             update_date = picking.date_done or fields.Datetime.now()
+    #             for move in picking.move_ids:
+    #                 move.product_id.product_tmpl_id.update_entry_date(update_date)
+    #     return res
     
     # def button_validate(self):
     #     res = super(StockPicking, self).button_validate()

@@ -56,7 +56,27 @@ class SaleOrder(models.Model):
         tracking=True,
     )
     
-
+    partner_id = fields.Many2one('res.partner', string='Customer', required=False)
+    pricelist_id = fields.Many2one(
+        'product.pricelist', string='Pricelist', check_company=True,  # Tariff
+        required=False, readonly=False, states={'draft': [('readonly', False)], 'sent': [('readonly', False)]},
+        domain="['|', ('company_id', '=', False), ('company_id', '=', company_id)]",
+        help="If you change the pricelist, only newly added lines will be affected.")
+    partner_invoice_id = fields.Many2one(
+        'res.partner', string='Invoice Address',
+        readonly=True, required=False,
+        states={'draft': [('readonly', False)], 'sent': [('readonly', False)], 'sale': [('readonly', False)]},
+        domain="['|', ('company_id', '=', False), ('company_id', '=', company_id)]",)
+    partner_shipping_id = fields.Many2one(
+        'res.partner', string='Delivery Address',
+        readonly=True, required=False,
+        states={'draft': [('readonly', False)], 'sent': [('readonly', False)], 'sale': [('readonly', False)]},
+        domain="['|', ('company_id', '=', False), ('company_id', '=', company_id)]",)
+    reception_state = fields.Selection([
+        ('draft', 'Draft'),
+        ('reception_started', 'Reception Started'),
+        ('completed', 'Completed')
+    ], string='Reception State', default='draft')
     # Field baru untuk Service Advisor yang merujuk ke model 'pitcar.service.advisor'
     service_advisor_id = fields.Many2many(
         'pitcar.service.advisor',
@@ -477,13 +497,17 @@ class SaleOrder(models.Model):
                 invoice.car_arrival_time = order.car_arrival_time
         return res
     
+    # ROLE LEAD TIME 
+        
     # Fields untuk tracking lead time
     service_category = fields.Selection([
         ('maintenance', 'Perawatan'),
         ('repair', 'Perbaikan')
     ], string="Kategori Servis", required=True, default='maintenance')
     sa_jam_masuk = fields.Datetime("Jam Masuk", inverse="_inverse_sa_jam_masuk")
-    sa_mulai_penerimaan = fields.Datetime("Mulai Penerimaan")
+    sa_mulai_penerimaan = fields.Datetime(string='Mulai Penerimaan')
+    is_penerimaan_filled = fields.Boolean(compute='_compute_is_penerimaan_filled', store=True)
+
     sa_cetak_pkb = fields.Datetime("Cetak PKB")
     
     controller_estimasi_mulai = fields.Datetime("Estimasi Pekerjaan Mulai")
@@ -527,7 +551,7 @@ class SaleOrder(models.Model):
     need_other_job_stop = fields.Selection([
         ('yes', 'Ya'),
         ('no', 'Tidak')
-    ], default='no')
+    ], string="Perlu Job Stop Lain?", default='no')
     controller_job_stop_lain_mulai = fields.Datetime("Job Stop Lain Mulai")
     controller_job_stop_lain_selesai = fields.Datetime("Job Stop Lain Selesai")
     job_stop_lain_keterangan = fields.Text("Keterangan Job Stop Lain")
@@ -536,6 +560,17 @@ class SaleOrder(models.Model):
     def _onchange_sa_jam_masuk(self):
         if self.sa_jam_masuk and not self.car_arrival_time:
             self.car_arrival_time = self.sa_jam_masuk
+
+    @api.depends('sa_mulai_penerimaan')
+    def _compute_is_penerimaan_filled(self):
+        for record in self:
+            record.is_penerimaan_filled = bool(record.sa_mulai_penerimaan)
+
+    def action_record_sa_mulai_penerimaan(self):
+        self.ensure_one()
+        self.sa_mulai_penerimaan = fields.Datetime.now()
+        self.reception_state = 'reception_started'  # Assuming you have this state
+        return True
 
     @api.onchange('car_arrival_time')
     def _onchange_car_arrival_time(self):
@@ -716,7 +751,18 @@ class SaleOrder(models.Model):
         self.sa_jam_masuk = fields.Datetime.now()
 
     def action_record_sa_mulai_penerimaan(self):
-        return self.action_record_time('sa_mulai_penerimaan')
+        self.ensure_one()
+        self.sa_mulai_penerimaan = fields.Datetime.now()
+        self.reception_state = 'reception_started'
+        
+        # Set default invoice and shipping address if not set
+        if self.partner_id:
+            if not self.partner_invoice_id:
+                self.partner_invoice_id = self.partner_id.address_get(['invoice'])['invoice']
+            if not self.partner_shipping_id:
+                self.partner_shipping_id = self.partner_id.address_get(['delivery'])['delivery']
+        
+        return True
 
     def action_record_sa_cetak_pkb(self):
         return self.action_record_time('sa_cetak_pkb')

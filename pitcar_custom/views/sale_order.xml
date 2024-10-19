@@ -241,17 +241,71 @@
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
-                <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="partner_car_id" widget="many2one"/>
-                    <field name="partner_car_odometer"/>
-                    <!-- <field name="car_mechanic_id" attrs="{'invisible': [('car_mechanic_id', '=', False)]}"/> -->
-                    <field name="car_mechanic_id_new" widget="many2many_tags"/>
+                <xpath expr="//field[@name='partner_id']" position="before">
+                    <label class="mb-8" for="sa_mulai_penerimaan" string="Peringatan:" attrs="{'invisible': [('is_penerimaan_filled', '=', True)]}"/>
+                    <div class="alert alert-warning" role="alert" attrs="{'invisible': [('is_penerimaan_filled', '=', True)]}">
+                        Anda belum memulai penerimaan customer. Klik tombol "Mulai Penerimaan Customer" untuk merekam waktu mulai dan mengaktifkan field lainnya.
+                    </div>
+
+                    <label class="mb-8" for="sa_mulai_penerimaan" string="Informasi:" attrs="{'invisible': [('is_penerimaan_filled', '=', False)]}"/>
+                    <div class="alert alert-info" role="alert" attrs="{'invisible': [('is_penerimaan_filled', '=', False)]}">
+                        Penerimaan telah dimulai. Anda dapat mengisi informasi customer dan detail lainnya sekarang.
+                    </div>
                 </xpath>
-                <xpath expr="//field[@name='show_update_pricelist']" position="before">
-                    <field name="date_completed"/>
+                <xpath expr="//field[@name='partner_id']" position="before">
+                    <field name="reception_state" invisible="1"/>
+                    <field name="is_penerimaan_filled" invisible="1"/>
+                    <label class="mb-8" for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
+                    <div class="d-flex align-items-center mb-3">
+                        <button name="action_record_sa_mulai_penerimaan" 
+                                string="Mulai Penerimaan Customer" 
+                                type="object"
+                                class="btn btn-primary btn-sm me-2 mb-8" 
+                                style="width: 120px;"
+                                attrs="{'invisible': [('is_penerimaan_filled', '=', True)]}"
+                                confirm="Apakah Anda yakin ingin merekam waktu mulai penerimaan? Setelah ini, Anda dapat mengisi informasi customer."/>
+                        <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2 mb-8"/>
+                    </div>
+                </xpath>
+               
+                <!-- Modify existing fields to be readonly until penerimaan is filled -->
+                <xpath expr="//field[@name='partner_id']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft')]}</attribute>
+                </xpath>
+                <xpath expr="//field[@name='partner_invoice_id']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft')]}</attribute>
+                </xpath>
+                <xpath expr="//field[@name='partner_shipping_id']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft')]}</attribute>
+                </xpath>
+                <xpath expr="//field[@name='pricelist_id']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft')]}</attribute>
+                </xpath>
+
+                <!-- Add readonly attribute to other existing fields -->
+                <xpath expr="//field[@name='date_order']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
+                </xpath>
+                <xpath expr="//field[@name='validity_date']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
+                </xpath>
+                <xpath expr="//field[@name='payment_term_id']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
+                </xpath>
+                
+                <!-- If you have custom fields added in your module, add them here -->
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="partner_car_id" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
+                    <field name="partner_car_odometer" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
+                    <field name="car_mechanic_id_new" widget="many2many_tags" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
+                </xpath>
+
+                 <!-- Make the Quotation Template field readonly -->
+                <xpath expr="//field[@name='sale_order_template_id']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
                 </xpath>
                 <!-- Menambahkan car_arrival_time di bawah payment terms -->
-                <xpath expr="//field[@name='payment_term_id']" position="after">
+                <!-- <xpath expr="//field[@name='payment_term_id']" position="after">
                      <label for="car_arrival_time" string="Jam Kedatangan Mobil"/>
                     <div>
                         <field name="car_arrival_time" string="Jam Kedatangan Mobil" readonly="0" width="120" placeholder="Isi di sini untuk rekam manual"/>
@@ -262,7 +316,7 @@
                                 attrs="{'invisible': [('car_arrival_time', '!=', False)]}"
                         />
                     </div>
-                </xpath>
+                </xpath> -->
                 <xpath expr="//notebook" position="inside">
                     <page string="After Service" name="after_service">
                         <div class="row">
@@ -440,7 +494,7 @@
             <field name="arch" type="xml">
                 <!-- Menambahkan field service advisor setelah customer -->
                 <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="service_advisor_id" widget="many2many_tags"/>
+                    <field name="service_advisor_id" widget="many2many_tags" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
                 </xpath>
             </field>
         </record>
@@ -455,13 +509,6 @@
                         <group>
                             <group string="Service Advisor (SA)" class="o_group_controller">
                                 <field name="service_category" widget="radio" options="{'horizontal': true}"/>
-                                <label for="sa_jam_masuk" string="Jam Masuk"/>
-                                <div class="d-flex align-items-center">
-                                    <button name="action_record_car_arrival_time" string="Jam Masuk" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin merekam jam masuk?"/>
-                                    <field name="sa_jam_masuk" readonly="0" nolabel="1" class="ms-2"/>
-                                </div>
                                 
                                 <label for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
                                 <div class="d-flex align-items-center">
@@ -489,6 +536,15 @@
                         
                         <group string="Controller" class="o_group_controller">
                             <group>
+                                <!-- Jam Masuk -->
+                                <label for="sa_jam_masuk" string="Jam Masuk"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_record_car_arrival_time" string="Jam Masuk" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin merekam jam masuk?"/>
+                                    <field name="sa_jam_masuk" readonly="0" nolabel="1" class="ms-2"/>
+                                </div>
+
                                 <field name="controller_estimasi_mulai" string="Estimasi Pekerjaan Mulai" widget="datetime" class="o_input_controller"/>
                                 <field name="controller_estimasi_selesai" string="Estimasi Pekerjaan Selesai" widget="datetime" class="o_input_controller"/>
 

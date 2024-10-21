@@ -7,6 +7,7 @@
     'sequence': 1,
     'depends': [
         'base',
+        'mail',
         'sale',
         'stock',
         'sale_stock',
@@ -57,6 +58,7 @@
         'views/project_task_views.xml',
         'views/menu.xml',
         'views/product_template_views.xml',
+        'views/user_views.xml',
         # 'views/product_actions.xml', 
         # 'views/stock_quant_views.xml',
     ],
@@ -64,5 +66,5 @@
     'application': True,
     'auto_install': False,
     'license': 'LGPL-3',
-    'version':'16.0.18'
+    'version':'16.0.19'
 }

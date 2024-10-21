@@ -1,5 +1,5 @@
 from odoo import models, fields, api, _, exceptions
-from odoo.exceptions import ValidationError
+from odoo.exceptions import ValidationError, AccessError, UserError
 from datetime import timedelta, date, datetime, time
 import logging
 
@@ -165,15 +165,7 @@ class SaleOrder(models.Model):
         help="Record the time when the car arrived",
         required=False,
         tracking=True,
-        inverse="_inverse_car_arrival_time"
     )
-    def action_record_car_arrival_time(self):
-        current_time = fields.Datetime.now()
-        self.write({
-            'car_arrival_time': current_time,
-            'sa_jam_masuk': current_time
-        })
-        return True
 
     is_willing_to_feedback = fields.Selection([
         ('yes', 'Yes'),
@@ -504,7 +496,11 @@ class SaleOrder(models.Model):
         ('maintenance', 'Perawatan'),
         ('repair', 'Perbaikan')
     ], string="Kategori Servis", required=True, default='maintenance')
-    sa_jam_masuk = fields.Datetime("Jam Masuk", inverse="_inverse_sa_jam_masuk")
+    sa_jam_masuk = fields.Datetime(
+        "Jam Masuk", 
+        help="Time when service advisor recorded the arrival."
+    )
+    is_arrival_time_set = fields.Boolean(compute='_compute_is_arrival_time_set', store=True)
     sa_mulai_penerimaan = fields.Datetime(string='Mulai Penerimaan')
     is_penerimaan_filled = fields.Boolean(compute='_compute_is_penerimaan_filled', store=True)
 
@@ -556,36 +552,57 @@ class SaleOrder(models.Model):
     controller_job_stop_lain_selesai = fields.Datetime("Job Stop Lain Selesai")
     job_stop_lain_keterangan = fields.Text("Keterangan Job Stop Lain")
 
+    user_is_controller = fields.Boolean(compute='_compute_user_is_controller')
+
+    @api.depends('user_id')
+    def _compute_user_is_controller(self):
+        for record in self:
+            record.user_is_controller = self.env.user.pitcar_role == 'controller'
+
+    def action_record_car_arrival_time(self):
+        self.ensure_one()
+        if not self.env.context.get('from_api'):
+            if self.env.user.pitcar_role != 'controller':
+                raise UserError("Hanya Controller yang dapat merekam waktu jam masuk.")
+    
+        current_time = fields.Datetime.now()
+        self.write({
+            'car_arrival_time': current_time,
+            'sa_jam_masuk': current_time
+        })
+        
+        body = f"""
+        <p><strong>Jam Kedatangan Mobil dicatat</strong></p>
+        <ul>
+            <li>Dicatat oleh: {self.env.user.name}</li>
+            <li>Waktu: {current_time}</li>
+        </ul>
+        """
+        self.message_post(body=body, message_type='notification')
+        return True
+    
+    @api.depends('car_arrival_time', 'sa_jam_masuk')
+    def _compute_is_arrival_time_set(self):
+        for record in self:
+            record.is_arrival_time_set = bool(record.car_arrival_time or record.sa_jam_masuk)
+
     @api.onchange('sa_jam_masuk')
     def _onchange_sa_jam_masuk(self):
-        if self.sa_jam_masuk and not self.car_arrival_time:
+        if self.sa_jam_masuk and self.sa_jam_masuk != self.car_arrival_time:
             self.car_arrival_time = self.sa_jam_masuk
-
-    @api.depends('sa_mulai_penerimaan')
-    def _compute_is_penerimaan_filled(self):
-        for record in self:
-            record.is_penerimaan_filled = bool(record.sa_mulai_penerimaan)
-
-    def action_record_sa_mulai_penerimaan(self):
-        self.ensure_one()
-        self.sa_mulai_penerimaan = fields.Datetime.now()
-        self.reception_state = 'reception_started'  # Assuming you have this state
-        return True
 
     @api.onchange('car_arrival_time')
     def _onchange_car_arrival_time(self):
-        if self.car_arrival_time and not self.sa_jam_masuk:
+        if self.car_arrival_time and self.car_arrival_time != self.sa_jam_masuk:
             self.sa_jam_masuk = self.car_arrival_time
 
-    def _inverse_sa_jam_masuk(self):
+    @api.constrains('sa_jam_masuk')
+    def _check_sa_jam_masuk_role(self):
         for record in self:
-            if record.sa_jam_masuk and record.sa_jam_masuk != record.car_arrival_time:
-                record.car_arrival_time = record.sa_jam_masuk
-
-    def _inverse_car_arrival_time(self):
-        for record in self:
-            if record.car_arrival_time and record.car_arrival_time != record.sa_jam_masuk:
-                record.sa_jam_masuk = record.car_arrival_time
+            if self.env.context.get('from_api'):
+                continue
+            if record.sa_jam_masuk and record.env.user.pitcar_role != 'controller':
+                raise UserError("Hanya Controller yang dapat mengisi Jam Masuk secara manual.")
 
     def action_mulai_servis(self):
         for record in self:
@@ -598,8 +615,43 @@ class SaleOrder(models.Model):
             if record.controller_mulai_servis:
                 raise exceptions.ValidationError("Servis sudah dimulai sebelumnya.")
             
+            # Periksa peran pengguna sebelum melakukan perubahan apa pun
+            if self.env.user.pitcar_role != 'controller':
+                raise UserError("Hanya Controller yang dapat memulai servis.")
+            
             record.controller_mulai_servis = fields.Datetime.now()
 
+            # Log aktivitas langsung ke chatter
+            body = f"""
+            <p><strong>Servis dimulai</strong></p>
+            <ul>
+                <li>Dicatat oleh: {self.env.user.name}</li>
+                <li>Waktu: {record.controller_mulai_servis} </li>
+            </ul>
+            """
+            self.message_post(body=body, message_type='notification')
+
+    def write(self, vals):
+        if ('controller_estimasi_mulai' in vals or 'controller_estimasi_selesai' in vals) and self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
+        return super(SaleOrder, self).write(vals)
+    
+    @api.constrains('controller_estimasi_mulai', 'controller_estimasi_selesai')
+    def _check_controller_estimasi(self):
+        for record in self:
+            if record.controller_estimasi_mulai or record.controller_estimasi_selesai:
+                if self.env.user.pitcar_role != 'controller':
+                    raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
+
+    @api.onchange('controller_estimasi_mulai', 'controller_estimasi_selesai')
+    def _onchange_controller_estimasi(self):
+        if self.controller_estimasi_mulai or self.controller_estimasi_selesai:
+            if self.env.user.pitcar_role != 'controller':
+                return {'warning': {
+                    'title': "Peringatan",
+                    'message': "Hanya Controller yang dapat mengubah estimasi pekerjaan.",
+                }}
+            
     def action_selesai_servis(self):
         for record in self:
             if not record.controller_mulai_servis:
@@ -607,7 +659,22 @@ class SaleOrder(models.Model):
             if record.controller_selesai:
                 raise exceptions.ValidationError("Servis sudah selesai sebelumnya.")
             
+            # Periksa peran pengguna sebelum melakukan perubahan apa pun
+            if self.env.user.pitcar_role != 'controller':
+                raise UserError("Hanya Controller yang dapat menyelesaikan servis.")
+            
             record.controller_selesai = fields.Datetime.now()
+
+            # Log aktivitas langsung ke chatter
+            body = f"""
+            <p><strong>Servis selesai</strong></p>
+            <ul>
+                <li>Dicatat oleh: {self.env.user.name}</li>
+                <li>Waktu: {record.controller_selesai} </li>
+            </ul>
+            """
+            self.message_post(body=body, message_type='notification')
+
 
     @api.depends('sa_jam_masuk', 'sa_mulai_penerimaan', 'sa_cetak_pkb',
                  'controller_estimasi_mulai', 'controller_estimasi_selesai',
@@ -738,57 +805,103 @@ class SaleOrder(models.Model):
                     raise ValidationError("Waktu selesai Controller tidak boleh lebih besar dari waktu selesai FO.")
 
     def action_print_work_order(self):
+        self.ensure_one()
+
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'service_advisor':
+            raise UserError("Hanya Service Advisor yang dapat melakukan pencetakan PKB.")
+        
+        current_time = fields.Datetime.now()
         self.write({
-            'sa_cetak_pkb': fields.Datetime.now()
+            'sa_cetak_pkb': current_time
         })
+
+        # Log aktivitas langsung ke chatter
+        body = f"""
+        <p><strong>PKB Dicetak</strong></p>
+        <ul>
+            <li>Dicetak oleh: {self.env.user.name}</li>
+            <li>Waktu: {self.sa_cetak_pkb} </li>
+        </ul>
+        """
+        self.message_post(body=body, message_type='notification')
+
         return self.env.ref('pitcar_custom.action_report_work_order').report_action(self)
 
-    def action_record_time(self, field_name):
-        self.ensure_one()
-        self.write({field_name: fields.Datetime.now()})
-
-    def action_record_sa_jam_masuk(self):
-        self.sa_jam_masuk = fields.Datetime.now()
+    @api.depends('sa_mulai_penerimaan')
+    def _compute_is_penerimaan_filled(self):
+        for record in self:
+            record.is_penerimaan_filled = bool(record.sa_mulai_penerimaan)
 
     def action_record_sa_mulai_penerimaan(self):
         self.ensure_one()
+        if self.sa_mulai_penerimaan:
+            raise UserError("Waktu mulai penerimaan sudah diisi sebelumnya.")
+        
         self.sa_mulai_penerimaan = fields.Datetime.now()
         self.reception_state = 'reception_started'
-        
-        # Set default invoice and shipping address if not set
-        if self.partner_id:
-            if not self.partner_invoice_id:
-                self.partner_invoice_id = self.partner_id.address_get(['invoice'])['invoice']
-            if not self.partner_shipping_id:
-                self.partner_shipping_id = self.partner_id.address_get(['delivery'])['delivery']
-        
-        return True
 
-    def action_record_sa_cetak_pkb(self):
-        return self.action_record_time('sa_cetak_pkb')
+        body = f"""
+        <p><strong>Mulai Penerimaan</strong></p>
+        <ul>
+            <li>Dicatat oleh: {self.env.user.name}</li>
+            <li>Waktu: {self.sa_mulai_penerimaan}</li>
+        </ul>
+        """
+        self.message_post(body=body, message_type='notification')
     
     def action_tunggu_part1_mulai(self):
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat memulai tunggu part 1.")
+        
         self.controller_tunggu_part1_mulai = fields.Datetime.now()
 
     def action_tunggu_part1_selesai(self):
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat menyelesaikan tunggu part 1.")
+        
         self.controller_tunggu_part1_selesai = fields.Datetime.now()
 
     def action_tunggu_part2_mulai(self):
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat memulai tunggu part 2.")
+        
         self.controller_tunggu_part2_mulai = fields.Datetime.now()
 
     def action_tunggu_part2_selesai(self):
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat menyelesaikan tunggu part 2.")
+        
         self.controller_tunggu_part2_selesai = fields.Datetime.now()
 
     def action_istirahat_shift1_mulai(self):
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat memulai istirahat shift 1.")
         self.controller_istirahat_shift1_mulai = fields.Datetime.now()
 
     def action_istirahat_shift1_selesai(self):
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat menyelesaikan istirahat shift 1.")
+        
         self.controller_istirahat_shift1_selesai = fields.Datetime.now()
 
     def action_tunggu_sublet_mulai(self):
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat memulai tunggu sublet.")
+        
         self.controller_tunggu_sublet_mulai = fields.Datetime.now()
 
     def action_tunggu_sublet_selesai(self):
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat menyelesaikan tunggu sublet.")
         self.controller_tunggu_sublet_selesai = fields.Datetime.now()
 
     # Aksi untuk memulai tunggu konfirmasi
@@ -796,6 +909,11 @@ class SaleOrder(models.Model):
         for record in self:
             if record.controller_tunggu_konfirmasi_mulai:
                 raise ValidationError("Tunggu konfirmasi sudah dimulai sebelumnya.")
+            
+            # Periksa peran pengguna sebelum melakukan perubahan apa pun
+            if self.env.user.pitcar_role != 'controller':
+                raise UserError("Hanya Controller yang dapat memulai tunggu konfirmasi.")
+            
             record.controller_tunggu_konfirmasi_mulai = fields.Datetime.now()
 
     # Aksi untuk menyelesaikan tunggu konfirmasi
@@ -805,6 +923,11 @@ class SaleOrder(models.Model):
                 raise ValidationError("Anda tidak dapat menyelesaikan tunggu konfirmasi sebelum memulainya.")
             if record.controller_tunggu_konfirmasi_selesai:
                 raise ValidationError("Tunggu konfirmasi sudah diselesaikan sebelumnya.")
+            
+            # Periksa peran pengguna sebelum melakukan perubahan apa pun
+            if self.env.user.pitcar_role != 'controller':
+                raise UserError("Hanya Controller yang dapat menyelesaikan tunggu konfirmasi.")
+            
             record.controller_tunggu_konfirmasi_selesai = fields.Datetime.now()
 
     # You might want to add some validation or additional logic
@@ -827,14 +950,34 @@ class SaleOrder(models.Model):
                 raise exceptions.ValidationError("Tidak dapat mencatat waktu. Servis belum selesai.")
             if record.fo_unit_keluar:
                 raise exceptions.ValidationError("Waktu unit keluar sudah dicatat sebelumnya.")
-            record.fo_unit_keluar = fields.Datetime.now()
+            self.ensure_one()
+            self.fo_unit_keluar = fields.Datetime.now()
+            
+            # Log aktivitas langsung ke chatter
+            body = f"""
+            <p><strong>Unit Keluar</strong></p>
+            <ul>
+                <li>Dicatat oleh: {self.env.user.name}</li>
+                <li>Waktu: {self.fo_unit_keluar} </li>
+            </ul>
+            """
+            self.message_post(body=body, message_type='notification')
 
     def action_job_stop_lain_mulai(self):
         self.ensure_one()
+
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat melakukan job stop lain.")
+            
         self.controller_job_stop_lain_mulai = fields.Datetime.now()
 
     def action_job_stop_lain_selesai(self):
         self.ensure_one()
+        # Periksa peran pengguna sebelum melakukan perubahan apa pun
+        if self.env.user.pitcar_role != 'controller':
+            raise UserError("Hanya Controller yang dapat menyelesaikan job stop lain.")
+        
         self.controller_job_stop_lain_selesai = fields.Datetime.now()
 
     # PERHITUNGAN LEAD TIME
@@ -1017,3 +1160,15 @@ class SaleOrder(models.Model):
                 waktu_kerja += waktu_kerja_hari_ini
         
         return waktu_kerja
+
+    # LOG
+    def _log_activity(self, message, time):
+        """ Centralized method to log activity to chatter """
+        body = f"""
+        <p><strong>{message}</strong></p>
+        <ul>
+            <li>Dicatat oleh: {self.env.user.name}</li>
+            <li>Waktu: {time}</li>
+        </ul>
+        """
+        self.message_post(body=body, message_type='notification')

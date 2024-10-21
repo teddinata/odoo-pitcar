@@ -258,28 +258,28 @@
                     <label class="mb-8" for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
                     <div class="d-flex align-items-center mb-3">
                         <button name="action_record_sa_mulai_penerimaan" 
-                                string="Mulai Penerimaan Customer" 
-                                type="object"
-                                class="btn btn-primary btn-sm me-2 mb-8" 
-                                style="width: 120px;"
-                                attrs="{'invisible': [('is_penerimaan_filled', '=', True)]}"
-                                confirm="Apakah Anda yakin ingin merekam waktu mulai penerimaan? Setelah ini, Anda dapat mengisi informasi customer."/>
+                            string="Mulai Penerimaan Customer" 
+                            type="object"
+                            class="btn btn-primary btn-sm me-2 mb-8" 
+                            style="width: 120px;"
+                            attrs="{'invisible': [('is_penerimaan_filled', '=', True)]}"
+                            confirm="Apakah Anda yakin ingin memulai penerimaan customer?"/>
                         <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2 mb-8"/>
                     </div>
                 </xpath>
                
                 <!-- Modify existing fields to be readonly until penerimaan is filled -->
                 <xpath expr="//field[@name='partner_id']" position="attributes">
-                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft')]}</attribute>
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft'), ('is_arrival_time_set', '=', False)]}</attribute>
                 </xpath>
                 <xpath expr="//field[@name='partner_invoice_id']" position="attributes">
-                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft')]}</attribute>
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft'), ('is_arrival_time_set', '=', False)]}</attribute>
                 </xpath>
                 <xpath expr="//field[@name='partner_shipping_id']" position="attributes">
-                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft')]}</attribute>
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft'), ('is_arrival_time_set', '=', False)]}</attribute>
                 </xpath>
                 <xpath expr="//field[@name='pricelist_id']" position="attributes">
-                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft')]}</attribute>
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft'), ('is_arrival_time_set', '=', False)]}</attribute>
                 </xpath>
 
                 <!-- Add readonly attribute to other existing fields -->
@@ -504,6 +504,9 @@
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
+                <xpath expr="//form" position="inside">
+                    <field name="is_arrival_time_set" invisible="1"/>
+                </xpath>
                 <xpath expr="//page[@name='after_service']" position="before">
                     <page string="Lead Time" name="lead_time">
                         <group>
@@ -514,7 +517,7 @@
                                 <div class="d-flex align-items-center">
                                     <button name="action_record_sa_mulai_penerimaan" string="Mulai Penerimaan" type="object" 
                                             class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
-                                    <field name="sa_mulai_penerimaan" readonly="0" nolabel="1" class="ms-2"/>
+                                    <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2"/>
                                 </div>
                                 
                                 <label for="sa_cetak_pkb" string="Cetak PKB"/>
@@ -539,12 +542,14 @@
                                 <!-- Jam Masuk -->
                                 <label for="sa_jam_masuk" string="Jam Masuk"/>
                                 <div class="d-flex align-items-center">
-                                    <button name="action_record_car_arrival_time" string="Jam Masuk" type="object" 
+                                    <button name="action_record_car_arrival_time" string="Rekam Jam Masuk" type="object" 
                                             class="btn btn-primary btn-sm me-2" style="width: 120px;"
                                             confirm="Apakah anda yakin ingin merekam jam masuk?"/>
                                     <field name="sa_jam_masuk" readonly="0" nolabel="1" class="ms-2"/>
+                                    <field name="car_arrival_time" invisible="1"/>
                                 </div>
 
+                                <field name="user_is_controller" invisible="1"/>
                                 <field name="controller_estimasi_mulai" string="Estimasi Pekerjaan Mulai" widget="datetime" class="o_input_controller"/>
                                 <field name="controller_estimasi_selesai" string="Estimasi Pekerjaan Selesai" widget="datetime" class="o_input_controller"/>
 

@@ -9,3 +9,7 @@ pitcar_custom.access_pitcar_mechanic_new,access_pitcar_mechanic_new,pitcar_custo
 pitcar_custom.access_pitcar_service_advisor,access_pitcar_service_advisor,pitcar_custom.model_pitcar_service_advisor,base.group_user,1,1,1,1
 pitcar_custom.access_feedback_classification,access_feedback_classification,pitcar_custom.model_feedback_classification,base.group_user,1,1,1,1
 pitcar_custom.access_lead_time_user,Lead Time User,sale.model_sale_order,pitcar_custom.group_lead_time_user,1,1,1,1
+pitcar_custom.access_res_users_service_advisor,res.users.service.advisor,base.model_res_users,pitcar_custom.group_service_advisor,1,1,1,0
+pitcar_custom.access_res_users_controller,res.users.controller,base.model_res_users,pitcar_custom.group_controller,1,1,1,0
+pitcar_custom.access_sale_order_service_advisor,sale.order.service.advisor,sale.model_sale_order,pitcar_custom.group_service_advisor,1,1,1,0
+pitcar_custom.access_sale_order_controller,sale.order.controller,sale.model_sale_order,pitcar_custom.group_controller,1,1,0,0

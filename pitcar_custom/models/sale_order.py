@@ -1,5 +1,6 @@
 from odoo import models, fields, api, _, exceptions
 from odoo.exceptions import ValidationError, AccessError, UserError
+import pytz
 from datetime import timedelta, date, datetime, time
 import logging
 
@@ -506,8 +507,8 @@ class SaleOrder(models.Model):
 
     sa_cetak_pkb = fields.Datetime("Cetak PKB")
     
-    controller_estimasi_mulai = fields.Datetime("Estimasi Pekerjaan Mulai")
-    controller_estimasi_selesai = fields.Datetime("Estimasi Pekerjaan Selesai")
+    controller_estimasi_mulai = fields.Datetime("Estimasi Pekerjaan Mulai", tracking=True)
+    controller_estimasi_selesai = fields.Datetime("Estimasi Pekerjaan Selesai", tracking=True)
     controller_mulai_servis = fields.Datetime(string="Mulai Servis", readonly=True)
     controller_selesai = fields.Datetime(string="Selesai Servis", readonly=True)
     controller_tunggu_konfirmasi_mulai = fields.Datetime("Tunggu Konfirmasi Mulai")
@@ -564,18 +565,21 @@ class SaleOrder(models.Model):
         if not self.env.context.get('from_api'):
             if self.env.user.pitcar_role != 'controller':
                 raise UserError("Hanya Controller yang dapat merekam waktu jam masuk.")
-    
-        current_time = fields.Datetime.now()
+
+        tz = pytz.timezone('Asia/Jakarta')
+        local_dt = datetime.now(tz)
+        utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+        
         self.write({
-            'car_arrival_time': current_time,
-            'sa_jam_masuk': current_time
+            'car_arrival_time': utc_dt,
+            'sa_jam_masuk': utc_dt
         })
         
         body = f"""
         <p><strong>Jam Kedatangan Mobil dicatat</strong></p>
         <ul>
             <li>Dicatat oleh: {self.env.user.name}</li>
-            <li>Waktu: {current_time}</li>
+            <li>Waktu catat: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
         </ul>
         """
         self.message_post(body=body, message_type='notification')
@@ -617,38 +621,75 @@ class SaleOrder(models.Model):
             if self.env.user.pitcar_role != 'controller':
                 raise UserError("Hanya Controller yang dapat memulai servis.")
             
-            record.controller_mulai_servis = fields.Datetime.now()
+            # Menggunakan timezone Asia/Jakarta tapi simpan sebagai naive datetime
+            tz = pytz.timezone('Asia/Jakarta')
+            local_dt = datetime.now(tz)
+            utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)  # Convert ke UTC dan hapus timezone info
+            
+            record.controller_mulai_servis = utc_dt
 
+            # Format waktu untuk tampilan di chatter
+            formatted_time = local_dt.strftime('%Y-%m-%d %H:%M:%S')
+            
             # Log aktivitas langsung ke chatter
             body = f"""
             <p><strong>Servis dimulai</strong></p>
             <ul>
                 <li>Dicatat oleh: {self.env.user.name}</li>
-                <li>Waktu: {record.controller_mulai_servis} </li>
+                <li>Waktu catat: {formatted_time} WIB</li>
             </ul>
             """
             self.message_post(body=body, message_type='notification')
 
+    # Estimasi pekerjaan
     def write(self, vals):
-        if ('controller_estimasi_mulai' in vals or 'controller_estimasi_selesai' in vals) and self.env.user.pitcar_role != 'controller':
-            raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
+        # Handle estimasi waktu, hanya validasi permission
+        if ('controller_estimasi_mulai' in vals or 'controller_estimasi_selesai' in vals):
+            if self.env.user.pitcar_role != 'controller':
+                raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
+            
+            # Log perubahan dengan format WIB
+            tz = pytz.timezone('Asia/Jakarta')
+            
+            if 'controller_estimasi_mulai' in vals and vals['controller_estimasi_mulai']:
+                local_dt = fields.Datetime.from_string(vals['controller_estimasi_mulai'])
+                local_dt = pytz.UTC.localize(local_dt).astimezone(tz)
+                current_time = datetime.now(tz)
+                body = f"""
+                <p><strong>Estimasi Waktu Mulai diubah</strong></p>
+                <ul>
+                    <li>Diubah oleh: {self.env.user.name}</li>
+                    <li>Waktu catat: {current_time.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
+                    <li>Waktu estimasi mulai: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
+                </ul>
+                """
+                self.message_post(body=body, message_type='notification')
+                
+            if 'controller_estimasi_selesai' in vals and vals['controller_estimasi_selesai']:
+                local_dt = fields.Datetime.from_string(vals['controller_estimasi_selesai'])
+                local_dt = pytz.UTC.localize(local_dt).astimezone(tz)
+                current_time = datetime.now(tz)
+                body = f"""
+                <p><strong>Estimasi Waktu Selesai diubah</strong></p>
+                <ul>
+                    <li>Diubah oleh: {self.env.user.name}</li>
+                    <li>Waktu catat: {current_time.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
+                    <li>Waktu estimasi selesai: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
+                </ul>
+                """
+                self.message_post(body=body, message_type='notification')
+            
         return super(SaleOrder, self).write(vals)
-    
+
     @api.constrains('controller_estimasi_mulai', 'controller_estimasi_selesai')
     def _check_controller_estimasi(self):
         for record in self:
             if record.controller_estimasi_mulai or record.controller_estimasi_selesai:
                 if self.env.user.pitcar_role != 'controller':
                     raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
-
-    @api.onchange('controller_estimasi_mulai', 'controller_estimasi_selesai')
-    def _onchange_controller_estimasi(self):
-        if self.controller_estimasi_mulai or self.controller_estimasi_selesai:
-            if self.env.user.pitcar_role != 'controller':
-                return {'warning': {
-                    'title': "Peringatan",
-                    'message': "Hanya Controller yang dapat mengubah estimasi pekerjaan.",
-                }}
+                if record.controller_estimasi_mulai and record.controller_estimasi_selesai:
+                    if record.controller_estimasi_selesai < record.controller_estimasi_mulai:
+                        raise UserError("Waktu estimasi selesai tidak boleh lebih awal dari waktu estimasi mulai.")
             
     def action_selesai_servis(self):
         for record in self:
@@ -657,18 +698,20 @@ class SaleOrder(models.Model):
             if record.controller_selesai:
                 raise exceptions.ValidationError("Servis sudah selesai sebelumnya.")
             
-            # Periksa peran pengguna sebelum melakukan perubahan apa pun
             if self.env.user.pitcar_role != 'controller':
                 raise UserError("Hanya Controller yang dapat menyelesaikan servis.")
             
-            record.controller_selesai = fields.Datetime.now()
+            tz = pytz.timezone('Asia/Jakarta')
+            local_dt = datetime.now(tz)
+            utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+            
+            record.controller_selesai = utc_dt
 
-            # Log aktivitas langsung ke chatter
             body = f"""
             <p><strong>Servis selesai</strong></p>
             <ul>
                 <li>Dicatat oleh: {self.env.user.name}</li>
-                <li>Waktu: {record.controller_selesai} </li>
+                <li> Waktu catat:{local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
             </ul>
             """
             self.message_post(body=body, message_type='notification')
@@ -804,26 +847,25 @@ class SaleOrder(models.Model):
 
     def action_print_work_order(self):
         self.ensure_one()
-
-        # Periksa peran pengguna sebelum melakukan perubahan apa pun
         if self.env.user.pitcar_role != 'service_advisor':
             raise UserError("Hanya Service Advisor yang dapat melakukan pencetakan PKB.")
         
-        current_time = fields.Datetime.now()
+        tz = pytz.timezone('Asia/Jakarta')
+        local_dt = datetime.now(tz)
+        utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+        
         self.write({
-            'sa_cetak_pkb': current_time
+            'sa_cetak_pkb': utc_dt
         })
 
-        # Log aktivitas langsung ke chatter
         body = f"""
         <p><strong>PKB Dicetak</strong></p>
         <ul>
             <li>Dicetak oleh: {self.env.user.name}</li>
-            <li>Waktu: {self.sa_cetak_pkb} </li>
+            <li>Waktu catat: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
         </ul>
         """
         self.message_post(body=body, message_type='notification')
-
         return self.env.ref('pitcar_custom.action_report_work_order').report_action(self)
 
     @api.depends('sa_mulai_penerimaan')
@@ -836,14 +878,18 @@ class SaleOrder(models.Model):
         if self.sa_mulai_penerimaan:
             raise UserError("Waktu mulai penerimaan sudah diisi sebelumnya.")
         
-        self.sa_mulai_penerimaan = fields.Datetime.now()
+        tz = pytz.timezone('Asia/Jakarta')
+        local_dt = datetime.now(tz)
+        utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        self.sa_mulai_penerimaan = utc_dt
         self.reception_state = 'reception_started'
 
         body = f"""
         <p><strong>Mulai Penerimaan</strong></p>
         <ul>
             <li>Dicatat oleh: {self.env.user.name}</li>
-            <li>Waktu: {self.sa_mulai_penerimaan}</li>
+            <li>Waktu catat: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
         </ul>
         """
         self.message_post(body=body, message_type='notification')
@@ -948,15 +994,19 @@ class SaleOrder(models.Model):
                 raise exceptions.ValidationError("Tidak dapat mencatat waktu. Servis belum selesai.")
             if record.fo_unit_keluar:
                 raise exceptions.ValidationError("Waktu unit keluar sudah dicatat sebelumnya.")
-            self.ensure_one()
-            self.fo_unit_keluar = fields.Datetime.now()
             
-            # Log aktivitas langsung ke chatter
+            self.ensure_one()
+            tz = pytz.timezone('Asia/Jakarta')
+            local_dt = datetime.now(tz)
+            utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+            
+            self.fo_unit_keluar = utc_dt
+            
             body = f"""
             <p><strong>Unit Keluar</strong></p>
             <ul>
                 <li>Dicatat oleh: {self.env.user.name}</li>
-                <li>Waktu: {self.fo_unit_keluar} </li>
+                <li>Waktu catat: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
             </ul>
             """
             self.message_post(body=body, message_type='notification')

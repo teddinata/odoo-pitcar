@@ -6,7 +6,7 @@
         <field name="inherit_id" ref="base.view_users_form"/>
         <field name="arch" type="xml">
             <xpath expr="//notebook" position="inside">
-                <page string="PitCar Roles" name="pitcar_roles">
+                <page string="Pitcar Settings" name="pitcar_settings">
                     <group>
                         <field name="pitcar_role"/>
                     </group>

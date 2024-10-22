@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
+          <!-- Inherit search view untuk menambah filter today -->
+        <record id="view_sales_order_filter_inherit" model="ir.ui.view">
+            <field name="name">sale.order.list.select.inherit</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+            <field name="arch" type="xml">
+                <xpath expr="//filter[@name='my_sale_orders_filter']" position="after">
+                    <filter string="Quotation Hari Ini" name="today" domain="[('create_date', '>=', datetime.datetime.combine(context_today(), datetime.time(0,0,0))), ('create_date', '&lt;=', datetime.datetime.combine(context_today(), datetime.time(23,59,59)))]"/>
+                </xpath>
+            </field>
+        </record>
+
         <record id="view_sales_order_filter_custom" model="ir.ui.view">
             <field name="name">sale.order.list.select.custom</field>
             <field name="model">sale.order</field>
@@ -267,7 +279,9 @@
                         <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2 mb-8"/>
                     </div>
                 </xpath>
-               
+                 <xpath expr="//form" position="inside">
+                    <field name="is_arrival_time_set" invisible="1"/>
+                </xpath>
                 <!-- Modify existing fields to be readonly until penerimaan is filled -->
                 <xpath expr="//field[@name='partner_id']" position="attributes">
                     <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft'), ('is_arrival_time_set', '=', False)]}</attribute>
@@ -504,9 +518,9 @@
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
-                <xpath expr="//form" position="inside">
+                <!-- <xpath expr="//field[@name='partner_id']" position="before">
                     <field name="is_arrival_time_set" invisible="1"/>
-                </xpath>
+                </xpath> -->
                 <xpath expr="//page[@name='after_service']" position="before">
                     <page string="Lead Time" name="lead_time">
                         <group>

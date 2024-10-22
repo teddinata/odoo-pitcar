@@ -606,8 +606,6 @@ class SaleOrder(models.Model):
 
     def action_mulai_servis(self):
         for record in self:
-            if not record.sa_jam_masuk:
-                raise exceptions.ValidationError("Tidak dapat memulai servis. Mobil belum masuk.")
             if not record.sa_mulai_penerimaan:
                 raise exceptions.ValidationError("Tidak dapat memulai servis. Customer belum diterima/dilayani.")
             if not record.sa_cetak_pkb:

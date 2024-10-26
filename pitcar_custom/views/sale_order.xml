@@ -91,6 +91,8 @@
                 <xpath expr="//field[@name='company_id']" position="after">
                     <!-- Waktu Masuk dan Keluar -->
                     <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
+                    <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
+                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKBs"/>
                     <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
                     
                     <!-- Waktu Proses -->
@@ -108,6 +110,14 @@
                     <field name="controller_istirahat_shift1_selesai" optional="hide" string="Istirahat Selesai"/>
                     
                     <!-- Perhitungan Lead Time -->
+                    <field name="lead_time_tunggu_penerimaan" optional="hide" widget="float_time" string="Waktu Tunggu Penerimaan"/>
+                    <field name="lead_time_penerimaan" optional="hide" widget="float_time" string="Waktu Penerimaan"/>
+                    <field name="lead_time_tunggu_servis" optional="hide" widget="float_time" string="Waktu Tunggu Servis"/>
+                    <field name="estimasi_durasi_pengerjaan" optional="hide" widget="float_time" string="Estimasi Durasi Pengerjaan"/>
+                    <field name="lead_time_tunggu_konfirmasi" optional="hide" widget="float_time" string="Waktu Tunggu Konfirmasi"/>
+                    <field name="lead_time_tunggu_part1" optional="hide" widget="float_time" string="Waktu Tunggu Part 1"/>
+                    <field name="lead_time_tunggu_part2" optional="hide" widget="float_time" string="Waktu Tunggu Part 2"/>
+                    <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
                     <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
                     <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
                     <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Servis"/>
@@ -181,6 +191,8 @@
                 <xpath expr="//field[@name='company_id']" position="after">
                     <!-- Waktu Masuk dan Keluar -->
                     <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
+                    <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
+                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKBs"/>
                     <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
                     
                     <!-- Waktu Proses -->
@@ -198,6 +210,14 @@
                     <field name="controller_istirahat_shift1_selesai" optional="hide" string="Istirahat Selesai"/>
                     
                     <!-- Perhitungan Lead Time -->
+                    <field name="lead_time_tunggu_penerimaan" optional="hide" widget="float_time" string="Waktu Tunggu Penerimaan"/>
+                    <field name="lead_time_penerimaan" optional="hide" widget="float_time" string="Waktu Penerimaan"/>
+                    <field name="lead_time_tunggu_servis" optional="hide" widget="float_time" string="Waktu Tunggu Servis"/>
+                    <field name="estimasi_durasi_pengerjaan" optional="hide" widget="float_time" string="Estimasi Durasi Pengerjaan"/>
+                    <field name="lead_time_tunggu_konfirmasi" optional="hide" widget="float_time" string="Waktu Tunggu Konfirmasi"/>
+                    <field name="lead_time_tunggu_part1" optional="hide" widget="float_time" string="Waktu Tunggu Part 1"/>
+                    <field name="lead_time_tunggu_part2" optional="hide" widget="float_time" string="Waktu Tunggu Part 2"/>
+                    <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
                     <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
                     <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
                     <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Servis"/>

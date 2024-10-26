@@ -92,7 +92,7 @@
                     <!-- Waktu Masuk dan Keluar -->
                     <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
                     <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
-                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKBs"/>
+                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKB"/>
                     <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
                     
                     <!-- Waktu Proses -->
@@ -192,7 +192,7 @@
                     <!-- Waktu Masuk dan Keluar -->
                     <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
                     <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
-                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKBs"/>
+                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKB"/>
                     <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
                     
                     <!-- Waktu Proses -->

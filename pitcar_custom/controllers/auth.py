@@ -5,48 +5,42 @@ import json
 import werkzeug.wrappers
 
 class CustomSession(Session):
-    @http.route(['/web/session/authenticate'], type='json', auth="none", 
-                csrf=False, methods=['POST', 'OPTIONS'], cors='*')
+    @http.route(['/web/session/authenticate'], type='json', auth="none", csrf=False, methods=['POST', 'OPTIONS'], cors='*')
     def authenticate(self, db, login, password, base_location=None):
-        allowed_origins = [
-            'https://antrean.pitcar.co.id',  # Production frontend
-            'http://localhost:5173'         # Development frontend
-        ]
-        
-        origin = request.httprequest.headers.get('Origin', '')
-        
         if request.httprequest.method == 'OPTIONS':
             headers = {
-                'Access-Control-Allow-Origin': origin if origin in allowed_origins else allowed_origins[0],
+                'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, X-Requested-With',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                 'Access-Control-Allow-Credentials': 'true',
-                'Access-Control-Max-Age': '86400',
+                'Access-Control-Max-Age': '86400',  # 24 hours
             }
             return Response(status=200, headers=headers)
 
-        # Handle actual request
-        headers = {
-            'Access-Control-Allow-Origin': origin if origin in allowed_origins else allowed_origins[0],
-            'Access-Control-Allow-Credentials': 'true',
-        }
-        
         try:
             request.session.authenticate(db, login, password)
             result = request.env['ir.http'].session_info()
-            return Response(
-                json.dumps({'result': result}),
-                status=200,
-                headers=headers,
-                content_type='application/json'
-            )
+            
+            # Add custom response handling here if needed
+            return {
+                'jsonrpc': '2.0',
+                'id': None,
+                'result': result
+            }
         except Exception as e:
-            return Response(
-                json.dumps({'error': str(e)}),
-                status=401,
-                headers=headers,
-                content_type='application/json'
-            )
+            return {
+                'jsonrpc': '2.0',
+                'id': None,
+                'status': 'error',
+                'error': {
+                    'code': 401,
+                    'message': str(e),
+                    'data': {
+                        'name': 'session_invalid',
+                        'debug': str(e),
+                    }
+                }
+            }
 
     # Optional: Add method for checking authentication status
     @http.route(['/web/session/check'], type='json', auth="none", cors='*')

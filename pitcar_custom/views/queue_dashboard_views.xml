@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_queue_dashboard_kanban" model="ir.ui.view">
+        <field name="name">queue.management.dashboard.kanban</field>
+        <field name="model">queue.management</field>
+        <field name="arch" type="xml">
+            <kanban create="false" class="o_queue_dashboard">
+                <field name="current_number"/>
+                <field name="active_order_id"/>
+                <field name="total_served"/>
+                <field name="waiting_count"/>
+                <field name="last_number"/>
+                <field name="last_priority_number"/>
+                <field name="date"/>
+                
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="container o_dashboard">
+                            <!-- Header -->
+                            <div class="mb-4">
+                                <h3>Overall Summary</h3>
+                                <small class="text-muted"><field name="date"/></small>
+                            </div>
+
+                            <!-- Card Container with Flex -->
+                            <div class="d-flex flex-wrap justify-content-start">
+                                <!-- Current Number -->
+                                <div class="card-wrapper">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="text-muted mb-2">Nomor Saat Ini</div>
+                                            <h2 class="mb-0 display-4">
+                                                <field name="current_number"/>
+                                            </h2>
+                                            <small class="text-muted">Current Queue Number</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Active Order -->
+                                <div class="card-wrapper">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="text-muted mb-2">Sedang Dilayani next</div>
+                                            <h2 class="mb-0 display-4">
+                                                <field name="active_order_id"/>
+                                            </h2>
+                                            <small class="text-muted">Active Order</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Total Served -->
+                                <div class="card-wrapper">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="text-muted mb-2">Total Selesai</div>
+                                            <h2 class="mb-0 display-4">
+                                                <field name="total_served"/>
+                                            </h2>
+                                            <small class="text-muted">Completed Orders</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Waiting Count -->
+                                <div class="card-wrapper">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="text-muted mb-2">Menunggu</div>
+                                            <h2 class="mb-0 display-4">
+                                                <field name="waiting_count"/>
+                                            </h2>
+                                            <small class="text-muted">Waiting Orders</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Regular Queue -->
+                                <div class="card-wrapper">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="text-muted mb-2">Regular</div>
+                                            <h2 class="mb-0 display-4">
+                                                <field name="last_number"/>
+                                            </h2>
+                                            <small class="text-muted">Total Regular Queue</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Priority Queue -->
+                                <div class="card-wrapper">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <div class="text-muted mb-2">Prioritas</div>
+                                            <h2 class="mb-0 display-4">
+                                                <field name="last_priority_number"/>
+                                            </h2>
+                                            <small class="text-muted">Total Priority Queue</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+</odoo>

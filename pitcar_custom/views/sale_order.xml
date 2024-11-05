@@ -34,6 +34,15 @@
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_order_tree"/>
             <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="before">
+                    <!-- ANTREAN -->
+                    <field name="display_queue_number" optional="show" string="Nomor Antrean"/>
+                    <field name="is_booking" optional="show" string="Booking" widget="boolean_toggle"/>
+                    <field name="queue_status" optional="show" string="Status Antrean"
+                        decoration-success="queue_status == 'completed'"
+                        decoration-info="queue_status == 'in_progress'"
+                        decoration-warning="queue_status == 'waiting'"/>
+                </xpath>
                 <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="partner_car_id" optional="show"/>
                     <field name="partner_car_odometer" optional="hide"/>
@@ -92,7 +101,7 @@
                     <!-- Waktu Masuk dan Keluar -->
                     <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
                     <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
-                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKB"/>
+                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKBs"/>
                     <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
                     
                     <!-- Waktu Proses -->
@@ -120,7 +129,7 @@
                     <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
                     <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
                     <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
-                    <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Servis"/>
+                    <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Unit"/>
                     
                     <!-- Informasi Tambahan -->
                     <field name="is_overnight" optional="hide" string="Menginap"/>
@@ -134,7 +143,17 @@
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_quotation_tree"/>
             <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="before">
+                    <!-- ANTREAN -->
+                    <field name="display_queue_number" optional="show" string="Nomor Antrean"/>
+                    <field name="is_booking" optional="show" string="Booking" widget="boolean_toggle"/>
+                    <field name="queue_status" optional="show" string="Status Antrean"
+                        decoration-success="queue_status == 'completed'"
+                        decoration-info="queue_status == 'in_progress'"
+                        decoration-warning="queue_status == 'waiting'"/>
+                </xpath>
                 <xpath expr="//field[@name='partner_id']" position="after">
+                    
                     <field name="partner_car_id" optional="show"/>
                     <field name="partner_car_odometer" optional="hide"/>
                     <field name="generated_mechanic_team" optional="show"/>
@@ -192,7 +211,7 @@
                     <!-- Waktu Masuk dan Keluar -->
                     <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
                     <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
-                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKB"/>
+                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKBs"/>
                     <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
                     
                     <!-- Waktu Proses -->
@@ -220,7 +239,7 @@
                     <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
                     <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
                     <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
-                    <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Servis"/>
+                    <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Unit"/>
                     
                     <!-- Informasi Tambahan -->
                     <field name="is_overnight" optional="hide" string="Menginap"/>
@@ -339,10 +358,10 @@
                     <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
                 </xpath>
                 <!-- Menambahkan car_arrival_time di bawah payment terms -->
-                <!-- <xpath expr="//field[@name='payment_term_id']" position="after">
+                <xpath expr="//field[@name='payment_term_id']" position="after">
                      <label for="car_arrival_time" string="Jam Kedatangan Mobil"/>
                     <div>
-                        <field name="car_arrival_time" string="Jam Kedatangan Mobil" readonly="0" width="120" placeholder="Isi di sini untuk rekam manual"/>
+                        <field name="car_arrival_time" string="Jam Kedatangan Mobil" readonly="1" width="120" placeholder="Isi di sini untuk rekam manual"/>
                         <button name="action_record_car_arrival_time" 
                                 string="Klik untuk rekam waktu kedatangan mobil" 
                                 type="object" 
@@ -350,7 +369,24 @@
                                 attrs="{'invisible': [('car_arrival_time', '!=', False)]}"
                         />
                     </div>
-                </xpath> -->
+                </xpath>
+                <xpath expr="//field[@name='payment_term_id']" position="after">
+                    <field name="is_booking" readonly="1"/>
+                    <field name="display_queue_number" readonly="1" attrs="{'invisible': [('display_queue_number', '=', False)]}"/>
+                    <field name="current_queue_number" readonly="1"/>
+                    <label for="numbers_ahead" string="Antrean Di Depan"/>
+                    <div class="row align-items-center">
+                        <field name="numbers_ahead" readonly="1" nolabel="1"/>
+                        <div class="ml-4">antrian lagi</div>
+                    </div>
+                    <field name="queue_line_id" invisible="1"/>
+                    
+                    <field name="queue_status" readonly="1" 
+                        decoration-success="queue_status == 'completed'"
+                        decoration-info="queue_status == 'in_progress'"
+                        decoration-warning="queue_status == 'waiting'"/>
+                    
+                </xpath>
                 <xpath expr="//notebook" position="inside">
                     <page string="After Service" name="after_service">
                         <div class="row">
@@ -574,14 +610,14 @@
                         <group string="Controller" class="o_group_controller">
                             <group>
                                 <!-- Jam Masuk -->
-                                <label for="sa_jam_masuk" string="Jam Masuk"/>
+                                <!-- <label for="sa_jam_masuk" string="Jam Masuk"/>
                                 <div class="d-flex align-items-center">
                                     <button name="action_record_car_arrival_time" string="Rekam Jam Masuk" type="object" 
                                             class="btn btn-primary btn-sm me-2" style="width: 120px;"
                                             confirm="Apakah anda yakin ingin merekam jam masuk?"/>
                                     <field name="sa_jam_masuk" readonly="0" nolabel="1" class="ms-2"/>
                                     <field name="car_arrival_time" invisible="1"/>
-                                </div>
+                                </div> -->
 
                                 <field name="user_is_controller" invisible="1"/>
                                 <field name="controller_estimasi_mulai" string="Estimasi Pekerjaan Mulai" widget="datetime" class="o_input_controller"/>
@@ -714,7 +750,7 @@
                                 <field name="lead_time_tunggu_part2" widget="float_time" string="Lead Time Tunggu Part 2" class="o_input_controller"/>
                                 <field name="lead_time_istirahat" widget="float_time" string="Lead Time Istirahat" class="o_input_controller"/>
                                 <field name="lead_time_servis" widget="float_time" string="Lead Time Servis"/>
-                                <field name="total_lead_time_servis" widget="float_time" string="Total Lead Time Servis"/>
+                                <field name="total_lead_time_servis" widget="float_time" string="Total Lead Time Unit"/>
                             </group>
                             <group>
                                 <field name="lead_time_progress" widget="percentpie" string="Lead Time Progress" class="o_input_controller"/>

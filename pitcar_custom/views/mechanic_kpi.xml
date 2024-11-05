@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Kanban View untuk Overview -->
+    <!-- <record id="view_mechanic_kpi_kanban" model="ir.ui.view">
+        <field name="name">mechanic.kpi.kanban</field>
+        <field name="model">mechanic.kpi</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_dashboard o_kanban_metric" create="false">
+                <field name="name"/>
+                <field name="mechanic_id"/>
+                <field name="total_orders"/>
+                <field name="total_revenue"/>
+                <field name="average_rating"/>
+                <field name="on_time_rate"/>
+                <field name="complaint_rate"/>
+                <field name="average_completion_time"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card">
+                            <div class="card bg-primary">
+                                <div class="card-body">
+                                    <div class="card-header">
+                                        <h5 class="card-title">
+                                            <field name="mechanic_id"/>
+                                        </h5>
+                                        <i class="fa fa-wrench fa-lg"/>
+                                    </div>
+                                    <h2 class="display-4 text-center">
+                                        <field name="total_orders"/> Orders
+                                    </h2>
+                                    <div class="text-muted text-center">
+                                        <div>Rating: <field name="average_rating" widget="float" precision="1"/>/5.0</div>
+                                        <div>On-Time: <field name="on_time_rate" widget="percentage"/></div>
+                                        <div>Avg Time: <field name="average_completion_time" widget="float" precision="1"/> Hours</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record> -->
+
+    <!-- Tree View -->
+    <record id="view_mechanic_kpi_tree" model="ir.ui.view">
+        <field name="name">mechanic.kpi.tree</field>
+        <field name="model">mechanic.kpi</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="date"/>
+                <field name="mechanic_id"/>
+                <field name="total_orders" sum="Total Orders"/>
+                <field name="total_revenue" sum="Total"/>
+                <field name="average_order_value" avg="Average"/>
+                <field name="completed_on_time"/>
+                <field name="on_time_rate" widget="percentage"/>
+                <field name="average_completion_time" avg="Average"/>
+                <field name="average_rating" avg="Average"/>
+                <field name="complaint_rate" widget="percentage"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_mechanic_kpi_form" model="ir.ui.view">
+        <field name="name">mechanic.kpi.form</field>
+        <field name="model">mechanic.kpi</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <group string="Basic Info">
+                            <field name="date"/>
+                            <field name="mechanic_id"/>
+                            <field name="total_orders"/>
+                            <field name="total_revenue"/>
+                            <field name="average_order_value"/>
+                        </group>
+                        <group string="Performance">
+                            <field name="completed_on_time"/>
+                            <field name="on_time_rate" widget="percentage"/>
+                            <field name="average_completion_time"/>
+                        </group>
+                        <group string="Quality">
+                            <field name="average_rating"/>
+                            <field name="total_complaints"/>
+                            <field name="complaint_rate" widget="percentage"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <!-- Search View -->
+    <record id="view_mechanic_kpi_search" model="ir.ui.view">
+        <field name="name">mechanic.kpi.search</field>
+        <field name="model">mechanic.kpi</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="mechanic_id"/>
+                <field name="date"/>
+                
+                <!-- Time Filters -->
+                <filter string="Today" name="today" domain="[('date', '=', context_today())]"/>
+                <filter string="This Week" name="this_week" 
+                        domain="[('date', '>=', (context_today() - datetime.timedelta(days=context_today().weekday())).strftime('%Y-%m-%d')),
+                                ('date', '&lt;=', (context_today() + datetime.timedelta(days=6-context_today().weekday())).strftime('%Y-%m-%d'))]"/>
+                <filter string="This Month" name="this_month" domain="[('date', '>=', context_today().strftime('%Y-%m-01'))]"/>
+                
+                <!-- Top Mechanic Filters -->
+                <separator/>
+                <filter string="Top by Completed Orders" 
+                        name="top_orders" 
+                        domain="[]" 
+                        context="{'order': 'total_orders desc'}"/>
+                <filter string="Top by Revenue" 
+                        name="top_revenue" 
+                        domain="[]" 
+                        context="{'order': 'total_revenue desc'}"/>
+                <filter string="Top by Rating" 
+                        name="top_rating" 
+                        domain="[]" 
+                        context="{'order': 'average_rating desc'}"/>
+                <filter string="Best On-Time" 
+                        name="top_ontime" 
+                        domain="[]" 
+                        context="{'order': 'on_time_rate desc'}"/>
+                <filter string="Fastest Service" 
+                        name="top_speed" 
+                        domain="[]" 
+                        context="{'order': 'average_completion_time asc'}"/>
+                
+                <!-- Performance Filters -->
+                <separator/>
+                <filter string="High Performance" 
+                        name="high_performance" 
+                        domain="[('average_rating', '>=', 4.0)]"/>
+                <filter string="On Target" 
+                        name="on_target" 
+                        domain="[('on_time_rate', '>=', 90)]"/>
+                <filter string="Need Improvement" 
+                        name="low_performance" 
+                        domain="['|', ('average_rating', '&lt;', 3.0), ('on_time_rate', '&lt;', 70)]"/>
+                <filter string="High Complaints" 
+                        name="high_complaints" 
+                        domain="[('complaint_rate', '>', 10)]"/>
+                
+                <!-- Group By -->
+                <group expand="0" string="Group By">
+                    <filter string="Mechanic" name="group_mechanic" context="{'group_by': 'mechanic_id'}"/>
+                    <filter string="Date" name="group_date" context="{'group_by': 'date:day'}"/>
+                    <filter string="Week" name="group_week" context="{'group_by': 'date:week'}"/>
+                    <filter string="Month" name="group_month" context="{'group_by': 'date:month'}"/>
+                </group>
+                
+                <!-- Search Panel -->
+                <searchpanel>
+                    <field name="mechanic_id" icon="fa-wrench"/>
+                </searchpanel>
+            </search>
+        </field>
+    </record>
+
+
+    <!-- Actions -->
+    <!-- <record id="action_mechanic_kpi_overview" model="ir.actions.act_window">
+        <field name="name">Mechanic Overview</field>
+        <field name="res_model">mechanic.kpi</field>
+        <field name="view_mode">kanban</field>
+        <field name="context">{'search_default_today': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No KPI data yet!
+            </p>
+            <p>
+                KPI data will be generated automatically based on sales orders.
+            </p>
+        </field>
+    </record> -->
+
+    <record id="action_mechanic_kpi_report" model="ir.actions.act_window">
+        <field name="name">Mechanic Performance</field>
+        <field name="res_model">mechanic.kpi</field>
+        <field name="view_mode">tree,form,graph,pivot</field>
+        <field name="context">{'search_default_today': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No KPI data yet!
+            </p>
+            <p>
+                KPI data will be generated automatically based on sales orders.
+            </p>
+        </field>
+    </record>
+
+   <menuitem id="menu_kpi_monitoring_root"
+            name="KPI Monitoring"
+            sequence="20"/>
+
+    <!-- Menu Service Advisor sudah ada -->
+    <menuitem id="menu_service_advisor_root"
+              name="Service Advisor"
+              parent="menu_kpi_monitoring_root"
+              sequence="1"/>
+
+    <!-- Menu Mechanic -->
+    <menuitem id="menu_mechanic_root"
+              name="Mechanic"
+              parent="menu_kpi_monitoring_root"
+              sequence="2"/>
+
+    
+
+    <!-- Scheduler -->
+    <record id="ir_cron_update_mechanic_kpi" model="ir.cron">
+        <field name="name">Update Mechanic KPI</field>
+        <field name="model_id" ref="model_mechanic_kpi"/>
+        <field name="state">code</field>
+        <field name="code">model._update_today_kpi()</field>
+        <field name="interval_number">15</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="doall" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

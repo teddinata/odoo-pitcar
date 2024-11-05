@@ -303,18 +303,6 @@ class SaleOrder(models.Model):
             }
             vals['customer_satisfaction'] = rating_to_satisfaction.get(vals['customer_rating'])
         return super(SaleOrder, self).create(vals)
-
-    def write(self, vals):
-        if 'customer_rating' in vals and 'customer_satisfaction' not in vals:
-            rating_to_satisfaction = {
-                '1': 'very_dissatisfied',
-                '2': 'dissatisfied',
-                '3': 'neutral',
-                '4': 'satisfied',
-                '5': 'very_satisfied'
-            }
-            vals['customer_satisfaction'] = rating_to_satisfaction.get(vals['customer_rating'])
-        return super(SaleOrder, self).write(vals)
     
      # Fields for 3 months reminder
     reminder_3_months = fields.Selection([('yes', 'Yes'), ('no', 'No')], string="Reminder 3 Bulan?")
@@ -562,28 +550,65 @@ class SaleOrder(models.Model):
 
     def action_record_car_arrival_time(self):
         self.ensure_one()
-        if not self.env.context.get('from_api'):
-            if self.env.user.pitcar_role != 'controller':
-                raise UserError("Hanya Controller yang dapat merekam waktu jam masuk.")
 
-        tz = pytz.timezone('Asia/Jakarta')
-        local_dt = datetime.now(tz)
-        utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
-        
-        self.write({
-            'car_arrival_time': utc_dt,
-            'sa_jam_masuk': utc_dt
-        })
-        
-        body = f"""
-        <p><strong>Jam Kedatangan Mobil dicatat</strong></p>
-        <ul>
-            <li>Dicatat oleh: {self.env.user.name}</li>
-            <li>Waktu catat: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
-        </ul>
-        """
-        self.message_post(body=body, message_type='notification')
-        return True
+        # Get queue management record
+        queue_mgmt = self.env['queue.management']
+        today = fields.Date.today()
+        queue_record = queue_mgmt.search([('date', '=', today)], limit=1)
+        if not queue_record:
+            queue_record = queue_mgmt.create({
+                'date': today,
+                'queue_start_time': fields.Datetime.now()
+            })
+
+        try:
+            # Get queue number and info, considering booking status
+            queue_info = queue_record.assign_queue_number(self.id, is_booking=self.is_booking)
+
+            # Set timezone and convert time
+            tz = pytz.timezone('Asia/Jakarta')
+            local_dt = datetime.now(tz)
+            utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+            
+            # Update sale order
+            self.write({
+                'car_arrival_time': utc_dt,
+                'sa_jam_masuk': utc_dt,
+            })
+            if not self.queue_line_id:
+                raise ValidationError("Gagal membuat nomor antrian")
+            # Prepare message body
+            priority_status = "Antrean Prioritas" if self.is_booking else "Antrean Regular"
+            body = f"""
+            <p><strong>Informasi Kedatangan & Antrean</strong></p>
+            <ul>
+                <li>Tipe Antrean: {priority_status}</li>
+                <li>Nomor Antrean: {queue_info['display_number']}</li>
+                <li>Antrean Saat Ini: {queue_info['current_number']}</li>
+                <li>Antrean Di Depan: {queue_info['numbers_ahead']}</li>
+                <li>Estimasi Waktu Tunggu: {queue_info['estimated_wait_minutes']} menit</li>
+                <li>Estimasi Waktu Pelayanan: {queue_info['estimated_service_time']}</li>
+                <li>Dicatat oleh: {self.env.user.name}</li>
+                <li>Waktu: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
+            </ul>
+            """
+            self.message_post(body=body, message_type='notification')
+
+            # Trigger dashboard refresh
+            if self.queue_line_id and self.queue_line_id.queue_id:
+                self.queue_line_id.queue_id._broadcast_queue_update()
+                
+                # Refresh metrics
+                self.env['queue.metric'].sudo().refresh_metrics()
+            
+            return True
+
+        except ValidationError as e:
+            self.message_post(
+                body=f"<p><strong>Error Antrean:</strong> {str(e)}</p>",
+                message_type='notification'
+            )
+            raise
     
     @api.depends('car_arrival_time', 'sa_jam_masuk')
     def _compute_is_arrival_time_set(self):
@@ -599,14 +624,6 @@ class SaleOrder(models.Model):
     def _onchange_car_arrival_time(self):
         if self.car_arrival_time and self.car_arrival_time != self.sa_jam_masuk:
             self.sa_jam_masuk = self.car_arrival_time
-
-    @api.constrains('sa_jam_masuk')
-    def _check_sa_jam_masuk_role(self):
-        for record in self:
-            if self.env.context.get('from_api'):
-                continue
-            if record.sa_jam_masuk and record.env.user.pitcar_role != 'controller':
-                raise UserError("Hanya Controller yang dapat mengisi Jam Masuk secara manual.")
 
     def action_mulai_servis(self):
         for record in self:
@@ -641,9 +658,19 @@ class SaleOrder(models.Model):
             """
             self.message_post(body=body, message_type='notification')
 
-    # Estimasi pekerjaan
     def write(self, vals):
-        # Handle estimasi waktu, hanya validasi permission
+        # Handle customer rating to satisfaction mapping
+        if 'customer_rating' in vals and 'customer_satisfaction' not in vals:
+            rating_to_satisfaction = {
+                '1': 'very_dissatisfied',
+                '2': 'dissatisfied',
+                '3': 'neutral',
+                '4': 'satisfied',
+                '5': 'very_satisfied'
+            }
+            vals['customer_satisfaction'] = rating_to_satisfaction.get(vals['customer_rating'])
+
+        # Handle estimasi waktu
         if ('controller_estimasi_mulai' in vals or 'controller_estimasi_selesai' in vals):
             if self.env.user.pitcar_role != 'controller':
                 raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
@@ -678,8 +705,17 @@ class SaleOrder(models.Model):
                 </ul>
                 """
                 self.message_post(body=body, message_type='notification')
-            
-        return super(SaleOrder, self).write(vals)
+
+        # Add trigger for KPI updates
+        res = super().write(vals)
+        
+        # Trigger KPI dan Quality Metrics update when relevant fields change
+        if any(f in vals for f in ['state', 'date_completed', 'customer_rating', 'customer_satisfaction',
+                                'controller_estimasi_mulai', 'controller_estimasi_selesai']):
+            self.env['service.advisor.kpi']._update_today_kpi()
+            self.env['quality.metrics']._update_today_metrics()
+        
+        return res
 
     @api.constrains('controller_estimasi_mulai', 'controller_estimasi_selesai')
     def _check_controller_estimasi(self):
@@ -853,16 +889,27 @@ class SaleOrder(models.Model):
         tz = pytz.timezone('Asia/Jakarta')
         local_dt = datetime.now(tz)
         utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+
+        # Complete service in queue management
+        queue_record = self.env['queue.management'].search([
+            ('date', '=', fields.Date.today())
+        ], limit=1)
         
+        if queue_record:
+            queue_record.complete_service(self.id)
+
         self.write({
             'sa_cetak_pkb': utc_dt
         })
 
+        priority_status = "Antrean Prioritas" if self.is_booking else "Antrean Regular"
         body = f"""
         <p><strong>PKB Dicetak</strong></p>
         <ul>
+            <li>Tipe Antrean: {priority_status}</li>
+            <li>Nomor Antrean: {self.display_queue_number}</li>
             <li>Dicetak oleh: {self.env.user.name}</li>
-            <li>Waktu catat: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
+            <li>Waktu: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
         </ul>
         """
         self.message_post(body=body, message_type='notification')
@@ -874,25 +921,54 @@ class SaleOrder(models.Model):
             record.is_penerimaan_filled = bool(record.sa_mulai_penerimaan)
 
     def action_record_sa_mulai_penerimaan(self):
+        """Start service and update queue status"""
         self.ensure_one()
         if self.sa_mulai_penerimaan:
             raise UserError("Waktu mulai penerimaan sudah diisi sebelumnya.")
-        
-        tz = pytz.timezone('Asia/Jakarta')
-        local_dt = datetime.now(tz)
-        utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
-        
-        self.sa_mulai_penerimaan = utc_dt
-        self.reception_state = 'reception_started'
 
-        body = f"""
-        <p><strong>Mulai Penerimaan</strong></p>
-        <ul>
-            <li>Dicatat oleh: {self.env.user.name}</li>
-            <li>Waktu catat: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
-        </ul>
-        """
-        self.message_post(body=body, message_type='notification')
+        # Validate queue exists
+        # if not self.queue_line_id:
+        #     raise UserError("Order ini tidak memiliki nomor antrian.")
+
+        # Get queue record and start service
+        queue_record = self.env['queue.management'].search([
+            ('date', '=', fields.Date.today())
+        ], limit=1)
+        
+        if not queue_record:
+            raise UserError("Tidak ada antrian aktif hari ini.")
+            
+        try:
+            # Start service will validate if this is the next queue
+            queue_record.start_service(self.id)
+            
+            tz = pytz.timezone('Asia/Jakarta')
+            local_dt = datetime.now(tz)
+            utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+            
+            self.write({
+                'sa_mulai_penerimaan': utc_dt,
+                'reception_state': 'reception_started',
+            })
+
+            # Prepare message
+            queue_info = self.queue_line_id
+            priority_status = "Antrean Prioritas" if queue_info.is_priority else "Antrean Regular"
+            body = f"""
+            <p><strong>Mulai Penerimaan</strong></p>
+            <ul>
+                <li>Tipe Antrean: {priority_status}</li>
+                <li>Nomor Antrean: {queue_info.display_number}</li>
+                <li>Dicatat oleh: {self.env.user.name}</li>
+                <li>Waktu: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
+            </ul>
+            """
+            self.message_post(body=body, message_type='notification')
+            
+            return True
+            
+        except Exception as e:
+            raise UserError(f"Gagal memulai pelayanan: {str(e)}")
     
     def action_tunggu_part1_mulai(self):
         # Periksa peran pengguna sebelum melakukan perubahan apa pun
@@ -1083,11 +1159,12 @@ class SaleOrder(models.Model):
     @api.depends('controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai')
     def _compute_lead_time_tunggu_konfirmasi(self):
         for order in self:
-            if order.controller_tunggu_konfirmasi_mulai and order.controller_tunggu_konfirmasi_selesai:
-                delta = order.controller_tunggu_konfirmasi_selesai - order.controller_tunggu_konfirmasi_mulai
-                order.lead_time_tunggu_konfirmasi = delta.total_seconds() / 3600
-            else:
-                order.lead_time_tunggu_konfirmasi = 0
+            waktu_tunggu = order.hitung_waktu_kerja_efektif(
+                order.controller_tunggu_konfirmasi_mulai,
+                order.controller_tunggu_konfirmasi_selesai,
+                is_service_time=False
+            )
+            order.lead_time_tunggu_konfirmasi = waktu_tunggu.total_seconds() / 3600
 
     # 6. LEAD TIME TUNGGU PART 1
     lead_time_tunggu_part1 = fields.Float(string="Lead Time Tunggu Part 1 (hours)", compute="_compute_lead_time_tunggu_part1", store=True)
@@ -1095,11 +1172,12 @@ class SaleOrder(models.Model):
     @api.depends('controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai')
     def _compute_lead_time_tunggu_part1(self):
         for order in self:
-            if order.controller_tunggu_part1_mulai and order.controller_tunggu_part1_selesai:
-                delta = order.controller_tunggu_part1_selesai - order.controller_tunggu_part1_mulai
-                order.lead_time_tunggu_part1 = delta.total_seconds() / 3600
-            else:
-                order.lead_time_tunggu_part1 = 0
+            waktu_tunggu = order.hitung_waktu_kerja_efektif(
+                order.controller_tunggu_part1_mulai,
+                order.controller_tunggu_part1_selesai,
+                is_service_time=False
+            )
+            order.lead_time_tunggu_part1 = waktu_tunggu.total_seconds() / 3600
 
     # 7. LEAD TIME TUNGGU PART 2
     lead_time_tunggu_part2 = fields.Float(string="Lead Time Tunggu Part 2 (hours)", compute="_compute_lead_time_tunggu_part2", store=True)
@@ -1107,11 +1185,12 @@ class SaleOrder(models.Model):
     @api.depends('controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai')
     def _compute_lead_time_tunggu_part2(self):
         for order in self:
-            if order.controller_tunggu_part2_mulai and order.controller_tunggu_part2_selesai:
-                delta = order.controller_tunggu_part2_selesai - order.controller_tunggu_part2_mulai
-                order.lead_time_tunggu_part2 = delta.total_seconds() / 3600
-            else:
-                order.lead_time_tunggu_part2 = 0
+            waktu_tunggu = order.hitung_waktu_kerja_efektif(
+                order.controller_tunggu_part2_mulai,
+                order.controller_tunggu_part2_selesai,
+                is_service_time=False
+            )
+            order.lead_time_tunggu_part2 = waktu_tunggu.total_seconds() / 3600
 
     # 8. LEAD TIME ISTIRAHAT SHIFT 1
     lead_time_istirahat = fields.Float(string="Lead Time Istirahat (hours)", compute="_compute_lead_time_istirahat", store=True)
@@ -1128,50 +1207,93 @@ class SaleOrder(models.Model):
     # 9. LEAD TIME SERVIS
     overall_lead_time = fields.Float(string="Overall Lead Time (jam)", compute="_compute_overall_lead_time", store=True)
 
-    @api.depends('sa_jam_masuk', 'fo_unit_keluar')
+    @api.depends('sa_jam_masuk', 'fo_unit_keluar', 'controller_selesai')
     def _compute_overall_lead_time(self):
         for order in self:
-            if order.sa_jam_masuk and order.fo_unit_keluar:
-                # Hitung selisih waktu antara mobil masuk dan unit keluar
-                delta = order.fo_unit_keluar - order.sa_jam_masuk
+            try:
+                if not order.sa_jam_masuk:
+                    order.overall_lead_time = 0
+                    continue
+                    
+                # Tentukan waktu selesai berdasarkan prioritas:
+                # 1. fo_unit_keluar (jika ada)
+                # 2. controller_selesai (sebagai fallback)
+                waktu_selesai = order.fo_unit_keluar or order.controller_selesai
                 
-                # Konversi selisih waktu ke jam
-                order.overall_lead_time = delta.total_seconds() / 3600
-            else:
+                if waktu_selesai:
+                    # Hitung selisih waktu
+                    delta = waktu_selesai - order.sa_jam_masuk
+                    order.overall_lead_time = delta.total_seconds() / 3600
+                    
+                    _logger.info(f"""
+                        Perhitungan Overall Lead Time untuk {order.name}:
+                        - Waktu Masuk: {order.sa_jam_masuk}
+                        - Waktu Selesai: {waktu_selesai}
+                        - Menggunakan: {'Unit Keluar' if order.fo_unit_keluar else 'Controller Selesai'}
+                        - Overall Lead Time: {order.overall_lead_time:.2f} jam
+                    """)
+                else:
+                    order.overall_lead_time = 0
+                    
+            except Exception as e:
+                _logger.error(f"Error dalam compute overall lead time: {str(e)}")
                 order.overall_lead_time = 0
     
     # 10. LEAD TIME BERSIH dan KOTOR
     @api.depends('sa_jam_masuk', 'controller_selesai',
-                 'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
-                 'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
-                 'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai',
-                 'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai')
+             'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
+             'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
+             'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
+             'controller_tunggu_sublet_mulai', 'controller_tunggu_sublet_selesai',
+             'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai')
     def _compute_lead_time_servis(self):
         for order in self:
+            # Validasi dasar
             if not order.sa_jam_masuk or not order.controller_selesai:
                 order.lead_time_servis = 0
                 order.total_lead_time_servis = 0
                 order.is_overnight = False
                 continue
 
-            # Hitung waktu kerja efektif
-            waktu_kerja_efektif = order.hitung_waktu_kerja_efektif(order.sa_jam_masuk, order.controller_selesai)
-
             # Hitung total lead time servis (kotor)
-            total_lead_time_servis = order.controller_selesai - order.sa_jam_masuk
-            order.total_lead_time_servis = total_lead_time_servis.total_seconds() / 3600  # Konversi ke jam
+            total_lead_time = order.controller_selesai - order.sa_jam_masuk
+            order.total_lead_time_servis = total_lead_time.total_seconds() / 3600
 
-            # Hitung waktu tunggu
+            # Hitung waktu kerja efektif (dengan parameter is_service_time=True)
+            waktu_kerja_efektif = order.hitung_waktu_kerja_efektif(
+                order.sa_jam_masuk,
+                order.controller_selesai,
+                is_service_time=True
+            )
+
+            # Hitung semua waktu tunggu
+            waktu_tunggu_dict = {
+                'Tunggu Konfirmasi': (order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai),
+                'Tunggu Part 1': (order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai),
+                'Tunggu Part 2': (order.controller_tunggu_part2_mulai, order.controller_tunggu_part2_selesai),
+                'Tunggu Sublet': (order.controller_tunggu_sublet_mulai, order.controller_tunggu_sublet_selesai),
+                'Istirahat Shift 1': (order.controller_istirahat_shift1_mulai, order.controller_istirahat_shift1_selesai)
+            }
+
             waktu_tunggu = timedelta()
-            waktu_tunggu += order.hitung_interval(order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai)
-            waktu_tunggu += order.hitung_interval(order.controller_tunggu_part2_mulai, order.controller_tunggu_part2_selesai)
-            waktu_tunggu += order.hitung_interval(order.controller_istirahat_shift1_mulai, order.controller_istirahat_shift1_selesai)
-            waktu_tunggu += order.hitung_interval(order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai)
+            for nama_tunggu, (mulai, selesai) in waktu_tunggu_dict.items():
+                if mulai and selesai and selesai > mulai:
+                    # Hitung waktu tunggu efektif (dengan parameter is_service_time=False)
+                    waktu_tunggu_interval = order.hitung_waktu_kerja_efektif(
+                        mulai, 
+                        selesai, 
+                        is_service_time=False
+                    )
+                    waktu_tunggu += waktu_tunggu_interval
+                    _logger.info(f"{nama_tunggu}: {waktu_tunggu_interval.total_seconds() / 3600} jam")
 
-            # Hitung lead time servis bersih
-            lead_time_servis_bersih = max(waktu_kerja_efektif - waktu_tunggu, timedelta())
+            # Hitung lead time bersih
+            if waktu_kerja_efektif > waktu_tunggu:
+                lead_time_bersih = waktu_kerja_efektif - waktu_tunggu
+                order.lead_time_servis = lead_time_bersih.total_seconds() / 3600
+            else:
+                order.lead_time_servis = 0
 
-            order.lead_time_servis = lead_time_servis_bersih.total_seconds() / 3600  # Konversi ke jam
             order.is_overnight = (order.controller_selesai.date() - order.sa_jam_masuk.date()).days > 0
 
     def hitung_interval(self, mulai, selesai):
@@ -1179,35 +1301,76 @@ class SaleOrder(models.Model):
             return self.hitung_waktu_kerja_efektif(mulai, selesai)
         return timedelta()
 
-    def hitung_waktu_kerja_efektif(self, waktu_mulai, waktu_selesai):
-        BENGKEL_BUKA = time(8, 0)
-        BENGKEL_TUTUP = time(22, 0)
-        ISTIRAHAT_1_MULAI = time(12, 0)
-        ISTIRAHAT_1_SELESAI = time(13, 0)
-        ISTIRAHAT_2_MULAI = time(18, 0)
-        ISTIRAHAT_2_SELESAI = time(19, 0)
+    def hitung_waktu_kerja_efektif(self, waktu_mulai, waktu_selesai, is_service_time=False):
+        """
+        Fungsi unified untuk menghitung waktu kerja efektif dengan parameter:
+        @param waktu_mulai: datetime - Waktu mulai interval
+        @param waktu_selesai: datetime - Waktu selesai interval
+        @param is_service_time: boolean - Flag untuk membedakan perhitungan service time vs waktu tunggu
+            True: Menghitung waktu service (mempertimbangkan jam kerja 8-17)
+            False: Menghitung waktu tunggu (hanya mempertimbangkan jam istirahat)
+        """
+        if not waktu_mulai or not waktu_selesai or waktu_selesai <= waktu_mulai:
+            return timedelta()
 
-        total_waktu = waktu_selesai - waktu_mulai
-        hari_kerja = (waktu_selesai.date() - waktu_mulai.date()).days + 1
+        BENGKEL_BUKA = time(8, 0)
+        BENGKEL_TUTUP = time(17, 0)
+        ISTIRAHAT_MULAI = time(12, 0)
+        ISTIRAHAT_SELESAI = time(13, 0)
+
         waktu_kerja = timedelta()
-        
-        for hari in range(hari_kerja):
-            hari_ini = waktu_mulai.date() + timedelta(days=hari)
-            mulai_hari_ini = max(datetime.combine(hari_ini, BENGKEL_BUKA), waktu_mulai)
-            selesai_hari_ini = min(datetime.combine(hari_ini, BENGKEL_TUTUP), waktu_selesai)
-            
-            if mulai_hari_ini < selesai_hari_ini:
-                waktu_kerja_hari_ini = selesai_hari_ini - mulai_hari_ini
+        current_date = waktu_mulai.date()
+        end_date = waktu_selesai.date()
+
+        _logger.info(f"Menghitung waktu efektif dari {waktu_mulai} sampai {waktu_selesai}")
+        _logger.info(f"Mode: {'Service Time' if is_service_time else 'Waktu Tunggu'}")
+
+        while current_date <= end_date:
+            # Tentukan waktu mulai dan selesai untuk hari ini
+            if current_date == waktu_mulai.date():
+                start_time = waktu_mulai.time()
+            else:
+                start_time = BENGKEL_BUKA if is_service_time else time(0, 0)
+
+            if current_date == waktu_selesai.date():
+                end_time = waktu_selesai.time()
+            else:
+                end_time = BENGKEL_TUTUP if is_service_time else time(23, 59, 59)
+
+            # Jika menghitung service time, batasi dengan jam kerja bengkel
+            if is_service_time:
+                if start_time < BENGKEL_BUKA:
+                    start_time = BENGKEL_BUKA
+                if end_time > BENGKEL_TUTUP:
+                    end_time = BENGKEL_TUTUP
+
+            # Hitung waktu untuk hari ini jika valid
+            if start_time < end_time:
+                day_start = datetime.combine(current_date, start_time)
+                day_end = datetime.combine(current_date, end_time)
                 
-                # Kurangi waktu istirahat
-                if mulai_hari_ini.time() <= ISTIRAHAT_1_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_1_SELESAI:
-                    waktu_kerja_hari_ini -= timedelta(hours=1)
-                if mulai_hari_ini.time() <= ISTIRAHAT_2_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_2_SELESAI:
-                    waktu_kerja_hari_ini -= timedelta(hours=1)
-                
-                waktu_kerja += waktu_kerja_hari_ini
-        
+                work_time = day_end - day_start
+
+                # Kurangi waktu istirahat jika berlaku
+                istirahat_start = datetime.combine(current_date, ISTIRAHAT_MULAI)
+                istirahat_end = datetime.combine(current_date, ISTIRAHAT_SELESAI)
+
+                if day_start < istirahat_end and day_end > istirahat_start:
+                    # Ada overlap dengan waktu istirahat
+                    overlap_start = max(day_start, istirahat_start)
+                    overlap_end = min(day_end, istirahat_end)
+                    istirahat_duration = overlap_end - overlap_start
+                    work_time -= istirahat_duration
+                    _logger.info(f"Mengurangi istirahat: {istirahat_duration.total_seconds() / 3600} jam")
+
+                waktu_kerja += work_time
+                _logger.info(f"Waktu kerja untuk tanggal {current_date}: {work_time.total_seconds() / 3600} jam")
+
+            current_date += timedelta(days=1)
+
+        _logger.info(f"Total waktu efektif: {waktu_kerja.total_seconds() / 3600} jam")
         return waktu_kerja
+
 
     # LOG
     def _log_activity(self, message, time):
@@ -1220,3 +1383,36 @@ class SaleOrder(models.Model):
         </ul>
         """
         self.message_post(body=body, message_type='notification')
+
+    # QUEUE 
+    queue_number = fields.Integer(string='Nomor Antrean', readonly=True)
+    queue_line_id = fields.Many2one('queue.management.line', string='Queue Line', readonly=True)
+    queue_status = fields.Selection(related='queue_line_id.status', store=True, string='Status Antrean')
+    display_queue_number = fields.Char(related='queue_line_id.display_number', store=True, string='Nomor Antrean Display')
+    is_booking = fields.Boolean(string='Is Booking', default=False)
+     # Tambahkan computed fields untuk informasi antrian
+    current_queue_number = fields.Integer(
+        string='Nomor Antrean Saat Ini',
+        compute='_compute_queue_info',
+        store=False
+    )
+    numbers_ahead = fields.Integer(
+        string='Sisa Antrean',
+        compute='_compute_queue_info',
+        store=False
+    )
+
+    @api.depends('queue_line_id', 'queue_line_id.queue_id.current_number')
+    def _compute_queue_info(self):
+        for record in self:
+            if record.queue_line_id and record.queue_line_id.queue_id:
+                # Format current number seperti format display_number
+                current_num = record.queue_line_id.queue_id.current_number or 0
+                record.current_queue_number = f"{current_num:03d}"
+
+                # Format numbers ahead
+                numbers_ahead = record.queue_line_id.get_numbers_ahead() or 0
+                record.numbers_ahead = f"{numbers_ahead:03d}"
+            else:
+                record.current_queue_number = "000"
+                record.numbers_ahead = "000"

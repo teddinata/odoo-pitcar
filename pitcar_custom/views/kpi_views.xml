@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Overview Kanban View Service Advisor KPI -->
+    <!-- <record id="view_service_advisor_kpi_kanban" model="ir.ui.view">
+        <field name="name">service.advisor.kpi.kanban</field>
+        <field name="model">service.advisor.kpi</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_dashboard o_kanban_metric" create="false">
+                <field name="service_advisor_id"/>
+                <field name="total_revenue"/>
+                <field name="total_orders"/>
+                <field name="average_rating"/>
+                <field name="on_time_rate"/>
+                <field name="feedback_rate"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card">
+                            <div class="card bg-primary">
+                                <div class="card-body">
+                                    <div class="card-header">
+                                        <h5 class="card-title"><field name="name"/></h5>
+                                        <i class="fa fa-user-tie fa-lg"/>
+                                    </div>
+                                    <h2 class="display-4 text-center">
+                                        Rp<field name="total_revenue" widget="monetary"/> M
+                                    </h2>
+                                    <div class="text-muted text-center">
+                                        <div>Orders: <field name="total_orders"/> | Rating: <field name="average_rating" widget="float" precision="1"/>/5.0</div>
+                                        <div>On-Time: <field name="on_time_rate" widget="percentage"/> | Feedback: <field name="feedback_rate" widget="percentage"/></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record> -->
+
+    <!-- Kanban View untuk Overview -->
+    <!-- <record id="view_service_advisor_kpi_kanban" model="ir.ui.view">
+        <field name="name">service.advisor.overview.kanban</field>
+        <field name="model">service.advisor.overview</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_dashboard o_kanban_metric" create="false">
+                <field name="service_advisor_id"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card">
+                            <div class="card bg-primary h-100">
+                                <div class="card-body">
+                                    <div class="card-header">
+                                        <h5 class="card-title">
+                                            <field name="service_advisor_id"/>
+                                        </h5>
+                                    </div>
+                                    <div class="text-center my-3">
+                                        <h3 class="mb-0">
+                                            Rp<field name="total_revenue" widget="monetary"/> M
+                                        </h3>
+                                        <small>Total Revenue</small>
+                                    </div>
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <h4><field name="total_orders"/></h4>
+                                            <small>Orders</small>
+                                        </div>
+                                        <div class="col-4">
+                                            <h4><field name="average_rating" widget="float" decimal_precision="1"/></h4>
+                                            <small>Rating</small>
+                                        </div>
+                                        <div class="col-4">
+                                            <h4><field name="on_time_rate" widget="percentage"/></h4>
+                                            <small>On-Time</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record> -->
+
+    <!-- Action untuk Overview -->
+    <!-- <record id="action_service_advisor_kpi_overview" model="ir.actions.act_window">
+        <field name="name">Service Advisor Overview</field>
+        <field name="res_model">service.advisor.overview</field>
+        <field name="view_mode">kanban</field>
+        <field name="context">{}</field>
+    </record> -->
+
+    <!-- List View Service Advisor KPI -->
+    <record id="view_service_advisor_kpi_tree" model="ir.ui.view">
+        <field name="name">service.advisor.kpi.tree</field>
+        <field name="model">service.advisor.kpi</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="date"/>
+                <field name="service_advisor_id"/>
+                <field name="total_orders" sum="Total Orders"/>
+                <field name="total_revenue" sum="Total Revenue"/>
+                <field name="average_order_value" avg="Average"/>
+                <field name="average_service_time" widget="float_time" avg="Average"/>
+                <field name="on_time_rate" widget="percentage"/>
+                <field name="average_rating" avg="Average"/>
+                <field name="complaint_rate" widget="percentage"/>
+                <field name="feedback_rate" widget="percentage"/>
+                <field name="google_reviews" optional="hide"/>
+                <field name="instagram_follows" optional="hide"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View Service Advisor KPI -->
+    <record id="view_service_advisor_kpi_form" model="ir.ui.view">
+        <field name="name">service.advisor.kpi.form</field>
+        <field name="model">service.advisor.kpi</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <group string="Basic Info">
+                            <field name="date"/>
+                            <field name="service_advisor_id"/>
+                            <field name="total_orders"/>
+                            <field name="total_revenue"/>
+                            <field name="average_order_value"/>
+                        </group>
+                        <group string="Service Efficiency">
+                            <field name="average_service_time" widget="float_time"/>
+                            <field name="on_time_completion"/>
+                            <field name="on_time_rate" widget="percentage"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Customer Satisfaction">
+                            <field name="average_rating"/>
+                            <field name="total_complaints"/>
+                            <field name="complaint_rate" widget="percentage"/>
+                        </group>
+                        <group string="Customer Engagement">
+                            <field name="feedback_received"/>
+                            <field name="feedback_rate" widget="percentage"/>
+                            <field name="google_reviews"/>
+                            <field name="instagram_follows"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Graph View -->
+    <record id="view_service_advisor_kpi_graph" model="ir.ui.view">
+        <field name="name">service.advisor.kpi.graph</field>
+        <field name="model">service.advisor.kpi</field>
+        <field name="arch" type="xml">
+            <graph string="Service Advisor Performance" type="bar" sample="1">
+                <field name="service_advisor_id"/>
+                <field name="total_revenue" type="measure"/>
+                <field name="average_rating" type="measure"/>
+                <field name="on_time_rate" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Pivot View -->
+    <record id="view_service_advisor_kpi_pivot" model="ir.ui.view">
+        <field name="name">service.advisor.kpi.pivot</field>
+        <field name="model">service.advisor.kpi</field>
+        <field name="arch" type="xml">
+            <pivot string="Service Advisor Analysis" sample="1">
+                <field name="service_advisor_id" type="row"/>
+                <field name="date" type="col"/>
+                <field name="total_revenue" type="measure"/>
+                <field name="average_rating" type="measure"/>
+                <field name="on_time_rate" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_service_advisor_kpi_search" model="ir.ui.view">
+        <field name="name">service.advisor.kpi.search</field>
+        <field name="model">service.advisor.kpi</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="service_advisor_id"/>
+                <field name="date"/>
+                <filter string="Today" 
+                        name="today" 
+                        domain="[('date', '=', context_today())]"/>
+                        
+                <filter string="This Week" 
+                        name="this_week" 
+                        domain="[
+                            ('date', '>=', (context_today() - datetime.timedelta(days=context_today().weekday())).strftime('%Y-%m-%d')),
+                            ('date', '&lt;=', (context_today() + datetime.timedelta(days=6-context_today().weekday())).strftime('%Y-%m-%d'))
+                        ]"/>
+                        
+                <filter string="This Month" 
+                        name="this_month" 
+                        domain="[
+                            ('date', '>=', context_today().strftime('%Y-%m-01')),
+                            ('date', '&lt;=', (context_today() + relativedelta(months=1, day=1, days=-1)).strftime('%Y-%m-%d'))
+                        ]"/>
+                 <separator/>
+                <filter string="Top Revenue" 
+                        name="top_revenue" 
+                        domain="[]" 
+                        context="{'order': 'total_revenue desc, date desc'}"/>
+                <filter string="Top Rating" 
+                        name="top_rating" 
+                        domain="[]" 
+                        context="{'order': 'average_rating desc, date desc'}"/>
+                <filter string="Best On-Time" 
+                        name="best_ontime" 
+                        domain="[]" 
+                        context="{'order': 'on_time_rate desc, date desc'}"/>
+                <separator/>
+                <filter string="High Rating" name="high_performance" domain="[('average_rating', '>=', 4)]"/>
+                <filter string="Low Rating" name="low_performance" domain="[('average_rating', '&lt;', 3)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Service Advisor" 
+                            name="group_advisor" 
+                            context="{'group_by': 'service_advisor_id'}"/>
+                    <filter string="Date" 
+                            name="group_date" 
+                            context="{'group_by': 'date:day'}"/>
+                    <filter string="Week" 
+                            name="group_week" 
+                            context="{'group_by': 'date:week'}"/>
+                    <filter string="Month" 
+                            name="group_month" 
+                            context="{'group_by': 'date:month'}"/>
+                </group>
+                <searchpanel>
+                    <field name="service_advisor_id" icon="fa-user"/>
+                </searchpanel>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action untuk List -->
+    <!-- <record id="action_service_advisor_kpi_overview" model="ir.actions.act_window">
+        <field name="name">Service Advisor Overview</field>
+        <field name="res_model">service.advisor.kpi</field>
+        <field name="view_mode">kanban</field>
+        <field name="context">{
+            'search_default_today': 1
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No KPI data yet!
+            </p>
+            <p>
+                KPI data will be generated automatically based on sales orders.
+            </p>
+        </field>
+    </record> -->
+
+    <record id="action_service_advisor_kpi_list" model="ir.actions.act_window">
+        <field name="name">Service Advisor Performance</field>
+        <field name="res_model">service.advisor.kpi</field>
+        <field name="view_mode">tree,form,graph,pivot</field>
+        <field name="context">{
+            'search_default_today': 1
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No KPI data yet!
+            </p>
+            <p>
+                KPI data will be generated automatically based on sales orders.
+            </p>
+        </field>
+    </record>
+
+    <record id="ir_cron_update_service_advisor_kpi" model="ir.cron">
+        <field name="name">Update Service Advisor KPI</field>
+        <field name="model_id" ref="model_service_advisor_kpi"/>
+        <field name="state">code</field>
+        <field name="code">model._update_today_kpi()</field>
+        <field name="interval_number">15</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="doall" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+    <record id="ir_cron_update_quality_metrics" model="ir.cron">
+        <field name="name">Update Quality Metrics</field>
+        <field name="model_id" ref="model_quality_metrics"/>
+        <field name="state">code</field>
+        <field name="code">model._update_today_metrics()</field>
+        <field name="interval_number">15</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="doall" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
+   
+
+</odoo>

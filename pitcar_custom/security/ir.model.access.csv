@@ -13,3 +13,19 @@ pitcar_custom.access_res_users_service_advisor,res.users.service.advisor,base.mo
 pitcar_custom.access_res_users_controller,res.users.controller,base.model_res_users,pitcar_custom.group_controller,1,1,1,0
 pitcar_custom.access_sale_order_service_advisor,sale.order.service.advisor,sale.model_sale_order,pitcar_custom.group_service_advisor,1,1,1,0
 pitcar_custom.access_sale_order_controller,sale.order.controller,sale.model_sale_order,pitcar_custom.group_controller,1,1,0,0
+pitcar_custom.access_queue_management_user,access_queue_management_user,pitcar_custom.model_queue_management,base.group_user,1,1,1,0
+pitcar_custom.access_queue_management_manager,access_queue_management_manager,pitcar_custom.model_queue_management,base.group_system,1,1,1,1
+pitcar_custom.access_queue_management_line_user,access_queue_management_line_user,pitcar_custom.model_queue_management_line,base.group_user,1,1,1,0
+pitcar_custom.access_queue_management_line_manager,access_queue_management_line_manager,pitcar_custom.model_queue_management_line,base.group_system,1,1,1,1
+pitcar_custom.access_queue_management_line_service_advisor,access_queue_management_line_service_advisor,pitcar_custom.model_queue_management_line,pitcar_custom.group_service_advisor,1,1,1,0
+pitcar_custom.access_queue_management_line_controller,access_queue_management_line_controller,pitcar_custom.model_queue_management_line,pitcar_custom.group_controller,1,1,1,0
+pitcar_custom.access_queue_metric_user,access.queue.metric.user,model_queue_metric,base.group_user,1,1,1,0
+pitcar_custom.access_queue_metric_manager,access.queue.metric.manager,model_queue_metric,base.group_system,1,1,1,1
+pitcar_custom.access_service_advisor_kpi_user,service.advisor.kpi user,model_service_advisor_kpi,base.group_user,1,1,1,0
+pitcar_custom.access_service_advisor_kpi_manager,service.advisor.kpi manager,model_service_advisor_kpi,base.group_system,1,1,1,1
+pitcar_custom.access_service_advisor_kpi_user,service.advisor.kpi user,model_service_advisor_kpi,base.group_user,1,1,1,1
+pitcar_custom.access_quality_metrics_user,quality.metrics user,model_quality_metrics,base.group_user,1,1,1,1
+pitcar_custom.access_mechanic_kpi_user,mechanic.kpi.user,model_mechanic_kpi,base.group_user,1,1,1,0
+pitcar_custom.access_mechanic_kpi_manager,mechanic.kpi.manager,model_mechanic_kpi,base.group_system,1,1,1,1
+pitcar_custom.access_service_advisor_overview_user,service.advisor.overview user,model_service_advisor_overview,base.group_user,1,0,0,0
+pitcar_custom.access_mechanic_overview_user,mechanic.overview.user,model_mechanic_overview,base.group_user,1,0,0,0

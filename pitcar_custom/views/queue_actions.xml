@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Queue Dashboard Action -->
+    <record id="action_queue_dashboard" model="ir.actions.act_window">
+        <field name="name">Dashboard Antrean</field>
+        <field name="res_model">queue.management</field>
+        <field name="view_mode">kanban,form</field>
+        <field name="domain">[('date', '=', context_today())]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Belum ada data antrian hari ini
+            </p>
+        </field>
+    </record>
+
+    <!-- Queue List Action -->
+    <record id="action_view_queue_list" model="ir.actions.act_window">
+        <field name="name">Detail Antrean</field>
+        <field name="res_model">queue.management.line</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('queue_id.date', '=', context_today())]</field>
+    </record>
+</odoo>

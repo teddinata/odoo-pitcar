@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Kanban View -->
+     <record id="view_queue_metric_kanban" model="ir.ui.view">
+        <field name="name">queue.metric.kanban</field>
+        <field name="model">queue.metric</field>
+        <field name="arch" type="xml">
+            <kanban js_class="queue_metric_kanban" class="o_queue_dashboard o_kanban_metric" create="false" default_order="sequence">
+                <field name="name"/>
+                <field name="value"/>
+                <field name="icon"/>
+                <field name="color_class"/>
+                <field name="sequence"/>
+                <field name="subtitle"/>
+                <field name="metric_type"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card">
+                            <!-- Summary Card -->
+                            <t t-if="record.metric_type.raw_value === 'summary'">
+                                <div t-attf-class="card {{record.color_class.raw_value}}">
+                                    <div class="card-body">
+                                        <div class="card-header">
+                                            <h5 class="card-title"><field name="name"/></h5>
+                                            <i t-attf-class="fa fa-{{record.icon.raw_value}} fa-lg"></i>
+                                        </div>
+                                        <h2 class="display-4 text-center"><field name="value"/></h2>
+                                        <!-- <small class="text-muted text-center"><field name="subtitle"/></small> -->
+                                        <small class="text-muted" t-esc="record.subtitle.raw_value"/>
+                                    </div>
+                                </div>
+                            </t>
+                            <!-- Regular Metric Cards -->
+                            <t t-else="">
+                                <div t-attf-class="card {{record.color_class.raw_value}}">
+                                    <div class="card-body">
+                                        <div class="card-header">
+                                            <h5 class="card-title"><field name="name"/></h5>
+                                            <i t-attf-class="fa fa-{{record.icon.raw_value}} fa-lg"></i>
+                                        </div>
+                                        <h2 class="display-4 text-center"><field name="value"/></h2>
+                                        <small class="text-muted text-center"><field name="subtitle"/></small>
+                                    </div>
+                                </div>
+                            </t>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_queue_metrics" model="ir.actions.act_window">
+        <field name="name">Dashboard Antrean</field>
+        <field name="res_model">queue.metric</field>
+        <field name="view_mode">kanban</field>
+        <field name="domain">[('date', '=', context_today())]</field>
+        <field name="context">{'search_default_today': 1}</field>
+    </record>
+
+     <!-- Tree/List View -->
+    <record id="view_queue_management_tree" model="ir.ui.view">
+        <field name="name">queue.management.tree</field>
+        <field name="model">queue.management</field>
+        <field name="arch" type="xml">
+            <tree string="Laporan Antrean" default_order="date desc, id desc">
+                <field name="name"/>
+                <field name="date"/>
+                <field name="last_number"/>
+                <field name="last_priority_number"/>
+                <field name="total_served"/>
+                <field name="total_priority_served"/>
+                <field name="average_service_time" widget="float_time"/>
+                <field name="waiting_count"/>
+                <field name="queue_start_time"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_queue_management_search" model="ir.ui.view">
+        <field name="name">queue.management.search</field>
+        <field name="model">queue.management</field>
+        <field name="arch" type="xml">
+            <search string="Cari Laporan Antrean">
+                <field name="name"/>
+                <field name="date"/>
+                <separator/>
+                <!-- Basic Filters -->
+                <filter name="today" 
+                        string="Hari Ini" 
+                        domain="[('date', '=', context_today())]"/>
+                        
+                <filter name="last_7_days" 
+                        string="7 Hari Terakhir"
+                        domain="[('date', '>=', (context_today() + relativedelta(days=-6)))]"/>
+                        
+                <filter name="last_30_days" 
+                        string="30 Hari Terakhir"
+                        domain="[('date', '>=', (context_today() + relativedelta(days=-29)))]"/>
+                
+                <separator/>
+                <!-- Other Filters -->
+                <filter string="Dengan Antrian Prioritas" 
+                        name="has_priority" 
+                        domain="[('last_priority_number', '>', 0)]"/>
+                        
+                <filter string="Selesai Dilayani > 10" 
+                        name="high_served" 
+                        domain="[('total_served', '>', 10)]"/>
+                
+                <!-- Group By -->
+                <group expand="0" string="Group By">
+                    <filter string="Tanggal" name="group_date" context="{'group_by': 'date'}"/>
+                    <filter string="Minggu" name="group_week" context="{'group_by': 'date:week'}"/>
+                    <filter string="Bulan" name="group_month" context="{'group_by': 'date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_queue_management_form" model="ir.ui.view">
+        <field name="name">queue.management.form</field>
+        <field name="model">queue.management</field>
+        <field name="arch" type="xml">
+            <form string="Laporan Antrean">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="date"/>
+                            <field name="queue_start_time"/>
+                            <field name="current_number"/>
+                            <field name="active_order_id"/>
+                        </group>
+                        <group>
+                            <field name="last_number"/>
+                            <field name="last_priority_number"/>
+                            <field name="total_served"/>
+                            <field name="total_priority_served"/>
+                            <field name="average_service_time" widget="float_time"/>
+                            <field name="waiting_count"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Detail Antrean">
+                            <field name="queue_line_ids">
+                                <tree>
+                                    <field name="queue_number"/>
+                                    <field name="display_number"/>
+                                    <field name="is_priority"/>
+                                    <field name="order_id"/>
+                                    <field name="status"/>
+                                    <field name="assigned_time"/>
+                                    <field name="start_time"/>
+                                    <field name="end_time"/>
+                                    <field name="service_duration" widget="float_time"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Graph View untuk Analisis -->
+    <record id="view_queue_management_graph" model="ir.ui.view">
+        <field name="name">queue.management.graph</field>
+        <field name="model">queue.management</field>
+        <field name="arch" type="xml">
+            <graph string="Analisis Antrean" type="bar" sample="1">
+                <field name="date"/>
+                <field name="total_served" type="measure"/>
+                <field name="average_service_time" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Pivot View untuk Analisis Detail -->
+    <record id="view_queue_management_pivot" model="ir.ui.view">
+        <field name="name">queue.management.pivot</field>
+        <field name="model">queue.management</field>
+        <field name="arch" type="xml">
+            <pivot string="Analisis Antrean Detail" sample="1">
+                <field name="date" type="row"/>
+                <field name="total_served" type="measure"/>
+                <field name="total_priority_served" type="measure"/>
+                <field name="average_service_time" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="action_queue_management_report" model="ir.actions.act_window">
+        <field name="name">Laporan Antrean</field>
+        <field name="res_model">queue.management</field>
+        <field name="view_mode">tree,form,graph,pivot</field>
+        <field name="context">{
+            'search_default_today': 1,
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Belum ada data antrean
+            </p>
+            <p>
+                Data antrean akan muncul secara otomatis saat ada aktivitas antrean.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_queue_metrics" model="ir.actions.act_window">
+        <field name="name">Dashboard Overview Antrean</field>
+        <field name="res_model">queue.metric</field>
+        <field name="view_mode">kanban</field>
+    </record>
+
+    <!-- Cron job untuk refresh metrics -->
+    <record id="ir_cron_refresh_queue_metrics" model="ir.cron">
+        <field name="name">Refresh Queue Metrics</field>
+        <field name="model_id" ref="model_queue_metric"/>
+        <field name="state">code</field>
+        <field name="code">model.refresh_metrics()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="doall" eval="False"/>
+    </record>
+
+     <!-- Kemudian definisikan menu -->
+    <menuitem id="menu_queue_metrics"
+              name="Dashboard Antrean"
+              action="action_queue_metrics"
+              sequence="11"/>
+
+    <!-- Submenu untuk Dashboard -->
+    <menuitem id="menu_queue_dashboard_overview"
+              name="Overview"
+              action="action_queue_metrics"
+              parent="menu_queue_metrics"
+              sequence="1"/>
+
+    <!-- Submenu untuk Laporan -->
+    <menuitem id="menu_queue_report"
+              name="Laporan Antrean"
+              action="action_queue_management_report"
+              parent="menu_queue_metrics"
+              sequence="2"/>
+</odoo>

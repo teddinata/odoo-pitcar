@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <!-- Search View -->
+  <record id="view_service_advisor_overview_search" model="ir.ui.view">
+    <field name="name">service.advisor.overview.search</field>
+    <field name="model">service.advisor.overview</field>
+    <field name="arch" type="xml">
+        <search>
+            <field name="service_advisor_id"/>
+            <field name="month"/>
+            <field name="year"/>
+            
+            <!-- Filters -->
+            <filter string="High Rating (≥4.5)" 
+                    name="high_rating" 
+                    domain="[('average_rating', '>=', 4.5)]"/>
+            <filter string="Perfect On-Time" 
+                    name="perfect_ontime" 
+                    domain="[('on_time_rate', '=', 100)]"/>
+            
+            <separator/>
+            <!-- Temporal filters -->
+             <filter string="Today" 
+                    name="filter_today" 
+                    domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+            <filter string="Current Month" 
+                    name="current_month" 
+                    domain="[
+                        ('month', '=', context_today().strftime('%m')),
+                        ('year', '=', context_today().strftime('%Y'))
+                    ]"/>
+            <filter string="Last Month" 
+                    name="last_month" 
+                    domain="[
+                        '|',
+                        '&amp;',
+                        ('month', '=', '1'),
+                        ('year', '=', context_today().strftime('%Y')),
+                        '&amp;',
+                        ('month', '=', (context_today().month - 1)),
+                        ('year', '=', context_today().strftime('%Y'))
+                    ]"/>
+            
+            <!-- Group By -->
+            <group expand="0" string="Group By">
+                <filter string="Month" name="group_month" context="{'group_by': 'month'}"/>
+                <filter string="Year" name="group_year" context="{'group_by': 'year'}"/>
+            </group>
+        </search>
+    </field>
+</record>
+
+<!-- Kanban View -->
+<record id="view_service_advisor_overview_kanban" model="ir.ui.view">
+    <field name="name">service.advisor.overview.kanban</field>
+    <field name="model">service.advisor.overview</field>
+    <field name="arch" type="xml">
+        <kanban class="o_kanban_dashboard o_kanban_metric" create="false">
+            <field name="service_advisor_id"/>
+            <field name="total_revenue"/>
+            <field name="total_orders"/>
+            <field name="average_rating"/>
+            <field name="on_time_rate"/>
+            <field name="feedback_rate"/>
+            <field name="currency_id"/>
+            <templates>
+                <t t-name="kanban-box">
+                    <div class="oe_kanban_card">
+                        <div class="card bg-primary">
+                            <div class="card-body">
+                                <div class="card-header">
+                                    <h5 class="card-title">
+                                        <field name="service_advisor_id"/>
+                                    </h5>
+                                    <i class="fa fa-user fa-lg"/>
+                                </div>
+                                <h2 class="display-4 text-center">
+                                    <field name="total_revenue" 
+                                          widget="monetary" 
+                                          options="{'currency_field': 'currency_id', 'digits': [16,0]}"/>
+                                </h2>
+                                <div class="text-muted text-center">
+                                    <div>Orders: <field name="total_orders"/> | Rating: <field name="average_rating" widget="float" digits="[16,1]"/>/5.0</div>
+                                    <div>On-Time: <field name="on_time_rate" widget="float" digits="[16,1]"/>% | Feedback: <field name="feedback_rate" widget="float" digits="[16,1]"/>%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </t>
+            </templates>
+        </kanban>
+    </field>
+</record>
+
+  <!-- Action untuk Overview -->
+  <!-- Overview Action -->
+  <record id="action_service_advisor_kpi_overview" model="ir.actions.act_window">
+      <field name="name">Service Advisor Overview</field>
+      <field name="res_model">service.advisor.overview</field>
+      <field name="view_mode">kanban</field>
+      <field name="context">{'search_default_current_month': 1}</field>
+  </record>
+
+  
+</odoo>

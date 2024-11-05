@@ -11,3 +11,10 @@ from . import service_advisor
 from . import project_task
 from . import feedback_classification
 from . import product_template
+from . import queue_management
+from . import queue_metric
+from . import quality_metrics
+from . import service_advisor_kpi
+from . import service_advisor_overview
+from . import mechanic_kpi
+from . import mechanic_overview_kpi

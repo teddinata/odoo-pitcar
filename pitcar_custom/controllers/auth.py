@@ -10,8 +10,8 @@ class CustomSession(Session):
         if request.httprequest.method == 'OPTIONS':
             headers = {
                 # 'Access-Control-Allow-Origin': request.httprequest.headers.get('Origin', '*'),
-                'Access-Control-Allow-Origin': 'https://antrean.pitcar.co.id',
-                # 'Access-Control-Allow-Origin': '*',
+                # 'Access-Control-Allow-Origin': 'https://antrean.pitcar.co.id',
+                'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                 'Access-Control-Allow-Credentials': 'true',

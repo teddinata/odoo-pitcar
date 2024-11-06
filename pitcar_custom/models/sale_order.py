@@ -1240,7 +1240,7 @@ class SaleOrder(models.Model):
                 order.overall_lead_time = 0
     
     # 10. LEAD TIME BERSIH dan KOTOR
-    @api.depends('controller_mulai_servis', 'controller_selesai',
+    @api.depends('sa_jam_masuk', 'controller_selesai',
              'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
              'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
              'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
@@ -1249,19 +1249,19 @@ class SaleOrder(models.Model):
     def _compute_lead_time_servis(self):
         for order in self:
             # Validasi dasar
-            if not order.controller_mulai_servis or not order.controller_selesai:
+            if not order.sa_jam_masuk or not order.controller_selesai:
                 order.lead_time_servis = 0
                 order.total_lead_time_servis = 0
                 order.is_overnight = False
                 continue
 
             # Hitung total lead time servis (kotor)
-            total_lead_time = order.controller_selesai - order.controller_mulai_servis
+            total_lead_time = order.controller_selesai - order.sa_jam_masuk
             order.total_lead_time_servis = total_lead_time.total_seconds() / 3600
 
             # Hitung waktu kerja efektif (dengan parameter is_service_time=True)
             waktu_kerja_efektif = order.hitung_waktu_kerja_efektif(
-                order.controller_mulai_servis,
+                order.sa_jam_masuk,
                 order.controller_selesai,
                 is_service_time=True
             )
@@ -1278,40 +1278,23 @@ class SaleOrder(models.Model):
             waktu_tunggu = timedelta()
             for nama_tunggu, (mulai, selesai) in waktu_tunggu_dict.items():
                 if mulai and selesai and selesai > mulai:
-                    # Pastikan waktu tunggu berada dalam rentang waktu servis
-                    if (mulai >= order.controller_mulai_servis and 
-                        selesai <= order.controller_selesai):
-                        waktu_tunggu_interval = order.hitung_waktu_kerja_efektif(
-                            mulai, 
-                            selesai, 
-                            is_service_time=False
-                        )
-                        waktu_tunggu += waktu_tunggu_interval
-                        _logger.info(f"{nama_tunggu}: {waktu_tunggu_interval.total_seconds() / 3600} jam")
+                    # Hitung waktu tunggu efektif (dengan parameter is_service_time=False)
+                    waktu_tunggu_interval = order.hitung_waktu_kerja_efektif(
+                        mulai, 
+                        selesai, 
+                        is_service_time=False
+                    )
+                    waktu_tunggu += waktu_tunggu_interval
+                    _logger.info(f"{nama_tunggu}: {waktu_tunggu_interval.total_seconds() / 3600} jam")
 
             # Hitung lead time bersih
-            waktu_kerja_seconds = waktu_kerja_efektif.total_seconds()
-            waktu_tunggu_seconds = waktu_tunggu.total_seconds()
-            
-            # Pastikan waktu kerja efektif lebih dari 0
-            if waktu_kerja_seconds > 0:
-                if waktu_kerja_seconds > waktu_tunggu_seconds:
-                    order.lead_time_servis = (waktu_kerja_seconds - waktu_tunggu_seconds) / 3600
-                else:
-                    order.lead_time_servis = 0
+            if waktu_kerja_efektif > waktu_tunggu:
+                lead_time_bersih = waktu_kerja_efektif - waktu_tunggu
+                order.lead_time_servis = lead_time_bersih.total_seconds() / 3600
             else:
                 order.lead_time_servis = 0
 
-            order.is_overnight = (order.controller_selesai.date() - order.controller_mulai_servis.date()).days > 0
-
-            _logger.info(f"""
-                Perhitungan Lead Time untuk {order.name}:
-                - Mulai Servis: {order.controller_mulai_servis}
-                - Selesai Servis: {order.controller_selesai}
-                - Total Waktu Kerja: {waktu_kerja_seconds / 3600:.2f} jam
-                - Total Waktu Tunggu: {waktu_tunggu_seconds / 3600:.2f} jam
-                - Lead Time Servis: {order.lead_time_servis:.2f} jam
-            """)
+            order.is_overnight = (order.controller_selesai.date() - order.sa_jam_masuk.date()).days > 0
 
     def hitung_interval(self, mulai, selesai):
         if mulai and selesai and selesai > mulai:

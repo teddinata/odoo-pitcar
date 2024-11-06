@@ -5,11 +5,13 @@ import json
 import werkzeug.wrappers
 
 class CustomSession(Session):
-    @http.route(['/web/session/authenticate'], type='json', auth="none", csrf=False, methods=['POST', 'OPTIONS'], cors='*')
+    @http.route(['/web/session/authenticate'], type='json', auth="user", csrf=False, methods=['POST', 'OPTIONS'], cors='*')
     def authenticate(self, db, login, password, base_location=None):
         if request.httprequest.method == 'OPTIONS':
             headers = {
-                'Access-Control-Allow-Origin': '*',
+                # 'Access-Control-Allow-Origin': request.httprequest.headers.get('Origin', '*'),
+                'Access-Control-Allow-Origin': 'https://antrean.pitcar.co.id',
+                # 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                 'Access-Control-Allow-Credentials': 'true',

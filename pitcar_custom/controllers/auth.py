@@ -5,44 +5,44 @@ import json
 import werkzeug.wrappers
 
 class CustomSession(Session):
-    @http.route(['/web/session/authenticate'], type='json', auth="user", csrf=False, methods=['POST', 'OPTIONS'], cors='*')
-    def authenticate(self, db, login, password, base_location=None):
-        if request.httprequest.method == 'OPTIONS':
-            headers = {
-                # 'Access-Control-Allow-Origin': request.httprequest.headers.get('Origin', '*'),
-                # 'Access-Control-Allow-Origin': 'https://antrean.pitcar.co.id',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-                'Access-Control-Allow-Credentials': 'true',
-                'Access-Control-Max-Age': '86400',  # 24 hours
-            }
-            return Response(status=200, headers=headers)
+    # @http.route(['/web/session/authenticatedd'], type='json', auth="user", csrf=False, methods=['POST', 'OPTIONS'], cors='*')
+    # def authenticate(self, db, login, password, base_location=None):
+    #     if request.httprequest.method == 'OPTIONS':
+    #         headers = {
+    #             # 'Access-Control-Allow-Origin': request.httprequest.headers.get('Origin', '*'),
+    #             # 'Access-Control-Allow-Origin': 'https://antrean.pitcar.co.id',
+    #             'Access-Control-Allow-Origin': '*',
+    #             'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    #             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    #             'Access-Control-Allow-Credentials': 'true',
+    #             'Access-Control-Max-Age': '86400',  # 24 hours
+    #         }
+    #         return Response(status=200, headers=headers)
 
-        try:
-            request.session.authenticate(db, login, password)
-            result = request.env['ir.http'].session_info()
+    #     try:
+    #         request.session.authenticate(db, login, password)
+    #         result = request.env['ir.http'].session_info()
             
-            # Add custom response handling here if needed
-            return {
-                'jsonrpc': '2.0',
-                'id': None,
-                'result': result
-            }
-        except Exception as e:
-            return {
-                'jsonrpc': '2.0',
-                'id': None,
-                'status': 'error',
-                'error': {
-                    'code': 401,
-                    'message': str(e),
-                    'data': {
-                        'name': 'session_invalid',
-                        'debug': str(e),
-                    }
-                }
-            }
+    #         # Add custom response handling here if needed
+    #         return {
+    #             'jsonrpc': '2.0',
+    #             'id': None,
+    #             'result': result
+    #         }
+    #     except Exception as e:
+    #         return {
+    #             'jsonrpc': '2.0',
+    #             'id': None,
+    #             'status': 'error',
+    #             'error': {
+    #                 'code': 401,
+    #                 'message': str(e),
+    #                 'data': {
+    #                     'name': 'session_invalid',
+    #                     'debug': str(e),
+    #                 }
+    #             }
+    #         }
 
     # Optional: Add method for checking authentication status
     @http.route(['/web/session/check'], type='json', auth="none", cors='*')

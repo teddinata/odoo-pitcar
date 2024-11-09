@@ -343,6 +343,26 @@
                     </div>
                 </div>
 
+                <!-- Informasi Garansi - hanya muncul di invoice -->
+                <div t-if="env.context.get('work_order', False) or not is_work_order">
+                    <div style="border-top: 1px solid #ddd; margin-top: 325px; padding-top: 10px;">
+                        <div class="row">
+                            <div class="col-12 text-start p-2" style="background-color: #f9f9f9;">
+                                <strong>INFORMASI GARANSI PITCAR:</strong>
+                                 <div class="mt-2">
+                                    <span style="font-weight: 500;">• Garansi Jasa Servis:</span> 14 hari atau 1000km (mana yang lebih dulu tercapai)
+                                    <br/>
+                                    <span style="font-weight: 500;">• Garansi Spare Part:</span> 3 bulan sejak pemasangan
+                                </div>
+                                <div class="mt-2" style="font-size: 0.95em;">
+                                    <em>*Berlaku untuk pengecekan ulang, perbaikan, dan penggantian (jika diperlukan). Tunjukkan invoice ini untuk klaim.
+                                    Garansi tidak berlaku untuk kerusakan akibat kecelakaan/modifikasi pihak lain.</em>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div t-if="doc.signature" class="mt-4 ml64 mr4" name="signature">
                     <div class="offset-8">
                         <strong>Signature</strong>

@@ -1239,21 +1239,23 @@ class SaleOrder(models.Model):
                 _logger.error(f"Error dalam compute overall lead time: {str(e)}")
                 order.overall_lead_time = 0
     
-    # 10. LEAD TIME BERSIH dan KOTOR
     @api.depends('controller_mulai_servis', 'controller_selesai',
-             'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
-             'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
-             'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
-             'controller_tunggu_sublet_mulai', 'controller_tunggu_sublet_selesai',
-             'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai')
+         'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
+         'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
+         'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
+         'controller_tunggu_sublet_mulai', 'controller_tunggu_sublet_selesai',
+         'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai')
     def _compute_lead_time_servis(self):
         for order in self:
             try:
-                # Validasi dasar
-                if not order.controller_mulai_servis or not order.controller_selesai:
-                    order.lead_time_servis = 0
-                    order.total_lead_time_servis = 0
-                    order.is_overnight = False
+                # Reset nilai default
+                order.lead_time_servis = 0
+                order.total_lead_time_servis = 0
+                order.is_overnight = False
+
+                # Validasi dasar yang lebih ketat
+                if not order.controller_mulai_servis or not order.controller_selesai or \
+                order.controller_selesai <= order.controller_mulai_servis:
                     continue
 
                 _logger.info(f"""
@@ -1262,19 +1264,19 @@ class SaleOrder(models.Model):
                     - Selesai Servis: {order.controller_selesai}
                 """)
 
-                # Hitung total lead time servis (kotor)
-                total_lead_time = order.controller_selesai - order.controller_mulai_servis
-                order.total_lead_time_servis = total_lead_time.total_seconds() / 3600
+                # 1. Hitung total lead time servis (waktu kotor)
+                total_duration = order.controller_selesai - order.controller_mulai_servis
+                order.total_lead_time_servis = total_duration.total_seconds() / 3600
 
-                # Hitung waktu kerja efektif
+                # 2. Hitung waktu kerja efektif (dalam jam kerja)
                 waktu_kerja_efektif = order.hitung_waktu_kerja_efektif(
                     order.controller_mulai_servis,
                     order.controller_selesai,
                     is_service_time=True
                 )
-
-                # Hitung semua waktu tunggu
-                waktu_tunggu = timedelta()
+                
+                # 3. Hitung waktu tunggu dengan validasi overlap
+                waktu_tunggu_intervals = []
                 waktu_tunggu_dict = {
                     'Tunggu Konfirmasi': (order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai),
                     'Tunggu Part 1': (order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai),
@@ -1283,28 +1285,58 @@ class SaleOrder(models.Model):
                     'Istirahat Shift 1': (order.controller_istirahat_shift1_mulai, order.controller_istirahat_shift1_selesai)
                 }
 
+                total_waktu_tunggu = timedelta()
+                
+                # Validasi dan sortir interval waktu tunggu
+                valid_intervals = []
                 for nama_tunggu, (mulai, selesai) in waktu_tunggu_dict.items():
-                    if mulai and selesai and selesai > mulai:
-                        waktu_tunggu_interval = order.hitung_waktu_kerja_efektif(
-                            mulai, 
-                            selesai, 
-                            is_service_time=False
-                        )
-                        waktu_tunggu += waktu_tunggu_interval
-                        _logger.info(f"{nama_tunggu}: {waktu_tunggu_interval.total_seconds() / 3600} jam")
+                    if mulai and selesai and selesai > mulai and \
+                    mulai >= order.controller_mulai_servis and \
+                    selesai <= order.controller_selesai:
+                        valid_intervals.append((mulai, selesai, nama_tunggu))
+                
+                # Sort intervals berdasarkan waktu mulai
+                valid_intervals.sort(key=lambda x: x[0])
+                
+                # Merge overlapping intervals
+                if valid_intervals:
+                    merged = []
+                    current_start, current_end, current_name = valid_intervals[0]
+                    
+                    for next_start, next_end, next_name in valid_intervals[1:]:
+                        if next_start <= current_end:
+                            # Ada overlap, ambil waktu terpanjang
+                            current_end = max(current_end, next_end)
+                            current_name = f"{current_name} + {next_name}"
+                        else:
+                            # Tidak ada overlap, hitung interval sebelumnya
+                            interval_duration = order.hitung_waktu_kerja_efektif(
+                                current_start,
+                                current_end,
+                                is_service_time=False
+                            )
+                            total_waktu_tunggu += interval_duration
+                            _logger.info(f"Waktu tunggu {current_name}: {interval_duration.total_seconds() / 3600} jam")
+                            
+                            current_start, current_end, current_name = next_start, next_end, next_name
+                    
+                    # Proses interval terakhir
+                    final_interval = order.hitung_waktu_kerja_efektif(
+                        current_start,
+                        current_end,
+                        is_service_time=False
+                    )
+                    total_waktu_tunggu += final_interval
+                    _logger.info(f"Waktu tunggu {current_name}: {final_interval.total_seconds() / 3600} jam")
 
-                # Hitung lead time bersih
+                # 4. Hitung lead time bersih dengan validasi
                 waktu_kerja_seconds = waktu_kerja_efektif.total_seconds()
-                waktu_tunggu_seconds = waktu_tunggu.total_seconds()
+                waktu_tunggu_seconds = total_waktu_tunggu.total_seconds()
                 
                 if waktu_kerja_seconds > 0:
-                    if waktu_kerja_seconds > waktu_tunggu_seconds:
-                        order.lead_time_servis = (waktu_kerja_seconds - waktu_tunggu_seconds) / 3600
-                    else:
-                        order.lead_time_servis = 0
-                else:
-                    order.lead_time_servis = 0
-
+                    order.lead_time_servis = max(0, (waktu_kerja_seconds - waktu_tunggu_seconds) / 3600)
+                
+                # Set flag menginap
                 order.is_overnight = (order.controller_selesai.date() - order.controller_mulai_servis.date()).days > 0
 
                 _logger.info(f"""

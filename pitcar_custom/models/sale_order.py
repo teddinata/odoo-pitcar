@@ -1238,7 +1238,22 @@ class SaleOrder(models.Model):
             except Exception as e:
                 _logger.error(f"Error dalam compute overall lead time: {str(e)}")
                 order.overall_lead_time = 0
-    
+    def action_recompute_lead_time(self):
+        """
+        Method untuk memaksa recompute lead time servis
+        Dapat dipanggil dari button di form view atau server action
+        """
+        orders = self.search([])
+        # Paksa compute ulang dengan mengosongkan field
+        orders.write({
+            'lead_time_servis': 0,
+            'total_lead_time_servis': 0,
+            'is_overnight': False
+        })
+        # Trigger compute
+        orders._compute_lead_time_servis()
+        return True
+
     @api.depends('controller_mulai_servis', 'controller_selesai',
          'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
          'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',

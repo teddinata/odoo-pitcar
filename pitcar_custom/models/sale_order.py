@@ -514,9 +514,9 @@ class SaleOrder(models.Model):
     
     lead_time_catatan = fields.Text("Catatan Lead Time")
     
-    lead_time_servis = fields.Float(string="Lead Time Servis (jam)", compute="_compute_lead_time_servis", store=True)
-    total_lead_time_servis = fields.Float(string="Total Lead Time Servis (jam)", compute="_compute_lead_time_servis", store=True)
-    is_overnight = fields.Boolean(string="Menginap", compute="_compute_lead_time_servis", store=True)
+    lead_time_servis = fields.Float(string="Lead Time Servis (jam)", compute="_compute_lead_time_servis", store=True, force_compute=True)
+    total_lead_time_servis = fields.Float(string="Total Lead Time Servis (jam)", compute="_compute_lead_time_servis", store=True, force_compute=True)
+    is_overnight = fields.Boolean(string="Menginap", compute="_compute_lead_time_servis", store=True, force_compute=True)
     lead_time_progress = fields.Float(string="Lead Time Progress", compute="_compute_lead_time_progress", store=True)
     lead_time_stage = fields.Selection([
         ('not_started', 'Belum Dimulai'),
@@ -793,11 +793,11 @@ class SaleOrder(models.Model):
             completed_steps = sum(1 for _, value in steps if value)
 
             # If all steps are completed, set progress to 100%
-            if completed_steps == total_steps and order.fo_unit_keluar:
+            if completed_steps == total_steps and order.controller_selesai:
                 order.lead_time_progress = 100
             else:
                 # Calculate progress
-                end_time = order.fo_unit_keluar or now
+                end_time = order.controller_selesai or now
                 total_time = (end_time - order.sa_jam_masuk).total_seconds()
                 
                 if total_time <= 0:
@@ -1240,12 +1240,12 @@ class SaleOrder(models.Model):
                 order.overall_lead_time = 0
     
     # 10. LEAD TIME BERSIH dan KOTOR
-    @api.depends('sa_jam_masuk', 'controller_selesai',
-             'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
-             'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
-             'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
-             'controller_tunggu_sublet_mulai', 'controller_tunggu_sublet_selesai',
-             'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai')
+    @api.depends('controller_mulai_servis', 'controller_selesai',
+                 'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
+                 'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
+                 'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
+                 'controller_tunggu_sublet_mulai', 'controller_tunggu_sublet_selesai',
+                 'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai')
     def _compute_lead_time_servis(self):
         for order in self:
             # Validasi dasar

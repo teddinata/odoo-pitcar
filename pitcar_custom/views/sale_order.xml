@@ -146,6 +146,12 @@
                     
                     <!-- Informasi Tambahan -->
                     <field name="is_overnight" optional="hide" string="Menginap"/>
+                    <button 
+                        name="action_recompute_single_order" 
+                        string="Recompute Lead Time"
+                        type="object"
+                        groups="base.group_system"
+                        class="oe_highlight"/>
                 </xpath>
             </field>
         </record>
@@ -269,6 +275,12 @@
                     
                     <!-- Informasi Tambahan -->
                     <field name="is_overnight" optional="hide" string="Menginap"/>
+                    <button 
+                        name="action_recompute_single_order" 
+                        string="Recompute Lead Time"
+                        type="object"
+                        groups="base.group_system"
+                        class="oe_highlight"/>
                 </xpath>
             </field>
         </record>

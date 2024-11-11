@@ -34,6 +34,19 @@
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_order_tree"/>
             <field name="arch" type="xml">
+                <!-- Tambahkan button sebagai field baru -->
+                <xpath expr="//tree" position="attributes">
+                    <attribute name="decoration-muted">state=='cancel'</attribute>
+                </xpath>
+                <xpath expr="//tree" position="inside">
+                    <header>
+                        <button 
+                            name="action_recompute_lead_time" 
+                            string="Recompute Lead Time"
+                            type="object"
+                            groups="base.group_system"/>
+                    </header>
+                </xpath>
                 <xpath expr="//field[@name='partner_id']" position="before">
                     <!-- ANTREAN -->
                     <field name="display_queue_number" optional="show" string="Nomor Antrean"/>
@@ -143,6 +156,19 @@
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_quotation_tree"/>
             <field name="arch" type="xml">
+                <!-- Tambahkan button sebagai field baru -->
+                <xpath expr="//tree" position="attributes">
+                    <attribute name="decoration-muted">state=='cancel'</attribute>
+                </xpath>
+                <xpath expr="//tree" position="inside">
+                    <header>
+                        <button 
+                            name="action_recompute_lead_time" 
+                            string="Recompute Lead Time"
+                            type="object"
+                            groups="base.group_system"/>
+                    </header>
+                </xpath>
                 <xpath expr="//field[@name='partner_id']" position="before">
                     <!-- ANTREAN -->
                     <field name="display_queue_number" optional="show" string="Nomor Antrean"/>

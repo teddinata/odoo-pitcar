@@ -1240,19 +1240,81 @@ class SaleOrder(models.Model):
                 order.overall_lead_time = 0
     def action_recompute_lead_time(self):
         """
-        Method untuk memaksa recompute lead time servis
+        Method untuk memaksa recompute semua lead time
         Dapat dipanggil dari button di form view atau server action
         """
         orders = self.search([])
-        # Paksa compute ulang dengan mengosongkan field
+        # Paksa compute ulang dengan mengosongkan semua field terkait
         orders.write({
             'lead_time_servis': 0,
             'total_lead_time_servis': 0,
+            'lead_time_tunggu_konfirmasi': 0,
+            'lead_time_tunggu_part1': 0, 
+            'lead_time_tunggu_part2': 0,
+            'lead_time_istirahat': 0,
+            'overall_lead_time': 0,
             'is_overnight': False
         })
-        # Trigger compute
-        orders._compute_lead_time_servis()
+        
+        # Trigger compute untuk semua field terkait
+        for order in orders:
+            order._compute_lead_time_tunggu_konfirmasi()
+            order._compute_lead_time_tunggu_part1()
+            order._compute_lead_time_tunggu_part2()
+            order._compute_lead_time_istirahat()
+            order._compute_lead_time_servis()
+            order._compute_overall_lead_time()
+            
+            _logger.info(f"""
+                Recompute selesai untuk {order.name}:
+                - Lead Time Servis: {order.lead_time_servis:.2f} jam
+                - Total Lead Time: {order.total_lead_time_servis:.2f} jam
+                - Tunggu Konfirmasi: {order.lead_time_tunggu_konfirmasi:.2f} jam
+                - Tunggu Part 1: {order.lead_time_tunggu_part1:.2f} jam
+                - Tunggu Part 2: {order.lead_time_tunggu_part2:.2f} jam
+                - Istirahat: {order.lead_time_istirahat:.2f} jam
+                - Overall Lead Time: {order.overall_lead_time:.2f} jam
+            """)
         return True
+    
+    def action_recompute_single_order(self):
+        """
+        Method untuk recompute satu order saja
+        Dapat dipanggil dari button di form view
+        """
+        self.ensure_one()
+        # Reset semua field terkait
+        self.write({
+            'lead_time_servis': 0,
+            'total_lead_time_servis': 0,
+            'lead_time_tunggu_konfirmasi': 0,
+            'lead_time_tunggu_part1': 0,
+            'lead_time_tunggu_part2': 0,
+            'lead_time_istirahat': 0,
+            'overall_lead_time': 0,
+            'is_overnight': False
+        })
+        
+        # Compute ulang
+        self._compute_lead_time_tunggu_konfirmasi()
+        self._compute_lead_time_tunggu_part1()
+        self._compute_lead_time_tunggu_part2()
+        self._compute_lead_time_istirahat()
+        self._compute_lead_time_servis()
+        self._compute_overall_lead_time()
+        
+        _logger.info(f"""
+            Recompute selesai untuk {self.name}:
+            - Lead Time Servis: {self.lead_time_servis:.2f} jam
+            - Total Lead Time: {self.total_lead_time_servis:.2f} jam
+            - Tunggu Konfirmasi: {self.lead_time_tunggu_konfirmasi:.2f} jam
+            - Tunggu Part 1: {self.lead_time_tunggu_part1:.2f} jam
+            - Tunggu Part 2: {self.lead_time_tunggu_part2:.2f} jam
+            - Istirahat: {self.lead_time_istirahat:.2f} jam
+            - Overall Lead Time: {self.overall_lead_time:.2f} jam
+        """)
+        return True
+
 
     @api.depends('controller_mulai_servis', 'controller_selesai',
          'controller_tunggu_konfirmasi_mulai', 'controller_tunggu_konfirmasi_selesai',
@@ -1268,7 +1330,6 @@ class SaleOrder(models.Model):
                 order.total_lead_time_servis = 0
                 order.is_overnight = False
 
-                # Validasi dasar yang lebih ketat
                 if not order.controller_mulai_servis or not order.controller_selesai or \
                 order.controller_selesai <= order.controller_mulai_servis:
                     continue
@@ -1279,79 +1340,63 @@ class SaleOrder(models.Model):
                     - Selesai Servis: {order.controller_selesai}
                 """)
 
-                # 1. Hitung total lead time servis (waktu kotor)
+                # 1. Hitung total lead time (waktu kotor)
                 total_duration = order.controller_selesai - order.controller_mulai_servis
                 order.total_lead_time_servis = total_duration.total_seconds() / 3600
 
-                # 2. Hitung waktu kerja efektif (dalam jam kerja)
+                # 2. Hitung waktu kerja efektif dengan istirahat otomatis
                 waktu_kerja_efektif = order.hitung_waktu_kerja_efektif(
                     order.controller_mulai_servis,
                     order.controller_selesai,
                     is_service_time=True
                 )
-                
-                # 3. Hitung waktu tunggu dengan validasi overlap
-                waktu_tunggu_intervals = []
+
+                # 3. Hitung total waktu tunggu (job stop)
                 waktu_tunggu_dict = {
                     'Tunggu Konfirmasi': (order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai),
                     'Tunggu Part 1': (order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai),
                     'Tunggu Part 2': (order.controller_tunggu_part2_mulai, order.controller_tunggu_part2_selesai),
-                    'Tunggu Sublet': (order.controller_tunggu_sublet_mulai, order.controller_tunggu_sublet_selesai),
-                    'Istirahat Shift 1': (order.controller_istirahat_shift1_mulai, order.controller_istirahat_shift1_selesai)
+                    'Tunggu Sublet': (order.controller_tunggu_sublet_mulai, order.controller_tunggu_sublet_selesai)
                 }
 
-                total_waktu_tunggu = timedelta()
-                
-                # Validasi dan sortir interval waktu tunggu
+                # List untuk menampung semua interval waktu tunggu valid
                 valid_intervals = []
+                
+                # Tambahkan job stop ke valid intervals
                 for nama_tunggu, (mulai, selesai) in waktu_tunggu_dict.items():
                     if mulai and selesai and selesai > mulai and \
                     mulai >= order.controller_mulai_servis and \
                     selesai <= order.controller_selesai:
                         valid_intervals.append((mulai, selesai, nama_tunggu))
-                
+
+                # Tambahkan istirahat manual jika ada
+                if order.controller_istirahat_shift1_mulai and order.controller_istirahat_shift1_selesai and \
+                order.controller_istirahat_shift1_selesai > order.controller_istirahat_shift1_mulai:
+                    valid_intervals.append((
+                        order.controller_istirahat_shift1_mulai,
+                        order.controller_istirahat_shift1_selesai,
+                        'Istirahat Manual'
+                    ))
+
                 # Sort intervals berdasarkan waktu mulai
                 valid_intervals.sort(key=lambda x: x[0])
-                
-                # Merge overlapping intervals
-                if valid_intervals:
-                    merged = []
-                    current_start, current_end, current_name = valid_intervals[0]
-                    
-                    for next_start, next_end, next_name in valid_intervals[1:]:
-                        if next_start <= current_end:
-                            # Ada overlap, ambil waktu terpanjang
-                            current_end = max(current_end, next_end)
-                            current_name = f"{current_name} + {next_name}"
-                        else:
-                            # Tidak ada overlap, hitung interval sebelumnya
-                            interval_duration = order.hitung_waktu_kerja_efektif(
-                                current_start,
-                                current_end,
-                                is_service_time=False
-                            )
-                            total_waktu_tunggu += interval_duration
-                            _logger.info(f"Waktu tunggu {current_name}: {interval_duration.total_seconds() / 3600} jam")
-                            
-                            current_start, current_end, current_name = next_start, next_end, next_name
-                    
-                    # Proses interval terakhir
-                    final_interval = order.hitung_waktu_kerja_efektif(
-                        current_start,
-                        current_end,
-                        is_service_time=False
-                    )
-                    total_waktu_tunggu += final_interval
-                    _logger.info(f"Waktu tunggu {current_name}: {final_interval.total_seconds() / 3600} jam")
 
-                # 4. Hitung lead time bersih dengan validasi
+                total_waktu_tunggu = timedelta()
+                
+                # Proses setiap interval
+                for mulai, selesai, nama_tunggu in valid_intervals:
+                    interval_duration = selesai - mulai
+                    total_waktu_tunggu += interval_duration
+                    _logger.info(f"{nama_tunggu}: {interval_duration.total_seconds() / 3600} jam")
+
+                # 4. Hitung lead time bersih
                 waktu_kerja_seconds = waktu_kerja_efektif.total_seconds()
                 waktu_tunggu_seconds = total_waktu_tunggu.total_seconds()
                 
+                # Lead time bersih = Waktu kerja efektif - Total waktu tunggu
                 if waktu_kerja_seconds > 0:
-                    order.lead_time_servis = max(0, (waktu_kerja_seconds - waktu_tunggu_seconds) / 3600)
-                
-                # Set flag menginap
+                    order.lead_time_servis = max(0, waktu_kerja_seconds - waktu_tunggu_seconds) / 3600
+
                 order.is_overnight = (order.controller_selesai.date() - order.controller_mulai_servis.date()).days > 0
 
                 _logger.info(f"""
@@ -1368,19 +1413,9 @@ class SaleOrder(models.Model):
                 order.lead_time_servis = 0
                 order.total_lead_time_servis = 0
 
-    def hitung_interval(self, mulai, selesai):
-        if mulai and selesai and selesai > mulai:
-            return self.hitung_waktu_kerja_efektif(mulai, selesai)
-        return timedelta()
-
     def hitung_waktu_kerja_efektif(self, waktu_mulai, waktu_selesai, is_service_time=False):
         """
-        Fungsi unified untuk menghitung waktu kerja efektif dengan parameter:
-        @param waktu_mulai: datetime - Waktu mulai interval
-        @param waktu_selesai: datetime - Waktu selesai interval
-        @param is_service_time: boolean - Flag untuk membedakan perhitungan service time vs waktu tunggu
-            True: Menghitung waktu service (mempertimbangkan jam kerja 8-17)
-            False: Menghitung waktu tunggu (hanya mempertimbangkan jam istirahat)
+        Menghitung waktu kerja efektif dengan mempertimbangkan jam istirahat otomatis
         """
         if not waktu_mulai or not waktu_selesai or waktu_selesai <= waktu_mulai:
             return timedelta()
@@ -1393,9 +1428,6 @@ class SaleOrder(models.Model):
         waktu_kerja = timedelta()
         current_date = waktu_mulai.date()
         end_date = waktu_selesai.date()
-
-        _logger.info(f"Menghitung waktu efektif dari {waktu_mulai} sampai {waktu_selesai}")
-        _logger.info(f"Mode: {'Service Time' if is_service_time else 'Waktu Tunggu'}")
 
         while current_date <= end_date:
             # Tentukan waktu mulai dan selesai untuk hari ini
@@ -1416,31 +1448,29 @@ class SaleOrder(models.Model):
                 if end_time > BENGKEL_TUTUP:
                     end_time = BENGKEL_TUTUP
 
-            # Hitung waktu untuk hari ini jika valid
             if start_time < end_time:
                 day_start = datetime.combine(current_date, start_time)
                 day_end = datetime.combine(current_date, end_time)
                 
                 work_time = day_end - day_start
 
-                # Kurangi waktu istirahat jika berlaku
-                istirahat_start = datetime.combine(current_date, ISTIRAHAT_MULAI)
-                istirahat_end = datetime.combine(current_date, ISTIRAHAT_SELESAI)
+                # Kurangi waktu istirahat otomatis jika ada overlap
+                if is_service_time:  # Hanya kurangi istirahat untuk waktu servis
+                    istirahat_start = datetime.combine(current_date, ISTIRAHAT_MULAI)
+                    istirahat_end = datetime.combine(current_date, ISTIRAHAT_SELESAI)
 
-                if day_start < istirahat_end and day_end > istirahat_start:
-                    # Ada overlap dengan waktu istirahat
-                    overlap_start = max(day_start, istirahat_start)
-                    overlap_end = min(day_end, istirahat_end)
-                    istirahat_duration = overlap_end - overlap_start
-                    work_time -= istirahat_duration
-                    _logger.info(f"Mengurangi istirahat: {istirahat_duration.total_seconds() / 3600} jam")
+                    if day_start < istirahat_end and day_end > istirahat_start:
+                        overlap_start = max(day_start, istirahat_start)
+                        overlap_end = min(day_end, istirahat_end)
+                        istirahat_duration = overlap_end - overlap_start
+                        work_time -= istirahat_duration
+                        _logger.info(f"Mengurangi istirahat otomatis: {istirahat_duration.total_seconds() / 3600} jam")
 
                 waktu_kerja += work_time
-                _logger.info(f"Waktu kerja untuk tanggal {current_date}: {work_time.total_seconds() / 3600} jam")
+                _logger.info(f"Waktu kerja untuk {current_date}: {work_time.total_seconds() / 3600} jam")
 
             current_date += timedelta(days=1)
 
-        _logger.info(f"Total waktu efektif: {waktu_kerja.total_seconds() / 3600} jam")
         return waktu_kerja
 
 

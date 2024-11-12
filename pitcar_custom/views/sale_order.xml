@@ -146,12 +146,12 @@
                     
                     <!-- Informasi Tambahan -->
                     <field name="is_overnight" optional="hide" string="Menginap"/>
-                    <button 
+                    <!-- <button 
                         name="action_recompute_single_order" 
                         string="Recompute Lead Time"
                         type="object"
                         groups="base.group_system"
-                        class="oe_highlight"/>
+                        class="oe_highlight"/> -->
                 </xpath>
             </field>
         </record>
@@ -275,12 +275,12 @@
                     
                     <!-- Informasi Tambahan -->
                     <field name="is_overnight" optional="hide" string="Menginap"/>
-                    <button 
+                    <!-- <button 
                         name="action_recompute_single_order" 
                         string="Recompute Lead Time"
                         type="object"
                         groups="base.group_system"
-                        class="oe_highlight"/>
+                        class="oe_highlight"/> -->
                 </xpath>
             </field>
         </record>
@@ -808,6 +808,103 @@
                         
                         <group string="Catatan">
                             <field name="lead_time_catatan"/>
+                        </group>
+                        <group string="Detail Perhitungan" attrs="{'invisible': [('controller_mulai_servis', '=', False)]}">
+                            <div class="timeline-container">
+                                <div class="timeline">
+                                    <!-- Start Event -->
+                                    <div class="event start">
+                                        <div class="event-label">Mulai Servis</div>
+                                        <div class="event-time">
+                                            <field name="controller_mulai_servis" widget="datetime"/>
+                                        </div>
+                                    </div>
+
+                                    <!-- Job Stop Events -->
+                                    <t t-if="controller_tunggu_konfirmasi_mulai">
+                                        <div class="event job-stop-confirmation">
+                                            <div class="event-label">Tunggu Konfirmasi</div>
+                                            <div class="event-time">
+                                                <field name="controller_tunggu_konfirmasi_mulai" widget="datetime"/>
+                                            </div>
+                                            <div class="event-duration">
+                                                <field name="lead_time_tunggu_konfirmasi" widget="float_time"/>
+                                            </div>
+                                        </div>
+                                    </t>
+
+                                    <t t-if="controller_tunggu_part1_mulai">
+                                        <div class="event job-stop-part">
+                                            <div class="event-label">Tunggu Part 1</div>
+                                            <div class="event-time">
+                                                <field name="controller_tunggu_part1_mulai" widget="datetime"/>
+                                            </div>
+                                            <div class="event-duration">
+                                                <field name="lead_time_tunggu_part1" widget="float_time"/>
+                                            </div>
+                                        </div>
+                                    </t>
+
+                                    <t t-if="controller_tunggu_part2_mulai">
+                                        <div class="event job-stop-part">
+                                            <div class="event-label">Tunggu Part 2</div>
+                                            <div class="event-time">
+                                                <field name="controller_tunggu_part2_mulai" widget="datetime"/>
+                                            </div>
+                                            <div class="event-duration">
+                                                <field name="lead_time_tunggu_part2" widget="float_time"/>
+                                            </div>
+                                        </div>
+                                    </t>
+
+                                    <t t-if="controller_istirahat_shift1_mulai">
+                                        <div class="event job-stop-break">
+                                            <div class="event-label">Istirahat</div>
+                                            <div class="event-time">
+                                                <field name="controller_istirahat_shift1_mulai" widget="datetime"/>
+                                            </div>
+                                            <div class="event-duration">
+                                                <field name="lead_time_istirahat" widget="float_time"/>
+                                            </div>
+                                        </div>
+                                    </t>
+
+                                    <!-- End Event -->
+                                    <div class="event end">
+                                        <div class="event-label">Selesai Servis</div>
+                                        <div class="event-time">
+                                            <field name="controller_selesai" widget="datetime"/>
+                                        </div>
+                                    </div>
+
+                                    <!-- Progress Bar -->
+                                    <div class="progress-bar">
+                                        <div class="progress">
+                                            <field name="lead_time_progress" widget="progressbar"/>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Legend -->
+                                <div class="timeline-legend">
+                                    <div class="legend-item">
+                                        <span class="legend-color start"></span>
+                                        <span>Mulai/Selesai</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <span class="legend-color konfirmasi"></span>
+                                        <span>Tunggu Konfirmasi</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <span class="legend-color part"></span>
+                                        <span>Tunggu Part</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <span class="legend-color break"></span>
+                                        <span>Istirahat</span>
+                                    </div>
+                                </div>
+                            </div>
                         </group>
                     </page>
                 </xpath>

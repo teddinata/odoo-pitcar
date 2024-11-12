@@ -484,7 +484,7 @@ class SaleOrder(models.Model):
     service_category = fields.Selection([
         ('maintenance', 'Perawatan'),
         ('repair', 'Perbaikan')
-    ], string="Kategori Servis", required=True, compute='_compute_service_category')
+    ], string="Kategori Servis", compute='_compute_service_category')
     service_subcategory = fields.Selection([
         # Sub kategori untuk Perawatan
         ('tune_up', 'Tune Up'),
@@ -493,7 +493,7 @@ class SaleOrder(models.Model):
         ('periodic_service_addition', 'Servis Berkala + Addition'),
         # Sub kategori untuk Perbaikan
         ('general_repair', 'General Repair')
-    ], string="Jenis Servis", required=True)
+    ], string="Jenis Servis")
 
     @api.depends('service_subcategory')
     def _compute_service_category(self):
@@ -1499,6 +1499,174 @@ class SaleOrder(models.Model):
 
         return waktu_kerja
 
+     # Fields yang dipertahankan
+    lead_time_calculation_details = fields.Text(
+        "Detail Perhitungan Lead Time", 
+        compute='_compute_lead_time_calculation_details',
+        help="Menampilkan detail rumus dan perhitungan lead time"
+    )
+    
+    should_show_calculation = fields.Boolean(
+        "Tampilkan Detail Perhitungan",
+        default=False,
+        help="Toggle untuk menampilkan/menyembunyikan detail perhitungan"
+    )
+
+    # Method yang dipertahankan dengan sedikit modifikasi
+    @api.depends(
+        'lead_time_servis',
+        'total_lead_time_servis',
+        'controller_mulai_servis',
+        'controller_selesai',
+        'controller_tunggu_konfirmasi_mulai',
+        'controller_tunggu_konfirmasi_selesai',
+        'controller_tunggu_part1_mulai',
+        'controller_tunggu_part1_selesai',
+        'controller_tunggu_part2_mulai',
+        'controller_tunggu_part2_selesai',
+        'controller_istirahat_shift1_mulai',
+        'controller_istirahat_shift1_selesai'
+    )
+    def _compute_lead_time_calculation_details(self):
+        for order in self:
+            if not order.should_show_calculation:
+                order.lead_time_calculation_details = False
+                continue
+
+            # Format helper functions (dipertahankan)
+            def format_time(dt):
+                if not dt:
+                    return "-"
+                return dt.strftime("%H:%M")
+
+            def format_duration(hours):
+                if not hours:
+                    return "0:00"
+                hours_int = int(hours)
+                minutes = int((hours - hours_int) * 60)
+                return f"{hours_int}:{minutes:02d}"
+
+            # Detail calculation text (dipertahankan)
+            details = f"""
+📊 DETAIL PERHITUNGAN LEAD TIME
+
+1️⃣ Total Lead Time Unit:
+   • Mulai Servis: {format_time(order.controller_mulai_servis)}
+   • Selesai Servis: {format_time(order.controller_selesai)}
+   • Total Waktu: {format_duration(order.total_lead_time_servis)}
+
+2️⃣ Waktu Job Stop:
+   A. Tunggu Konfirmasi:
+      • Mulai: {format_time(order.controller_tunggu_konfirmasi_mulai)}
+      • Selesai: {format_time(order.controller_tunggu_konfirmasi_selesai)}
+      • Durasi: {format_duration(order.lead_time_tunggu_konfirmasi)}
+
+   B. Tunggu Part 1:
+      • Mulai: {format_time(order.controller_tunggu_part1_mulai)}
+      • Selesai: {format_time(order.controller_tunggu_part1_selesai)}
+      • Durasi: {format_duration(order.lead_time_tunggu_part1)}
+
+   C. Tunggu Part 2:
+      • Mulai: {format_time(order.controller_tunggu_part2_mulai)}
+      • Selesai: {format_time(order.controller_tunggu_part2_selesai)}
+      • Durasi: {format_duration(order.lead_time_tunggu_part2)}
+
+   D. Istirahat:
+      • Mulai: {format_time(order.controller_istirahat_shift1_mulai)}
+      • Selesai: {format_time(order.controller_istirahat_shift1_selesai)}
+      • Durasi: {format_duration(order.lead_time_istirahat)}
+
+3️⃣ Rumus Perhitungan:
+   Lead Time Servis = Total Lead Time - Total Job Stop - Istirahat Otomatis
+   {format_duration(order.lead_time_servis)} = {format_duration(order.total_lead_time_servis)} - (Job Stops + Istirahat)
+
+ℹ️ Catatan:
+• Istirahat otomatis (12:00-13:00) dihitung jika tidak ada input manual
+• Semua job stop yang overlap dihitung sekali
+• Waktu dihitung dalam jam kerja (08:00-17:00)
+            """
+            order.lead_time_calculation_details = details
+
+    def toggle_calculation_details(self):
+        """Toggle tampilan detail perhitungan"""
+        self.should_show_calculation = not self.should_show_calculation
+        return True
+
+    # Method baru untuk timeline
+    def _get_timeline_events(self):
+        """
+        Method baru untuk menghitung events timeline
+        """
+        self.ensure_one()
+        events = []
+        
+        # Hanya proses jika ada waktu mulai dan selesai
+        if not self.controller_mulai_servis or not self.controller_selesai:
+            return events
+
+        # Hitung total durasi untuk posisi relatif
+        total_duration = (self.controller_selesai - self.controller_mulai_servis).total_seconds()
+        
+        # Fungsi helper untuk menghitung posisi
+        def calculate_position(time):
+            if not time:
+                return 0
+            time_diff = (time - self.controller_mulai_servis).total_seconds()
+            return min(100, max(0, (time_diff / total_duration) * 100))
+
+        # Tambahkan events
+        events.append({
+            'time': self.controller_mulai_servis,
+            'type': 'start',
+            'label': 'Mulai Servis',
+            'position': 0
+        })
+
+        # Job stops
+        if self.controller_tunggu_konfirmasi_mulai:
+            events.append({
+                'time': self.controller_tunggu_konfirmasi_mulai,
+                'type': 'konfirmasi',
+                'label': 'Tunggu Konfirmasi',
+                'duration': self.lead_time_tunggu_konfirmasi,
+                'position': calculate_position(self.controller_tunggu_konfirmasi_mulai)
+            })
+
+        if self.controller_tunggu_part1_mulai:
+            events.append({
+                'time': self.controller_tunggu_part1_mulai,
+                'type': 'part',
+                'label': 'Tunggu Part 1',
+                'duration': self.lead_time_tunggu_part1,
+                'position': calculate_position(self.controller_tunggu_part1_mulai)
+            })
+
+        if self.controller_tunggu_part2_mulai:
+            events.append({
+                'time': self.controller_tunggu_part2_mulai,
+                'type': 'part',
+                'label': 'Tunggu Part 2',
+                'duration': self.lead_time_tunggu_part2,
+                'position': calculate_position(self.controller_tunggu_part2_mulai)
+            })
+
+        if self.controller_istirahat_shift1_mulai:
+            events.append({
+                'time': self.controller_istirahat_shift1_mulai,
+                'type': 'break',
+                'label': 'Istirahat',
+                'duration': self.lead_time_istirahat,
+                'position': calculate_position(self.controller_istirahat_shift1_mulai)
+            })
+
+        events.append({
+            'time': self.controller_selesai,
+            'type': 'end',
+            'label': 'Selesai Servis',
+            'position': 100
+        })
+
+        return events
 
     # LOG
     def _log_activity(self, message, time):

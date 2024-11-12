@@ -33,6 +33,7 @@
             'pitcar_custom/static/src/xml/queue_dashboard.xml',
             'pitcar_custom/static/src/css/custom_dashboard.css',
             'pitcar_custom/static/src/scss/dashboard.scss',
+            'pitcar_custom/static/src/css/timeline.css',
             # 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css',
         ],
     },
@@ -82,5 +83,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.29'
+    'version':'16.0.30'
 }

@@ -1354,31 +1354,84 @@ class SaleOrder(models.Model):
                 order.total_lead_time_servis = 0
                 order.is_overnight = False
 
+                # Validasi dasar
                 if not order.controller_mulai_servis or not order.controller_selesai or \
                 order.controller_selesai <= order.controller_mulai_servis:
+                    _logger.info(f"{order.name}: Waktu mulai/selesai tidak valid")
                     continue
 
-                # 1. Total Lead Time Unit (tanpa job stop, dengan istirahat normal)
-                total_waktu = order.hitung_waktu_kerja_efektif(
-                    order.controller_mulai_servis,
-                    order.controller_selesai,
-                    is_normal_break=True  # Menggunakan istirahat normal untuk total lead time
-                )
+                _logger.info(f"""
+                    Mulai perhitungan lead time untuk {order.name}:
+                    Mulai Servis: {order.controller_mulai_servis}
+                    Selesai Servis: {order.controller_selesai}
+                """)
+
+                # 1. Hitung total waktu
+                total_waktu = order.controller_selesai - order.controller_mulai_servis
                 order.total_lead_time_servis = total_waktu.total_seconds() / 3600
 
-                # 2. Hitung waktu job stop
-                job_stops = []
+                _logger.info(f"Total waktu kotor: {order.total_lead_time_servis} jam")
+
+                # 2. Hitung total waktu job stop
+                total_job_stop = timedelta()
                 
-                # Tunggu Part 1
-                if order.controller_tunggu_part1_mulai and order.controller_tunggu_part1_selesai:
-                    waktu_tunggu = order.hitung_waktu_kerja_efektif(
-                        order.controller_tunggu_part1_mulai,
-                        order.controller_tunggu_part1_selesai,
-                        is_normal_break=False
-                    )
-                    job_stops.append(('Tunggu Part 1', waktu_tunggu))
+                # Dictionary untuk semua job stop
+                job_stops = {
+                    'Tunggu Konfirmasi': (order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai),
+                    'Tunggu Part 1': (order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai),
+                    'Tunggu Part 2': (order.controller_tunggu_part2_mulai, order.controller_tunggu_part2_selesai),
+                    'Tunggu Sublet': (order.controller_tunggu_sublet_mulai, order.controller_tunggu_sublet_selesai),
+                    'Istirahat': (order.controller_istirahat_shift1_mulai, order.controller_istirahat_shift1_selesai)
+                }
+
+                # Hitung setiap job stop
+                for job_name, (start, end) in job_stops.items():
+                    if start and end and end > start:
+                        job_duration = end - start
+                        total_job_stop += job_duration
+                        _logger.info(f"{job_name}: {job_duration.total_seconds() / 3600} jam")
+
+                # 3. Hitung waktu istirahat otomatis (12:00-13:00)
+                # Hanya jika tidak ada istirahat manual yang diinput
+                if not (order.controller_istirahat_shift1_mulai and order.controller_istirahat_shift1_selesai):
+                    start_date = order.controller_mulai_servis.date()
+                    end_date = order.controller_selesai.date()
+                    current_date = start_date
+                    istirahat_auto = timedelta()
+
+                    while current_date <= end_date:
+                        istirahat_start = datetime.combine(current_date, time(12, 0))
+                        istirahat_end = datetime.combine(current_date, time(13, 0))
+                        
+                        # Cek overlap dengan waktu kerja
+                        if (order.controller_mulai_servis <= istirahat_end and 
+                            order.controller_selesai >= istirahat_start):
+                            overlap_start = max(order.controller_mulai_servis, istirahat_start)
+                            overlap_end = min(order.controller_selesai, istirahat_end)
+                            if overlap_end > overlap_start:
+                                istirahat_auto += (overlap_end - overlap_start)
+                                _logger.info(f"Istirahat otomatis pada {current_date}: {(overlap_end - overlap_start).total_seconds() / 3600} jam")
+                        
+                        current_date += timedelta(days=1)
+
+                    total_job_stop += istirahat_auto
+
+                # 4. Hitung lead time bersih
+                total_seconds = total_waktu.total_seconds()
+                job_stop_seconds = total_job_stop.total_seconds()
                 
-                # ... sisanya sama seperti sebelumnya ...
+                # Lead time bersih = Total waktu - Total job stop
+                order.lead_time_servis = max(0, (total_seconds - job_stop_seconds) / 3600)
+
+                # Set flag menginap
+                order.is_overnight = (order.controller_selesai.date() - order.controller_mulai_servis.date()).days > 0
+
+                _logger.info(f"""
+                    Hasil akhir {order.name}:
+                    - Total Lead Time: {order.total_lead_time_servis:.2f} jam
+                    - Total Job Stop: {job_stop_seconds / 3600:.2f} jam
+                    - Lead Time Bersih: {order.lead_time_servis:.2f} jam
+                """)
 
             except Exception as e:
                 _logger.error(f"Error pada perhitungan {order.name}: {str(e)}")

@@ -619,7 +619,11 @@
                     <page string="Lead Time" name="lead_time">
                         <group>
                             <group string="Service Advisor (SA)" class="o_group_controller">
-                                <field name="service_category" widget="radio" options="{'horizontal': true}"/>
+                                <field name="service_subcategory" 
+                                   widget="selection"
+                                   options="{'no_create': True, 'no_open': True}"
+                                   class="mb-2"/>
+                                <field name="service_category" readonly="1" force_save="1"/>
                                 
                                 <label for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
                                 <div class="d-flex align-items-center">

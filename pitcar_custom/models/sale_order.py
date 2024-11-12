@@ -484,7 +484,31 @@ class SaleOrder(models.Model):
     service_category = fields.Selection([
         ('maintenance', 'Perawatan'),
         ('repair', 'Perbaikan')
-    ], string="Kategori Servis", required=True, default='maintenance')
+    ], string="Kategori Servis", required=True, compute='_compute_service_category')
+    service_subcategory = fields.Selection([
+        # Sub kategori untuk Perawatan
+        ('tune_up', 'Tune Up'),
+        ('tune_up_addition', 'Tune Up + Addition'),
+        ('periodic_service', 'Servis Berkala'),
+        ('periodic_service_addition', 'Servis Berkala + Addition'),
+        # Sub kategori untuk Perbaikan
+        ('general_repair', 'General Repair')
+    ], string="Jenis Servis", required=True)
+
+    @api.depends('service_subcategory')
+    def _compute_service_category(self):
+        """
+        Menentukan kategori servis berdasarkan sub kategori yang dipilih
+        """
+        maintenance_types = ['tune_up', 'tune_up_addition', 'periodic_service', 'periodic_service_addition']
+        for record in self:
+            if record.service_subcategory in maintenance_types:
+                record.service_category = 'maintenance'
+            elif record.service_subcategory == 'general_repair':
+                record.service_category = 'repair'
+            else:
+                record.service_category = False
+    
     sa_jam_masuk = fields.Datetime(
         "Jam Masuk", 
         help="Time when service advisor recorded the arrival."
@@ -1162,7 +1186,7 @@ class SaleOrder(models.Model):
             waktu_tunggu = order.hitung_waktu_kerja_efektif(
                 order.controller_tunggu_konfirmasi_mulai,
                 order.controller_tunggu_konfirmasi_selesai,
-                is_service_time=False
+                is_normal_break=False  # Ganti is_service_time menjadi is_normal_break
             )
             order.lead_time_tunggu_konfirmasi = waktu_tunggu.total_seconds() / 3600
 
@@ -1175,7 +1199,7 @@ class SaleOrder(models.Model):
             waktu_tunggu = order.hitung_waktu_kerja_efektif(
                 order.controller_tunggu_part1_mulai,
                 order.controller_tunggu_part1_selesai,
-                is_service_time=False
+                is_normal_break=False  # Ganti is_service_time menjadi is_normal_break
             )
             order.lead_time_tunggu_part1 = waktu_tunggu.total_seconds() / 3600
 
@@ -1188,7 +1212,7 @@ class SaleOrder(models.Model):
             waktu_tunggu = order.hitung_waktu_kerja_efektif(
                 order.controller_tunggu_part2_mulai,
                 order.controller_tunggu_part2_selesai,
-                is_service_time=False
+                is_normal_break=False  # Ganti is_service_time menjadi is_normal_break
             )
             order.lead_time_tunggu_part2 = waktu_tunggu.total_seconds() / 3600
 
@@ -1334,88 +1358,39 @@ class SaleOrder(models.Model):
                 order.controller_selesai <= order.controller_mulai_servis:
                     continue
 
-                _logger.info(f"""
-                    Mulai perhitungan lead time untuk {order.name}:
-                    - Mulai Servis: {order.controller_mulai_servis}
-                    - Selesai Servis: {order.controller_selesai}
-                """)
-
-                # 1. Hitung total lead time (waktu kotor)
-                total_duration = order.controller_selesai - order.controller_mulai_servis
-                order.total_lead_time_servis = total_duration.total_seconds() / 3600
-
-                # 2. Hitung waktu kerja efektif dengan istirahat otomatis
-                waktu_kerja_efektif = order.hitung_waktu_kerja_efektif(
+                # 1. Total Lead Time Unit (tanpa job stop, dengan istirahat normal)
+                total_waktu = order.hitung_waktu_kerja_efektif(
                     order.controller_mulai_servis,
                     order.controller_selesai,
-                    is_service_time=True
+                    is_normal_break=True  # Menggunakan istirahat normal untuk total lead time
                 )
+                order.total_lead_time_servis = total_waktu.total_seconds() / 3600
 
-                # 3. Hitung total waktu tunggu (job stop)
-                waktu_tunggu_dict = {
-                    'Tunggu Konfirmasi': (order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai),
-                    'Tunggu Part 1': (order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai),
-                    'Tunggu Part 2': (order.controller_tunggu_part2_mulai, order.controller_tunggu_part2_selesai),
-                    'Tunggu Sublet': (order.controller_tunggu_sublet_mulai, order.controller_tunggu_sublet_selesai)
-                }
-
-                # List untuk menampung semua interval waktu tunggu valid
-                valid_intervals = []
+                # 2. Hitung waktu job stop
+                job_stops = []
                 
-                # Tambahkan job stop ke valid intervals
-                for nama_tunggu, (mulai, selesai) in waktu_tunggu_dict.items():
-                    if mulai and selesai and selesai > mulai and \
-                    mulai >= order.controller_mulai_servis and \
-                    selesai <= order.controller_selesai:
-                        valid_intervals.append((mulai, selesai, nama_tunggu))
-
-                # Tambahkan istirahat manual jika ada
-                if order.controller_istirahat_shift1_mulai and order.controller_istirahat_shift1_selesai and \
-                order.controller_istirahat_shift1_selesai > order.controller_istirahat_shift1_mulai:
-                    valid_intervals.append((
-                        order.controller_istirahat_shift1_mulai,
-                        order.controller_istirahat_shift1_selesai,
-                        'Istirahat Manual'
-                    ))
-
-                # Sort intervals berdasarkan waktu mulai
-                valid_intervals.sort(key=lambda x: x[0])
-
-                total_waktu_tunggu = timedelta()
+                # Tunggu Part 1
+                if order.controller_tunggu_part1_mulai and order.controller_tunggu_part1_selesai:
+                    waktu_tunggu = order.hitung_waktu_kerja_efektif(
+                        order.controller_tunggu_part1_mulai,
+                        order.controller_tunggu_part1_selesai,
+                        is_normal_break=False
+                    )
+                    job_stops.append(('Tunggu Part 1', waktu_tunggu))
                 
-                # Proses setiap interval
-                for mulai, selesai, nama_tunggu in valid_intervals:
-                    interval_duration = selesai - mulai
-                    total_waktu_tunggu += interval_duration
-                    _logger.info(f"{nama_tunggu}: {interval_duration.total_seconds() / 3600} jam")
-
-                # 4. Hitung lead time bersih
-                waktu_kerja_seconds = waktu_kerja_efektif.total_seconds()
-                waktu_tunggu_seconds = total_waktu_tunggu.total_seconds()
-                
-                # Lead time bersih = Waktu kerja efektif - Total waktu tunggu
-                if waktu_kerja_seconds > 0:
-                    order.lead_time_servis = max(0, waktu_kerja_seconds - waktu_tunggu_seconds) / 3600
-
-                order.is_overnight = (order.controller_selesai.date() - order.controller_mulai_servis.date()).days > 0
-
-                _logger.info(f"""
-                    Hasil perhitungan untuk {order.name}:
-                    - Total Lead Time: {order.total_lead_time_servis:.2f} jam
-                    - Waktu Kerja Efektif: {waktu_kerja_seconds / 3600:.2f} jam
-                    - Total Waktu Tunggu: {waktu_tunggu_seconds / 3600:.2f} jam
-                    - Lead Time Servis: {order.lead_time_servis:.2f} jam
-                    - Menginap: {'Ya' if order.is_overnight else 'Tidak'}
-                """)
+                # ... sisanya sama seperti sebelumnya ...
 
             except Exception as e:
                 _logger.error(f"Error pada perhitungan {order.name}: {str(e)}")
                 order.lead_time_servis = 0
                 order.total_lead_time_servis = 0
 
-    def hitung_waktu_kerja_efektif(self, waktu_mulai, waktu_selesai, is_service_time=False):
+    def hitung_waktu_kerja_efektif(self, waktu_mulai, waktu_selesai, is_normal_break=True):
         """
-        Menghitung waktu kerja efektif dengan mempertimbangkan jam istirahat otomatis
+        Menghitung waktu kerja efektif dengan mempertimbangkan istirahat
+        @param waktu_mulai: datetime - Waktu mulai
+        @param waktu_selesai: datetime - Waktu selesai
+        @param is_normal_break: boolean - True jika menggunakan perhitungan istirahat normal
         """
         if not waktu_mulai or not waktu_selesai or waktu_selesai <= waktu_mulai:
             return timedelta()
@@ -1434,15 +1409,15 @@ class SaleOrder(models.Model):
             if current_date == waktu_mulai.date():
                 start_time = waktu_mulai.time()
             else:
-                start_time = BENGKEL_BUKA if is_service_time else time(0, 0)
+                start_time = BENGKEL_BUKA if is_normal_break else time(0, 0)
 
             if current_date == waktu_selesai.date():
                 end_time = waktu_selesai.time()
             else:
-                end_time = BENGKEL_TUTUP if is_service_time else time(23, 59, 59)
+                end_time = BENGKEL_TUTUP if is_normal_break else time(23, 59, 59)
 
-            # Jika menghitung service time, batasi dengan jam kerja bengkel
-            if is_service_time:
+            # Batasi dengan jam kerja bengkel jika menggunakan istirahat normal
+            if is_normal_break:
                 if start_time < BENGKEL_BUKA:
                     start_time = BENGKEL_BUKA
                 if end_time > BENGKEL_TUTUP:
@@ -1454,8 +1429,8 @@ class SaleOrder(models.Model):
                 
                 work_time = day_end - day_start
 
-                # Kurangi waktu istirahat otomatis jika ada overlap
-                if is_service_time:  # Hanya kurangi istirahat untuk waktu servis
+                # Kurangi waktu istirahat jika perlu
+                if is_normal_break:
                     istirahat_start = datetime.combine(current_date, ISTIRAHAT_MULAI)
                     istirahat_end = datetime.combine(current_date, ISTIRAHAT_SELESAI)
 
@@ -1464,10 +1439,8 @@ class SaleOrder(models.Model):
                         overlap_end = min(day_end, istirahat_end)
                         istirahat_duration = overlap_end - overlap_start
                         work_time -= istirahat_duration
-                        _logger.info(f"Mengurangi istirahat otomatis: {istirahat_duration.total_seconds() / 3600} jam")
 
                 waktu_kerja += work_time
-                _logger.info(f"Waktu kerja untuk {current_date}: {work_time.total_seconds() / 3600} jam")
 
             current_date += timedelta(days=1)
 

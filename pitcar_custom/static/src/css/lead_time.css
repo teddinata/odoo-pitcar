@@ -99,3 +99,124 @@
   min-width: auto !important; /* Memastikan kontainer tidak terlalu lebar */
   margin-right: 10px; /* Sesuaikan jarak antara label Ya dan Tidak */
 }
+
+
+.timeline-container {
+  width: 100%;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.timeline {
+  position: relative;
+  height: 180px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px 40px;
+  margin: 20px 0;
+}
+
+.timeline .event {
+  position: absolute;
+  padding: 10px;
+  border-radius: 4px;
+  min-width: 120px;
+  z-index: 2;
+  transition: all 0.3s ease;
+}
+
+.timeline .event.start {
+  left: 0;
+  top: 20px;
+  background: #e8f5e9;
+  border: 1px solid #66bb6a;
+}
+
+.timeline .event.end {
+  right: 0;
+  top: 20px;
+  background: #e8f5e9;
+  border: 1px solid #66bb6a;
+}
+
+.timeline .event.job-stop-confirmation {
+  left: 25%;
+  top: 50%;
+  background: #ffebee;
+  border: 1px solid #ef5350;
+}
+
+.timeline .event.job-stop-part {
+  left: 50%;
+  top: 50%;
+  background: #fff3e0;
+  border: 1px solid #ffa726;
+}
+
+.timeline .event.job-stop-break {
+  left: 75%;
+  top: 50%;
+  background: #e3f2fd;
+  border: 1px solid #42a5f5;
+}
+
+.timeline .progress-bar {
+  position: absolute;
+  height: 6px;
+  bottom: 20px;
+  left: 40px;
+  right: 40px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.timeline .progress-bar .progress {
+  height: 100%;
+  background: linear-gradient(90deg, #66bb6a 0%, #81c784 100%);
+  border-radius: 3px;
+}
+
+.timeline-legend {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #666;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.legend-color.start {
+  background: #e8f5e9;
+  border: 1px solid #66bb6a;
+}
+
+.legend-color.konfirmasi {
+  background: #ffebee;
+  border: 1px solid #ef5350;
+}
+
+.legend-color.part {
+  background: #fff3e0;
+  border: 1px solid #ffa726;
+}
+
+.legend-color.break {
+  background: #e3f2fd;
+  border: 1px solid #42a5f5;
+}

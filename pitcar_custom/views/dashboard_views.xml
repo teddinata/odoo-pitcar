@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Search View Inheritance -->
+    <record id="view_sales_dashboard_search" model="ir.ui.view">
+        <field name="name">sale.order.dashboard.search</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group" position="inside">
+                <filter string="Service Advisor" name="group_service_advisor" 
+                        domain="[]" context="{'group_by': 'service_advisor_id'}"/>
+                <filter string="Mechanic" name="group_mechanic" 
+                        domain="[]" context="{'group_by': 'car_mechanic_id_new'}"/>
+                <filter string="Car Brand" name="group_car_brand" 
+                        domain="[]" context="{'group_by': 'partner_car_brand'}"/>
+                <filter string="Lead Time" name="group_lead_time" 
+                        domain="[]" context="{'group_by': 'lead_time_servis'}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Dashboard Graph View -->
+    <record id="view_sales_dashboard_graph" model="ir.ui.view">
+        <field name="name">sale.order.dashboard.graph</field>
+        <field name="model">sale.order</field>
+        <field name="arch" type="xml">
+            <graph string="Service Performance" type="bar" sample="1">
+                <field name="service_advisor_id"/>
+                <field name="car_mechanic_id_new"/>
+                <field name="amount_total" type="measure"/>
+                <field name="lead_time_servis" type="measure"/>
+                <field name="total_orders" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Dashboard Pivot View -->
+    <record id="view_sales_dashboard_pivot" model="ir.ui.view">
+        <field name="name">sale.order.dashboard.pivot</field>
+        <field name="model">sale.order</field>
+        <field name="arch" type="xml">
+            <pivot string="Service Analysis" sample="1">
+                <field name="service_advisor_id" type="row"/>
+                <field name="car_mechanic_id_new" type="row"/>
+                <field name="amount_total" type="measure"/>
+                <field name="lead_time_servis" type="measure"/>
+                <field name="total_orders" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Dashboard Action -->
+    <record id="action_service_dashboard" model="ir.actions.act_window">
+        <field name="name">Service Dashboard</field>
+        <field name="res_model">sale.order</field>
+        <field name="view_mode">graph,pivot</field>
+        <field name="search_view_id" ref="view_sales_dashboard_search"/>
+        <field name="context">{
+            'search_default_group_service_advisor': 1,
+            'search_default_group_mechanic': 1
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No service orders found
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item -->
+    <menuitem id="menu_service_dashboard"
+              name="Service Dashboard"
+              parent="sale.sale_menu_root"
+              action="action_service_dashboard"
+              sequence="20"/>
+</odoo>

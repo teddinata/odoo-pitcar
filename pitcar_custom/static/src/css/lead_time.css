@@ -100,123 +100,148 @@
   margin-right: 10px; /* Sesuaikan jarak antara label Ya dan Tidak */
 }
 
-
+/* Timeline Container */
 .timeline-container {
-  width: 100%;
-  padding: 20px;
+  margin: 1rem 0;
+  padding: 2rem 1rem;
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  width: 100%;
+  overflow-x: auto;
 }
 
-.timeline {
+.timeline-track {
   position: relative;
-  height: 180px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 20px 40px;
+  min-height: 150px;
+  width: 100%;
+  min-width: 800px;
+}
+
+/* Timeline Line */
+.timeline-events {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 40px;
+  width: 100%;
+}
+
+/* Main Horizontal Line */
+.timeline-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: #e0e0e0;
+  z-index: 0;
+}
+
+/* Event Item */
+.timeline-event {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+  margin: 0 15px;
+}
+
+/* Event Title (Above Circle) */
+.event-title {
+  position: absolute;
+  top: -5px;
+  text-align: center;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: #333;
+  width: 100%;
+  white-space: nowrap;
+}
+
+/* Event Marker (Circle) */
+.event-marker {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #e0e0e0;
+  position: relative;
+  z-index: 2;
   margin: 20px 0;
 }
 
-.timeline .event {
+/* Connecting Lines */
+.event-line {
   position: absolute;
-  padding: 10px;
-  border-radius: 4px;
-  min-width: 120px;
-  z-index: 2;
-  transition: all 0.3s ease;
-}
-
-.timeline .event.start {
-  left: 0;
-  top: 20px;
-  background: #e8f5e9;
-  border: 1px solid #66bb6a;
-}
-
-.timeline .event.end {
-  right: 0;
-  top: 20px;
-  background: #e8f5e9;
-  border: 1px solid #66bb6a;
-}
-
-.timeline .event.job-stop-confirmation {
-  left: 25%;
-  top: 50%;
-  background: #ffebee;
-  border: 1px solid #ef5350;
-}
-
-.timeline .event.job-stop-part {
-  left: 50%;
-  top: 50%;
-  background: #fff3e0;
-  border: 1px solid #ffa726;
-}
-
-.timeline .event.job-stop-break {
-  left: 75%;
-  top: 50%;
-  background: #e3f2fd;
-  border: 1px solid #42a5f5;
-}
-
-.timeline .progress-bar {
-  position: absolute;
-  height: 6px;
-  bottom: 20px;
-  left: 40px;
-  right: 40px;
+  height: 2px;
   background: #e0e0e0;
-  border-radius: 3px;
-  overflow: hidden;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
 }
 
-.timeline .progress-bar .progress {
-  height: 100%;
-  background: linear-gradient(90deg, #66bb6a 0%, #81c784 100%);
-  border-radius: 3px;
+.event-line.left {
+  right: 50%;
+  left: -50%;
 }
 
-.timeline-legend {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  padding-top: 15px;
-  border-top: 1px solid #eee;
+.event-line.right {
+  left: 50%;
+  right: -50%;
 }
 
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
+/* Event Time (Below Circle) */
+.event-time {
+  position: absolute;
+  bottom: -25px;
+  text-align: center;
+  font-size: 0.75rem;
   color: #666;
+  width: 100%;
+  white-space: nowrap;
 }
 
-.legend-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
+/* Event Duration */
+.event-duration {
+  position: absolute;
+  bottom: -45px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #666;
+  width: 100%;
 }
 
-.legend-color.start {
-  background: #e8f5e9;
-  border: 1px solid #66bb6a;
+/* Marker Colors */
+.event-marker.start { 
+  border-color: #4caf50;
+  background: #4caf50;
+}
+.event-marker.end { 
+  border-color: #4caf50;
+  background: #4caf50;
+}
+.event-marker.konfirmasi { 
+  border-color: #f44336;
+  background: #f44336;
+}
+.event-marker.part { 
+  border-color: #ff9800;
+  background: #ff9800;
+}
+.event-marker.break { 
+  border-color: #2196f3;
+  background: #2196f3;
 }
 
-.legend-color.konfirmasi {
-  background: #ffebee;
-  border: 1px solid #ef5350;
+/* Custom Timeline Colors */
+.timeline-event.active .event-marker {
+  box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.2);
 }
 
-.legend-color.part {
-  background: #fff3e0;
-  border: 1px solid #ffa726;
-}
-
-.legend-color.break {
-  background: #e3f2fd;
-  border: 1px solid #42a5f5;
+/* Responsive */
+@media (max-width: 1200px) {
+  .timeline-track {
+      min-width: 600px;
+  }
 }

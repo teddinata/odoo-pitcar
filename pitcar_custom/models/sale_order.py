@@ -11,37 +11,37 @@ READONLY_FIELD_STATES = {
     for state in {'sale', 'done', 'cancel'}
 }
 
-BENGKEL_BUKA = time(8, 0)  # 08:00
-BENGKEL_TUTUP = time(22, 0)  # 22:00
-ISTIRAHAT_1_MULAI = time(12, 0)  # 12:00
-ISTIRAHAT_1_SELESAI = time(13, 0)  # 13:00
-ISTIRAHAT_2_MULAI = time(18, 0)  # 18:00
-ISTIRAHAT_2_SELESAI = time(19, 0)  # 19:00
-JAM_KERJA_PER_HARI = timedelta(hours=14)  # 22:00 - 08:00
-ISTIRAHAT_PER_HARI = timedelta(hours=2)  # (13:00 - 12:00) + (19:00 - 18:00)
+# BENGKEL_BUKA = time(8, 0)  # 08:00
+# BENGKEL_TUTUP = time(22, 0)  # 22:00
+# ISTIRAHAT_1_MULAI = time(12, 0)  # 12:00
+# ISTIRAHAT_1_SELESAI = time(13, 0)  # 13:00
+# ISTIRAHAT_2_MULAI = time(18, 0)  # 18:00
+# ISTIRAHAT_2_SELESAI = time(19, 0)  # 19:00
+# JAM_KERJA_PER_HARI = timedelta(hours=14)  # 22:00 - 08:00
+# ISTIRAHAT_PER_HARI = timedelta(hours=2)  # (13:00 - 12:00) + (19:00 - 18:00)
 
-def hitung_waktu_kerja_efektif(waktu_mulai, waktu_selesai):
-    total_waktu = waktu_selesai - waktu_mulai
-    hari_kerja = (waktu_selesai.date() - waktu_mulai.date()).days + 1
-    waktu_kerja = timedelta()
+# def hitung_waktu_kerja_efektif(waktu_mulai, waktu_selesai):
+#     total_waktu = waktu_selesai - waktu_mulai
+#     hari_kerja = (waktu_selesai.date() - waktu_mulai.date()).days + 1
+#     waktu_kerja = timedelta()
     
-    for hari in range(hari_kerja):
-        hari_ini = waktu_mulai.date() + timedelta(days=hari)
-        mulai_hari_ini = max(datetime.combine(hari_ini, BENGKEL_BUKA), waktu_mulai)
-        selesai_hari_ini = min(datetime.combine(hari_ini, BENGKEL_TUTUP), waktu_selesai)
+#     for hari in range(hari_kerja):
+#         hari_ini = waktu_mulai.date() + timedelta(days=hari)
+#         mulai_hari_ini = max(datetime.combine(hari_ini, BENGKEL_BUKA), waktu_mulai)
+#         selesai_hari_ini = min(datetime.combine(hari_ini, BENGKEL_TUTUP), waktu_selesai)
         
-        if mulai_hari_ini < selesai_hari_ini:
-            waktu_kerja_hari_ini = selesai_hari_ini - mulai_hari_ini
+#         if mulai_hari_ini < selesai_hari_ini:
+#             waktu_kerja_hari_ini = selesai_hari_ini - mulai_hari_ini
             
-            # Kurangi waktu istirahat
-            if mulai_hari_ini.time() <= ISTIRAHAT_1_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_1_SELESAI:
-                waktu_kerja_hari_ini -= timedelta(hours=1)
-            if mulai_hari_ini.time() <= ISTIRAHAT_2_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_2_SELESAI:
-                waktu_kerja_hari_ini -= timedelta(hours=1)
+#             # Kurangi waktu istirahat
+#             if mulai_hari_ini.time() <= ISTIRAHAT_1_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_1_SELESAI:
+#                 waktu_kerja_hari_ini -= timedelta(hours=1)
+#             if mulai_hari_ini.time() <= ISTIRAHAT_2_MULAI and selesai_hari_ini.time() >= ISTIRAHAT_2_SELESAI:
+#                 waktu_kerja_hari_ini -= timedelta(hours=1)
             
-            waktu_kerja += waktu_kerja_hari_ini
+#             waktu_kerja += waktu_kerja_hari_ini
     
-    return waktu_kerja
+#     return waktu_kerja
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
@@ -529,8 +529,14 @@ class SaleOrder(models.Model):
     controller_tunggu_part1_selesai = fields.Datetime("Tunggu Part 1 Selesai")
     controller_tunggu_part2_mulai = fields.Datetime("Tunggu Part 2 Mulai")
     controller_tunggu_part2_selesai = fields.Datetime("Tunggu Part 2 Selesai")
+
+    need_istirahat = fields.Selection([
+        ('yes', 'Ya'),
+        ('no', 'Tidak')
+    ], string="Mobil Tunggu Istirahat (Tidak Normal)?", default='no')
     controller_istirahat_shift1_mulai = fields.Datetime("Istirahat Shift 1 Mulai")
     controller_istirahat_shift1_selesai = fields.Datetime("Istirahat Shift 1 Selesai")
+
     controller_tunggu_sublet_mulai = fields.Datetime("Tunggu Sublet Mulai")
     controller_tunggu_sublet_selesai = fields.Datetime("Tunggu Sublet Selesai")
     
@@ -744,6 +750,8 @@ class SaleOrder(models.Model):
     @api.constrains('controller_estimasi_mulai', 'controller_estimasi_selesai')
     def _check_controller_estimasi(self):
         for record in self:
+            if record.controller_selesai:
+                raise UserError("Tidak dapat memberikan estimasi karena servis sudah selesai")
             if record.controller_estimasi_mulai or record.controller_estimasi_selesai:
                 if self.env.user.pitcar_role != 'controller':
                     raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
@@ -995,6 +1003,8 @@ class SaleOrder(models.Model):
             raise UserError(f"Gagal memulai pelayanan: {str(e)}")
     
     def action_tunggu_part1_mulai(self):
+        if self.controller_selesai:
+            raise UserError("Tidak dapat memulai tunggu part 1 karena servis sudah selesai.")
         # Periksa peran pengguna sebelum melakukan perubahan apa pun
         if self.env.user.pitcar_role != 'controller':
             raise UserError("Hanya Controller yang dapat memulai tunggu part 1.")
@@ -1009,6 +1019,8 @@ class SaleOrder(models.Model):
         self.controller_tunggu_part1_selesai = fields.Datetime.now()
 
     def action_tunggu_part2_mulai(self):
+        if self.controller_selesai:
+            raise UserError("Tidak dapat memulai tunggu part 2 karena servis sudah selesai.")
         # Periksa peran pengguna sebelum melakukan perubahan apa pun
         if self.env.user.pitcar_role != 'controller':
             raise UserError("Hanya Controller yang dapat memulai tunggu part 2.")
@@ -1051,6 +1063,8 @@ class SaleOrder(models.Model):
     # Aksi untuk memulai tunggu konfirmasi
     def action_tunggu_konfirmasi_mulai(self):
         for record in self:
+            if record.controller_selesai:
+                raise UserError("Tidak dapat memulai tunggu konfirmasi karena servis sudah selesai.")
             if record.controller_tunggu_konfirmasi_mulai:
                 raise ValidationError("Tunggu konfirmasi sudah dimulai sebelumnya.")
             
@@ -1667,6 +1681,60 @@ class SaleOrder(models.Model):
         })
 
         return events
+    
+    # DASHBOARD
+    # Tambahkan field untuk dashboard di sini
+    # Field untuk agregasi dashboard
+    # total_orders = fields.Integer(
+    #     string='Total Orders',
+    #     compute='_compute_dashboard_data',
+    #     store=True
+    # )
+    
+    # total_revenue = fields.Monetary(
+    #     string='Total Revenue',
+    #     compute='_compute_dashboard_data',
+    #     store=True
+    # )
+    
+    # average_lead_time = fields.Float(
+    #     string='Average Lead Time',
+    #     compute='_compute_dashboard_data',
+    #     store=True
+    # )
+    
+    # # Compute method untuk dashboard
+    # @api.depends('state', 'amount_total', 'lead_time_servis')
+    # def _compute_dashboard_data(self):
+    #     for record in self:
+    #         record.total_orders = 1  # Akan diagregasi di dashboard
+    #         record.total_revenue = record.amount_total
+    #         record.average_lead_time = record.lead_time_servis or 0.0
+
+    # # Method untuk mendapatkan data dashboard
+    # @api.model
+    # def get_dashboard_data(self):
+    #     """Method untuk mengambil data dashboard"""
+    #     domain = [('state', '!=', 'cancel')]
+        
+    #     # Data berdasarkan Service Advisor
+    #     sa_data = self.read_group(
+    #         domain=domain,
+    #         fields=['service_advisor_id', 'total_orders:count', 'total_revenue:sum', 'average_lead_time:avg'],
+    #         groupby=['service_advisor_id']
+    #     )
+
+    #     # Data berdasarkan Mechanic
+    #     mechanic_data = self.read_group(
+    #         domain=domain,
+    #         fields=['car_mechanic_id_new', 'total_orders:count', 'total_revenue:sum', 'average_lead_time:avg'],
+    #         groupby=['car_mechanic_id_new']
+    #     )
+
+    #     return {
+    #         'service_advisor_data': sa_data,
+    #         'mechanic_data': mechanic_data,
+    #     }
 
     # LOG
     def _log_activity(self, message, time):

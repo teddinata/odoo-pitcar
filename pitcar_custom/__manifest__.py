@@ -50,7 +50,7 @@
 
         'security/lead_time_security.xml',
         'security/ir.model.access.csv',
-
+        
         'views/account_move.xml',
         'views/pitcar_mechanic_views.xml',
         'views/pitcar_service_advisor_views.xml',  # View untuk Service Advisor

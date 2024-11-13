@@ -730,22 +730,6 @@
                                             confirm="Apakah anda yakin ingin menyelesaikan tunggu part 2?"/>
                                     <field name="controller_tunggu_part2_selesai" readonly="1" nolabel="1" class="ms-2"/>
                                 </div>
-                                
-                                <label for="controller_istirahat_shift1_mulai" string="Istirahat" class="fw-bold mb-2"/>
-                                <div class="d-flex align-items-center mb-3">
-                                    <button name="action_istirahat_shift1_mulai" string="MULAI ISTIRAHAT" type="object" 
-                                            class="btn btn-info btn-sm me-2 text-uppercase" style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin memulai istirahat?"/>
-                                    <field name="controller_istirahat_shift1_mulai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <label for="controller_istirahat_shift1_selesai" string="Selesai Istirahat" class="fw-bold mb-2"/>
-                                <div class="d-flex align-items-center mb-3">
-                                    <button name="action_istirahat_shift1_selesai" string="SELESAI ISTIRAHAT" type="object" 
-                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin menyelesaikan istirahat?"/>
-                                    <field name="controller_istirahat_shift1_selesai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
 
                                 <label for="controller_tunggu_sublet_mulai" string="Tunggu Sublet" class="fw-bold mb-2"/>
                                 <div class="d-flex align-items-center mb-3">
@@ -761,6 +745,34 @@
                                             class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
                                             confirm="Apakah anda yakin ingin menyelesaikan tunggu sublet?"/>
                                     <field name="controller_tunggu_sublet_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <field name="need_istirahat" widget="radio" options="{'horizontal': True}" class="o_radio_controller" />
+
+                                <label for="controller_istirahat_shift1_mulai" string="Istirahat" class="fw-bold mb-2" 
+                                    attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}" />
+                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}">
+                                    <button name="action_istirahat_shift1_mulai" 
+                                            string="MULAI ISTIRAHAT" 
+                                            type="object" 
+                                            class="btn btn-info btn-sm me-2 text-uppercase" 
+                                            style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin memulai istirahat?"/>
+                                    <field name="controller_istirahat_shift1_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_istirahat_shift1_selesai" 
+                                    string="Selesai Istirahat" 
+                                    class="fw-bold mb-2" 
+                                    attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}" />
+                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}">
+                                    <button name="action_istirahat_shift1_selesai" 
+                                            string="SELESAI ISTIRAHAT" 
+                                            type="object" 
+                                            class="btn btn-success btn-sm me-2 text-uppercase" 
+                                            style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin menyelesaikan istirahat?"/>
+                                    <field name="controller_istirahat_shift1_selesai" readonly="1" nolabel="1" class="ms-2"/>
                                 </div>
 
                                 <field name="need_other_job_stop" widget="radio" options="{'horizontal': True}" class="o_radio_controller" />
@@ -809,99 +821,91 @@
                         <group string="Catatan">
                             <field name="lead_time_catatan"/>
                         </group>
-                        <group string="Detail Perhitungan" attrs="{'invisible': [('controller_mulai_servis', '=', False)]}">
+                        <!-- Timeline Section -->
+                       <group string="Timeline Progress">
                             <div class="timeline-container">
-                                <div class="timeline">
-                                    <!-- Start Event -->
-                                    <div class="event start">
-                                        <div class="event-label">Mulai Servis</div>
-                                        <div class="event-time">
-                                            <field name="controller_mulai_servis" widget="datetime"/>
-                                        </div>
-                                    </div>
+                                <div class="timeline-track">
+                                    <div class="timeline-events">
+                                        <!-- Timeline Main Line -->
+                                        <div class="timeline-line"></div>
 
-                                    <!-- Job Stop Events -->
-                                    <t t-if="controller_tunggu_konfirmasi_mulai">
-                                        <div class="event job-stop-confirmation">
-                                            <div class="event-label">Tunggu Konfirmasi</div>
+                                        <!-- Start Event -->
+                                        <div class="timeline-event">
+                                            <span class="event-title">Mulai Servis</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker start"></div>
+                                            <div class="event-line right"></div>
                                             <div class="event-time">
-                                                <field name="controller_tunggu_konfirmasi_mulai" widget="datetime"/>
+                                                <field name="controller_mulai_servis"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Tunggu Konfirmasi -->
+                                        <div class="timeline-event" attrs="{'invisible': [('controller_tunggu_konfirmasi_mulai', '=', False)]}">
+                                            <span class="event-title">Tunggu Konfirmasi</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker konfirmasi"></div>
+                                            <div class="event-line right"></div>
+                                            <div class="event-time">
+                                                <field readonly="1" name="controller_tunggu_konfirmasi_mulai"/>
                                             </div>
                                             <div class="event-duration">
                                                 <field name="lead_time_tunggu_konfirmasi" widget="float_time"/>
                                             </div>
                                         </div>
-                                    </t>
 
-                                    <t t-if="controller_tunggu_part1_mulai">
-                                        <div class="event job-stop-part">
-                                            <div class="event-label">Tunggu Part 1</div>
+                                        <!-- Tunggu Part 1 -->
+                                        <div class="timeline-event" attrs="{'invisible': [('controller_tunggu_part1_mulai', '=', False)]}">
+                                            <span class="event-title">Tunggu Part 1</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker part"></div>
+                                            <div class="event-line right"></div>
                                             <div class="event-time">
-                                                <field name="controller_tunggu_part1_mulai" widget="datetime"/>
+                                                <field readonly="1"  name="controller_tunggu_part1_mulai"/>
                                             </div>
                                             <div class="event-duration">
                                                 <field name="lead_time_tunggu_part1" widget="float_time"/>
                                             </div>
                                         </div>
-                                    </t>
 
-                                    <t t-if="controller_tunggu_part2_mulai">
-                                        <div class="event job-stop-part">
-                                            <div class="event-label">Tunggu Part 2</div>
+                                        <!-- Tunggu Part 2 -->
+                                        <div class="timeline-event" attrs="{'invisible': [('controller_tunggu_part2_mulai', '=', False)]}">
+                                            <span class="event-title">Tunggu Part 2</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker part"></div>
+                                            <div class="event-line right"></div>
                                             <div class="event-time">
-                                                <field name="controller_tunggu_part2_mulai" widget="datetime"/>
+                                                <field readonly="1"  name="controller_tunggu_part2_mulai"/>
                                             </div>
                                             <div class="event-duration">
                                                 <field name="lead_time_tunggu_part2" widget="float_time"/>
                                             </div>
                                         </div>
-                                    </t>
 
-                                    <t t-if="controller_istirahat_shift1_mulai">
-                                        <div class="event job-stop-break">
-                                            <div class="event-label">Istirahat</div>
+                                        <!-- Istirahat -->
+                                        <div class="timeline-event" attrs="{'invisible': [('controller_istirahat_shift1_mulai', '=', False)]}">
+                                            <span class="event-title">Istirahat</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker break"></div>
+                                            <div class="event-line right"></div>
                                             <div class="event-time">
-                                                <field name="controller_istirahat_shift1_mulai" widget="datetime"/>
+                                                <field readonly="1"  name="controller_istirahat_shift1_mulai"/>
                                             </div>
                                             <div class="event-duration">
                                                 <field name="lead_time_istirahat" widget="float_time"/>
                                             </div>
                                         </div>
-                                    </t>
 
-                                    <!-- End Event -->
-                                    <div class="event end">
-                                        <div class="event-label">Selesai Servis</div>
-                                        <div class="event-time">
-                                            <field name="controller_selesai" widget="datetime"/>
+                                        <!-- End Event -->
+                                        <div class="timeline-event">
+                                            <span class="event-title">Selesai Servis</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker end"></div>
+                                            <div class="event-line right"></div>
+                                            <div class="event-time">
+                                                <field name="controller_selesai"/>
+                                            </div>
                                         </div>
-                                    </div>
-
-                                    <!-- Progress Bar -->
-                                    <div class="progress-bar">
-                                        <div class="progress">
-                                            <field name="lead_time_progress" widget="progressbar"/>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Legend -->
-                                <div class="timeline-legend">
-                                    <div class="legend-item">
-                                        <span class="legend-color start"></span>
-                                        <span>Mulai/Selesai</span>
-                                    </div>
-                                    <div class="legend-item">
-                                        <span class="legend-color konfirmasi"></span>
-                                        <span>Tunggu Konfirmasi</span>
-                                    </div>
-                                    <div class="legend-item">
-                                        <span class="legend-color part"></span>
-                                        <span>Tunggu Part</span>
-                                    </div>
-                                    <div class="legend-item">
-                                        <span class="legend-color break"></span>
-                                        <span>Istirahat</span>
                                     </div>
                                 </div>
                             </div>

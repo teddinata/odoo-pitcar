@@ -484,7 +484,7 @@ class SaleOrder(models.Model):
     service_category = fields.Selection([
         ('maintenance', 'Perawatan'),
         ('repair', 'Perbaikan')
-    ], string="Kategori Servis", compute='_compute_service_category')
+    ], string="Kategori Servis", store=True, compute='_compute_service_category')
     service_subcategory = fields.Selection([
         # Sub kategori untuk Perawatan
         ('tune_up', 'Tune Up'),

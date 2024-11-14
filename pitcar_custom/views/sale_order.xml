@@ -111,10 +111,12 @@
                     <field name="next_follow_up_6_months" optional="hide" widget="date"/>
                 </xpath>
                 <xpath expr="//field[@name='company_id']" position="after">
+                    <field name="service_category" optional="hide" string="Kategori Servis"/>
+                    <field name="service_subcategory" optional="hide" string="Sub Kategori Servis"/>
                     <!-- Waktu Masuk dan Keluar -->
                     <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
                     <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
-                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKBs"/>
+                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKB"/>
                     <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
                     
                     <!-- Waktu Proses -->
@@ -241,9 +243,11 @@
                 </xpath>
                 <xpath expr="//field[@name='company_id']" position="after">
                     <!-- Waktu Masuk dan Keluar -->
+                    <field name="service_category" optional="hide" string="Kategori Servis"/>
+                    <field name="service_subcategory" optional="hide" string="Sub Kategori Servis"/>
                     <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
                     <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
-                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKBs"/>
+                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKB"/>
                     <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
                     
                     <!-- Waktu Proses -->

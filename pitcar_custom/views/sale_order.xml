@@ -319,6 +319,8 @@
                     <filter string="Menginap" name="overnight" domain="[('is_overnight', '=', True)]"/>
                 </xpath>
                 <xpath expr="//group" position="inside">
+                    <filter string="Kategori Servis" name="group_service_category" context="{'group_by': 'service_category'}"/>
+                    <filter string="Sub Kategori Servis" name="group_service_subcategory" context="{'group_by': 'service_subcategory'}"/>
                     <filter string="Jam Masuk" name="group_sa_jam_masuk" context="{'group_by': 'sa_jam_masuk'}"/>
                     <filter string="Jam Keluar" name="group_fo_unit_keluar" context="{'group_by': 'fo_unit_keluar'}"/>
                     <filter string="Overall Lead Time" name="group_overall_lead_time" context="{'group_by': 'overall_lead_time'}"/>

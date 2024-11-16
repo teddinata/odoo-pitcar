@@ -163,13 +163,24 @@ class LeadTimeAPIController(http.Controller):
                     ('controller_selesai', '<=', today + timedelta(days=1))
         ]
 
-    @http.route('/web/lead-time/table', type='json', auth='user', methods=['GET'], cors='*', csrf=False)
+    @http.route('/web/lead-time/table', type='json', auth='user', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
     def get_table_data(self, **kw):
         """Get lead time table data with filtering and pagination"""
         try:
+            # Handle OPTIONS request for CORS
+            if request.httprequest.method == 'OPTIONS':
+                headers = {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                    'Access-Control-Allow-Credentials': 'true'
+                }
+                return Response(status=200, headers=headers)
+
+            # Log received parameters
             _logger.info(f"Received parameters: {kw}")
             
-            # Extract parameters
+            # Extract parameters from JSON-RPC format
             params = kw.get('params', {})
             page = int(params.get('page', 1))
             limit = int(params.get('limit', 20))
@@ -299,6 +310,9 @@ class LeadTimeAPIController(http.Controller):
             summary = self._get_summary(domain)
 
             return {
+            'jsonrpc': '2.0',
+            'id': None,
+            'result': {
                 'status': 'success',
                 'data': {
                     'current_time': current_time.strftime('%H : %M : %S WIB'),
@@ -317,15 +331,22 @@ class LeadTimeAPIController(http.Controller):
                     'summary': summary
                 }
             }
+        }
 
         except Exception as e:
             _logger.error(f"Error in get_table_data: {str(e)}", exc_info=True)
             return {
-                'status': 'error',
-                'message': str(e),
-                'details': {
-                    'page_requested': params.get('page'),
-                    'limit_requested': params.get('limit')
+                'jsonrpc': '2.0',
+                'id': None,
+                'error': {
+                    'code': 500,
+                    'message': str(e),
+                    'data': {
+                        'name': 'Internal Server Error',
+                        'debug': str(e),
+                        'arguments': [],
+                        'exception_type': type(e).__name__
+                    }
                 }
             }
 

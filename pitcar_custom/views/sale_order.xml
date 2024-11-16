@@ -147,7 +147,7 @@
                     <field name="lead_time_tunggu_part2" optional="hide" widget="float_time" string="Waktu Tunggu Part 2"/>
                     <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
                     <field name="lead_time_tunggu_sublet" optional="hide" widget="float_time" string="Tunggu Sublet"/>
-                    <field name="lead_time_job_stop_lain " optional="hide" widget="float_time" string="Job Stop Lain"/>
+                    <field name="lead_time_job_stop_lain" optional="hide" widget="float_time" string="Job Stop Lain"/>
                     <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
                     <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
                     <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Unit"/>

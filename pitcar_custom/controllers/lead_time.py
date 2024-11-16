@@ -310,26 +310,22 @@ class LeadTimeAPIController(http.Controller):
             summary = self._get_summary(domain)
 
             return {
-            'jsonrpc': '2.0',
-            'id': None,
-            'result': {
-                'status': 'success',
-                'data': {
-                    'current_time': current_time.strftime('%H : %M : %S WIB'),
-                    'current_date': current_time.strftime('%A %d %b %Y'),
-                    'pagination': {
-                        'total_items': total_count,
-                        'total_pages': total_pages,
-                        'current_page': page,
-                        'items_per_page': limit,
-                        'has_next': page < total_pages,
-                        'has_previous': page > 1,
-                        'start_number': start_number,
-                        'end_number': min(start_number + limit - 1, total_count)
-                    },
-                    'rows': rows,
-                    'summary': summary
-                }
+            'status': 'success',
+            'data': {
+                'current_time': current_time.strftime('%H : %M : %S WIB'),
+                'current_date': current_time.strftime('%A %d %b %Y'),
+                'pagination': {
+                    'total_items': total_count,
+                    'total_pages': total_pages,
+                    'current_page': page,
+                    'items_per_page': limit,
+                    'has_next': page < total_pages,
+                    'has_previous': page > 1,
+                    'start_number': start_number,
+                    'end_number': min(start_number + limit - 1, total_count)
+                },
+                'rows': rows,
+                'summary': summary
             }
         }
 

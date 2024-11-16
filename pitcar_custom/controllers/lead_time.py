@@ -1,5 +1,5 @@
 from odoo import http, fields
-from odoo.http import request
+from odoo.http import request, Response
 import pytz
 from datetime import datetime, timedelta
 from odoo.exceptions import ValidationError, UserError
@@ -129,43 +129,29 @@ class LeadTimeAPIController(http.Controller):
             }
         }
     
+    def _get_active_domain(self):
+        """Get base domain for active service orders"""
+        return [
+            ('sa_cetak_pkb', '!=', False),  # Hanya filter PKB saja sebagai base domain
+        ]
+
     def _validate_pagination_params(self, page, limit):
         """Validate and normalize pagination parameters"""
         try:
-            # Convert and validate page
             page = int(page)
             if page < 1:
                 page = 1
                 
-            # Convert and validate limit
             limit = int(limit)
             if limit not in [10, 20, 30, 50]:
-                limit = 20  # Default to 20 if invalid
+                limit = 20
                 
             return page, limit
         except (ValueError, TypeError):
-            return 1, 20  # Default values if conversion fails
-
-    # Main Table Endpoints
-    def _get_active_domain(self):
-        """Get base domain for active service orders"""
-        today = fields.Date.today()
-        # today_start = datetime.combine(today, datetime.min.time())
-        # today_end = datetime.combine(today, datetime.max.time())
-        
-        return [
-            # Filter orders yang sudah di-PKB dan belum selesai atau selesai hari ini
-            ('sa_cetak_pkb', '!=', False),
-            '|',
-                ('controller_selesai', '=', False),
-                '&',
-                    ('controller_selesai', '>=', today),
-                    ('controller_selesai', '<=', today + timedelta(days=1))
-        ]
+            return 1, 20
 
     @http.route('/web/lead-time/table', type='json', auth='user', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
     def get_table_data(self, **kw):
-        """Get lead time table data with filtering and pagination"""
         try:
             # Handle OPTIONS request for CORS
             if request.httprequest.method == 'OPTIONS':
@@ -177,77 +163,85 @@ class LeadTimeAPIController(http.Controller):
                 }
                 return Response(status=200, headers=headers)
 
-            # Log received parameters
+            # Extract parameters langsung dari kw (untuk JSON-RPC)
+            page = int(kw.get('page', 1))
+            limit = int(kw.get('limit', 20))
+            filter_type = kw.get('filter', 'all')
+            search_query = kw.get('search_query', '').strip()
+            sort_by = kw.get('sort_by', 'id')
+            sort_order = kw.get('sort_order', 'desc')
+
+            # Log parameters yang diterima
             _logger.info(f"Received parameters: {kw}")
-            
-            # Extract parameters from JSON-RPC format
-            params = kw.get('params', {})
-            page = int(params.get('page', 1))
-            limit = int(params.get('limit', 20))
-            filter_type = params.get('filter', 'all')
-            search_query = params.get('search', '')
-            sort_by = params.get('sort_by', 'id')
-            sort_order = params.get('sort_order', 'desc')
 
-            # Validate pagination params
-            page, limit = self._validate_pagination_params(page, limit)
-            offset = (page - 1) * limit
-
-            # Start with base domain for active orders
+            # Get base domain
             domain = self._get_active_domain()
+            
+            # Add filter conditions
+            today = fields.Date.today()
+            if filter_type and filter_type != 'all':
+                if filter_type == 'delay':
+                    # Ganti logika delay sesuai kebutuhan
+                    # Misalnya: orders yang melewati estimasi selesai
+                    domain.extend([
+                        ('controller_estimasi_selesai', '!=', False),
+                        ('controller_selesai', '=', False),
+                        ('controller_estimasi_selesai', '<', fields.Datetime.now())
+                    ])
+                elif filter_type == 'proses':
+                    domain.extend([
+                        ('controller_mulai_servis', '!=', False),
+                        ('controller_selesai', '=', False)
+                    ])
+                elif filter_type == 'tunggu_part':
+                    domain.extend([
+                        ('controller_tunggu_part1_mulai', '!=', False),
+                        ('controller_tunggu_part1_selesai', '=', False)
+                    ])
+                elif filter_type == 'tunggu_konfirmasi':
+                    domain.extend([
+                        ('controller_tunggu_konfirmasi_mulai', '!=', False),
+                        ('controller_tunggu_konfirmasi_selesai', '=', False)
+                    ])
+                elif filter_type == 'istirahat':
+                    domain.extend([
+                        ('controller_istirahat_shift1_mulai', '!=', False),
+                        ('controller_istirahat_shift1_selesai', '=', False)
+                    ])
+                elif filter_type == 'selesai':
+                    domain.extend([
+                        ('controller_selesai', '!=', False),
+                        ('controller_selesai', '>=', today),
+                        ('controller_selesai', '<', today + timedelta(days=1))
+                    ])
 
-            # Add additional filters
-            if filter_type == 'delay':
-                domain.append(('is_delayed', '=', True))
-            elif filter_type == 'proses':
-                domain.extend([
-                    ('controller_mulai_servis', '!=', False),
-                    ('controller_selesai', '=', False)
-                ])
-            elif filter_type == 'tunggu_part':
-                domain.extend([
-                    ('controller_tunggu_part1_mulai', '!=', False),
-                    ('controller_tunggu_part1_selesai', '=', False)
-                ])
-            elif filter_type == 'tunggu_konfirmasi':
-                domain.extend([
-                    ('controller_tunggu_konfirmasi_mulai', '!=', False),
-                    ('controller_tunggu_konfirmasi_selesai', '=', False)
-                ])
-            elif filter_type == 'istirahat':
-                domain.extend([
-                    ('controller_istirahat_shift1_mulai', '!=', False),
-                    ('controller_istirahat_shift1_selesai', '=', False)
-                ])
-            elif filter_type == 'selesai':
-                today = fields.Date.today()
-                domain.extend([
-                    ('controller_selesai', '!=', False),
-                    ('controller_selesai', '>=', today),
-                    ('controller_selesai', '<=', today + timedelta(days=1))
-                ])
-
-            # Add search filters
+            # Add search conditions
             if search_query:
-                domain += ['|', '|', '|', '|', '|',
+                search_domain = ['|', '|', '|', '|', '|',
                     ('partner_car_id.number_plate', 'ilike', search_query),
-                    ('partner_car_id.brand.name', 'ilike', search_query),
-                    ('partner_car_id.brand_type.name', 'ilike', search_query),
-                    ('lead_time_catatan', 'ilike', search_query),
+                    ('partner_car_brand.name', 'ilike', search_query),
+                    ('partner_car_brand_type.name', 'ilike', search_query),
+                    ('generated_mechanic_team', 'ilike', search_query),
                     ('service_advisor_id.name', 'ilike', search_query),
-                    ('generated_mechanic_team', 'ilike', search_query)
+                    ('lead_time_catatan', 'ilike', search_query)
                 ]
+                domain.extend(search_domain)
 
+            # Debug log
             _logger.info(f"Applied domain: {domain}")
-
-            # Get total count for pagination
-            total_count = request.env['sale.order'].search_count(domain)
-            total_pages = math.ceil(total_count / limit)
-
-            # Validate page number
-            if page > total_pages and total_pages > 0:
-                page = total_pages
-                offset = (page - 1) * limit
+            
+            # Get records count and calculate pagination
+            SaleOrder = request.env['sale.order']
+            
+            # Validate pagination
+            page, limit = self._validate_pagination_params(page, limit)
+            
+            # Get total count
+            total_count = SaleOrder.search_count(domain)
+            total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
+            
+            # Calculate offset
+            offset = (page - 1) * limit
 
             # Prepare sorting
             order_mapping = {
@@ -256,94 +250,108 @@ class LeadTimeAPIController(http.Controller):
                 'customer': 'partner_id',
                 'status': 'lead_time_stage',
                 'plat': 'partner_car_id.number_plate',
-                'brand': 'partner_car_id.brand.name',
+                'brand': 'partner_car_brand.name',
                 'estimasi': 'controller_estimasi_selesai',
                 'progress': 'lead_time_progress'
             }
             sort_field = order_mapping.get(sort_by, 'id')
-            order = f'{sort_field} {sort_order}'
+            order = f'{sort_field} {sort_order}, id DESC'
 
             # Get paginated records
-            orders = request.env['sale.order'].search(
-                domain,
-                limit=limit,
-                offset=offset,
-                order=order
-            )
-
+            orders = SaleOrder.search(domain, limit=limit, offset=offset, order=order)
             _logger.info(f"Found {len(orders)} records")
 
-            # Prepare response data
+            # Prepare response
             tz = pytz.timezone('Asia/Jakarta')
             current_time = datetime.now(tz)
             
             rows = []
             start_number = offset + 1
-            for order in orders:
-                number_plate = order.partner_car_id.number_plate if order.partner_car_id else '-'
-                brand_name = order.partner_car_brand.name if order.partner_car_brand else ''
-                brand_type_name = order.partner_car_brand_type.name if order.partner_car_brand_type else ''
-                
+            for order in orders:            
                 rows.append({
                     'id': order.id,
                     'no': start_number + len(rows),
-                    'jenis_mobil': f"{brand_name} {brand_type_name}".strip() or '-',
-                    'plat_mobil': number_plate,
-                    'status': self._get_order_status(order),
+                    'jenis_mobil': f"{order.partner_car_brand.name} {order.partner_car_brand_type.name}".strip() if order.partner_car_brand and order.partner_car_brand_type else '-',
+                    'plat_mobil': order.partner_car_id.number_plate if order.partner_car_id else '-',
+                    'status': {
+                        'code': order.lead_time_stage or 'pkb_printed',
+                        'text': dict(order._fields['lead_time_stage'].selection).get(order.lead_time_stage, 'PKB Dicetak'),
+                    },
                     'keterangan': order.lead_time_stage or '-',
                     'catatan': order.lead_time_catatan or '-',
-                    'estimasi_selesai': self._format_time(order.controller_estimasi_selesai),
+                    'estimasi_selesai': fields.Datetime.to_string(order.controller_estimasi_selesai) if order.controller_estimasi_selesai else '-',
                     'mekanik': order.generated_mechanic_team or '-',
                     'service_advisor': ', '.join(order.service_advisor_id.mapped('name')) if order.service_advisor_id else '-',
                     'timestamps': {
-                        'mulai_servis': self._format_time(order.controller_mulai_servis),
-                        'selesai_servis': self._format_time(order.controller_selesai),
-                        'completion': self._format_datetime(order.date_completed)
+                        'mulai_servis': fields.Datetime.to_string(order.controller_mulai_servis) if order.controller_mulai_servis else None,
+                        'selesai_servis': fields.Datetime.to_string(order.controller_selesai) if order.controller_selesai else None,
+                        'completion': fields.Datetime.to_string(order.date_completed) if order.date_completed else None
                     },
                     'progress': {
                         'percentage': order.lead_time_progress or 0,
-                        'stage': order.lead_time_stage or 'not_started'
+                        'stage': order.lead_time_stage or 'pkb_printed'
                     }
                 })
 
-            # Update summary data
-            summary = self._get_summary(domain)
+            # Prepare summary
+            base_domain = [('sa_cetak_pkb', '!=', False)]
+            summary = {
+                'total': SaleOrder.search_count(base_domain),
+                'proses': SaleOrder.search_count(base_domain + [
+                    ('controller_mulai_servis', '!=', False),
+                    ('controller_selesai', '=', False)
+                ]),
+                'tunggu_part': SaleOrder.search_count(base_domain + [
+                    ('controller_tunggu_part1_mulai', '!=', False),
+                    ('controller_tunggu_part1_selesai', '=', False)
+                ]),
+                'selesai': SaleOrder.search_count(base_domain + [
+                    ('controller_selesai', '!=', False)
+                ]),
+                'mechanics': {
+                    'total': request.env['pitcar.mechanic.new'].search_count([]),
+                    'on_duty': 0
+                },
+                'service_advisors': {
+                    'total': request.env['pitcar.service.advisor'].search_count([]),
+                    'on_duty': 0
+                }
+            }
 
             return {
-            'status': 'success',
-            'data': {
-                'current_time': current_time.strftime('%H : %M : %S WIB'),
-                'current_date': current_time.strftime('%A %d %b %Y'),
-                'pagination': {
-                    'total_items': total_count,
-                    'total_pages': total_pages,
-                    'current_page': page,
-                    'items_per_page': limit,
-                    'has_next': page < total_pages,
-                    'has_previous': page > 1,
-                    'start_number': start_number,
-                    'end_number': min(start_number + limit - 1, total_count)
-                },
-                'rows': rows,
-                'summary': summary
+                'status': 'success',
+                'data': {
+                    'debug': {
+                        'domain': domain,
+                        'filter_type': filter_type,
+                        'search_query': search_query,
+                        'received_params': kw,
+                        'total_count': total_count
+                    },
+                    'current_time': current_time.strftime('%H : %M : %S WIB'),
+                    'current_date': current_time.strftime('%A %d %b %Y'),
+                    'pagination': {
+                        'total_items': total_count,
+                        'total_pages': total_pages,
+                        'current_page': page,
+                        'items_per_page': limit,
+                        'has_next': page < total_pages,
+                        'has_previous': page > 1,
+                        'start_number': start_number,
+                        'end_number': min(start_number + limit - 1, total_count)
+                    },
+                    'rows': rows,
+                    'summary': summary
+                }
             }
-        }
 
         except Exception as e:
             _logger.error(f"Error in get_table_data: {str(e)}", exc_info=True)
             return {
-                'jsonrpc': '2.0',
-                'id': None,
-                'error': {
-                    'code': 500,
-                    'message': str(e),
-                    'data': {
-                        'name': 'Internal Server Error',
-                        'debug': str(e),
-                        'arguments': [],
-                        'exception_type': type(e).__name__
-                    }
-                }
+                'status': 'error',
+                'message': str(e),
+                'trace': traceback.format_exc(),
+                'received_params': kw
             }
 
     # Job Stop Management Endpoints

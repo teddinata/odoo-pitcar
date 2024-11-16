@@ -132,6 +132,10 @@
                     <field name="controller_tunggu_konfirmasi_selesai" optional="hide" string="Tunggu Konfirmasi Selesai"/>
                     <field name="controller_istirahat_shift1_mulai" optional="hide" string="Istirahat Mulai"/>
                     <field name="controller_istirahat_shift1_selesai" optional="hide" string="Istirahat Selesai"/>
+                    <field name="controller_tunggu_sublet_mulai" optional="hide" string="Tunggu Sublet Mulai"/>
+                    <field name="controller_tunggu_sublet_selesai" optional="hide" string="Tunggu Sublet Selesai"/>
+                    <field name="controller_job_stop_lain_mulai" optional="hide" string="Tunggu Job Stop Lain Mulai"/>
+                    <field name="controller_job_stop_lain_selesai" optional="hide" string="Tunggu Job Stop Lain Selesai"/>
                     
                     <!-- Perhitungan Lead Time -->
                     <field name="lead_time_tunggu_penerimaan" optional="hide" widget="float_time" string="Waktu Tunggu Penerimaan"/>
@@ -142,6 +146,8 @@
                     <field name="lead_time_tunggu_part1" optional="hide" widget="float_time" string="Waktu Tunggu Part 1"/>
                     <field name="lead_time_tunggu_part2" optional="hide" widget="float_time" string="Waktu Tunggu Part 2"/>
                     <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
+                    <field name="lead_time_tunggu_sublet" optional="hide" widget="float_time" string="Tunggu Sublet"/>
+                    <field name="lead_time_job_stop_lain " optional="hide" widget="float_time" string="Job Stop Lain"/>
                     <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
                     <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
                     <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Unit"/>
@@ -263,6 +269,10 @@
                     <field name="controller_tunggu_konfirmasi_selesai" optional="hide" string="Tunggu Konfirmasi Selesai"/>
                     <field name="controller_istirahat_shift1_mulai" optional="hide" string="Istirahat Mulai"/>
                     <field name="controller_istirahat_shift1_selesai" optional="hide" string="Istirahat Selesai"/>
+                    <field name="controller_tunggu_sublet_mulai" optional="hide" string="Tunggu Sublet Mulai"/>
+                    <field name="controller_tunggu_sublet_selesai" optional="hide" string="Tunggu Sublet Selesai"/>
+                    <field name="controller_job_stop_lain_mulai" optional="hide" string="Tunggu Job Stop Lain Mulai"/>
+                    <field name="controller_job_stop_lain_selesai" optional="hide" string="Tunggu Job Stop Lain Selesai"/>
                     
                     <!-- Perhitungan Lead Time -->
                     <field name="lead_time_tunggu_penerimaan" optional="hide" widget="float_time" string="Waktu Tunggu Penerimaan"/>
@@ -273,6 +283,8 @@
                     <field name="lead_time_tunggu_part1" optional="hide" widget="float_time" string="Waktu Tunggu Part 1"/>
                     <field name="lead_time_tunggu_part2" optional="hide" widget="float_time" string="Waktu Tunggu Part 2"/>
                     <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
+                    <field name="lead_time_tunggu_sublet" optional="hide" widget="float_time" string="Tunggu Sublet"/>
+                    <field name="lead_time_job_stop_lain " optional="hide" widget="float_time" string="Job Stop Lain"/>
                     <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
                     <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
                     <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Unit"/>

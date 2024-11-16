@@ -571,6 +571,19 @@ class SaleOrder(models.Model):
     controller_job_stop_lain_selesai = fields.Datetime("Job Stop Lain Selesai")
     job_stop_lain_keterangan = fields.Text("Keterangan Job Stop Lain")
 
+    # Fields baru untuk lead time sublet dan job stop lain
+    lead_time_tunggu_sublet = fields.Float(
+        string="Lead Time Tunggu Sublet (hours)", 
+        compute="_compute_lead_time_tunggu_sublet", 
+        store=True
+    )
+    
+    lead_time_job_stop_lain = fields.Float(
+        string="Lead Time Job Stop Lain (hours)", 
+        compute="_compute_lead_time_job_stop_lain", 
+        store=True
+    )
+
     user_is_controller = fields.Boolean(compute='_compute_user_is_controller')
 
     @api.depends('user_id')
@@ -1242,7 +1255,37 @@ class SaleOrder(models.Model):
             else:
                 order.lead_time_istirahat = 0
 
-    # 9. LEAD TIME SERVIS
+    # 9. LEAD TIME TUNGGU SUBLET DAN JOB STOP LAIN
+     # Compute methods untuk field baru
+    @api.depends('controller_tunggu_sublet_mulai', 'controller_tunggu_sublet_selesai')
+    def _compute_lead_time_tunggu_sublet(self):
+        for order in self:
+            if order.controller_tunggu_sublet_mulai and order.controller_tunggu_sublet_selesai:
+                waktu_tunggu = order.hitung_waktu_kerja_efektif(
+                    order.controller_tunggu_sublet_mulai,
+                    order.controller_tunggu_sublet_selesai,
+                    is_normal_break=False
+                )
+                order.lead_time_tunggu_sublet = waktu_tunggu.total_seconds() / 3600
+            else:
+                order.lead_time_tunggu_sublet = 0
+
+    @api.depends('need_other_job_stop', 'controller_job_stop_lain_mulai', 'controller_job_stop_lain_selesai')
+    def _compute_lead_time_job_stop_lain(self):
+        for order in self:
+            if order.need_other_job_stop == 'yes' and \
+               order.controller_job_stop_lain_mulai and \
+               order.controller_job_stop_lain_selesai:
+                waktu_tunggu = order.hitung_waktu_kerja_efektif(
+                    order.controller_job_stop_lain_mulai,
+                    order.controller_job_stop_lain_selesai,
+                    is_normal_break=False
+                )
+                order.lead_time_job_stop_lain = waktu_tunggu.total_seconds() / 3600
+            else:
+                order.lead_time_job_stop_lain = 0
+
+    # 10. LEAD TIME SERVIS
     overall_lead_time = fields.Float(string="Overall Lead Time (jam)", compute="_compute_overall_lead_time", store=True)
 
     @api.depends('sa_jam_masuk', 'fo_unit_keluar', 'controller_selesai')

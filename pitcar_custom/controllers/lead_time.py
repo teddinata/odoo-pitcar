@@ -264,20 +264,66 @@ class LeadTimeAPIController(http.Controller):
             # Prepare response
             tz = pytz.timezone('Asia/Jakarta')
             current_time = datetime.now(tz)
+
+            # Update fungsi untuk mendapatkan status yang benar
+            def get_order_status(order):
+                """Get proper order status based on service state"""
+                if order.controller_selesai:
+                    return {
+                        'code': 'completed',
+                        'text': 'Selesai'
+                    }
+                elif order.controller_mulai_servis:
+                    # Cek job stops yang aktif
+                    if order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai:
+                        return {
+                            'code': 'tunggu_part',
+                            'text': 'Menunggu Part'
+                        }
+                    elif order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai:
+                        return {
+                            'code': 'tunggu_konfirmasi',
+                            'text': 'Tunggu Konfirmasi'
+                        }
+                    elif order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai:
+                        return {
+                            'code': 'istirahat',
+                            'text': 'Istirahat'
+                        }
+                    elif order.controller_tunggu_sublet_mulai and not order.controller_tunggu_sublet_selesai:
+                        return {
+                            'code': 'tunggu_sublet',
+                            'text': 'Tunggu Sublet'
+                        }
+                    elif order.controller_job_stop_lain_mulai and not order.controller_job_stop_lain_selesai:
+                        return {
+                            'code': 'job_stop_lain',
+                            'text': 'Job Stop Lain'
+                        }
+                    else:
+                        return {
+                            'code': 'in_progress',
+                            'text': 'Sedang Dikerjakan'
+                        }
+                else:
+                    return {
+                        'code': 'not_started',
+                        'text': 'Belum Dimulai'
+                    }
             
             rows = []
             start_number = offset + 1
             for order in orders:            
+                # Get proper status
+                status = get_order_status(order)
+                
                 rows.append({
                     'id': order.id,
                     'no': start_number + len(rows),
                     'jenis_mobil': f"{order.partner_car_brand.name} {order.partner_car_brand_type.name}".strip() if order.partner_car_brand and order.partner_car_brand_type else '-',
                     'plat_mobil': order.partner_car_id.number_plate if order.partner_car_id else '-',
-                    'status': {
-                        'code': order.lead_time_stage or 'pkb_printed',
-                        'text': dict(order._fields['lead_time_stage'].selection).get(order.lead_time_stage, 'PKB Dicetak'),
-                    },
-                    'keterangan': order.lead_time_stage or '-',
+                    'status': status,
+                    'keterangan': status['code'],  # Menggunakan status code yang sama
                     'catatan': order.lead_time_catatan or '-',
                     'estimasi_selesai': fields.Datetime.to_string(order.controller_estimasi_selesai) if order.controller_estimasi_selesai else '-',
                     'mekanik': order.generated_mechanic_team or '-',
@@ -289,7 +335,24 @@ class LeadTimeAPIController(http.Controller):
                     },
                     'progress': {
                         'percentage': order.lead_time_progress or 0,
-                        'stage': order.lead_time_stage or 'pkb_printed'
+                        'stage': status['code']  # Menggunakan status code yang sama untuk konsistensi
+                    },
+                    'job_stops': {
+                        'tunggu_part': {
+                            'active': bool(order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai),
+                            'start': fields.Datetime.to_string(order.controller_tunggu_part1_mulai) if order.controller_tunggu_part1_mulai else None,
+                            'end': fields.Datetime.to_string(order.controller_tunggu_part1_selesai) if order.controller_tunggu_part1_selesai else None
+                        },
+                        'tunggu_konfirmasi': {
+                            'active': bool(order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai),
+                            'start': fields.Datetime.to_string(order.controller_tunggu_konfirmasi_mulai) if order.controller_tunggu_konfirmasi_mulai else None,
+                            'end': fields.Datetime.to_string(order.controller_tunggu_konfirmasi_selesai) if order.controller_tunggu_konfirmasi_selesai else None
+                        },
+                        'istirahat': {
+                            'active': bool(order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai),
+                            'start': fields.Datetime.to_string(order.controller_istirahat_shift1_mulai) if order.controller_istirahat_shift1_mulai else None,
+                            'end': fields.Datetime.to_string(order.controller_istirahat_shift1_selesai) if order.controller_istirahat_shift1_selesai else None
+                        }
                     }
                 })
 
@@ -711,5 +774,213 @@ class LeadTimeAPIController(http.Controller):
                 'status': 'success',
                 'data': stats
             }
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+
+    # NEW VERSION API : SIMPLE WAY
+    @http.route('/web/lead-time/start-service', type='json', auth='user', methods=['POST'])
+    def start_service(self, **kw):
+        """Start a new service or resume service"""
+        try:
+            order_id = kw.get('order_id')
+            if not order_id:
+                return {'status': 'error', 'message': 'Order ID is required'}
+
+            sale_order = self._validate_access(order_id)
+            if not sale_order:
+                return {'status': 'error', 'message': 'Sale order not found'}
+
+            try:
+                sale_order.action_mulai_servis()
+                return {
+                    'status': 'success',
+                    'message': 'Service started successfully',
+                    'data': {
+                        'order_id': sale_order.id,
+                        'status': 'in_progress',
+                        'started_at': self._format_datetime(sale_order.controller_mulai_servis)
+                    }
+                }
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}
+
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/lead-time/pause-service', type='json', auth='user', methods=['POST'])
+    def pause_service(self, **kw):
+        """Pause service with specific stop type"""
+        try:
+            order_id = kw.get('order_id')
+            stop_type = kw.get('stop_type')
+            note = kw.get('note')
+
+            if not order_id or not stop_type:
+                return {'status': 'error', 'message': 'Order ID and stop type are required'}
+
+            sale_order = self._validate_access(order_id)
+            if not sale_order:
+                return {'status': 'error', 'message': 'Sale order not found'}
+
+            # Map stop types to corresponding actions
+            stop_actions = {
+                'tunggu_konfirmasi': 'action_tunggu_konfirmasi_mulai',
+                'tunggu_part_1': 'action_tunggu_part1_mulai',
+                'tunggu_part_2': 'action_tunggu_part2_mulai',
+                'istirahat': 'action_istirahat_shift1_mulai',
+                'tunggu_sublet': 'action_tunggu_sublet_mulai',
+                'job_stop_lain': 'action_job_stop_lain_mulai'
+            }
+
+            try:
+                # Execute corresponding action
+                if stop_type in stop_actions:
+                    action = getattr(sale_order, stop_actions[stop_type])
+                    action()
+
+                    # Update note if provided for job_stop_lain
+                    if stop_type == 'job_stop_lain' and note:
+                        sale_order.write({
+                            'job_stop_lain_keterangan': note,
+                            'need_other_job_stop': 'yes'
+                        })
+
+                    return {
+                        'status': 'success',
+                        'message': f'Service paused with {stop_type}',
+                        'data': {
+                            'order_id': sale_order.id,
+                            'status': 'paused',
+                            'stop_type': stop_type,
+                            'paused_at': self._format_datetime(fields.Datetime.now())
+                        }
+                    }
+                else:
+                    return {'status': 'error', 'message': 'Invalid stop type'}
+
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}
+
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/lead-time/resume-service', type='json', auth='user', methods=['POST'])
+    def resume_service(self, **kw):
+        """Resume service from specific stop type"""
+        try:
+            order_id = kw.get('order_id')
+            stop_type = kw.get('stop_type')
+
+            if not order_id or not stop_type:
+                return {'status': 'error', 'message': 'Order ID and stop type are required'}
+
+            sale_order = self._validate_access(order_id)
+            if not sale_order:
+                return {'status': 'error', 'message': 'Sale order not found'}
+
+            # Map stop types to corresponding completion actions
+            stop_actions = {
+                'tunggu_konfirmasi': 'action_tunggu_konfirmasi_selesai',
+                'tunggu_part_1': 'action_tunggu_part1_selesai',
+                'tunggu_part_2': 'action_tunggu_part2_selesai',
+                'istirahat': 'action_istirahat_shift1_selesai',
+                'tunggu_sublet': 'action_tunggu_sublet_selesai',
+                'job_stop_lain': 'action_job_stop_lain_selesai'
+            }
+
+            try:
+                # Execute corresponding completion action
+                if stop_type in stop_actions:
+                    action = getattr(sale_order, stop_actions[stop_type])
+                    action()
+
+                    # Resume service after completing the stop
+                    # sale_order.action_mulai_servis()
+
+                    return {
+                        'status': 'success',
+                        'message': f'Service resumed from {stop_type}',
+                        'data': {
+                            'order_id': sale_order.id,
+                            'status': 'in_progress',
+                            'resumed_at': self._format_datetime(fields.Datetime.now())
+                        }
+                    }
+                else:
+                    return {'status': 'error', 'message': 'Invalid stop type'}
+
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}
+
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/lead-time/complete-service', type='json', auth='user', methods=['POST'])
+    def complete_service(self, **kw):
+        """Complete the service"""
+        try:
+            order_id = kw.get('order_id')
+            if not order_id:
+                return {'status': 'error', 'message': 'Order ID is required'}
+
+            sale_order = self._validate_access(order_id)
+            if not sale_order:
+                return {'status': 'error', 'message': 'Sale order not found'}
+
+            try:
+                sale_order.action_selesai_servis()
+                return {
+                    'status': 'success',
+                    'message': 'Service completed successfully',
+                    'data': {
+                        'order_id': sale_order.id,
+                        'status': 'completed',
+                        'completed_at': self._format_datetime(sale_order.controller_selesai)
+                    }
+                }
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}
+
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/lead-time/<int:sale_order_id>/status', type='json', auth='user', methods=['GET'])
+    def get_service_status(self, sale_order_id):
+        """Get current service status including active job stops"""
+        try:
+            sale_order = self._validate_access(sale_order_id)
+            if not sale_order:
+                return {'status': 'error', 'message': 'Sale order not found'}
+
+            status_data = {
+                'order_id': sale_order.id,
+                'current_status': sale_order.lead_time_stage,
+                'is_active': bool(sale_order.controller_mulai_servis and not sale_order.controller_selesai),
+                'progress': sale_order.lead_time_progress,
+                'active_job_stops': []
+            }
+
+            # Check for active job stops
+            job_stops = []
+            if sale_order.controller_tunggu_konfirmasi_mulai and not sale_order.controller_tunggu_konfirmasi_selesai:
+                job_stops.append({
+                    'type': 'tunggu_konfirmasi',
+                    'started_at': self._format_datetime(sale_order.controller_tunggu_konfirmasi_mulai)
+                })
+            if sale_order.controller_tunggu_part1_mulai and not sale_order.controller_tunggu_part1_selesai:
+                job_stops.append({
+                    'type': 'tunggu_part_1',
+                    'started_at': self._format_datetime(sale_order.controller_tunggu_part1_mulai)
+                })
+            # ... add other job stop checks ...
+
+            status_data['active_job_stops'] = job_stops
+
+            return {
+                'status': 'success',
+                'data': status_data
+            }
+
         except Exception as e:
             return {'status': 'error', 'message': str(e)}

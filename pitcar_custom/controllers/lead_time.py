@@ -337,23 +337,45 @@ class LeadTimeAPIController(http.Controller):
                         'percentage': order.lead_time_progress or 0,
                         'stage': status['code']  # Menggunakan status code yang sama untuk konsistensi
                     },
-                    'job_stops': {
-                        'tunggu_part': {
-                            'active': bool(order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai),
-                            'start': fields.Datetime.to_string(order.controller_tunggu_part1_mulai) if order.controller_tunggu_part1_mulai else None,
-                            'end': fields.Datetime.to_string(order.controller_tunggu_part1_selesai) if order.controller_tunggu_part1_selesai else None
-                        },
+                     'job_stops': {
                         'tunggu_konfirmasi': {
                             'active': bool(order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai),
                             'start': fields.Datetime.to_string(order.controller_tunggu_konfirmasi_mulai) if order.controller_tunggu_konfirmasi_mulai else None,
-                            'end': fields.Datetime.to_string(order.controller_tunggu_konfirmasi_selesai) if order.controller_tunggu_konfirmasi_selesai else None
+                            'end': fields.Datetime.to_string(order.controller_tunggu_konfirmasi_selesai) if order.controller_tunggu_konfirmasi_selesai else None,
+                            'completed': bool(order.controller_tunggu_konfirmasi_selesai)
+                        },
+                        'tunggu_part': {
+                            'active': bool(order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai),
+                            'start': fields.Datetime.to_string(order.controller_tunggu_part1_mulai) if order.controller_tunggu_part1_mulai else None,
+                            'end': fields.Datetime.to_string(order.controller_tunggu_part1_selesai) if order.controller_tunggu_part1_selesai else None,
+                            'completed': bool(order.controller_tunggu_part1_selesai)
+                        },
+                        'tunggu_part_2': {
+                            'active': bool(order.controller_tunggu_part2_mulai and not order.controller_tunggu_part2_selesai),
+                            'start': fields.Datetime.to_string(order.controller_tunggu_part2_mulai) if order.controller_tunggu_part2_mulai else None,
+                            'end': fields.Datetime.to_string(order.controller_tunggu_part2_selesai) if order.controller_tunggu_part2_selesai else None,
+                            'completed': bool(order.controller_tunggu_part2_selesai)
                         },
                         'istirahat': {
                             'active': bool(order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai),
                             'start': fields.Datetime.to_string(order.controller_istirahat_shift1_mulai) if order.controller_istirahat_shift1_mulai else None,
-                            'end': fields.Datetime.to_string(order.controller_istirahat_shift1_selesai) if order.controller_istirahat_shift1_selesai else None
+                            'end': fields.Datetime.to_string(order.controller_istirahat_shift1_selesai) if order.controller_istirahat_shift1_selesai else None,
+                            'completed': bool(order.controller_istirahat_shift1_selesai)
+                        },
+                        'tunggu_sublet': {
+                            'active': bool(order.controller_tunggu_sublet_mulai and not order.controller_tunggu_sublet_selesai),
+                            'start': fields.Datetime.to_string(order.controller_tunggu_sublet_mulai) if order.controller_tunggu_sublet_mulai else None,
+                            'end': fields.Datetime.to_string(order.controller_tunggu_sublet_selesai) if order.controller_tunggu_sublet_selesai else None,
+                            'completed': bool(order.controller_tunggu_sublet_selesai)
+                        },
+                        'job_stop_lain': {
+                            'active': bool(order.controller_job_stop_lain_mulai and not order.controller_job_stop_lain_selesai),
+                            'start': fields.Datetime.to_string(order.controller_job_stop_lain_mulai) if order.controller_job_stop_lain_mulai else None,
+                            'end': fields.Datetime.to_string(order.controller_job_stop_lain_selesai) if order.controller_job_stop_lain_selesai else None,
+                            'completed': bool(order.controller_job_stop_lain_selesai),
+                            'note': order.job_stop_lain_keterangan or None
                         }
-                    }
+                    },
                 })
 
             # Prepare summary

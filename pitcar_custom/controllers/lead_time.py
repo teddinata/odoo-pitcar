@@ -44,6 +44,29 @@ class LeadTimeAPIController(http.Controller):
         except ValueError:
             raise ValidationError("Invalid time format. Please use HH:MM format")
 
+    def _convert_to_local_time(self, utc_dt):
+        """Convert UTC datetime to Asia/Jakarta time"""
+        if not utc_dt:
+            return None
+        tz = pytz.timezone('Asia/Jakarta')
+        if not utc_dt.tzinfo:
+            utc_dt = pytz.utc.localize(utc_dt)
+        return utc_dt.astimezone(tz)
+
+    def _format_local_datetime(self, dt):
+        """Format datetime to Asia/Jakarta timezone string"""
+        if not dt:
+            return None
+        local_dt = self._convert_to_local_time(dt)
+        return local_dt.strftime('%Y-%m-%d %H:%M:%S WIB')
+
+    def _format_local_time(self, dt):
+        """Format time to Asia/Jakarta timezone HH:MM string"""
+        if not dt:
+            return None
+        local_dt = self._convert_to_local_time(dt)
+        return local_dt.strftime('%H:%M')
+
     def _get_order_status(self, order):
         """Get current status including job stops"""
         if order.controller_selesai:
@@ -98,20 +121,20 @@ class LeadTimeAPIController(http.Controller):
             'status': self._get_order_status(order),
             'timestamps': {
                 'servis': {
-                    'mulai': self._format_time(order.controller_mulai_servis),
-                    'selesai': self._format_time(order.controller_selesai)
+                    'mulai': self._format_local_time(order.controller_mulai_servis),
+                    'selesai': self._format_local_time(order.controller_selesai)
                 },
                 'tunggu_part': {
-                    'mulai': self._format_time(order.controller_tunggu_part1_mulai),
-                    'selesai': self._format_time(order.controller_tunggu_part1_selesai)
+                    'mulai': self._format_local_time(order.controller_tunggu_part1_mulai),
+                    'selesai': self._format_local_time(order.controller_tunggu_part1_selesai)
                 },
                 'tunggu_konfirmasi': {
-                    'mulai': self._format_time(order.controller_tunggu_konfirmasi_mulai),
-                    'selesai': self._format_time(order.controller_tunggu_konfirmasi_selesai)
+                    'mulai': self._format_local_time(order.controller_tunggu_konfirmasi_mulai),
+                    'selesai': self._format_local_time(order.controller_tunggu_konfirmasi_selesai)
                 },
                 'istirahat': {
-                    'mulai': self._format_time(order.controller_istirahat_shift1_mulai),
-                    'selesai': self._format_time(order.controller_istirahat_shift1_selesai)
+                    'mulai': self._format_local_time(order.controller_istirahat_shift1_mulai),
+                    'selesai': self._format_local_time(order.controller_istirahat_shift1_selesai)
                 }
             },
             'lead_times': {
@@ -125,7 +148,7 @@ class LeadTimeAPIController(http.Controller):
             },
             'notes': order.lead_time_catatan,
             'completion': {
-                'date_completed': self._format_datetime(order.date_completed) if order.date_completed else None
+                'date_completed': self._format_local_datetime(order.date_completed)
             }
         }
     
@@ -328,54 +351,64 @@ class LeadTimeAPIController(http.Controller):
                     'estimasi_selesai': fields.Datetime.to_string(order.controller_estimasi_selesai) if order.controller_estimasi_selesai else '-',
                     'mekanik': order.generated_mechanic_team or '-',
                     'service_advisor': ', '.join(order.service_advisor_id.mapped('name')) if order.service_advisor_id else '-',
+                    'service': {
+                        'category': {
+                            'code': order.service_category,
+                            'text': dict(order._fields['service_category'].selection).get(order.service_category, '-')
+                        },
+                        'subcategory': {
+                            'code': order.service_subcategory,
+                            'text': dict(order._fields['service_subcategory'].selection).get(order.service_subcategory, '-')
+                        }
+                    },
                     'timestamps': {
-                        'mulai_servis': fields.Datetime.to_string(order.controller_mulai_servis) if order.controller_mulai_servis else None,
-                        'selesai_servis': fields.Datetime.to_string(order.controller_selesai) if order.controller_selesai else None,
-                        'completion': fields.Datetime.to_string(order.date_completed) if order.date_completed else None
+                        'mulai_servis': self._format_local_datetime(order.controller_mulai_servis),
+                        'selesai_servis': self._format_local_datetime(order.controller_selesai),
+                        'completion': self._format_local_datetime(order.date_completed)
                     },
                     'progress': {
                         'percentage': order.lead_time_progress or 0,
                         'stage': status['code']  # Menggunakan status code yang sama untuk konsistensi
                     },
-                     'job_stops': {
+                    'job_stops': {
                         'tunggu_konfirmasi': {
                             'active': bool(order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai),
-                            'start': fields.Datetime.to_string(order.controller_tunggu_konfirmasi_mulai) if order.controller_tunggu_konfirmasi_mulai else None,
-                            'end': fields.Datetime.to_string(order.controller_tunggu_konfirmasi_selesai) if order.controller_tunggu_konfirmasi_selesai else None,
+                            'start': self._format_local_datetime(order.controller_tunggu_konfirmasi_mulai), 
+                            'end': self._format_local_datetime(order.controller_tunggu_konfirmasi_selesai),
                             'completed': bool(order.controller_tunggu_konfirmasi_selesai)
                         },
                         'tunggu_part': {
                             'active': bool(order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai),
-                            'start': fields.Datetime.to_string(order.controller_tunggu_part1_mulai) if order.controller_tunggu_part1_mulai else None,
-                            'end': fields.Datetime.to_string(order.controller_tunggu_part1_selesai) if order.controller_tunggu_part1_selesai else None,
+                            'start': self._format_local_datetime(order.controller_tunggu_part1_mulai),
+                            'end': self._format_local_datetime(order.controller_tunggu_part1_selesai), 
                             'completed': bool(order.controller_tunggu_part1_selesai)
                         },
                         'tunggu_part_2': {
                             'active': bool(order.controller_tunggu_part2_mulai and not order.controller_tunggu_part2_selesai),
-                            'start': fields.Datetime.to_string(order.controller_tunggu_part2_mulai) if order.controller_tunggu_part2_mulai else None,
-                            'end': fields.Datetime.to_string(order.controller_tunggu_part2_selesai) if order.controller_tunggu_part2_selesai else None,
-                            'completed': bool(order.controller_tunggu_part2_selesai)
+                            'start': self._format_local_datetime(order.controller_tunggu_part2_mulai),
+                            'end': self._format_local_datetime(order.controller_tunggu_part2_selesai),
+                            'completed': bool(order.controller_tunggu_part2_selesai) 
                         },
                         'istirahat': {
                             'active': bool(order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai),
-                            'start': fields.Datetime.to_string(order.controller_istirahat_shift1_mulai) if order.controller_istirahat_shift1_mulai else None,
-                            'end': fields.Datetime.to_string(order.controller_istirahat_shift1_selesai) if order.controller_istirahat_shift1_selesai else None,
+                            'start': self._format_local_datetime(order.controller_istirahat_shift1_mulai),
+                            'end': self._format_local_datetime(order.controller_istirahat_shift1_selesai),
                             'completed': bool(order.controller_istirahat_shift1_selesai)
                         },
                         'tunggu_sublet': {
-                            'active': bool(order.controller_tunggu_sublet_mulai and not order.controller_tunggu_sublet_selesai),
-                            'start': fields.Datetime.to_string(order.controller_tunggu_sublet_mulai) if order.controller_tunggu_sublet_mulai else None,
-                            'end': fields.Datetime.to_string(order.controller_tunggu_sublet_selesai) if order.controller_tunggu_sublet_selesai else None,
+                            'active': bool(order.controller_tunggu_sublet_mulai and not order.controller_tunggu_sublet_selesai), 
+                            'start': self._format_local_datetime(order.controller_tunggu_sublet_mulai),
+                            'end': self._format_local_datetime(order.controller_tunggu_sublet_selesai),
                             'completed': bool(order.controller_tunggu_sublet_selesai)
                         },
                         'job_stop_lain': {
                             'active': bool(order.controller_job_stop_lain_mulai and not order.controller_job_stop_lain_selesai),
-                            'start': fields.Datetime.to_string(order.controller_job_stop_lain_mulai) if order.controller_job_stop_lain_mulai else None,
-                            'end': fields.Datetime.to_string(order.controller_job_stop_lain_selesai) if order.controller_job_stop_lain_selesai else None,
+                            'start': self._format_local_datetime(order.controller_job_stop_lain_mulai),
+                            'end': self._format_local_datetime(order.controller_job_stop_lain_selesai), 
                             'completed': bool(order.controller_job_stop_lain_selesai),
                             'note': order.job_stop_lain_keterangan or None
                         }
-                    },
+                    }
                 })
 
             # Prepare summary
@@ -764,30 +797,260 @@ class LeadTimeAPIController(http.Controller):
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
 
-    @http.route('/web/lead-time/statistics', type='json', auth='user', methods=['GET'])
-    def get_statistics(self):
-        """Get overall lead time statistics"""
+    @http.route('/web/lead-time/statistics', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_statistics(self, **kw):
+        """Get comprehensive lead time statistics for dashboard with date filtering"""
         try:
-            today = fields.Date.today()
-            orders = request.env['sale.order'].search([
-                ('sa_jam_masuk', '>=', today),
-                ('sa_jam_masuk', '<', today + timedelta(days=1))
-            ])
+            # Set Jakarta timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Get date parameters from payload
+            data = request.get_json_data()  # Changed from jsonrequest to get_json_data()
+            start_date = data.get('start_date')
+            end_date = data.get('end_date')
+            month = data.get('month')
+            year = data.get('year', now.year)
+            
+            # Base domain
+            base_domain = [('sa_cetak_pkb', '!=', False)]
+            
+            # Handle custom date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(f"{start_date} 00:00:00", '%Y-%m-%d %H:%M:%S').replace(tzinfo=tz)
+                    end = datetime.strptime(f"{end_date} 23:59:59", '%Y-%m-%d %H:%M:%S').replace(tzinfo=tz)
+                    date_domain = [
+                        ('sa_jam_masuk', '>=', start),
+                        ('sa_jam_masuk', '<', end)
+                    ]
+                except ValueError:
+                    return {'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}
+            
+            # Handle monthly filter
+            elif month:
+                try:
+                    month = int(month)
+                    if not 1 <= month <= 12:
+                        raise ValueError
+                    
+                    start = datetime(year, month, 1, tzinfo=tz)
+                    if month == 12:
+                        end = datetime(year + 1, 1, 1, tzinfo=tz) 
+                    else:
+                        end = datetime(year, month + 1, 1, tzinfo=tz)
+                        
+                    date_domain = [
+                        ('sa_jam_masuk', '>=', start),
+                        ('sa_jam_masuk', '<', end)
+                    ]
+                except ValueError:
+                    return {'status': 'error', 'message': 'Invalid month. Use 1-12'}
+                    
+            # Default to today
+            else:
+                today = now.date()
+                start = datetime.combine(today, datetime.min.time()).replace(tzinfo=tz)
+                end = start + timedelta(days=1) 
+                date_domain = [
+                    ('sa_jam_masuk', '>=', start),
+                    ('sa_jam_masuk', '<', end)
+                ]
 
-            stats = {
-                'today': {
+            # Get filtered orders
+            domain = [*base_domain, *date_domain]
+            orders = request.env['sale.order'].search(domain)
+
+            def calculate_daily_stats(start_date, end_date, orders):
+                """Calculate statistics for each day in range"""
+                daily_stats = {}
+                current = start_date
+                
+                while current < end_date:
+                    day_end = current + timedelta(days=1)
+                    day_orders = orders.filtered(
+                        lambda o: current <= o.sa_jam_masuk < day_end
+                    )
+                    
+                    daily_stats[current.strftime('%Y-%m-%d')] = calculate_period_stats(day_orders)
+                    current = day_end
+                    
+                return daily_stats
+
+            def calculate_period_stats(orders):
+                """Calculate detailed statistics for a period"""
+                if not orders:
+                    return {
+                        'total_orders': 0,
+                        'completed_orders': 0,
+                        'active_orders': 0,
+                        'completion_rate': 0,
+                        'average_lead_time': 0,
+                        'average_active_time': 0,
+                        'average_completion_time': 0,
+                        'job_stops': {
+                            'tunggu_part': 0,
+                            'tunggu_konfirmasi': 0,
+                            'istirahat': 0,
+                            'tunggu_sublet': 0,
+                            'job_stop_lain': 0
+                        },
+                        'job_stop_durations': {
+                            'tunggu_part': 0,
+                            'tunggu_konfirmasi': 0,
+                            'istirahat': 0,
+                            'tunggu_sublet': 0,
+                            'job_stop_lain': 0
+                        },
+                        'average_job_stop_durations': {
+                            'tunggu_part': 0,
+                            'tunggu_konfirmasi': 0,
+                            'istirahat': 0,
+                            'tunggu_sublet': 0,
+                            'job_stop_lain': 0
+                        },
+                        'status_breakdown': {
+                            'belum_mulai': 0,
+                            'proses': 0,
+                            'selesai': 0
+                        }
+                    }
+                    
+                completed_orders = orders.filtered(lambda o: o.controller_selesai)
+                active_orders = orders.filtered(lambda o: o.controller_mulai_servis and not o.controller_selesai)
+                
+                # Calculate average times
+                avg_lead_time = sum(o.total_lead_time_servis or 0 for o in completed_orders) / len(completed_orders) if completed_orders else 0
+                avg_active_time = sum(o.lead_time_servis or 0 for o in completed_orders) / len(completed_orders) if completed_orders else 0
+                
+                # Calculate avg completion time
+                avg_completion_time = 0
+                completion_count = 0
+                
+                for order in completed_orders:
+                    if order.controller_mulai_servis and order.controller_selesai:
+                        duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 60
+                        avg_completion_time += duration
+                        completion_count += 1
+                        
+                if completion_count > 0:
+                    avg_completion_time /= completion_count
+                
+                # Job stop statistics
+                job_stops = {
+                    'tunggu_part': len(orders.filtered(lambda o: o.controller_tunggu_part1_mulai and not o.controller_tunggu_part1_selesai)),
+                    'tunggu_konfirmasi': len(orders.filtered(lambda o: o.controller_tunggu_konfirmasi_mulai and not o.controller_tunggu_konfirmasi_selesai)),
+                    'istirahat': len(orders.filtered(lambda o: o.controller_istirahat_shift1_mulai and not o.controller_istirahat_shift1_selesai)),
+                    'tunggu_sublet': len(orders.filtered(lambda o: o.controller_tunggu_sublet_mulai and not o.controller_tunggu_sublet_selesai)),
+                    'job_stop_lain': len(orders.filtered(lambda o: o.controller_job_stop_lain_mulai and not o.controller_job_stop_lain_selesai))
+                }
+
+                # Calculate job stop durations
+                job_stop_durations = {
+                    'tunggu_part': sum((o.controller_tunggu_part1_selesai - o.controller_tunggu_part1_mulai).total_seconds() / 60 
+                                    if o.controller_tunggu_part1_selesai and o.controller_tunggu_part1_mulai else 0 
+                                    for o in completed_orders),
+                    'tunggu_konfirmasi': sum((o.controller_tunggu_konfirmasi_selesai - o.controller_tunggu_konfirmasi_mulai).total_seconds() / 60 
+                                        if o.controller_tunggu_konfirmasi_selesai and o.controller_tunggu_konfirmasi_mulai else 0 
+                                        for o in completed_orders),
+                    'istirahat': sum((o.controller_istirahat_shift1_selesai - o.controller_istirahat_shift1_mulai).total_seconds() / 60 
+                                if o.controller_istirahat_shift1_selesai and o.controller_istirahat_shift1_mulai else 0 
+                                for o in completed_orders),
+                    'tunggu_sublet': sum((o.controller_tunggu_sublet_selesai - o.controller_tunggu_sublet_mulai).total_seconds() / 60 
+                                    if o.controller_tunggu_sublet_selesai and o.controller_tunggu_sublet_mulai else 0 
+                                    for o in completed_orders),
+                    'job_stop_lain': sum((o.controller_job_stop_lain_selesai - o.controller_job_stop_lain_mulai).total_seconds() / 60 
+                                    if o.controller_job_stop_lain_selesai and o.controller_job_stop_lain_mulai else 0 
+                                    for o in completed_orders)
+                }
+                
+                # Get average job stop durations
+                avg_job_stop_durations = {}
+                for stop_type, total_duration in job_stop_durations.items():
+                    stop_count = len([o for o in completed_orders if getattr(o, f'controller_{stop_type}_selesai', None)])
+                    avg_job_stop_durations[stop_type] = total_duration / stop_count if stop_count > 0 else 0
+                
+                return {
                     'total_orders': len(orders),
-                    'completed_orders': len(orders.filtered(lambda o: o.controller_selesai)),
-                    'average_lead_time': sum(o.lead_time_servis or 0 for o in orders) / len(orders) if orders else 0,
-                    'total_job_stops': sum(1 for o in orders if o.controller_tunggu_part1_mulai or 
-                                         o.controller_tunggu_konfirmasi_mulai or 
-                                         o.controller_istirahat_shift1_mulai),
+                    'completed_orders': len(completed_orders),
+                    'active_orders': len(active_orders),
+                    'completion_rate': (len(completed_orders) / len(orders) * 100) if orders else 0,
+                    'average_lead_time': avg_lead_time,
+                    'average_active_time': avg_active_time,
+                    'average_completion_time': avg_completion_time,
+                    'job_stops': job_stops,
+                    'job_stop_durations': job_stop_durations,
+                    'average_job_stop_durations': avg_job_stop_durations,
                     'status_breakdown': {
-                        'proses': len(orders.filtered(lambda o: o.controller_mulai_servis and not o.controller_selesai)),
-                        'tunggu_part': len(orders.filtered(lambda o: o.controller_tunggu_part1_mulai and not o.controller_tunggu_part1_selesai)),
-                        'tunggu_konfirmasi': len(orders.filtered(lambda o: o.controller_tunggu_konfirmasi_mulai and not o.controller_tunggu_konfirmasi_selesai)),
-                        'istirahat': len(orders.filtered(lambda o: o.controller_istirahat_shift1_mulai and not o.controller_istirahat_shift1_selesai)),
-                        'selesai': len(orders.filtered(lambda o: o.controller_selesai))
+                        'belum_mulai': len(orders.filtered(lambda o: not o.controller_mulai_servis)),
+                        'proses': len(active_orders),
+                        'selesai': len(completed_orders)
+                    }
+                }
+
+            def get_hourly_distribution(orders):
+                """Calculate hourly distribution of service starts and completions"""
+                hours = {str(i).zfill(2): {'starts': 0, 'completions': 0} for i in range(24)}
+                
+                for order in orders:
+                    if order.controller_mulai_servis:
+                        hour = self._convert_to_local_time(order.controller_mulai_servis).strftime('%H')
+                        hours[hour]['starts'] += 1
+                    if order.controller_selesai:
+                        hour = self._convert_to_local_time(order.controller_selesai).strftime('%H')
+                        hours[hour]['completions'] += 1
+                        
+                return hours
+
+            # Get staff stats
+            mechanics = request.env['pitcar.mechanic.new'].search([])
+            advisors = request.env['pitcar.service.advisor'].search([])
+            
+            active_mechanics = set()
+            active_advisors = set()
+            active_orders = orders.filtered(lambda o: o.controller_mulai_servis and not o.controller_selesai)
+            for order in active_orders:
+                if order.car_mechanic_id_new:
+                    active_mechanics.update(order.car_mechanic_id_new.ids)
+                if order.service_advisor_id:
+                    active_advisors.update(order.service_advisor_id.ids)
+
+            # Safely get service category and subcategory counts
+            service_category_counts = {
+                'maintenance': len(orders.filtered(lambda o: getattr(o, 'service_category', '') == 'maintenance')),
+                'repair': len(orders.filtered(lambda o: getattr(o, 'service_category', '') == 'repair')),
+            }
+            
+            service_subcategory_counts = {
+                'tune_up': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'tune_up')),
+                'tune_up_addition': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'tune_up_addition')),
+                'periodic_service': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'periodic_service')),
+                'periodic_service_addition': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'periodic_service_addition')),
+                'general_repair': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'general_repair')),
+            }
+
+            # Compile complete statistics
+            stats = {
+                'current_time': self._format_local_datetime(now),
+                'date_range': {
+                    'start': start.strftime('%Y-%m-%d'),
+                    'end': (end - timedelta(days=1)).strftime('%Y-%m-%d')
+                },
+                'service_category': service_category_counts,
+                'service_subcategory': service_subcategory_counts,
+                'overall': calculate_period_stats(orders),
+                'daily_breakdown': calculate_daily_stats(start, end, orders),
+                'hourly_distribution': get_hourly_distribution(orders),
+                'staff': {
+                    'mechanics': {
+                        'total': len(mechanics),
+                        'active': len(active_mechanics),
+                        'utilization': (len(active_mechanics) / len(mechanics) * 100) if mechanics else 0
+                    },
+                    'advisors': {
+                        'total': len(advisors),
+                        'active': len(active_advisors),
+                        'utilization': (len(active_advisors) / len(advisors) * 100) if advisors else 0
                     }
                 }
             }
@@ -796,7 +1059,9 @@ class LeadTimeAPIController(http.Controller):
                 'status': 'success',
                 'data': stats
             }
+            
         except Exception as e:
+            _logger.error(f"Error in get_statistics: {str(e)}", exc_info=True)
             return {'status': 'error', 'message': str(e)}
 
 

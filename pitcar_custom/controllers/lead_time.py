@@ -66,6 +66,16 @@ class LeadTimeAPIController(http.Controller):
             return None
         local_dt = self._convert_to_local_time(dt)
         return local_dt.strftime('%H:%M')
+    
+    def format_timestamp(dt):
+            """Format datetime to simple timestamp string in Jakarta timezone"""
+            if not dt:
+                return None
+            tz = pytz.timezone('Asia/Jakarta')
+            if not dt.tzinfo:
+                dt = pytz.UTC.localize(dt)
+            local_dt = dt.astimezone(tz)
+            return local_dt.strftime('%Y-%m-%d %H:%M:%S')
 
     def _get_order_status(self, order):
         """Get current status including job stops"""
@@ -333,6 +343,16 @@ class LeadTimeAPIController(http.Controller):
                         'code': 'not_started',
                         'text': 'Belum Dimulai'
                     }
+                
+            def format_timestamp(dt):
+                """Format datetime to simple timestamp string in Jakarta timezone"""
+                if not dt:
+                    return None
+                tz = pytz.timezone('Asia/Jakarta')
+                if not dt.tzinfo:
+                    dt = pytz.UTC.localize(dt)
+                local_dt = dt.astimezone(tz)
+                return local_dt.strftime('%Y-%m-%d %H:%M:%S')
             
             rows = []
             start_number = offset + 1
@@ -346,9 +366,9 @@ class LeadTimeAPIController(http.Controller):
                     'jenis_mobil': f"{order.partner_car_brand.name} {order.partner_car_brand_type.name}".strip() if order.partner_car_brand and order.partner_car_brand_type else '-',
                     'plat_mobil': order.partner_car_id.number_plate if order.partner_car_id else '-',
                     'status': status,
-                    'keterangan': status['code'],  # Menggunakan status code yang sama
+                    'keterangan': status['code'],
                     'catatan': order.lead_time_catatan or '-',
-                    'estimasi_selesai': fields.Datetime.to_string(order.controller_estimasi_selesai) if order.controller_estimasi_selesai else '-',
+                    'estimasi_selesai': format_timestamp(order.controller_estimasi_selesai),
                     'mekanik': order.generated_mechanic_team or '-',
                     'service_advisor': ', '.join(order.service_advisor_id.mapped('name')) if order.service_advisor_id else '-',
                     'service': {
@@ -362,51 +382,51 @@ class LeadTimeAPIController(http.Controller):
                         }
                     },
                     'timestamps': {
-                        'mulai_servis': self._format_local_datetime(order.controller_mulai_servis),
-                        'selesai_servis': self._format_local_datetime(order.controller_selesai),
-                        'completion': self._format_local_datetime(order.date_completed)
+                        'mulai_servis': format_timestamp(order.controller_mulai_servis),
+                        'selesai_servis': format_timestamp(order.controller_selesai),
+                        'completion': format_timestamp(order.date_completed)
                     },
                     'progress': {
                         'percentage': order.lead_time_progress or 0,
-                        'stage': status['code']  # Menggunakan status code yang sama untuk konsistensi
+                        'stage': status['code']
                     },
                     'job_stops': {
+                        'istirahat': {
+                            'active': bool(order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai),
+                            'start': format_timestamp(order.controller_istirahat_shift1_mulai),
+                            'end': format_timestamp(order.controller_istirahat_shift1_selesai),
+                            'completed': bool(order.controller_istirahat_shift1_selesai)
+                        },
+                        'job_stop_lain': {
+                            'active': bool(order.controller_job_stop_lain_mulai and not order.controller_job_stop_lain_selesai),
+                            'start': format_timestamp(order.controller_job_stop_lain_mulai),
+                            'end': format_timestamp(order.controller_job_stop_lain_selesai),
+                            'completed': bool(order.controller_job_stop_lain_selesai),
+                            'note': order.job_stop_lain_keterangan or None
+                        },
                         'tunggu_konfirmasi': {
                             'active': bool(order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai),
-                            'start': self._format_local_datetime(order.controller_tunggu_konfirmasi_mulai), 
-                            'end': self._format_local_datetime(order.controller_tunggu_konfirmasi_selesai),
+                            'start': format_timestamp(order.controller_tunggu_konfirmasi_mulai),
+                            'end': format_timestamp(order.controller_tunggu_konfirmasi_selesai),
                             'completed': bool(order.controller_tunggu_konfirmasi_selesai)
                         },
                         'tunggu_part': {
                             'active': bool(order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai),
-                            'start': self._format_local_datetime(order.controller_tunggu_part1_mulai),
-                            'end': self._format_local_datetime(order.controller_tunggu_part1_selesai), 
+                            'start': format_timestamp(order.controller_tunggu_part1_mulai),
+                            'end': format_timestamp(order.controller_tunggu_part1_selesai),
                             'completed': bool(order.controller_tunggu_part1_selesai)
                         },
                         'tunggu_part_2': {
                             'active': bool(order.controller_tunggu_part2_mulai and not order.controller_tunggu_part2_selesai),
-                            'start': self._format_local_datetime(order.controller_tunggu_part2_mulai),
-                            'end': self._format_local_datetime(order.controller_tunggu_part2_selesai),
-                            'completed': bool(order.controller_tunggu_part2_selesai) 
-                        },
-                        'istirahat': {
-                            'active': bool(order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai),
-                            'start': self._format_local_datetime(order.controller_istirahat_shift1_mulai),
-                            'end': self._format_local_datetime(order.controller_istirahat_shift1_selesai),
-                            'completed': bool(order.controller_istirahat_shift1_selesai)
+                            'start': format_timestamp(order.controller_tunggu_part2_mulai),
+                            'end': format_timestamp(order.controller_tunggu_part2_selesai),
+                            'completed': bool(order.controller_tunggu_part2_selesai)
                         },
                         'tunggu_sublet': {
-                            'active': bool(order.controller_tunggu_sublet_mulai and not order.controller_tunggu_sublet_selesai), 
-                            'start': self._format_local_datetime(order.controller_tunggu_sublet_mulai),
-                            'end': self._format_local_datetime(order.controller_tunggu_sublet_selesai),
+                            'active': bool(order.controller_tunggu_sublet_mulai and not order.controller_tunggu_sublet_selesai),
+                            'start': format_timestamp(order.controller_tunggu_sublet_mulai),
+                            'end': format_timestamp(order.controller_tunggu_sublet_selesai),
                             'completed': bool(order.controller_tunggu_sublet_selesai)
-                        },
-                        'job_stop_lain': {
-                            'active': bool(order.controller_job_stop_lain_mulai and not order.controller_job_stop_lain_selesai),
-                            'start': self._format_local_datetime(order.controller_job_stop_lain_mulai),
-                            'end': self._format_local_datetime(order.controller_job_stop_lain_selesai), 
-                            'completed': bool(order.controller_job_stop_lain_selesai),
-                            'note': order.job_stop_lain_keterangan or None
                         }
                     }
                 })

@@ -6,6 +6,7 @@ from odoo.exceptions import ValidationError, UserError
 import json
 import math
 import logging
+from odoo.osv import expression  # Menambahkan import expression
 
 _logger = logging.getLogger(__name__)
 
@@ -826,60 +827,85 @@ class LeadTimeAPIController(http.Controller):
             now = datetime.now(tz)
             
             # Get date parameters from payload
-            data = request.get_json_data()  # Changed from jsonrequest to get_json_data()
-            start_date = data.get('start_date')
-            end_date = data.get('end_date')
-            month = data.get('month')
-            year = data.get('year', now.year)
+            data = request.get_json_data()
+            params = data.get('params', {})
+            
+            # Extract parameters
+            start_date = params.get('start_date')
+            end_date = params.get('end_date')
+            month = params.get('month')
+            year = params.get('year', now.year)
+            
+            _logger.info(f"Received parameters: start_date={start_date}, end_date={end_date}, month={month}, year={year}")
+
+            # Initialize variables
+            start_utc = None
+            end_utc = None
+            date_range_start = None
+            date_range_end = None
             
             # Base domain
             base_domain = [('sa_cetak_pkb', '!=', False)]
-            
-            # Handle custom date range
-            if start_date and end_date:
-                try:
-                    start = datetime.strptime(f"{start_date} 00:00:00", '%Y-%m-%d %H:%M:%S').replace(tzinfo=tz)
-                    end = datetime.strptime(f"{end_date} 23:59:59", '%Y-%m-%d %H:%M:%S').replace(tzinfo=tz)
-                    date_domain = [
-                        ('sa_jam_masuk', '>=', start),
-                        ('sa_jam_masuk', '<', end)
-                    ]
-                except ValueError:
-                    return {'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}
-            
-            # Handle monthly filter
-            elif month:
-                try:
+
+            # Process date filters
+            try:
+                if start_date and end_date:
+                    # Create naive datetime and localize it
+                    start = datetime.strptime(f"{start_date} 00:00:00", '%Y-%m-%d %H:%M:%S')
+                    end = datetime.strptime(f"{end_date} 23:59:59", '%Y-%m-%d %H:%M:%S')
+                    
+                    # Set date range
+                    date_range_start = start_date
+                    date_range_end = end_date
+                    
+                elif month is not None:
                     month = int(month)
                     if not 1 <= month <= 12:
-                        raise ValueError
+                        return {'status': 'error', 'message': 'Month must be between 1 and 12'}
                     
-                    start = datetime(year, month, 1, tzinfo=tz)
+                    # Create date range for the specified month
+                    start = datetime(year, month, 1)
                     if month == 12:
-                        end = datetime(year + 1, 1, 1, tzinfo=tz) 
+                        end = datetime(year + 1, 1, 1)
                     else:
-                        end = datetime(year, month + 1, 1, tzinfo=tz)
-                        
-                    date_domain = [
-                        ('sa_jam_masuk', '>=', start),
-                        ('sa_jam_masuk', '<', end)
-                    ]
-                except ValueError:
-                    return {'status': 'error', 'message': 'Invalid month. Use 1-12'}
+                        end = datetime(year, month + 1, 1)
                     
-            # Default to today
-            else:
-                today = now.date()
-                start = datetime.combine(today, datetime.min.time()).replace(tzinfo=tz)
-                end = start + timedelta(days=1) 
+                    # Set date range
+                    date_range_start = start.strftime('%Y-%m-%d')
+                    date_range_end = (end - timedelta(days=1)).strftime('%Y-%m-%d')
+                    
+                else:
+                    # Default to today
+                    today = now.date()
+                    start = datetime.combine(today, datetime.min.time())
+                    end = start + timedelta(days=1)
+                    
+                    # Set date range
+                    date_range_start = today.strftime('%Y-%m-%d')
+                    date_range_end = today.strftime('%Y-%m-%d')
+
+                # Convert to UTC for database comparison
+                start_utc = tz.localize(start).astimezone(pytz.UTC).replace(tzinfo=None)
+                end_utc = tz.localize(end).astimezone(pytz.UTC).replace(tzinfo=None)
+                
+                _logger.info(f"Processed date range UTC: {start_utc} to {end_utc}")
+                _logger.info(f"Display date range: {date_range_start} to {date_range_end}")
+
+                # Create date domain
                 date_domain = [
-                    ('sa_jam_masuk', '>=', start),
-                    ('sa_jam_masuk', '<', end)
+                    ('sa_jam_masuk', '>=', start_utc),
+                    ('sa_jam_masuk', '<', end_utc)
                 ]
 
+            except (ValueError, TypeError) as e:
+                _logger.error(f"Date processing error: {str(e)}")
+                return {'status': 'error', 'message': 'Invalid date format or values'}
+
             # Get filtered orders
-            domain = [*base_domain, *date_domain]
+            domain = expression.AND([base_domain, date_domain])
             orders = request.env['sale.order'].search(domain)
+            
+            _logger.info(f"Found {len(orders)} orders matching criteria")
 
             def calculate_daily_stats(start_date, end_date, orders):
                 """Calculate statistics for each day in range"""
@@ -1009,17 +1035,22 @@ class LeadTimeAPIController(http.Controller):
                 }
 
             def get_hourly_distribution(orders):
-                """Calculate hourly distribution of service starts and completions"""
-                hours = {str(i).zfill(2): {'starts': 0, 'completions': 0} for i in range(24)}
+                """Calculate hourly distribution for workshop hours (8-17)"""
+                hours = {str(i).zfill(2): {'starts': 0, 'completions': 0} for i in range(8, 18)}
                 
                 for order in orders:
                     if order.controller_mulai_servis:
-                        hour = self._convert_to_local_time(order.controller_mulai_servis).strftime('%H')
-                        hours[hour]['starts'] += 1
+                        local_time = self._convert_to_local_time(order.controller_mulai_servis)
+                        hour = local_time.strftime('%H')
+                        if '08' <= hour <= '17':
+                            hours[hour]['starts'] += 1
+                            
                     if order.controller_selesai:
-                        hour = self._convert_to_local_time(order.controller_selesai).strftime('%H')
-                        hours[hour]['completions'] += 1
-                        
+                        local_time = self._convert_to_local_time(order.controller_selesai)
+                        hour = local_time.strftime('%H')
+                        if '08' <= hour <= '17':
+                            hours[hour]['completions'] += 1
+                            
                 return hours
 
             # Get staff stats
@@ -1029,13 +1060,14 @@ class LeadTimeAPIController(http.Controller):
             active_mechanics = set()
             active_advisors = set()
             active_orders = orders.filtered(lambda o: o.controller_mulai_servis and not o.controller_selesai)
+            
             for order in active_orders:
                 if order.car_mechanic_id_new:
                     active_mechanics.update(order.car_mechanic_id_new.ids)
                 if order.service_advisor_id:
                     active_advisors.update(order.service_advisor_id.ids)
 
-            # Safely get service category and subcategory counts
+            # Get service category and subcategory counts
             service_category_counts = {
                 'maintenance': len(orders.filtered(lambda o: getattr(o, 'service_category', '') == 'maintenance')),
                 'repair': len(orders.filtered(lambda o: getattr(o, 'service_category', '') == 'repair')),
@@ -1053,13 +1085,13 @@ class LeadTimeAPIController(http.Controller):
             stats = {
                 'current_time': self._format_local_datetime(now),
                 'date_range': {
-                    'start': start.strftime('%Y-%m-%d'),
-                    'end': (end - timedelta(days=1)).strftime('%Y-%m-%d')
+                    'start': date_range_start,
+                    'end': date_range_end
                 },
                 'service_category': service_category_counts,
                 'service_subcategory': service_subcategory_counts,
                 'overall': calculate_period_stats(orders),
-                'daily_breakdown': calculate_daily_stats(start, end, orders),
+                'daily_breakdown': calculate_daily_stats(start_utc, end_utc, orders),
                 'hourly_distribution': get_hourly_distribution(orders),
                 'staff': {
                     'mechanics': {
@@ -1079,10 +1111,11 @@ class LeadTimeAPIController(http.Controller):
                 'status': 'success',
                 'data': stats
             }
-            
+
         except Exception as e:
             _logger.error(f"Error in get_statistics: {str(e)}", exc_info=True)
             return {'status': 'error', 'message': str(e)}
+
 
 
     # NEW VERSION API : SIMPLE WAY

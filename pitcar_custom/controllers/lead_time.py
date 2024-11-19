@@ -981,8 +981,8 @@ class LeadTimeAPIController(http.Controller):
                         
                 if completion_count > 0:
                     avg_completion_time /= completion_count
-                
-                # Job stop statistics
+
+                # PERBAIKAN: Job stop statistics - hitung untuk semua orders (tidak hanya completed)
                 job_stops = {
                     'tunggu_part': len(orders.filtered(lambda o: o.controller_tunggu_part1_mulai and not o.controller_tunggu_part1_selesai)),
                     'tunggu_konfirmasi': len(orders.filtered(lambda o: o.controller_tunggu_konfirmasi_mulai and not o.controller_tunggu_konfirmasi_selesai)),
@@ -991,30 +991,50 @@ class LeadTimeAPIController(http.Controller):
                     'job_stop_lain': len(orders.filtered(lambda o: o.controller_job_stop_lain_mulai and not o.controller_job_stop_lain_selesai))
                 }
 
-                # Calculate job stop durations
-                job_stop_durations = {
-                    'tunggu_part': sum((o.controller_tunggu_part1_selesai - o.controller_tunggu_part1_mulai).total_seconds() / 60 
-                                    if o.controller_tunggu_part1_selesai and o.controller_tunggu_part1_mulai else 0 
-                                    for o in completed_orders),
-                    'tunggu_konfirmasi': sum((o.controller_tunggu_konfirmasi_selesai - o.controller_tunggu_konfirmasi_mulai).total_seconds() / 60 
-                                        if o.controller_tunggu_konfirmasi_selesai and o.controller_tunggu_konfirmasi_mulai else 0 
-                                        for o in completed_orders),
-                    'istirahat': sum((o.controller_istirahat_shift1_selesai - o.controller_istirahat_shift1_mulai).total_seconds() / 60 
-                                if o.controller_istirahat_shift1_selesai and o.controller_istirahat_shift1_mulai else 0 
-                                for o in completed_orders),
-                    'tunggu_sublet': sum((o.controller_tunggu_sublet_selesai - o.controller_tunggu_sublet_mulai).total_seconds() / 60 
-                                    if o.controller_tunggu_sublet_selesai and o.controller_tunggu_sublet_mulai else 0 
-                                    for o in completed_orders),
-                    'job_stop_lain': sum((o.controller_job_stop_lain_selesai - o.controller_job_stop_lain_mulai).total_seconds() / 60 
-                                    if o.controller_job_stop_lain_selesai and o.controller_job_stop_lain_mulai else 0 
-                                    for o in completed_orders)
-                }
-                
-                # Get average job stop durations
+                # PERBAIKAN: Calculate job stop durations - hitung untuk semua orders yang memiliki start dan end
+                job_stop_durations = {}
+                for stop_type in ['tunggu_part', 'tunggu_konfirmasi', 'istirahat', 'tunggu_sublet', 'job_stop_lain']:
+                    total_duration = 0
+                    count = 0
+                    for order in orders:  # Menggunakan semua orders, tidak hanya completed
+                        start_field = f'controller_{stop_type}_mulai'
+                        end_field = f'controller_{stop_type}_selesai'
+                        
+                        start_time = getattr(order, start_field, False)
+                        end_time = getattr(order, end_field, False)
+                        
+                        if start_time and end_time:  # Hanya hitung jika ada start dan end
+                            duration = (end_time - start_time).total_seconds() / 60
+                            if duration > 0:  # Pastikan durasi positif
+                                total_duration += duration
+                                count += 1
+                    
+                    job_stop_durations[stop_type] = total_duration
+
+                # PERBAIKAN: Calculate average job stop durations
                 avg_job_stop_durations = {}
-                for stop_type, total_duration in job_stop_durations.items():
-                    stop_count = len([o for o in completed_orders if getattr(o, f'controller_{stop_type}_selesai', None)])
-                    avg_job_stop_durations[stop_type] = total_duration / stop_count if stop_count > 0 else 0
+                for stop_type in job_stop_durations:
+                    # Hitung jumlah kejadian yang selesai (memiliki start dan end)
+                    completed_stops = len([
+                        o for o in orders
+                        if getattr(o, f'controller_{stop_type}_mulai', False) and 
+                        getattr(o, f'controller_{stop_type}_selesai', False)
+                    ])
+                    
+                    # Hitung rata-rata hanya jika ada kejadian yang selesai
+                    avg_job_stop_durations[stop_type] = (
+                        job_stop_durations[stop_type] / completed_stops 
+                        if completed_stops > 0 
+                        else 0
+                    )
+
+                # Add debug information
+                _logger.info(f"""
+                Job Stops Analysis:
+                Active Stops: {job_stops}
+                Total Durations: {job_stop_durations}
+                Average Durations: {avg_job_stop_durations}
+                """)
                 
                 return {
                     'total_orders': len(orders),

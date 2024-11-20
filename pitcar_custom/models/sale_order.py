@@ -304,6 +304,41 @@ class SaleOrder(models.Model):
             vals['customer_satisfaction'] = rating_to_satisfaction.get(vals['customer_rating'])
         return super(SaleOrder, self).create(vals)
     
+    detailed_ratings = fields.Json(
+        string='Detailed Ratings',
+        help='Stores detailed ratings for different categories',
+    )
+    
+    @api.depends('detailed_ratings')
+    def _compute_customer_rating(self):
+        """Compute overall rating based on detailed ratings"""
+        for order in self:
+            if order.detailed_ratings:
+                try:
+                    ratings = [
+                        int(order.detailed_ratings.get('service_rating', 0)),
+                        int(order.detailed_ratings.get('price_rating', 0)),
+                        int(order.detailed_ratings.get('facility_rating', 0))
+                    ]
+                    if any(ratings):
+                        order.customer_rating = str(round(sum(ratings) / len(ratings)))
+                except (ValueError, TypeError):
+                    _logger.error(f"Error computing customer rating for order {order.id}")
+                    order.customer_rating = False
+
+    @api.constrains('detailed_ratings')
+    def _check_detailed_ratings(self):
+        """Validate detailed ratings data"""
+        for order in self:
+            if order.detailed_ratings:
+                try:
+                    ratings = ['service_rating', 'price_rating', 'facility_rating']
+                    for rating in ratings:
+                        value = order.detailed_ratings.get(rating)
+                        if value and not (isinstance(value, int) and 1 <= value <= 5):
+                            raise ValidationError(f"Invalid value for {rating}. Must be between 1 and 5.")
+                except Exception as e:
+                    raise ValidationError(f"Invalid detailed ratings format: {str(e)}")
      # Fields for 3 months reminder
     reminder_3_months = fields.Selection([('yes', 'Yes'), ('no', 'No')], string="Reminder 3 Bulan?")
     date_follow_up_3_months = fields.Date(string="Date Follow Up (3 Bulan)")

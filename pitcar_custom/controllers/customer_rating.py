@@ -401,3 +401,122 @@ class CustomerRatingAPI(Controller):
         rounded_rating = round(average_rating)
         satisfaction = rating_to_satisfaction.get(rounded_rating, 'neutral')
         order.write({'customer_satisfaction': satisfaction})
+
+    @route('/web/rating/dashboard', type='json', auth='public', methods=['POST'], csrf=False)
+    def get_rating_dashboard(self, **kwargs):
+        """Get dashboard statistics for customer ratings"""
+        try:
+            params = kwargs
+            dbname = params.get('db')
+            date_range = params.get('date_range', 'all')  # all, today, week, month, year
+
+            if not dbname:
+                return {'status': 'error', 'message': 'Database name is required'}
+
+            SaleOrder = request.env['sale.order'].sudo()
+            tz = pytz.timezone('Asia/Jakarta')
+            
+            # Calculate date ranges
+            now = datetime.now(tz)
+            date_filters = {
+                'today': (now.replace(hour=0, minute=0, second=0), now),
+                'week': (now - timedelta(days=now.weekday()), now),
+                'month': (now.replace(day=1), now),
+                'year': (now.replace(month=1, day=1), now)
+            }
+
+            date_start, date_end = date_filters.get(date_range, (False, False))
+            
+            # Build domain
+            domain = [('state', 'in', ['sale', 'done'])]
+            if date_start and date_end:
+                domain.extend([
+                    ('sa_cetak_pkb', '>=', date_start.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('sa_cetak_pkb', '<=', date_end.strftime('%Y-%m-%d %H:%M:%S'))
+                ])
+
+            # Get all orders within range
+            orders = SaleOrder.search(domain)
+            
+            # Calculate statistics
+            total_services = len(orders)
+            rated_orders = orders.filtered(lambda o: o.customer_rating)
+            total_reviews = len(rated_orders)
+            
+            # Calculate rating distribution
+            rating_distribution = {str(i): 0 for i in range(1, 6)}
+            for order in rated_orders:
+                rating_distribution[order.customer_rating] = rating_distribution.get(order.customer_rating, 0) + 1
+
+            # Calculate satisfaction distribution
+            satisfaction_distribution = {
+                'very_satisfied': 0,
+                'satisfied': 0,
+                'neutral': 0,
+                'dissatisfied': 0,
+                'very_dissatisfied': 0
+            }
+            for order in rated_orders:
+                if order.customer_satisfaction:
+                    satisfaction_distribution[order.customer_satisfaction] = satisfaction_distribution.get(order.customer_satisfaction, 0) + 1
+
+            # Get recent reviews
+            recent_reviews = []
+            for order in rated_orders.sorted(key=lambda r: r.sa_cetak_pkb, reverse=True)[:10]:
+                pkb_time = pytz.UTC.localize(order.sa_cetak_pkb).astimezone(tz) if order.sa_cetak_pkb else None
+                review = {
+                    'id': order.id,
+                    'order_name': order.name,
+                    'customer_name': order.partner_id.name,
+                    'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                    'car_info': f"{order.partner_car_brand.name} {order.partner_car_brand_type.name}" if order.partner_car_brand and order.partner_car_brand_type else '',
+                    'rating': float(order.customer_rating) if order.customer_rating else 0,
+                    'satisfaction': order.customer_satisfaction,
+                    'feedback': order.customer_feedback,
+                    'date': pkb_time.strftime('%Y-%m-%d %H:%M:%S') if pkb_time else ''
+                }
+                recent_reviews.append(review)
+
+            # Calculate average ratings from detailed_ratings
+            service_ratings = []
+            price_ratings = []
+            facility_ratings = []
+            
+            for order in rated_orders:
+                if order.detailed_ratings:
+                    ratings = order.detailed_ratings
+                    if isinstance(ratings, str):
+                        ratings = json.loads(ratings)
+                    service_ratings.append(ratings.get('service_rating', 0))
+                    price_ratings.append(ratings.get('price_rating', 0))
+                    facility_ratings.append(ratings.get('facility_rating', 0))
+
+            result = {
+                'overview': {
+                    'total_services': total_services,
+                    'total_reviews': total_reviews,
+                    'review_rate': round(total_reviews / total_services * 100, 2) if total_services > 0 else 0,
+                    'average_rating': round(sum(float(order.customer_rating) for order in rated_orders) / total_reviews, 2) if total_reviews > 0 else 0
+                },
+                'rating_distribution': rating_distribution,
+                'satisfaction_distribution': satisfaction_distribution,
+                'category_ratings': {
+                    'service': round(sum(service_ratings) / len(service_ratings), 2) if service_ratings else 0,
+                    'price': round(sum(price_ratings) / len(price_ratings), 2) if price_ratings else 0,
+                    'facility': round(sum(facility_ratings) / len(facility_ratings), 2) if facility_ratings else 0
+                },
+                'recent_reviews': recent_reviews,
+                'time_period': date_range
+            }
+
+            return {
+                'status': 'success',
+                'data': result
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_rating_dashboard: {str(e)}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }

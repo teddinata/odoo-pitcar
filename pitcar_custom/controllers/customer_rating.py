@@ -248,14 +248,13 @@ class CustomerRatingAPI(Controller):
     def submit_rating(self, **kwargs):
         """Submit customer rating"""
         try:
+            # Get parameters from kwargs directly
             params = kwargs
-            dbname = params.get('db')
-            
-            if not dbname:
-                return {'status': 'error', 'message': 'Database name is required'}
-            
+            _logger.info(f"Received rating submission params: {params}")
+
             # Validate required fields
             required_fields = {
+                'db': str,
                 'order_id': int,
                 'service_rating': int,
                 'price_rating': int,
@@ -263,59 +262,71 @@ class CustomerRatingAPI(Controller):
                 'feedback': str
             }
 
-            _logger.info(f"Received rating submission for order: {post.get('order_id')}")
-
             # Validate field types and presence
             for field, field_type in required_fields.items():
-                if field not in post:
-                    return {'status': 'error', 'message': f'Missing required field: {field}'}
+                if field not in params:
+                    return {
+                        'status': 'error',
+                        'message': f'Missing required field: {field}'
+                    }
                 try:
                     if field != 'feedback':  # Don't convert feedback to int
-                        post[field] = field_type(post[field])
+                        params[field] = field_type(params[field])
                 except (ValueError, TypeError):
-                    return {'status': 'error', 'message': f'Invalid value for field: {field}'}
+                    return {
+                        'status': 'error',
+                        'message': f'Invalid value for field: {field}'
+                    }
 
             # Validate rating values
             for rating_field in ['service_rating', 'price_rating', 'facility_rating']:
-                if not 1 <= post[rating_field] <= 5:
-                    return {'status': 'error', 'message': f'{rating_field} must be between 1 and 5'}
+                if not 1 <= params[rating_field] <= 5:
+                    return {
+                        'status': 'error',
+                        'message': f'{rating_field} must be between 1 and 5'
+                    }
 
             SaleOrder = request.env['sale.order'].sudo()
-            order = SaleOrder.browse(post['order_id'])
+            order = SaleOrder.browse(params['order_id'])
             
             if not order.exists():
-                return {'status': 'error', 'message': 'Order not found'}
+                return {
+                    'status': 'error',
+                    'message': 'Order not found'
+                }
 
             if order.customer_rating:
-                return {'status': 'error', 'message': 'Order already has a rating'}
+                return {
+                    'status': 'error',
+                    'message': 'Order already has a rating'
+                }
 
             # Calculate average rating
             ratings = [
-                post['service_rating'],
-                post['price_rating'],
-                post['facility_rating']
+                params['service_rating'],
+                params['price_rating'],
+                params['facility_rating']
             ]
             average_rating = sum(ratings) / len(ratings)
             
-            # Debug log before update
             _logger.info(f"""
             Submitting rating for order {order.name}:
-            - Service: {post['service_rating']}
-            - Price: {post['price_rating']}
-            - Facility: {post['facility_rating']}
+            - Service: {params['service_rating']}
+            - Price: {params['price_rating']}
+            - Facility: {params['facility_rating']}
             - Average: {average_rating}
-            - Feedback: {post['feedback']}
+            - Feedback: {params['feedback']}
             """)
 
             # Update order with ratings
             order.write({
                 'is_willing_to_feedback': 'yes',
                 'customer_rating': str(round(average_rating)),
-                'customer_feedback': post['feedback'],
+                'customer_feedback': params['feedback'],
                 'detailed_ratings': {
-                    'service_rating': post['service_rating'],
-                    'price_rating': post['price_rating'],
-                    'facility_rating': post['facility_rating'],
+                    'service_rating': params['service_rating'],
+                    'price_rating': params['price_rating'],
+                    'facility_rating': params['facility_rating'],
                     'submission_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     'submission_source': 'web_api'
                 }
@@ -338,6 +349,7 @@ class CustomerRatingAPI(Controller):
                 'message': 'Rating submitted successfully',
                 'data': {
                     'order_id': order.id,
+                    'order_name': order.name,
                     'average_rating': round(average_rating),
                     'satisfaction_level': satisfaction
                 }
@@ -346,17 +358,9 @@ class CustomerRatingAPI(Controller):
         except Exception as e:
             _logger.error(f"Error in submit_rating: {str(e)}")
             return {
-                'status': 'error', 
-                'message': str(e),
-                'debug_info': {
-                    'error_type': type(e).__name__,
-                    'order_id': post.get('order_id'),
-                    'traceback': logging.traceback.format_exc()
-                }
+                'status': 'error',
+                'message': str(e)
             }
-        finally:
-            if request.env.cr:
-                request.env.cr.close()
 
     def _generate_order_token(self, order):
         """Generate unique token for order validation"""

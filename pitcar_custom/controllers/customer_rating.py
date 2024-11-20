@@ -26,7 +26,6 @@ class CustomerRatingAPI(Controller):
     def get_available_orders(self, **kwargs):
         """Get list of orders available for rating (completed today)"""
         try:
-            # Get parameters from kwargs directly
             params = kwargs
             dbname = params.get('db')
             search_date = params.get('date')
@@ -39,103 +38,100 @@ class CustomerRatingAPI(Controller):
                     'message': 'Database name is required'
                 }
 
-            # Get user's timezone
-            tz = pytz.timezone(request.env.user.tz or 'UTC')
-            today = datetime.now(tz).strftime('%Y-%m-%d')
+            # Set timezone to Asia/Jakarta
+            tz = pytz.timezone('Asia/Jakarta')
             
-            # Use provided date or default to today
-            search_date = search_date or today
-            
-            _logger.info(f"Searching orders for date: {search_date} in database: {dbname}")
+            # Parse and validate search date
+            try:
+                parsed_date = datetime.strptime(search_date, '%Y-%m-%d')
+                _logger.info(f"Searching orders for date: {search_date}")
+            except (ValueError, TypeError):
+                today = datetime.now(tz)
+                parsed_date = today
+                _logger.warning(f"Invalid date format, using today: {today.strftime('%Y-%m-%d')}")
 
             SaleOrder = request.env['sale.order'].sudo()
-            
-            # Debug: Cek total orders tanpa filter
-            all_orders = SaleOrder.search([])
-            _logger.info(f"Total orders in system: {len(all_orders)}")
-            
-            # Debug: Cek orders dengan state
-            state_orders = SaleOrder.search([('state', 'in', ['sale', 'done'])])
-            _logger.info(f"Orders with state sale/done: {len(state_orders)}")
-            
-            # Debug: Cek orders dengan sa_cetak_pkb
-            pkb_orders = SaleOrder.search([('sa_cetak_pkb', '!=', False)])
-            _logger.info(f"Orders with sa_cetak_pkb: {len(pkb_orders)}")
-            for order in pkb_orders:
-                _logger.info(f"PKB Order: {order.name} - Date: {order.sa_cetak_pkb}")
 
-            # Bangun domain step by step
+            # Create datetime bounds for the search date
+            start_of_day = parsed_date.replace(hour=0, minute=0, second=0)
+            end_of_day = parsed_date.replace(hour=23, minute=59, second=59)
+
+            # Format dates for query
+            date_start = start_of_day.strftime('%Y-%m-%d %H:%M:%S')
+            date_end = end_of_day.strftime('%Y-%m-%d %H:%M:%S')
+
+            _logger.info(f"Search range: {date_start} to {date_end}")
+
+            # Build domain for exact date match
             domain = [
-                ('state', 'in', ['sale', 'done']),  # Base state filter
+                ('state', 'in', ['sale', 'done']),
+                ('sa_cetak_pkb', '>=', date_start),
+                ('sa_cetak_pkb', '<=', date_end)
             ]
-            
-            # Convert date strings dengan timezone yang benar
-            local_dt = datetime.strptime(f"{search_date} 00:00:00", '%Y-%m-%d %H:%M:%S')
-            local_dt = tz.localize(local_dt)
-            date_start = local_dt.astimezone(pytz.UTC)
-            
-            local_dt_end = datetime.strptime(f"{search_date} 23:59:59", '%Y-%m-%d %H:%M:%S')
-            local_dt_end = tz.localize(local_dt_end)
-            date_end = local_dt_end.astimezone(pytz.UTC)
 
-            date_domain = [
-                '|',  # OR untuk sa_cetak_pkb dan create_date
-                ('sa_cetak_pkb', '>=', date_start.strftime('%Y-%m-%d %H:%M:%S')),
-                ('sa_cetak_pkb', '<=', date_end.strftime('%Y-%m-%d %H:%M:%S')),
-            ]
-            
-            domain.extend(date_domain)
-            
-            # Debug: Print full domain
-            _logger.info(f"Search domain: {domain}")
-            
-            orders = SaleOrder.search(domain)
-            _logger.info(f"Found {len(orders)} orders with current domain")
-            
-            # Debug: Print found orders
-            for order in orders:
-                _logger.info(f"""
-                Found order:
-                - ID: {order.id}
-                - Name: {order.name}
-                - State: {order.state}
-                - Create Date: {order.create_date}
-                - SA Cetak PKB: {order.sa_cetak_pkb}
-                - Car Info: {order.partner_car_id.number_plate if order.partner_car_id else 'No car'}
-                """)
+            # Execute search with ordering
+            orders = SaleOrder.search(domain, order='sa_cetak_pkb desc')
+            _logger.info(f"Found {len(orders)} orders")
 
+            # Process results
             result = []
             for order in orders:
-                order_data = {
-                    'id': order.id,
-                    'name': order.name,
-                    'plate_number': order.partner_car_id.number_plate if order.partner_car_id else 'No Plate',
-                    'completion_time': order.sa_cetak_pkb.strftime('%Y-%m-%d %H:%M:%S') if order.sa_cetak_pkb else order.create_date.strftime('%Y-%m-%d %H:%M:%S'),
-                    'customer_name': order.partner_id.name if order.partner_id else '',
-                    'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
-                    'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
-                    'state': order.state,
-                    'has_rating': bool(order.customer_rating)
-                }
-                result.append(order_data)
+                if order.sa_cetak_pkb:
+                    # Extract the date part for comparison
+                    order_date = order.sa_cetak_pkb.strftime('%Y-%m-%d')
+                    search_date_str = parsed_date.strftime('%Y-%m-%d')
+                    
+                    # Only include if dates match exactly
+                    if order_date == search_date_str:
+                        order_data = {
+                            'id': order.id,
+                            'name': order.name,
+                            'plate_number': order.partner_car_id.number_plate if order.partner_car_id else 'No Plate',
+                            'completion_time': order.sa_cetak_pkb.strftime('%Y-%m-%d %H:%M:%S'),
+                            'customer_name': order.partner_id.name if order.partner_id else '',
+                            'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
+                            'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+                            'state': order.state,
+                            'has_rating': bool(order.customer_rating)
+                        }
+                        result.append(order_data)
+                        _logger.info(f"Added order {order.name} with date {order_date}")
+                    else:
+                        _logger.info(f"Skipped order {order.name} with date {order_date} (doesn't match {search_date_str})")
 
             if not result:
-                # Return debug info jika tidak ada hasil
+                _logger.info("No orders found, retrieving sample data with correct date filter")
+                # If no results, get orders from any date for debugging
+                sample_orders = SaleOrder.search([
+                    ('state', 'in', ['sale', 'done']),
+                    ('sa_cetak_pkb', '!=', False)
+                ], limit=5, order='sa_cetak_pkb desc')
+                
+                sample_data = []
+                for order in sample_orders:
+                    sample_data.append({
+                        'id': order.id,
+                        'name': order.name,
+                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else 'No Plate',
+                        'completion_time': order.sa_cetak_pkb.strftime('%Y-%m-%d %H:%M:%S'),
+                        'customer_name': order.partner_id.name if order.partner_id else '',
+                        'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
+                        'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+                        'state': order.state,
+                        'has_rating': bool(order.customer_rating)
+                    })
+
+                _logger.info(f"Sample data size: {len(sample_data)}")
+
                 return {
                     'status': 'success',
-                    'data': [],
-                    'debug_info': {
-                        'total_orders': len(all_orders),
-                        'state_filtered_orders': len(state_orders),
-                        'pkb_orders': len(pkb_orders),
-                        'search_date': search_date,
-                        'date_start': date_start.strftime('%Y-%m-%d %H:%M:%S'),
-                        'date_end': date_end.strftime('%Y-%m-%d %H:%M:%S'),
-                        'timezone': request.env.user.tz or 'UTC',
-                        'domain': domain
-                    }
+                    'data': []  # Return empty data as requested
                 }
 
+            # Sort by completion_time if needed (should already be sorted from search)
+            result.sort(key=lambda x: x['completion_time'], reverse=True)
+            
+            _logger.info(f"Returning {len(result)} orders")
             return {
                 'status': 'success',
                 'data': result
@@ -145,13 +141,7 @@ class CustomerRatingAPI(Controller):
             _logger.error(f"Error in get_available_orders: {str(e)}")
             return {
                 'status': 'error',
-                'message': str(e),
-                'debug_info': {
-                    'error_type': type(e).__name__,
-                    'search_date': search_date if 'search_date' in locals() else None,
-                    'timezone': request.env.user.tz or 'UTC',
-                    'traceback': logging.traceback.format_exc()
-                }
+                'message': str(e)
             }
 
 

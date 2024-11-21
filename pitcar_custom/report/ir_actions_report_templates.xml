@@ -18,7 +18,7 @@
         <xpath expr="//t[@t-set='address']"  position="replace"></xpath>
 
         <xpath expr="//div[@class='page']" position="replace">
-            <div class="page">
+            <div class="page position-relative">
                 <div class="oe_structure" />
 
                 <h2 class="mt-4">
@@ -28,335 +28,339 @@
                     <span t-else="">Order # </span>
                     <span t-field="doc.name" />
                 </h2>
+                <div class="main-content" style="padding-bottom: 500px;"> 
 
-                <div id="informations" class="mt-4 mb-4">
-                    <div class="row">
-                        <div class="col-6">
-                            <!-- Quotation / Order Date -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong t-if="doc.state in ['draft', 'sent']">Quotation Date</strong><strong t-else="">Order Date</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.create_date">
-                                        <span t-field="doc.create_date" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
-                                    </t>
-                                </div>
-                            </div>
-
-                            <!-- Car Arrival Time -->
-                            <t t-if="doc.car_arrival_time">
+                    <div id="informations" class="mt-4 mb-4">
+                        <div class="row">
+                            <div class="col-6">
+                                <!-- Quotation / Order Date -->
                                 <div class="row mb-2">
-                                    <div class="col-5 text-start"><strong>Car Arrival Time</strong></div>
+                                    <div class="col-5 text-start"><strong t-if="doc.state in ['draft', 'sent']">Quotation Date</strong><strong t-else="">Order Date</strong></div>
                                     <div class="col-7 text-start">
                                         <span>:</span>
-                                        <span t-field="doc.car_arrival_time" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                        <t t-if="doc.create_date">
+                                            <span t-field="doc.create_date" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                        </t>
                                     </div>
                                 </div>
-                            </t>
 
-                            <!-- Completed Date -->
-                            <t t-if="doc.date_completed">
+                                <!-- Car Arrival Time -->
+                                <t t-if="doc.car_arrival_time">
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Car Arrival Time</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <span t-field="doc.car_arrival_time" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                        </div>
+                                    </div>
+                                </t>
+
+                                <!-- Completed Date -->
+                                <t t-if="doc.date_completed">
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Completed Date</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <span t-field="doc.date_completed" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                        </div>
+                                    </div>
+                                </t>
+
+                                <!-- Customer -->
                                 <div class="row mb-2">
-                                    <div class="col-5 text-start"><strong>Completed Date</strong></div>
+                                    <div class="col-5 text-start"><strong>Customer</strong></div>
                                     <div class="col-7 text-start">
                                         <span>:</span>
-                                        <span t-field="doc.date_completed" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                        <t t-if="doc.partner_id">
+                                            <span t-field="doc.partner_id" />
+                                        </t>
                                     </div>
                                 </div>
-                            </t>
 
-                            <!-- Customer -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Customer</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.partner_id">
-                                        <span t-field="doc.partner_id" />
-                                    </t>
+                                <!-- Service Advisors -->
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Service Advisors</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <t t-set="advisors" t-value="env['pitcar.service.advisor'].search([('id', 'in', doc.service_advisor_id.ids)])" />
+                                        <t t-if="advisors">
+                                            <span t-esc="', '.join(advisors.mapped('name'))" />
+                                        </t>
+                                        <t t-if="not advisors">No service advisors assigned</t>
+                                    </div>
+                                </div>
+
+                                <!-- Mechanics -->
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Mechanics</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <t t-if="doc.car_mechanic_id_new">
+                                            <span t-field="doc.generated_mechanic_team" />
+                                        </t>
+                                        <t t-elif="doc.car_mechanic_id">
+                                            <span t-field="doc.car_mechanic_id" />
+                                        </t>
+                                    </div>
                                 </div>
                             </div>
 
-                            <!-- Service Advisors -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Service Advisors</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-set="advisors" t-value="env['pitcar.service.advisor'].search([('id', 'in', doc.service_advisor_id.ids)])" />
-                                    <t t-if="advisors">
-                                        <span t-esc="', '.join(advisors.mapped('name'))" />
-                                    </t>
-                                    <t t-if="not advisors">No service advisors assigned</t>
+                            <div class="col-6">
+                                <!-- Plate Number -->
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Plate Number</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <t t-if="doc.partner_car_id and doc.partner_car_id.number_plate">
+                                            <span t-field="doc.partner_car_id.number_plate" />
+                                        </t>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <!-- Mechanics -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Mechanics</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.car_mechanic_id_new">
-                                        <span t-field="doc.generated_mechanic_team" />
-                                    </t>
-                                    <t t-elif="doc.car_mechanic_id">
-                                        <span t-field="doc.car_mechanic_id" />
-                                    </t>
+                                <!-- Odometer -->
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Odometer</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <t t-if="doc.partner_car_id and doc.partner_car_odometer">
+                                            <span t-field="doc.partner_car_odometer" /> KM
+                                        </t>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
 
-                        <div class="col-6">
-                            <!-- Plate Number -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Plate Number</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.partner_car_id and doc.partner_car_id.number_plate">
-                                        <span t-field="doc.partner_car_id.number_plate" />
-                                    </t>
+                                <!-- Brand -->
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Brand</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <t t-if="doc.partner_car_id and doc.partner_car_id.brand">
+                                            <span t-field="doc.partner_car_id.brand" />
+                                        </t>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <!-- Odometer -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Odometer</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.partner_car_id and doc.partner_car_odometer">
-                                        <span t-field="doc.partner_car_odometer" /> KM
-                                    </t>
+                                <!-- Type and Year -->
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Type / Year</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <t t-if="doc.partner_car_id">
+                                            <span t-field="doc.partner_car_id.brand_type" /> / <span t-field="doc.partner_car_id.year" />
+                                        </t>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <!-- Brand -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Brand</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.partner_car_id and doc.partner_car_id.brand">
-                                        <span t-field="doc.partner_car_id.brand" />
-                                    </t>
+                                <!-- Transmission -->
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Transmission</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <t t-if="doc.partner_car_id and doc.partner_car_transmission">
+                                            <span t-field="doc.partner_car_transmission" />
+                                        </t>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <!-- Type and Year -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Type / Year</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.partner_car_id">
-                                        <span t-field="doc.partner_car_id.brand_type" /> / <span t-field="doc.partner_car_id.year" />
-                                    </t>
+                                <!-- Engine Type -->
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Engine Type</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <t t-if="doc.partner_car_engine_type">
+                                            <span t-field="doc.partner_car_engine_type" />
+                                        </t>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <!-- Transmission -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Transmission</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.partner_car_id and doc.partner_car_transmission">
-                                        <span t-field="doc.partner_car_transmission" />
-                                    </t>
-                                </div>
-                            </div>
-
-                            <!-- Engine Type -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Engine Type</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.partner_car_engine_type">
-                                        <span t-field="doc.partner_car_engine_type" />
-                                    </t>
-                                </div>
-                            </div>
-
-                            <!-- Color -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Color / Warna</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="doc.partner_car_color">
-                                        <span t-field="doc.partner_car_color" />
-                                    </t>
+                                <!-- Color -->
+                                <div class="row mb-2">
+                                    <div class="col-5 text-start"><strong>Color / Warna</strong></div>
+                                    <div class="col-7 text-start">
+                                        <span>:</span>
+                                        <t t-if="doc.partner_car_color">
+                                            <span t-field="doc.partner_car_color" />
+                                        </t>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
 
-                <!-- Is there a discount on at least one line? -->
-                <t t-set="lines_to_report" t-value="doc._get_order_lines_to_report()" />
-                <t t-set="display_discount" t-value="any(l.discount for l in lines_to_report)" />
+                    <!-- Is there a discount on at least one line? -->
+                    <t t-set="lines_to_report" t-value="doc._get_order_lines_to_report()" />
+                    <t t-set="display_discount" t-value="any(l.discount for l in lines_to_report)" />
 
-                <table class="table table-sm o_main_table table-borderless mt-4">
-                    <t t-if="env.context.get('work_order', False) or not is_work_order">
-                        <!-- In case we want to repeat the header, remove "display: table-row-group" -->
-                        <thead style="display: table-row-group">
-                            <tr>
-                                <th name="th_description" class="text-start">Description</th>
-                                <th name="th_quantity" class="text-end">Quantity</th>
-                                <th name="th_priceunit" class="text-end">Unit Price</th>
-                                <th name="th_discount" t-if="display_discount" class="text-end">
-                                    <span>Disc.%</span>
-                                </th>
-                                <th name="th_taxes" class="text-end">Taxes</th>
-                                <th name="th_subtotal" class="text-end">
-                                    <span groups="account.group_show_line_subtotals_tax_excluded">
-                                        Amount</span>
-                                    <span groups="account.group_show_line_subtotals_tax_included">Total
-                                        Price</span>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody class="sale_tbody">
-
-                            <t t-set="current_subtotal" t-value="0" />
-
-                            <t t-foreach="lines_to_report" t-as="line">
-
-                                <t t-set="current_subtotal"
-                                    t-value="current_subtotal + line.price_subtotal"
-                                    groups="account.group_show_line_subtotals_tax_excluded" />
-                                <t t-set="current_subtotal"
-                                    t-value="current_subtotal + line.price_total"
-                                    groups="account.group_show_line_subtotals_tax_included" />
-
-                                <tr
-                                    t-att-class="'bg-200 fw-bold o_line_section' if line.display_type == 'line_section' else 'fst-italic o_line_note' if line.display_type == 'line_note' else ''">
-                                    <t t-if="not line.display_type">
-                                        <td name="td_name">
-                                            <span t-field="line.name" />
-                                        </td>
-                                        <td name="td_quantity" class="text-end">
-                                            <span t-field="line.product_uom_qty" />
-                                            <span t-field="line.product_uom" />
-                                        </td>
-                                        <td name="td_priceunit" class="text-end">
-                                            <span t-field="line.price_unit" />
-                                        </td>
-                                        <td t-if="display_discount" class="text-end">
-                                            <span t-field="line.discount" />
-                                        </td>
-                                        <td name="td_taxes" class="text-end">
-                                            <span
-                                                t-out="', '.join(map(lambda x: (x.description or x.name), line.tax_id))" />
-                                        </td>
-                                        <td t-if="not line.is_downpayment" name="td_subtotal"
-                                            class="text-end o_price_total">
-                                            <span t-field="line.price_subtotal"
-                                                groups="account.group_show_line_subtotals_tax_excluded" />
-                                            <span t-field="line.price_total"
-                                                groups="account.group_show_line_subtotals_tax_included" />
-                                        </td>
-                                    </t>
-                                    <t t-elif="line.display_type == 'line_section'">
-                                        <td name="td_section_line" colspan="99">
-                                            <span t-field="line.name" />
-                                        </td>
-                                        <t t-set="current_section" t-value="line" />
-                                        <t t-set="current_subtotal" t-value="0" />
-                                    </t>
-                                    <t t-elif="line.display_type == 'line_note'">
-                                        <td name="td_note_line" colspan="99">
-                                            <span t-field="line.name" />
-                                        </td>
-                                    </t>
+                    <table class="table table-sm o_main_table table-borderless mt-4">
+                        <t t-if="env.context.get('work_order', False) or not is_work_order">
+                            <!-- In case we want to repeat the header, remove "display: table-row-group" -->
+                            <thead style="display: table-row-group">
+                                <tr>
+                                    <th name="th_description" class="text-start">Description</th>
+                                    <th name="th_quantity" class="text-end">Quantity</th>
+                                    <th name="th_priceunit" class="text-end">Unit Price</th>
+                                    <th name="th_discount" t-if="display_discount" class="text-end">
+                                        <span>Disc.%</span>
+                                    </th>
+                                    <th name="th_taxes" class="text-end">Taxes</th>
+                                    <th name="th_subtotal" class="text-end">
+                                        <span groups="account.group_show_line_subtotals_tax_excluded">
+                                            Amount</span>
+                                        <span groups="account.group_show_line_subtotals_tax_included">Total
+                                            Price</span>
+                                    </th>
                                 </tr>
+                            </thead>
+                            <tbody class="sale_tbody">
 
-                                <t
-                                    t-if="current_section and (line_last or doc.order_line[line_index+1].display_type == 'line_section') and not line.is_downpayment">
-                                    <tr class="is-subtotal text-end">
-                                        <td name="td_section_subtotal" colspan="99">
-                                            <strong class="mr16">Subtotal</strong>
-                                            <span
-                                                t-out="current_subtotal"
-                                                t-options='{"widget": "monetary", "display_currency": doc.pricelist_id.currency_id}'
-                                            />
-                                        </td>
+                                <t t-set="current_subtotal" t-value="0" />
+
+                                <t t-foreach="lines_to_report" t-as="line">
+
+                                    <t t-set="current_subtotal"
+                                        t-value="current_subtotal + line.price_subtotal"
+                                        groups="account.group_show_line_subtotals_tax_excluded" />
+                                    <t t-set="current_subtotal"
+                                        t-value="current_subtotal + line.price_total"
+                                        groups="account.group_show_line_subtotals_tax_included" />
+
+                                    <tr
+                                        t-att-class="'bg-200 fw-bold o_line_section' if line.display_type == 'line_section' else 'fst-italic o_line_note' if line.display_type == 'line_note' else ''">
+                                        <t t-if="not line.display_type">
+                                            <td name="td_name">
+                                                <span t-field="line.name" />
+                                            </td>
+                                            <td name="td_quantity" class="text-end">
+                                                <span t-field="line.product_uom_qty" />
+                                                <span t-field="line.product_uom" />
+                                            </td>
+                                            <td name="td_priceunit" class="text-end">
+                                                <span t-field="line.price_unit" />
+                                            </td>
+                                            <td t-if="display_discount" class="text-end">
+                                                <span t-field="line.discount" />
+                                            </td>
+                                            <td name="td_taxes" class="text-end">
+                                                <span
+                                                    t-out="', '.join(map(lambda x: (x.description or x.name), line.tax_id))" />
+                                            </td>
+                                            <td t-if="not line.is_downpayment" name="td_subtotal"
+                                                class="text-end o_price_total">
+                                                <span t-field="line.price_subtotal"
+                                                    groups="account.group_show_line_subtotals_tax_excluded" />
+                                                <span t-field="line.price_total"
+                                                    groups="account.group_show_line_subtotals_tax_included" />
+                                            </td>
+                                        </t>
+                                        <t t-elif="line.display_type == 'line_section'">
+                                            <td name="td_section_line" colspan="99">
+                                                <span t-field="line.name" />
+                                            </td>
+                                            <t t-set="current_section" t-value="line" />
+                                            <t t-set="current_subtotal" t-value="0" />
+                                        </t>
+                                        <t t-elif="line.display_type == 'line_note'">
+                                            <td name="td_note_line" colspan="99">
+                                                <span t-field="line.name" />
+                                            </td>
+                                        </t>
+                                    </tr>
+
+                                    <t
+                                        t-if="current_section and (line_last or doc.order_line[line_index+1].display_type == 'line_section') and not line.is_downpayment">
+                                        <tr class="is-subtotal text-end">
+                                            <td name="td_section_subtotal" colspan="99">
+                                                <strong class="mr16">Subtotal</strong>
+                                                <span
+                                                    t-out="current_subtotal"
+                                                    t-options='{"widget": "monetary", "display_currency": doc.pricelist_id.currency_id}'
+                                                />
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </t>
+                            </tbody>
+                        </t>
+                        <!-- if work_order, no any price shown -->
+                        <t t-else="">
+                            <!-- In case we want to repeat the header, remove "display: table-row-group" -->
+                            <thead style="display: table-row-group">
+                                <tr>
+                                    <th name="th_description" class="text-start">Description</th>
+                                    <th name="th_quantity" class="text-end">Quantity</th>
+                                </tr>
+                            </thead>
+                            <tbody class="sale_tbody">
+
+                                <t t-set="current_subtotal" t-value="0" />
+
+                                <t t-foreach="lines_to_report" t-as="line">
+
+                                    <t t-set="current_subtotal"
+                                        t-value="current_subtotal + line.price_subtotal"
+                                        groups="account.group_show_line_subtotals_tax_excluded" />
+                                    <t t-set="current_subtotal"
+                                        t-value="current_subtotal + line.price_total"
+                                        groups="account.group_show_line_subtotals_tax_included" />
+
+                                    <tr
+                                        t-att-class="'bg-200 fw-bold o_line_section' if line.display_type == 'line_section' else 'fst-italic o_line_note' if line.display_type == 'line_note' else ''">
+                                        <t t-if="not line.display_type">
+                                            <td name="td_name">
+                                                <span t-field="line.name" />
+                                            </td>
+                                            <td name="td_quantity" class="text-end">
+                                                <span t-field="line.product_uom_qty" />
+                                                <span t-field="line.product_uom" />
+                                            </td>
+                                        </t>
+                                        <t t-elif="line.display_type == 'line_section'">
+                                            <td name="td_section_line" colspan="99">
+                                                <span t-field="line.name" />
+                                            </td>
+                                            <t t-set="current_section" t-value="line" />
+                                            <t t-set="current_subtotal" t-value="0" />
+                                        </t>
+                                        <t t-elif="line.display_type == 'line_note'">
+                                            <td name="td_note_line" colspan="99">
+                                                <span t-field="line.name" />
+                                            </td>
+                                        </t>
                                     </tr>
                                 </t>
-                            </t>
-                        </tbody>
-                    </t>
-                    <!-- if work_order, no any price shown -->
-                    <t t-else="">
-                        <!-- In case we want to repeat the header, remove "display: table-row-group" -->
-                        <thead style="display: table-row-group">
-                            <tr>
-                                <th name="th_description" class="text-start">Description</th>
-                                <th name="th_quantity" class="text-end">Quantity</th>
-                            </tr>
-                        </thead>
-                        <tbody class="sale_tbody">
+                            </tbody>
+                        </t>
+                    </table>
 
-                            <t t-set="current_subtotal" t-value="0" />
-
-                            <t t-foreach="lines_to_report" t-as="line">
-
-                                <t t-set="current_subtotal"
-                                    t-value="current_subtotal + line.price_subtotal"
-                                    groups="account.group_show_line_subtotals_tax_excluded" />
-                                <t t-set="current_subtotal"
-                                    t-value="current_subtotal + line.price_total"
-                                    groups="account.group_show_line_subtotals_tax_included" />
-
-                                <tr
-                                    t-att-class="'bg-200 fw-bold o_line_section' if line.display_type == 'line_section' else 'fst-italic o_line_note' if line.display_type == 'line_note' else ''">
-                                    <t t-if="not line.display_type">
-                                        <td name="td_name">
-                                            <span t-field="line.name" />
-                                        </td>
-                                        <td name="td_quantity" class="text-end">
-                                            <span t-field="line.product_uom_qty" />
-                                            <span t-field="line.product_uom" />
-                                        </td>
-                                    </t>
-                                    <t t-elif="line.display_type == 'line_section'">
-                                        <td name="td_section_line" colspan="99">
-                                            <span t-field="line.name" />
-                                        </td>
-                                        <t t-set="current_section" t-value="line" />
-                                        <t t-set="current_subtotal" t-value="0" />
-                                    </t>
-                                    <t t-elif="line.display_type == 'line_note'">
-                                        <td name="td_note_line" colspan="99">
-                                            <span t-field="line.name" />
-                                        </td>
-                                    </t>
-                                </tr>
-                            </t>
-                        </tbody>
-                    </t>
-                </table>
-
-                <div t-if="env.context.get('work_order', False) or not is_work_order" class="clearfix" name="so_total_summary">
-                    <div id="total" class="row" name="total">
-                        <div t-attf-class="#{'col-6' if report_type != 'html' else 'col-sm-7 col-md-6'} ms-auto">
-                            <table class="table table-sm table-borderless">
-                                <!-- Tax totals -->
-                                <t t-set="tax_totals" t-value="doc.tax_totals" />
-                                <t t-call="account.document_tax_totals" />
-                            </table>
+                    <div t-if="env.context.get('work_order', False) or not is_work_order" class="clearfix" name="so_total_summary">
+                        <div id="total" class="row" name="total">
+                            <div t-attf-class="#{'col-6' if report_type != 'html' else 'col-sm-7 col-md-6'} ms-auto">
+                                <table class="table table-sm table-borderless">
+                                    <!-- Tax totals -->
+                                    <t t-set="tax_totals" t-value="doc.tax_totals" />
+                                    <t t-call="account.document_tax_totals" />
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Informasi Garansi - hanya muncul di invoice -->
-                <div t-if="env.context.get('work_order', False) or not is_work_order">
-                    <div style="border-top: 1px solid #ddd; margin-top: 325px; padding-top: 10px;">
+                <!-- Warranty info dengan kondisi hanya untuk invoice -->
+                <div t-if="doc.state == 'sale' and not env.context.get('work_order', False)" 
+                    class="warranty-info" 
+                    style="position: absolute; bottom: 0; left: 0; right: 0; margin-bottom: 20px;">
+                    <div style="border-top: 1px solid #ddd; padding-top: 10px;">
                         <div class="row">
                             <div class="col-12 text-start p-2" style="background-color: #f9f9f9;">
                                 <strong>INFORMASI GARANSI PITCAR:</strong>
-                                 <div class="mt-2">
+                                <div class="mt-2">
                                     <span style="font-weight: 500;">• Garansi Jasa Servis:</span> 14 hari atau 1000km (mana yang lebih dulu tercapai)
                                     <br/>
-                                    <span style="font-weight: 500;">• Garansi Spare Part:</span> 3 bulan sejak pemasangan
+                                    <span style="font-weight: 500;">• Garansi Spare Part:</span> 3 bulan atau 5000km sejak pemasangan (hanya berlaku untuk spare part yang dibeli dari PITCAR)
                                 </div>
                                 <div class="mt-2" style="font-size: 0.95em;">
                                     <em>*Berlaku untuk pengecekan ulang, perbaikan, dan penggantian (jika diperlukan). Tunjukkan invoice ini untuk klaim.
-                                    Garansi tidak berlaku untuk kerusakan akibat kecelakaan/modifikasi pihak lain.</em>
+                                    Garansi tidak berlaku untuk kerusakan akibat kecelakaan/modifikasi pihak lain dan spare part yang dibawa sendiri.</em>
                                 </div>
                             </div>
                         </div>

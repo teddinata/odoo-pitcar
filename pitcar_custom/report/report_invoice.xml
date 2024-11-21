@@ -1,163 +1,260 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-        <template id="report_invoice_document" inherit_id="account.report_invoice_document">
+        <template id="account_report_invoice_document_pitcar" inherit_id="account.report_invoice_document">
+            <!-- Replace original page div -->
+            <xpath expr="//div[@class='page']" position="replace">
+                <div class="page position-relative">
+                    <!-- Header content -->
+                    <div class="oe_structure" />
 
-            <xpath expr="//div[@class='row']"  position="replace"></xpath>
+                    <h2 class="mt-4">
+                        <span t-if="o.move_type == 'out_invoice'">Invoice # </span>
+                        <span t-elif="o.move_type == 'out_refund'">Credit Note # </span>
+                        <span t-elif="o.move_type == 'in_refund'">Vendor Credit Note # </span>
+                        <span t-elif="o.move_type == 'in_invoice'">Vendor Bill # </span>
+                        <span t-field="o.name" />
+                    </h2>
 
-            <!-- replace div which contains Invoice Information -->
-            <xpath expr="//div[@id='informations']" position="replace">
-                <div id="informations" class="mt-4 mb-4">
-                    <div class="row">
-                        <div class="col-6">
-                            <!-- Date Created -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Date Created</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.date_sale_quotation">
-                                        <span t-field="o.date_sale_quotation" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}' />
+                    <!-- Main content wrapper -->
+                    <div class="main-content" style="padding-bottom: 200px;">
+                        <!-- Informations -->
+                        <div id="informations" class="mt-4 mb-4">
+                            <div class="row">
+                                <div class="col-6">
+                                    <!-- Date Created -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Date Created</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.date_sale_quotation">
+                                                <span t-field="o.date_sale_quotation" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}' />
+                                            </t>
+                                        </div>
+                                    </div>
+
+                                    <!-- Car Arrival Time -->
+                                    <t t-if="o.car_arrival_time">
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Car Arrival Time</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="o.car_arrival_time" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                            </div>
+                                        </div>
                                     </t>
-                                </div>
-                            </div>
 
-                            <!-- Car Arrival Time -->
-                            <t t-if="o.car_arrival_time">
-                                <div class="row mb-2">
-                                    <div class="col-5 text-start"><strong>Car Arrival Time</strong></div>
-                                    <div class="col-7 text-start">
-                                        <span>:</span>
-                                        <span t-field="o.car_arrival_time" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                    <!-- Completed Date -->
+                                    <t t-if="o.date_sale_completed">
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Completed Date</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="o.date_sale_completed" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                            </div>
+                                        </div>
+                                    </t>
+
+                                    <!-- Customer -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Customer</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.partner_id">
+                                                <span t-field="o.partner_id" />
+                                            </t>
+                                        </div>
+                                    </div>
+
+                                    <!-- Sales Advisor -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Sales Advisor</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.user_id">
+                                                <span t-field="o.user_id" />
+                                            </t>
+                                        </div>
+                                    </div>
+
+                                    <!-- Mechanics -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Mechanics</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.car_mechanic_id_new">
+                                                <span t-field="o.generated_mechanic_team" />
+                                            </t>
+                                            <t t-elif="o.car_mechanic_id">
+                                                <span t-field="o.car_mechanic_id" />
+                                            </t>
+                                        </div>
                                     </div>
                                 </div>
-                            </t>
 
-                            <!-- Completed Date -->
-                            <t t-if="o.date_sale_completed">
-                                <div class="row mb-2">
-                                    <div class="col-5 text-start"><strong>Completed Date</strong></div>
-                                    <div class="col-7 text-start">
-                                        <span>:</span>
-                                        <span t-field="o.date_sale_completed" t-options='{"widget": "datetime", "format": "dd/MM/yyyy HH:mm"}'/>
+                                <div class="col-6">
+                                    <!-- Plate Number -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Plate Number</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.partner_car_id and o.partner_car_id.number_plate">
+                                                <span t-field="o.partner_car_id.number_plate" />
+                                            </t>
+                                        </div>
                                     </div>
-                                </div>
-                            </t>
 
-                            <!-- Customer -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Customer</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.partner_id">
-                                        <span t-field="o.partner_id" />
-                                    </t>
-                                </div>
-                            </div>
+                                    <!-- Odometer -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Odometer</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.partner_car_id and o.partner_car_odometer">
+                                                <span t-field="o.partner_car_odometer" /> KM
+                                            </t>
+                                        </div>
+                                    </div>
 
-                            <!-- Sales Advisor -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Sales Advisor</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.user_id">
-                                        <span t-field="o.user_id" />
-                                    </t>
-                                </div>
-                            </div>
+                                    <!-- Brand -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Brand</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.partner_car_id and o.partner_car_id.brand">
+                                                <span t-field="o.partner_car_id.brand" />
+                                            </t>
+                                        </div>
+                                    </div>
 
-                            <!-- Mechanics -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Mechanics</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.car_mechanic_id_new">
-                                        <span t-field="o.generated_mechanic_team" />
-                                    </t>
-                                    <t t-elif="o.car_mechanic_id">
-                                        <span t-field="o.car_mechanic_id" />
-                                    </t>
+                                    <!-- Type and Year -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Type / Year</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.partner_car_id">
+                                                <span t-field="o.partner_car_id.brand_type" /> / <span t-field="o.partner_car_id.year" />
+                                            </t>
+                                        </div>
+                                    </div>
+
+                                    <!-- Transmission -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Transmission</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.partner_car_id and o.partner_car_id.transmission">
+                                                <span t-field="o.partner_car_id.transmission" />
+                                            </t>
+                                        </div>
+                                    </div>
+
+                                    <!-- Engine Type -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Engine Type</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.partner_car_id and o.partner_car_id.engine_type">
+                                                <span t-field="o.partner_car_id.engine_type" />
+                                            </t>
+                                        </div>
+                                    </div>
+
+                                    <!-- Color -->
+                                    <div class="row mb-2">
+                                        <div class="col-5 text-start"><strong>Color / Warna</strong></div>
+                                        <div class="col-7 text-start">
+                                            <span>:</span>
+                                            <t t-if="o.partner_car_id and o.partner_car_id.color">
+                                                <span t-field="o.partner_car_id.color" />
+                                            </t>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="col-6">
-                            <!-- Plate Number -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Plate Number</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.partner_car_id and o.partner_car_id.number_plate">
-                                        <span t-field="o.partner_car_id.number_plate" />
-                                    </t>
-                                </div>
-                            </div>
+                        <!-- Invoice Lines Table -->
+                        <table class="table table-sm o_main_table table-borderless mt-4">
+                            <thead style="display: table-row-group">
+                                <tr>
+                                    <th name="th_description" class="text-start">Description</th>
+                                    <th name="th_quantity" class="text-end">Quantity</th>
+                                    <th name="th_priceunit" class="text-end">Unit Price</th>
+                                    <th name="th_taxes" class="text-end">Taxes</th>
+                                    <th name="th_subtotal" class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="o.invoice_line_ids" t-as="line">
+                                    <tr>
+                                        <td name="td_name"><span t-field="line.name"/></td>
+                                        <td class="text-end">
+                                            <span t-field="line.quantity"/>
+                                            <span t-field="line.product_uom_id" groups="uom.group_uom"/>
+                                        </td>
+                                        <td class="text-end">
+                                            <span t-field="line.price_unit"/>
+                                        </td>
+                                        <td class="text-end">
+                                            <span t-esc="', '.join(map(lambda x: x.name, line.tax_ids))"/>
+                                        </td>
+                                        <td class="text-end o_price_total">
+                                            <span t-field="line.price_subtotal"/>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
 
-                            <!-- Odometer -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Odometer</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.partner_car_id and o.partner_car_odometer">
-                                        <span t-field="o.partner_car_odometer" /> KM
-                                    </t>
-                                </div>
-                            </div>
-
-                            <!-- Brand -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Brand</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.partner_car_id and o.partner_car_id.brand">
-                                        <span t-field="o.partner_car_id.brand" />
-                                    </t>
-                                </div>
-                            </div>
-
-                            <!-- Type and Year -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Type / Year</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.partner_car_id">
-                                        <span t-field="o.partner_car_id.brand_type" /> / <span t-field="o.partner_car_id.year" />
-                                    </t>
-                                </div>
-                            </div>
-
-                            <!-- Transmission -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Transmission</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.partner_car_id and o.partner_car_id.transmission">
-                                        <span t-field="o.partner_car_id.transmission" />
-                                    </t>
-                                </div>
-                            </div>
-
-                            <!-- Engine Type -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Engine Type</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.partner_car_id and o.partner_car_id.engine_type">
-                                        <span t-field="o.partner_car_id.engine_type" />
-                                    </t>
-                                </div>
-                            </div>
-
-                            <!-- Color -->
-                            <div class="row mb-2">
-                                <div class="col-5 text-start"><strong>Color / Warna</strong></div>
-                                <div class="col-7 text-start">
-                                    <span>:</span>
-                                    <t t-if="o.partner_car_id and o.partner_car_id.color">
-                                        <span t-field="o.partner_car_id.color" />
-                                    </t>
+                        <!-- Tax Totals -->
+                        <div class="clearfix" name="so_total_summary">
+                            <div id="total" class="row" name="total">
+                                <div t-attf-class="#{'col-6' if report_type != 'html' else 'col-sm-7 col-md-6'} ms-auto">
+                                    <table class="table table-sm table-borderless">
+                                        <!-- Tax totals -->
+                                        <t t-set="tax_totals" t-value="o.tax_totals" />
+                                        <t t-call="account.document_tax_totals" />
+                                    </table>
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Warranty info -->
+                    <div t-if="o.move_type == 'out_invoice'" 
+                         style="position: absolute; bottom: 0; left: 0; right: 0; margin-bottom: 20px; page-break-inside: avoid;">
+                        <div style="border-top: 1px solid #ddd; padding-top: 10px;">
+                            <div class="row">
+                                <div class="col-12 text-start p-2" style="background-color: #f9f9f9;">
+                                    <strong>INFORMASI GARANSI PITCAR:</strong>
+                                    <div class="mt-2">
+                                        <span style="font-weight: 500;">• Garansi Jasa Servis:</span> 14 hari atau 1000km (mana yang lebih dulu tercapai)
+                                        <br/>
+                                        <span style="font-weight: 500;">• Garansi Spare Part:</span> 3 bulan atau 5000km sejak pemasangan (hanya berlaku untuk spare part yang dibeli dari PITCAR)
+                                    </div>
+                                    <div class="mt-2" style="font-size: 0.95em;">
+                                        <em>*Berlaku untuk pengecekan ulang, perbaikan, dan penggantian (jika diperlukan). Tunjukkan invoice ini untuk klaim.
+                                        Garansi tidak berlaku untuk kerusakan akibat kecelakaan/modifikasi pihak lain dan spare part yang dibawa sendiri.</em>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Instructions -->
+                    <div class="pt-2">
+                        <p t-if="not is_html_empty(o.narration)" name="comment">
+                            <span t-field="o.narration"/>
+                        </p>
+                        <p t-if="o.payment_reference">
+                            Please use the following communication for your payment : <b><span t-field="o.payment_reference"/></b>
+                        </p>
+                        <p t-if="o.invoice_payment_term_id" name="payment_term">
+                            <span t-field="o.invoice_payment_term_id.note"/>
+                        </p>
+                        <p t-if="o.fiscal_position_id.note" name="note">
+                            <span t-field="o.fiscal_position_id.note"/>
+                        </p>
                     </div>
                 </div>
             </xpath>

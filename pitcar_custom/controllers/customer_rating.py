@@ -4,6 +4,7 @@ from odoo.http import Controller, route, request, Response
 import json
 import logging
 import pytz
+from math import ceil
 
 _logger = logging.getLogger(__name__)
 
@@ -538,6 +539,163 @@ class CustomerRatingAPI(Controller):
 
         except Exception as e:
             _logger.error(f"Error in get_rating_dashboard: {str(e)}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    @route('/web/rating/reviews', type='json', auth='public', methods=['POST'], csrf=False)
+    def get_all_reviews(self, **kwargs):
+        """Get all reviews with pagination"""
+        try:
+            params = kwargs
+            dbname = params.get('db')
+            page = int(params.get('page', 1))
+            limit = int(params.get('limit', 10))
+            search = params.get('search', '')
+            sort_by = params.get('sort_by', 'date')  # date, rating, customer
+            sort_order = params.get('sort_order', 'desc')  # asc, desc
+            date_range = params.get('date_range', 'all')  # all, today, week, month, year
+            rating_filter = params.get('rating')  # Optional: filter by specific rating
+            satisfaction_filter = params.get('satisfaction')  # Optional: filter by satisfaction level
+
+            if not dbname:
+                return {'status': 'error', 'message': 'Database name is required'}
+
+            SaleOrder = request.env['sale.order'].sudo()
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+
+            # Build base domain
+            domain = [
+                ('state', 'in', ['sale', 'done']),
+                ('customer_rating', '!=', False)  # Only get rated orders
+            ]
+
+            # Add date range filter
+            if date_range != 'all':
+                if date_range == 'today':
+                    date_start = now.replace(hour=0, minute=0, second=0)
+                    date_end = now
+                elif date_range == 'week':
+                    date_start = now - timedelta(days=now.weekday())
+                    date_end = now
+                elif date_range == 'month':
+                    date_start = now.replace(day=1)
+                    date_end = now
+                elif date_range == 'year':
+                    date_start = now.replace(month=1, day=1)
+                    date_end = now
+
+                date_start_utc = date_start.astimezone(pytz.UTC)
+                date_end_utc = date_end.astimezone(pytz.UTC)
+                
+                domain.extend([
+                    ('sa_cetak_pkb', '>=', date_start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('sa_cetak_pkb', '<=', date_end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                ])
+
+            # Add search filter
+            if search:
+                domain.extend(['|', '|', '|',
+                    ('partner_id.name', 'ilike', search),
+                    ('partner_car_id.number_plate', 'ilike', search),
+                    ('name', 'ilike', search),
+                    ('customer_feedback', 'ilike', search)
+                ])
+
+            # Add rating filter
+            if rating_filter:
+                domain.append(('customer_rating', '=', str(rating_filter)))
+
+            # Add satisfaction filter
+            if satisfaction_filter:
+                domain.append(('customer_satisfaction', '=', satisfaction_filter))
+
+            # Calculate total before pagination
+            total_records = SaleOrder.search_count(domain)
+            total_pages = ceil(total_records / limit)
+
+            # Determine sort field
+            sort_mapping = {
+                'date': 'sa_cetak_pkb',
+                'rating': 'customer_rating',
+                'customer': 'partner_id.name',
+                'order': 'name'
+            }
+            sort_field = sort_mapping.get(sort_by, 'sa_cetak_pkb')
+            
+            # Get paginated records
+            offset = (page - 1) * limit
+            orders = SaleOrder.search(
+                domain,
+                order=f"{sort_field} {sort_order}",
+                limit=limit,
+                offset=offset
+            )
+
+            reviews = []
+            for order in orders:
+                if order.sa_cetak_pkb:
+                    pkb_time_utc = pytz.UTC.localize(order.sa_cetak_pkb)
+                    pkb_time_local = pkb_time_utc.astimezone(tz)
+                    
+                    # Get category ratings
+                    category_ratings = {}
+                    if order.detailed_ratings:
+                        try:
+                            ratings = order.detailed_ratings
+                            if isinstance(ratings, str):
+                                ratings = json.loads(ratings)
+                            category_ratings = {
+                                'service': ratings.get('service_rating', 0),
+                                'price': ratings.get('price_rating', 0),
+                                'facility': ratings.get('facility_rating', 0)
+                            }
+                        except (json.JSONDecodeError, AttributeError):
+                            category_ratings = {'service': 0, 'price': 0, 'facility': 0}
+
+                    review = {
+                        'id': order.id,
+                        'order_name': order.name,
+                        'customer_name': order.partner_id.name if order.partner_id else '',
+                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                        'car_info': f"{order.partner_car_brand.name} {order.partner_car_brand_type.name}" if order.partner_car_brand and order.partner_car_brand_type else '',
+                        'rating': float(order.customer_rating) if order.customer_rating else 0,
+                        'category_ratings': category_ratings,
+                        'satisfaction': order.customer_satisfaction,
+                        'feedback': order.customer_feedback,
+                        'date': pkb_time_local.strftime('%Y-%m-%d %H:%M:%S'),
+                        'has_response': bool(order.complaint_action),  # If there's a response to complaint
+                        'response': order.complaint_action if order.complaint_action else None
+                    }
+                    reviews.append(review)
+
+            return {
+                'status': 'success',
+                'data': {
+                    'reviews': reviews,
+                    'pagination': {
+                        'total_records': total_records,
+                        'total_pages': total_pages,
+                        'current_page': page,
+                        'limit': limit,
+                        'has_next': page < total_pages,
+                        'has_previous': page > 1
+                    },
+                    'filters': {
+                        'date_range': date_range,
+                        'search': search,
+                        'sort_by': sort_by,
+                        'sort_order': sort_order,
+                        'rating': rating_filter,
+                        'satisfaction': satisfaction_filter
+                    }
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_all_reviews: {str(e)}")
             return {
                 'status': 'error',
                 'message': str(e)

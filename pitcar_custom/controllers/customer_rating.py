@@ -553,11 +553,11 @@ class CustomerRatingAPI(Controller):
             page = int(params.get('page', 1))
             limit = int(params.get('limit', 10))
             search = params.get('search', '')
-            sort_by = params.get('sort_by', 'date')  # date, rating, customer
-            sort_order = params.get('sort_order', 'desc')  # asc, desc
-            date_range = params.get('date_range', 'all')  # all, today, week, month, year
-            rating_filter = params.get('rating')  # Optional: filter by specific rating
-            satisfaction_filter = params.get('satisfaction')  # Optional: filter by satisfaction level
+            sort_by = params.get('sort_by', 'date')
+            sort_order = params.get('sort_order', 'desc')
+            date_range = params.get('date_range', 'all')
+            rating_filter = params.get('rating')
+            satisfaction_filter = params.get('satisfaction')
 
             if not dbname:
                 return {'status': 'error', 'message': 'Database name is required'}
@@ -569,10 +569,12 @@ class CustomerRatingAPI(Controller):
             # Build base domain
             domain = [
                 ('state', 'in', ['sale', 'done']),
-                ('customer_rating', '!=', False)  # Only get rated orders
+                '|',  # This creates an OR condition for the following two conditions
+                ('customer_rating', '!=', False),
+                ('customer_rating', '!=', '')
             ]
 
-            # Add date range filter
+            # Add date range filter if not 'all'
             if date_range != 'all':
                 if date_range == 'today':
                     date_start = now.replace(hour=0, minute=0, second=0)
@@ -595,7 +597,7 @@ class CustomerRatingAPI(Controller):
                     ('sa_cetak_pkb', '<=', date_end_utc.strftime('%Y-%m-%d %H:%M:%S'))
                 ])
 
-            # Add search filter
+            # Add search filter if provided
             if search:
                 domain.extend(['|', '|', '|',
                     ('partner_id.name', 'ilike', search),
@@ -604,15 +606,18 @@ class CustomerRatingAPI(Controller):
                     ('customer_feedback', 'ilike', search)
                 ])
 
-            # Add rating filter
+            # Add rating filter if provided
             if rating_filter:
                 domain.append(('customer_rating', '=', str(rating_filter)))
 
-            # Add satisfaction filter
+            # Add satisfaction filter if provided
             if satisfaction_filter:
                 domain.append(('customer_satisfaction', '=', satisfaction_filter))
 
-            # Calculate total before pagination
+            # Log domain for debugging
+            _logger.info(f"Search domain: {domain}")
+
+            # Calculate total records
             total_records = SaleOrder.search_count(domain)
             total_pages = ceil(total_records / limit)
 
@@ -625,7 +630,7 @@ class CustomerRatingAPI(Controller):
             }
             sort_field = sort_mapping.get(sort_by, 'sa_cetak_pkb')
             
-            # Get paginated records
+            # Get paginated records with proper order
             offset = (page - 1) * limit
             orders = SaleOrder.search(
                 domain,
@@ -634,14 +639,20 @@ class CustomerRatingAPI(Controller):
                 offset=offset
             )
 
+            _logger.info(f"Found {len(orders)} orders for current page")
+
             reviews = []
             for order in orders:
-                if order.sa_cetak_pkb:
-                    pkb_time_utc = pytz.UTC.localize(order.sa_cetak_pkb)
-                    pkb_time_local = pkb_time_utc.astimezone(tz)
-                    
-                    # Get category ratings
-                    category_ratings = {}
+                try:
+                    # Convert pkb time to local timezone
+                    if order.sa_cetak_pkb:
+                        pkb_time_utc = pytz.UTC.localize(order.sa_cetak_pkb)
+                        pkb_time_local = pkb_time_utc.astimezone(tz)
+                    else:
+                        pkb_time_local = None
+
+                    # Get detailed ratings
+                    category_ratings = {'service': 0, 'price': 0, 'facility': 0}
                     if order.detailed_ratings:
                         try:
                             ratings = order.detailed_ratings
@@ -652,8 +663,8 @@ class CustomerRatingAPI(Controller):
                                 'price': ratings.get('price_rating', 0),
                                 'facility': ratings.get('facility_rating', 0)
                             }
-                        except (json.JSONDecodeError, AttributeError):
-                            category_ratings = {'service': 0, 'price': 0, 'facility': 0}
+                        except (json.JSONDecodeError, AttributeError) as e:
+                            _logger.warning(f"Error parsing detailed ratings for order {order.id}: {str(e)}")
 
                     review = {
                         'id': order.id,
@@ -665,11 +676,15 @@ class CustomerRatingAPI(Controller):
                         'category_ratings': category_ratings,
                         'satisfaction': order.customer_satisfaction,
                         'feedback': order.customer_feedback,
-                        'date': pkb_time_local.strftime('%Y-%m-%d %H:%M:%S'),
-                        'has_response': bool(order.complaint_action),  # If there's a response to complaint
+                        'date': pkb_time_local.strftime('%Y-%m-%d %H:%M:%S') if pkb_time_local else '',
+                        'has_response': bool(order.complaint_action),
                         'response': order.complaint_action if order.complaint_action else None
                     }
                     reviews.append(review)
+                    _logger.info(f"Processed review for order {order.name}")
+                except Exception as e:
+                    _logger.error(f"Error processing order {order.id}: {str(e)}")
+                    continue
 
             return {
                 'status': 'success',

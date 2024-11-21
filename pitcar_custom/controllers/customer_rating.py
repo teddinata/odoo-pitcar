@@ -64,7 +64,7 @@ class CustomerRatingAPI(Controller):
 
             # Build domain for exact date match
             domain = [
-                ('state', 'in', ['sale', 'done']),
+                # ('state', 'in', ['sale', 'done']),
                 ('sa_cetak_pkb', '>=', date_start),
                 ('sa_cetak_pkb', '<=', date_end)
             ]
@@ -91,7 +91,7 @@ class CustomerRatingAPI(Controller):
                             'customer_name': order.partner_id.name if order.partner_id else '',
                             'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                             'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
-                            'state': order.state,
+                            # 'state': order.state,
                             'has_rating': bool(order.customer_rating)
                         }
                         result.append(order_data)
@@ -103,7 +103,7 @@ class CustomerRatingAPI(Controller):
                 _logger.info("No orders found, retrieving sample data with correct date filter")
                 # If no results, get orders from any date for debugging
                 sample_orders = SaleOrder.search([
-                    ('state', 'in', ['sale', 'done']),
+                    # ('state', 'in', ['sale', 'done']),
                     ('sa_cetak_pkb', '!=', False)
                 ], limit=5, order='sa_cetak_pkb desc')
                 
@@ -117,7 +117,7 @@ class CustomerRatingAPI(Controller):
                         'customer_name': order.partner_id.name if order.partner_id else '',
                         'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                         'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
-                        'state': order.state,
+                        # 'state': order.state,
                         'has_rating': bool(order.customer_rating)
                     })
 
@@ -161,7 +161,7 @@ class CustomerRatingAPI(Controller):
         return [
             ('sa_cetak_pkb', '>=', date_start.strftime('%Y-%m-%d %H:%M:%S')),
             ('sa_cetak_pkb', '<=', date_end.strftime('%Y-%m-%d %H:%M:%S')),
-            ('state', 'in', ['sale', 'done']),
+            # ('state', 'in', ['sale', 'done']),
             '|',
             ('customer_rating', '=', False),
             ('customer_rating', '=', '')

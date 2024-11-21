@@ -553,9 +553,10 @@ class CustomerRatingAPI(Controller):
             page = int(params.get('page', 1))
             limit = int(params.get('limit', 10))
             search = params.get('search', '')
-            sort_by = params.get('sort_by', 'date')
+            sort_by = params.get('sort_by', 'pkb_date')
             sort_order = params.get('sort_order', 'desc')
             date_range = params.get('date_range', 'all')
+            date_type = params.get('date_type', 'pkb')
             rating_filter = params.get('rating')
             satisfaction_filter = params.get('satisfaction')
 
@@ -569,7 +570,7 @@ class CustomerRatingAPI(Controller):
             # Build base domain
             domain = [
                 ('state', 'in', ['sale', 'done']),
-                '|',  # This creates an OR condition for the following two conditions
+                '|',
                 ('customer_rating', '!=', False),
                 ('customer_rating', '!=', '')
             ]
@@ -589,15 +590,14 @@ class CustomerRatingAPI(Controller):
                     date_start = now.replace(month=1, day=1)
                     date_end = now
 
-                date_start_utc = date_start.astimezone(pytz.UTC)
-                date_end_utc = date_end.astimezone(pytz.UTC)
-                
+                # Format dates in Asia/Jakarta timezone
+                date_field = 'sa_cetak_pkb' if date_type == 'pkb' else 'create_date'
                 domain.extend([
-                    ('sa_cetak_pkb', '>=', date_start_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                    ('sa_cetak_pkb', '<=', date_end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                    (date_field, '>=', date_start.strftime('%Y-%m-%d %H:%M:%S')),
+                    (date_field, '<=', date_end.strftime('%Y-%m-%d %H:%M:%S'))
                 ])
 
-            # Add search filter if provided
+            # Add other filters
             if search:
                 domain.extend(['|', '|', '|',
                     ('partner_id.name', 'ilike', search),
@@ -606,16 +606,11 @@ class CustomerRatingAPI(Controller):
                     ('customer_feedback', 'ilike', search)
                 ])
 
-            # Add rating filter if provided
             if rating_filter:
                 domain.append(('customer_rating', '=', str(rating_filter)))
 
-            # Add satisfaction filter if provided
             if satisfaction_filter:
                 domain.append(('customer_satisfaction', '=', satisfaction_filter))
-
-            # Log domain for debugging
-            _logger.info(f"Search domain: {domain}")
 
             # Calculate total records
             total_records = SaleOrder.search_count(domain)
@@ -623,14 +618,15 @@ class CustomerRatingAPI(Controller):
 
             # Determine sort field
             sort_mapping = {
-                'date': 'sa_cetak_pkb',
+                'pkb_date': 'sa_cetak_pkb',
+                'order_date': 'create_date',
                 'rating': 'customer_rating',
                 'customer': 'partner_id.name',
                 'order': 'name'
             }
             sort_field = sort_mapping.get(sort_by, 'sa_cetak_pkb')
             
-            # Get paginated records with proper order
+            # Get paginated records
             offset = (page - 1) * limit
             orders = SaleOrder.search(
                 domain,
@@ -639,17 +635,22 @@ class CustomerRatingAPI(Controller):
                 offset=offset
             )
 
-            _logger.info(f"Found {len(orders)} orders for current page")
-
             reviews = []
             for order in orders:
                 try:
-                    # Convert pkb time to local timezone
+                    # Format dates in Asia/Jakarta timezone
+                    pkb_date = None
+                    order_date = None
+
                     if order.sa_cetak_pkb:
-                        pkb_time_utc = pytz.UTC.localize(order.sa_cetak_pkb)
-                        pkb_time_local = pkb_time_utc.astimezone(tz)
-                    else:
-                        pkb_time_local = None
+                        pkb_date = fields.Datetime.context_timestamp(
+                            order, order.sa_cetak_pkb
+                        ).strftime('%Y-%m-%d %H:%M:%S')
+
+                    if order.create_date:
+                        order_date = fields.Datetime.context_timestamp(
+                            order, order.create_date
+                        ).strftime('%Y-%m-%d %H:%M:%S')
 
                     # Get detailed ratings
                     category_ratings = {'service': 0, 'price': 0, 'facility': 0}
@@ -676,12 +677,13 @@ class CustomerRatingAPI(Controller):
                         'category_ratings': category_ratings,
                         'satisfaction': order.customer_satisfaction,
                         'feedback': order.customer_feedback,
-                        'date': pkb_time_local.strftime('%Y-%m-%d %H:%M:%S') if pkb_time_local else '',
+                        'pkb_date': pkb_date,
+                        'order_date': order_date,
                         'has_response': bool(order.complaint_action),
-                        'response': order.complaint_action if order.complaint_action else None
+                        'response': order.complaint_action if order.complaint_action else None,
                     }
                     reviews.append(review)
-                    _logger.info(f"Processed review for order {order.name}")
+
                 except Exception as e:
                     _logger.error(f"Error processing order {order.id}: {str(e)}")
                     continue
@@ -700,6 +702,7 @@ class CustomerRatingAPI(Controller):
                     },
                     'filters': {
                         'date_range': date_range,
+                        'date_type': date_type,
                         'search': search,
                         'sort_by': sort_by,
                         'sort_order': sort_order,

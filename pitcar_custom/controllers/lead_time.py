@@ -961,6 +961,19 @@ class LeadTimeAPIController(http.Controller):
             def calculate_period_stats(orders):
                 """Calculate detailed statistics for a period with accurate job stop tracking"""
                 if not orders:
+                    # Initialize standards analysis struktur
+                    default_standards = {}
+                    for key, standard_time in JOB_STOP_STANDARDS.items():
+                        default_standards[key] = {
+                            'standard_time': standard_time,
+                            'total_count': 0,
+                            'exceeded_count': 0,
+                            'within_count': 0,
+                            'exceeded_percentage': 0,
+                            'within_percentage': 0,
+                            'avg_exceeded_duration': 0,
+                            'avg_within_duration': 0
+                        }
                     return {
                         'total_orders': 0,
                         'completed_orders': 0,
@@ -993,11 +1006,7 @@ class LeadTimeAPIController(http.Controller):
                             'tunggu_sublet': 0,
                             'job_stop_lain': 0
                         },
-                        'exceeded_standards': {
-                            'tunggu_part1': {'count': 0, 'percentage': 0},
-                            'tunggu_part2': {'count': 0, 'percentage': 0},
-                            'tunggu_konfirmasi': {'count': 0, 'percentage': 0}
-                        },
+                        'standards_analysis': default_standards,  # Menggunakan struktur standar yang baru
                         'status_breakdown': {
                             'belum_mulai': 0,
                             'proses': 0,
@@ -1033,11 +1042,24 @@ class LeadTimeAPIController(http.Controller):
 
                 job_stop_durations = dict.fromkeys(job_stops.keys(), 0)
                 completed_job_stops = dict.fromkeys(job_stops.keys(), 0)
-                exceeded_standards = {
-                    'tunggu_part1': {'count': 0, 'percentage': 0},
-                    'tunggu_part2': {'count': 0, 'percentage': 0},
-                    'tunggu_konfirmasi': {'count': 0, 'percentage': 0}
-                }
+
+                # Initialize standards analysis
+                standards_analysis = {}
+                for key, standard_time in JOB_STOP_STANDARDS.items():
+                    standards_analysis[key] = {
+                        'standard_time': standard_time,
+                        'total_count': 0,
+                        'exceeded_count': 0,
+                        'within_count': 0,
+                        'exceeded_percentage': 0,
+                        'within_percentage': 0,
+                        'avg_exceeded_duration': 0,
+                        'avg_within_duration': 0
+                    }
+
+                 # Lists untuk tracking durasi
+                exceeded_durations = {key: [] for key in JOB_STOP_STANDARDS.keys()}
+                within_durations = {key: [] for key in JOB_STOP_STANDARDS.keys()}
 
                 for order in orders:
                     # Count active job stops
@@ -1055,26 +1077,44 @@ class LeadTimeAPIController(http.Controller):
                         job_stops['job_stop_lain'] += 1
 
                     # Process completed job stops
-                    def process_job_stop(start, end, key):
+                    def process_job_stop_standards(start, end, key):
+                        """Process job stop and classify according to standards"""
                         if start and end and end > start:
                             duration = (end - start).total_seconds() / 60
                             if duration > 0:
-                                job_stop_durations[key] += duration
-                                completed_job_stops[key] += 1
-                                if key in JOB_STOP_STANDARDS and duration > JOB_STOP_STANDARDS[key]:
-                                    exceeded_standards[key]['count'] += 1
-                                return True
-                        return False
+                                if key in standards_analysis:
+                                    standards_analysis[key]['total_count'] += 1
+                                    if duration > JOB_STOP_STANDARDS[key]:
+                                        standards_analysis[key]['exceeded_count'] += 1
+                                        exceeded_durations[key].append(duration)
+                                    else:
+                                        standards_analysis[key]['within_count'] += 1
+                                        within_durations[key].append(duration)
+                                
+                                # Update general job stop statistics
+                                if key in job_stop_durations:
+                                    job_stop_durations[key] += duration
+                                    completed_job_stops[key] += 1
 
-                    # Process each job stop
-                    process_job_stop(order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai, 'tunggu_part1')
-                    process_job_stop(order.controller_tunggu_part2_mulai, order.controller_tunggu_part2_selesai, 'tunggu_part2')
-                    process_job_stop(order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai, 'tunggu_konfirmasi')
-                    process_job_stop(order.controller_istirahat_shift1_mulai, order.controller_istirahat_shift1_selesai, 'istirahat')
-                    process_job_stop(order.controller_tunggu_sublet_mulai, order.controller_tunggu_sublet_selesai, 'tunggu_sublet')
-                    process_job_stop(order.controller_job_stop_lain_mulai, order.controller_job_stop_lain_selesai, 'job_stop_lain')
+                    # Process all job stops with standards
+                    if hasattr(order, 'sa_jam_masuk') and hasattr(order, 'sa_mulai_penerimaan'):
+                        process_job_stop_standards(order.sa_jam_masuk, order.sa_mulai_penerimaan, 'tunggu_penerimaan')
+                    if hasattr(order, 'sa_mulai_penerimaan') and hasattr(order, 'sa_cetak_pkb'):
+                        process_job_stop_standards(order.sa_mulai_penerimaan, order.sa_cetak_pkb, 'penerimaan')
+                    if hasattr(order, 'sa_cetak_pkb') and hasattr(order, 'controller_mulai_servis'):
+                        process_job_stop_standards(order.sa_cetak_pkb, order.controller_mulai_servis, 'tunggu_servis')
+                        
+                    process_job_stop_standards(order.controller_tunggu_konfirmasi_mulai, 
+                                            order.controller_tunggu_konfirmasi_selesai, 
+                                            'tunggu_konfirmasi')
+                    process_job_stop_standards(order.controller_tunggu_part1_mulai, 
+                                            order.controller_tunggu_part1_selesai, 
+                                            'tunggu_part1')
+                    process_job_stop_standards(order.controller_tunggu_part2_mulai, 
+                                            order.controller_tunggu_part2_selesai, 
+                                            'tunggu_part2')
 
-                # Calculate averages
+                 # Calculate averages
                 average_job_stop_durations = {}
                 for key in job_stops.keys():
                     average_job_stop_durations[key] = (
@@ -1083,12 +1123,19 @@ class LeadTimeAPIController(http.Controller):
                         else 0
                     )
                     
-                    if key in exceeded_standards:
-                        exceeded_standards[key]['percentage'] = (
-                            (exceeded_standards[key]['count'] / completed_job_stops[key] * 100)
-                            if completed_job_stops[key] > 0
-                            else 0
-                        )
+                    # Calculate final standards analysis
+                    for key in standards_analysis:
+                        stats = standards_analysis[key]
+                        total = stats['total_count']
+
+                        if total > 0:
+                            stats['exceeded_percentage'] = (stats['exceeded_count'] / total) * 100
+                            stats['within_percentage'] = (stats['within_count'] / total) * 100
+
+                        if exceeded_durations[key]:
+                            stats['avg_exceeded_duration'] = sum(exceeded_durations[key]) / len(exceeded_durations[key])
+                        if within_durations[key]:
+                            stats['avg_within_duration'] = sum(within_durations[key]) / len(within_durations[key])
 
                 # Calculate service categories
                 service_metrics = {
@@ -1117,7 +1164,7 @@ class LeadTimeAPIController(http.Controller):
                 Job Stops: {job_stops}
                 Job Stop Durations: {job_stop_durations}
                 Average Job Stop Durations: {average_job_stop_durations}
-                Exceeded Standards: {exceeded_standards}
+                Exceeded Standards: { standards_analysis }
                 Service Metrics: {service_metrics}
                 """)
 
@@ -1132,7 +1179,7 @@ class LeadTimeAPIController(http.Controller):
                     'job_stops': job_stops,
                     'job_stop_durations': job_stop_durations,
                     'average_job_stop_durations': average_job_stop_durations,
-                    'exceeded_standards': exceeded_standards,
+                    'standards_analysis': standards_analysis,
                     'status_breakdown': {
                         'belum_mulai': len(orders.filtered(lambda o: not o.controller_mulai_servis)),
                         'proses': len(active_orders),

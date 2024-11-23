@@ -1481,3 +1481,508 @@ class LeadTimeAPIController(http.Controller):
 
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
+        
+    
+
+    @http.route('/web/lead-time/detail', type='json', auth='user', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    def get_lead_time_detail(self, **kw):
+        """Get comprehensive lead time details for a specific order"""
+        try:
+            # Handle OPTIONS request for CORS
+            if request.httprequest.method == 'OPTIONS':
+                headers = {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                    'Access-Control-Allow-Credentials': 'true'
+                }
+                return Response(status=200, headers=headers)
+
+             # Get request data
+            # # data = request.jsonrequest
+            # params = data.get('params', {})
+            order_id = kw.get('order_id')
+            
+            if not order_id:
+                return {
+                    'status': 'error',
+                    'message': 'Order ID is required'
+                }
+
+            # Validate access and get order
+            order = self._validate_access(order_id)
+            if not order:
+                return {
+                    'status': 'error',
+                    'message': 'Order not found or access denied'
+                }
+
+            # Standards for job stops (in minutes)
+            JOB_STOP_STANDARDS = {
+                'tunggu_penerimaan': 15,
+                'penerimaan': 15,
+                'tunggu_servis': 15,
+                'tunggu_konfirmasi': 40,
+                'tunggu_part1': 45,
+                'tunggu_part2': 45
+            }
+
+            def calculate_duration_minutes(start, end):
+                """Calculate duration in minutes between two timestamps"""
+                if start and end and end > start:
+                    return (end - start).total_seconds() / 60
+                return 0
+
+            def format_duration(minutes):
+                """Format duration minutes to human readable string"""
+                if minutes == 0:
+                    return "0 menit"
+                hours = int(minutes // 60)
+                mins = int(minutes % 60)
+                parts = []
+                if hours > 0:
+                    parts.append(f"{hours} jam")
+                if mins > 0:
+                    parts.append(f"{mins} menit")
+                return " ".join(parts)
+
+            def analyze_job_stop(start, end, standard_time=None):
+                """Analyze a job stop duration and status"""
+                duration = calculate_duration_minutes(start, end)
+                result = {
+                    'start_time': self._format_local_datetime(start),
+                    'end_time': self._format_local_datetime(end) if end else None,
+                    'duration_minutes': duration,
+                    'duration_text': format_duration(duration),
+                    'status': 'completed' if end else ('in_progress' if start else 'not_started')
+                }
+                
+                if standard_time is not None:
+                    result.update({
+                        'standard_time': standard_time,
+                        'standard_time_text': format_duration(standard_time),
+                        'exceeded': duration > standard_time if end else False,
+                        'exceeded_by': max(0, duration - standard_time) if end else 0,
+                        'exceeded_by_text': format_duration(max(0, duration - standard_time)) if end else None
+                    })
+                
+                return 
+            
+            def calculate_service_progress(order):
+                """
+                Calculate comprehensive service progress from sa_jam_masuk to controller_selesai
+                Returns dictionary containing progress information and timeline
+                """
+                try:
+                    if not order.sa_jam_masuk:
+                        return {
+                            'percentage': 0,
+                            'current_stage': 'not_started',
+                            'timeline': [],
+                            'active_job_stops': []
+                        }
+
+                    # Define all stages and their weights
+                    stages = [
+                        {
+                            'name': 'check_in',
+                            'description': 'Check In',
+                            'field': 'sa_jam_masuk',
+                            'weight': 10,
+                            'value': order.sa_jam_masuk
+                        },
+                        {
+                            'name': 'reception',
+                            'description': 'Penerimaan Customer',
+                            'field': 'sa_mulai_penerimaan',
+                            'weight': 15,
+                            'value': order.sa_mulai_penerimaan
+                        },
+                        {
+                            'name': 'pkb',
+                            'description': 'Cetak PKB',
+                            'field': 'sa_cetak_pkb',
+                            'weight': 15,
+                            'value': order.sa_cetak_pkb
+                        },
+                        {
+                            'name': 'service_start',
+                            'description': 'Mulai Servis',
+                            'field': 'controller_mulai_servis',
+                            'weight': 30,
+                            'value': order.controller_mulai_servis
+                        },
+                        {
+                            'name': 'service_complete',
+                            'description': 'Selesai Servis',
+                            'field': 'controller_selesai',
+                            'weight': 30,
+                            'value': order.controller_selesai
+                        }
+                    ]
+
+                    # Define job stops
+                    job_stops = [
+                        {
+                            'name': 'tunggu_konfirmasi',
+                            'description': 'Tunggu Konfirmasi',
+                            'start_field': 'controller_tunggu_konfirmasi_mulai',
+                            'end_field': 'controller_tunggu_konfirmasi_selesai',
+                            'start_value': order.controller_tunggu_konfirmasi_mulai,
+                            'end_value': order.controller_tunggu_konfirmasi_selesai
+                        },
+                        {
+                            'name': 'tunggu_part1',
+                            'description': 'Tunggu Part 1',
+                            'start_field': 'controller_tunggu_part1_mulai',
+                            'end_field': 'controller_tunggu_part1_selesai',
+                            'start_value': order.controller_tunggu_part1_mulai,
+                            'end_value': order.controller_tunggu_part1_selesai
+                        },
+                        {
+                            'name': 'tunggu_part2',
+                            'description': 'Tunggu Part 2',
+                            'start_field': 'controller_tunggu_part2_mulai',
+                            'end_field': 'controller_tunggu_part2_selesai',
+                            'start_value': order.controller_tunggu_part2_mulai,
+                            'end_value': order.controller_tunggu_part2_selesai
+                        },
+                        {
+                            'name': 'istirahat',
+                            'description': 'Istirahat',
+                            'start_field': 'controller_istirahat_shift1_mulai',
+                            'end_field': 'controller_istirahat_shift1_selesai',
+                            'start_value': order.controller_istirahat_shift1_mulai,
+                            'end_value': order.controller_istirahat_shift1_selesai
+                        },
+                        {
+                            'name': 'tunggu_sublet',
+                            'description': 'Tunggu Sublet',
+                            'start_field': 'controller_tunggu_sublet_mulai',
+                            'end_field': 'controller_tunggu_sublet_selesai',
+                            'start_value': order.controller_tunggu_sublet_mulai,
+                            'end_value': order.controller_tunggu_sublet_selesai
+                        },
+                        {
+                            'name': 'job_stop_lain',
+                            'description': 'Job Stop Lain',
+                            'start_field': 'controller_job_stop_lain_mulai',
+                            'end_field': 'controller_job_stop_lain_selesai',
+                            'start_value': order.controller_job_stop_lain_mulai,
+                            'end_value': order.controller_job_stop_lain_selesai,
+                            'note': order.job_stop_lain_keterangan
+                        }
+                    ]
+
+                    # Build timeline
+                    timeline = []
+                    total_weight = sum(stage['weight'] for stage in stages)
+                    completed_weight = 0
+                    current_stage = None
+
+                    # Add stages to timeline
+                    for stage in stages:
+                        if stage['value']:
+                            timeline.append({
+                                'type': 'stage',
+                                'name': stage['name'],
+                                'description': stage['description'],
+                                'timestamp': stage['value'],
+                                'completed': True
+                            })
+                            completed_weight += stage['weight']
+                        else:
+                            if not current_stage:
+                                current_stage = stage['name']
+                            timeline.append({
+                                'type': 'stage',
+                                'name': stage['name'],
+                                'description': stage['description'],
+                                'timestamp': None,
+                                'completed': False
+                            })
+
+                    # Track active job stops
+                    active_job_stops = []
+                    
+                    # Add job stops to timeline
+                    for job_stop in job_stops:
+                        if job_stop['start_value']:
+                            timeline.append({
+                                'type': 'job_stop_start',
+                                'name': job_stop['name'],
+                                'description': job_stop['description'],
+                                'timestamp': job_stop['start_value'],
+                                'completed': bool(job_stop['end_value'])
+                            })
+
+                            if job_stop['end_value']:
+                                timeline.append({
+                                    'type': 'job_stop_end',
+                                    'name': job_stop['name'],
+                                    'description': job_stop['description'],
+                                    'timestamp': job_stop['end_value'],
+                                    'completed': True
+                                })
+                            else:
+                                active_job_stops.append({
+                                    'name': job_stop['name'],
+                                    'description': job_stop['description'],
+                                    'start_time': job_stop['start_value']
+                                })
+
+                    # Sort timeline by timestamp
+                    timeline = [event for event in timeline if event['timestamp'] is not None]
+                    timeline.sort(key=lambda x: x['timestamp'])
+
+                    # Calculate base progress percentage
+                    base_progress = (completed_weight / total_weight * 100) if total_weight > 0 else 0
+
+                    # Adjust progress for active job stops
+                    if active_job_stops:
+                        # Reduce 5% for each active job stop
+                        progress_reduction = len(active_job_stops) * 5
+                        adjusted_progress = max(0, base_progress - progress_reduction)
+                    else:
+                        adjusted_progress = base_progress
+
+                    # Cap progress at 100%
+                    final_progress = min(100, adjusted_progress)
+
+                    return {
+                        'percentage': final_progress,
+                        'current_stage': current_stage,
+                        'timeline': timeline,
+                        'active_job_stops': active_job_stops,
+                        'completion': {
+                            'total_stages': len(stages),
+                            'completed_stages': sum(1 for stage in stages if stage['value']),
+                            'active_job_stops': len(active_job_stops)
+                        }
+                    }
+
+                except Exception as e:
+                    _logger.error(f"Error calculating service progress: {str(e)}", exc_info=True)
+                    return {
+                        'percentage': 0,
+                        'current_stage': 'error',
+                        'timeline': [],
+                        'active_job_stops': [],
+                        'error': str(e)
+                    }
+
+            # Calculate progress and get timeline
+            progress_info = calculate_service_progress(order)
+
+            # Build comprehensive response
+            response = {
+                'order_info': {
+                    'id': order.id,
+                    'name': order.name,
+                    'state': order.state,
+                    'reception_state': order.reception_state,
+                    'create_date': self._format_local_datetime(order.create_date),
+                    'date_completed': self._format_local_datetime(order.date_completed)
+                },
+
+                'customer': {
+                    'id': order.partner_id.id,
+                    'name': order.partner_id.name,
+                    'phone': order.partner_id.phone
+                },
+
+                'car': {
+                    'id': order.partner_car_id.id,
+                    'brand': order.partner_car_brand.name if order.partner_car_brand else None,
+                    'brand_type': order.partner_car_brand_type.name if order.partner_car_brand_type else None,
+                    'year': order.partner_car_year,
+                    'number_plate': order.partner_car_id.number_plate,
+                    'transmission': order.partner_car_transmission.name if order.partner_car_transmission else None,
+                    'engine_type': order.partner_car_engine_type,
+                    'engine_number': order.partner_car_engine_number,
+                    'frame_number': order.partner_car_frame_number,
+                    'color': order.partner_car_color,
+                    'odometer': order.partner_car_odometer
+                },
+
+                'service': {
+                    'category': {
+                        'code': order.service_category,
+                        'name': dict(order._fields['service_category'].selection).get(order.service_category, 'Uncategorized')
+                    },
+                    'subcategory': {
+                        'code': order.service_subcategory,
+                        'name': dict(order._fields['service_subcategory'].selection).get(order.service_subcategory, 'Uncategorized')
+                    }
+                },
+
+                'staff': {
+                    'service_advisors': [{
+                        'id': advisor.id,
+                        'name': advisor.name
+                    } for advisor in order.service_advisor_id],
+                    'mechanics': order.generated_mechanic_team
+                },
+
+                'timeline': {
+                    'reception': {
+                        'check_in': {
+                            'time': self._format_local_datetime(order.sa_jam_masuk),
+                            'status': 'completed' if order.sa_jam_masuk else 'pending'
+                        },
+                        'tunggu_penerimaan': analyze_job_stop(
+                            order.sa_jam_masuk,
+                            order.sa_mulai_penerimaan,
+                            JOB_STOP_STANDARDS['tunggu_penerimaan']
+                        ),
+                        'penerimaan': analyze_job_stop(
+                            order.sa_mulai_penerimaan,
+                            order.sa_cetak_pkb,
+                            JOB_STOP_STANDARDS['penerimaan']
+                        ),
+                        'pkb_printed': {
+                            'time': self._format_local_datetime(order.sa_cetak_pkb),
+                            'status': 'completed' if order.sa_cetak_pkb else 'pending'
+                        }
+                    },
+
+                    'service': {
+                        'tunggu_servis': analyze_job_stop(
+                            order.sa_cetak_pkb,
+                            order.controller_mulai_servis,
+                            JOB_STOP_STANDARDS['tunggu_servis']
+                        ),
+                        'mulai': {
+                            'time': self._format_local_datetime(order.controller_mulai_servis),
+                            'status': 'completed' if order.controller_mulai_servis else 'pending'
+                        },
+                        'selesai': {
+                            'time': self._format_local_datetime(order.controller_selesai),
+                            'status': 'completed' if order.controller_selesai else (
+                                'in_progress' if order.controller_mulai_servis else 'pending'
+                            )
+                        }
+                    },
+
+                    'job_stops': {
+                        'tunggu_konfirmasi': analyze_job_stop(
+                            order.controller_tunggu_konfirmasi_mulai,
+                            order.controller_tunggu_konfirmasi_selesai,
+                            JOB_STOP_STANDARDS['tunggu_konfirmasi']
+                        ),
+                        'tunggu_part1': analyze_job_stop(
+                            order.controller_tunggu_part1_mulai,
+                            order.controller_tunggu_part1_selesai,
+                            JOB_STOP_STANDARDS['tunggu_part1']
+                        ),
+                        'tunggu_part2': analyze_job_stop(
+                            order.controller_tunggu_part2_mulai,
+                            order.controller_tunggu_part2_selesai,
+                            JOB_STOP_STANDARDS['tunggu_part2']
+                        ),
+                        'istirahat': analyze_job_stop(
+                            order.controller_istirahat_shift1_mulai,
+                            order.controller_istirahat_shift1_selesai
+                        ),
+                        'tunggu_sublet': analyze_job_stop(
+                            order.controller_tunggu_sublet_mulai,
+                            order.controller_tunggu_sublet_selesai
+                        ),
+                        'job_stop_lain': analyze_job_stop(
+                            order.controller_job_stop_lain_mulai,
+                            order.controller_job_stop_lain_selesai
+                        )
+                    }
+                },
+
+                'lead_times': {
+                    'total': {
+                        'minutes': order.total_lead_time_servis * 60,
+                        'text': format_duration(order.total_lead_time_servis * 60)
+                    },
+                    'active_service': {
+                        'minutes': order.lead_time_servis * 60,
+                        'text': format_duration(order.lead_time_servis * 60)
+                    },
+                    'components': {
+                        'tunggu_penerimaan': {
+                            'minutes': order.lead_time_tunggu_penerimaan * 60,
+                            'text': format_duration(order.lead_time_tunggu_penerimaan * 60)
+                        },
+                        'penerimaan': {
+                            'minutes': order.lead_time_penerimaan * 60,
+                            'text': format_duration(order.lead_time_penerimaan * 60)
+                        },
+                        'tunggu_servis': {
+                            'minutes': order.lead_time_tunggu_servis * 60,
+                            'text': format_duration(order.lead_time_tunggu_servis * 60)
+                        },
+                        'tunggu_konfirmasi': {
+                            'minutes': order.lead_time_tunggu_konfirmasi * 60,
+                            'text': format_duration(order.lead_time_tunggu_konfirmasi * 60)
+                        },
+                        'tunggu_part1': {
+                            'minutes': order.lead_time_tunggu_part1 * 60,
+                            'text': format_duration(order.lead_time_tunggu_part1 * 60)
+                        },
+                        'tunggu_part2': {
+                            'minutes': order.lead_time_tunggu_part2 * 60,
+                            'text': format_duration(order.lead_time_tunggu_part2 * 60)
+                        },
+                        'istirahat': {
+                            'minutes': order.lead_time_istirahat * 60,
+                            'text': format_duration(order.lead_time_istirahat * 60)
+                        },
+                        'tunggu_sublet': {
+                            'minutes': order.lead_time_tunggu_sublet * 60,
+                            'text': format_duration(order.lead_time_tunggu_sublet * 60)
+                        },
+                        'job_stop_lain': {
+                            'minutes': order.lead_time_job_stop_lain * 60,
+                            'text': format_duration(order.lead_time_job_stop_lain * 60)
+                        }
+                    }
+                },
+
+                'progress': progress_info,
+
+                'completion': {
+                    'is_completed': bool(order.controller_selesai),
+                    'completion_time': self._format_local_datetime(order.controller_selesai),
+                    'unit_keluar': self._format_local_datetime(order.fo_unit_keluar),
+                    'is_overnight': order.is_overnight,
+                    'estimated_completion': self._format_local_datetime(order.controller_estimasi_selesai)
+                },
+
+                'notes': {
+                    'lead_time': order.lead_time_catatan,
+                    'job_stop_lain': order.job_stop_lain_keterangan
+                }
+            }
+
+            return {
+                'status': 'success',
+                'data': response
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_lead_time_detail: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+        
+    def _calculate_duration_minutes(self, start, end):
+        """Calculate duration in minutes between two timestamps"""
+        if start and end and end > start:
+            return (end - start).total_seconds() / 60
+        return 0
+
+    def _get_job_stop_status(self, start, end):
+        """Get status of a job stop"""
+        if not start:
+            return 'pending'
+        if not end:
+            return 'in_progress'
+        return 'completed'
+

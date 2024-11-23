@@ -536,7 +536,7 @@ class SaleOrder(models.Model):
         """
         Menentukan kategori servis berdasarkan sub kategori yang dipilih
         """
-        maintenance_types = ['tune_up', 'tune_up_addition', 'periodic_service', 'periodic_service_addition']
+        maintenance_types = ['tune_up', 'tune_up_addition', 'periodic_service', 'periodic_service_addition', 'oil_change']
         for record in self:
             if record.service_subcategory in maintenance_types:
                 record.service_category = 'maintenance'

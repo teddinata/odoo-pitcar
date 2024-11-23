@@ -527,7 +527,8 @@ class SaleOrder(models.Model):
         ('periodic_service', 'Servis Berkala'),
         ('periodic_service_addition', 'Servis Berkala + Addition'),
         # Sub kategori untuk Perbaikan
-        ('general_repair', 'General Repair')
+        ('general_repair', 'General Repair'),
+        ('oil_change', 'Ganti Oli'),
     ], string="Jenis Servis")
 
     @api.depends('service_subcategory')

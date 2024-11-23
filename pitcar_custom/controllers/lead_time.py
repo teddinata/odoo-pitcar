@@ -184,6 +184,33 @@ class LeadTimeAPIController(http.Controller):
         except (ValueError, TypeError):
             return 1, 20
 
+    def _get_service_details(self, order):
+        """Get formatted service order details"""
+        services = []
+        
+        # Get order lines that are services
+        service_lines = order.order_line.filtered(lambda l: l.product_id.type == 'service')
+        
+        for line in service_lines:
+            services.append({
+                'id': line.id,
+                'name': line.product_id.name,
+                'description': line.name,
+                'quantity': line.product_uom_qty,
+                'uom': line.product_uom.name,
+                'price_unit': line.price_unit,
+                'price_subtotal': line.price_subtotal,
+                'price_total': line.price_total,
+                'discount': line.discount,
+            })
+        
+        return {
+            'count': len(services),
+            'items': services,
+            'total_amount': sum(s['price_total'] for s in services),
+        }
+
+
     @http.route('/web/lead-time/table', type='json', auth='user', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
     def get_table_data(self, **kw):
         try:
@@ -266,14 +293,11 @@ class LeadTimeAPIController(http.Controller):
             
             # Get records count and calculate pagination
             SaleOrder = request.env['sale.order']
-            
             # Validate pagination
             page, limit = self._validate_pagination_params(page, limit)
-            
             # Get total count
             total_count = SaleOrder.search_count(domain)
             total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
-            
             # Calculate offset
             offset = (page - 1) * limit
 
@@ -380,7 +404,8 @@ class LeadTimeAPIController(http.Controller):
                         'subcategory': {
                             'code': order.service_subcategory,
                             'text': dict(order._fields['service_subcategory'].selection).get(order.service_subcategory, '-')
-                        }
+                        },
+                        'details': self._get_service_details(order)  # Add service details
                     },
                     'timestamps': {
                         'mulai_servis': format_timestamp(order.controller_mulai_servis),
@@ -907,6 +932,16 @@ class LeadTimeAPIController(http.Controller):
             
             _logger.info(f"Found {len(orders)} orders matching criteria")
 
+            # Standards for job stops (in minutes)
+            JOB_STOP_STANDARDS = {
+                'tunggu_penerimaan': 15,
+                'penerimaan': 15, 
+                'tunggu_servis': 15,
+                'tunggu_konfirmasi': 40,
+                'tunggu_part1': 45,
+                'tunggu_part2': 45
+            }
+
             def calculate_daily_stats(start_date, end_date, orders):
                 """Calculate statistics for each day in range"""
                 daily_stats = {}
@@ -924,7 +959,7 @@ class LeadTimeAPIController(http.Controller):
                 return daily_stats
 
             def calculate_period_stats(orders):
-                """Calculate detailed statistics for a period"""
+                """Calculate detailed statistics for a period with accurate job stop tracking"""
                 if not orders:
                     return {
                         'total_orders': 0,
@@ -935,25 +970,33 @@ class LeadTimeAPIController(http.Controller):
                         'average_active_time': 0,
                         'average_completion_time': 0,
                         'job_stops': {
-                            'tunggu_part': 0,
+                            'tunggu_part1': 0,
+                            'tunggu_part2': 0,
                             'tunggu_konfirmasi': 0,
                             'istirahat': 0,
                             'tunggu_sublet': 0,
                             'job_stop_lain': 0
                         },
                         'job_stop_durations': {
-                            'tunggu_part': 0,
+                            'tunggu_part1': 0,
+                            'tunggu_part2': 0,
                             'tunggu_konfirmasi': 0,
                             'istirahat': 0,
                             'tunggu_sublet': 0,
                             'job_stop_lain': 0
                         },
                         'average_job_stop_durations': {
-                            'tunggu_part': 0,
+                            'tunggu_part1': 0,
+                            'tunggu_part2': 0,
                             'tunggu_konfirmasi': 0,
                             'istirahat': 0,
                             'tunggu_sublet': 0,
                             'job_stop_lain': 0
+                        },
+                        'exceeded_standards': {
+                            'tunggu_part1': {'count': 0, 'percentage': 0},
+                            'tunggu_part2': {'count': 0, 'percentage': 0},
+                            'tunggu_konfirmasi': {'count': 0, 'percentage': 0}
                         },
                         'status_breakdown': {
                             'belum_mulai': 0,
@@ -965,77 +1008,119 @@ class LeadTimeAPIController(http.Controller):
                 completed_orders = orders.filtered(lambda o: o.controller_selesai)
                 active_orders = orders.filtered(lambda o: o.controller_mulai_servis and not o.controller_selesai)
                 
-                # Calculate average times
+                # Calculate basic metrics
                 avg_lead_time = sum(o.total_lead_time_servis or 0 for o in completed_orders) / len(completed_orders) if completed_orders else 0
                 avg_active_time = sum(o.lead_time_servis or 0 for o in completed_orders) / len(completed_orders) if completed_orders else 0
                 
                 # Calculate avg completion time
-                avg_completion_time = 0
-                completion_count = 0
-                
+                completion_times = []
                 for order in completed_orders:
                     if order.controller_mulai_servis and order.controller_selesai:
                         duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 60
-                        avg_completion_time += duration
-                        completion_count += 1
-                        
-                if completion_count > 0:
-                    avg_completion_time /= completion_count
+                        if duration > 0:
+                            completion_times.append(duration)
+                avg_completion_time = sum(completion_times) / len(completion_times) if completion_times else 0
 
-                # PERBAIKAN: Job stop statistics - hitung untuk semua orders (tidak hanya completed)
+                # Initialize job stop tracking
                 job_stops = {
-                    'tunggu_part': len(orders.filtered(lambda o: o.controller_tunggu_part1_mulai and not o.controller_tunggu_part1_selesai)),
-                    'tunggu_konfirmasi': len(orders.filtered(lambda o: o.controller_tunggu_konfirmasi_mulai and not o.controller_tunggu_konfirmasi_selesai)),
-                    'istirahat': len(orders.filtered(lambda o: o.controller_istirahat_shift1_mulai and not o.controller_istirahat_shift1_selesai)),
-                    'tunggu_sublet': len(orders.filtered(lambda o: o.controller_tunggu_sublet_mulai and not o.controller_tunggu_sublet_selesai)),
-                    'job_stop_lain': len(orders.filtered(lambda o: o.controller_job_stop_lain_mulai and not o.controller_job_stop_lain_selesai))
+                    'tunggu_part1': 0,
+                    'tunggu_part2': 0,
+                    'tunggu_konfirmasi': 0,
+                    'istirahat': 0,
+                    'tunggu_sublet': 0,
+                    'job_stop_lain': 0
                 }
 
-                # PERBAIKAN: Calculate job stop durations - hitung untuk semua orders yang memiliki start dan end
-                job_stop_durations = {}
-                for stop_type in ['tunggu_part', 'tunggu_konfirmasi', 'istirahat', 'tunggu_sublet', 'job_stop_lain']:
-                    total_duration = 0
-                    count = 0
-                    for order in orders:  # Menggunakan semua orders, tidak hanya completed
-                        start_field = f'controller_{stop_type}_mulai'
-                        end_field = f'controller_{stop_type}_selesai'
-                        
-                        start_time = getattr(order, start_field, False)
-                        end_time = getattr(order, end_field, False)
-                        
-                        if start_time and end_time:  # Hanya hitung jika ada start dan end
-                            duration = (end_time - start_time).total_seconds() / 60
-                            if duration > 0:  # Pastikan durasi positif
-                                total_duration += duration
-                                count += 1
-                    
-                    job_stop_durations[stop_type] = total_duration
+                job_stop_durations = dict.fromkeys(job_stops.keys(), 0)
+                completed_job_stops = dict.fromkeys(job_stops.keys(), 0)
+                exceeded_standards = {
+                    'tunggu_part1': {'count': 0, 'percentage': 0},
+                    'tunggu_part2': {'count': 0, 'percentage': 0},
+                    'tunggu_konfirmasi': {'count': 0, 'percentage': 0}
+                }
 
-                # PERBAIKAN: Calculate average job stop durations
-                avg_job_stop_durations = {}
-                for stop_type in job_stop_durations:
-                    # Hitung jumlah kejadian yang selesai (memiliki start dan end)
-                    completed_stops = len([
-                        o for o in orders
-                        if getattr(o, f'controller_{stop_type}_mulai', False) and 
-                        getattr(o, f'controller_{stop_type}_selesai', False)
-                    ])
-                    
-                    # Hitung rata-rata hanya jika ada kejadian yang selesai
-                    avg_job_stop_durations[stop_type] = (
-                        job_stop_durations[stop_type] / completed_stops 
-                        if completed_stops > 0 
+                for order in orders:
+                    # Count active job stops
+                    if order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai:
+                        job_stops['tunggu_part1'] += 1
+                    if order.controller_tunggu_part2_mulai and not order.controller_tunggu_part2_selesai:
+                        job_stops['tunggu_part2'] += 1
+                    if order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai:
+                        job_stops['tunggu_konfirmasi'] += 1
+                    if order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai:
+                        job_stops['istirahat'] += 1
+                    if order.controller_tunggu_sublet_mulai and not order.controller_tunggu_sublet_selesai:
+                        job_stops['tunggu_sublet'] += 1
+                    if order.controller_job_stop_lain_mulai and not order.controller_job_stop_lain_selesai:
+                        job_stops['job_stop_lain'] += 1
+
+                    # Process completed job stops
+                    def process_job_stop(start, end, key):
+                        if start and end and end > start:
+                            duration = (end - start).total_seconds() / 60
+                            if duration > 0:
+                                job_stop_durations[key] += duration
+                                completed_job_stops[key] += 1
+                                if key in JOB_STOP_STANDARDS and duration > JOB_STOP_STANDARDS[key]:
+                                    exceeded_standards[key]['count'] += 1
+                                return True
+                        return False
+
+                    # Process each job stop
+                    process_job_stop(order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai, 'tunggu_part1')
+                    process_job_stop(order.controller_tunggu_part2_mulai, order.controller_tunggu_part2_selesai, 'tunggu_part2')
+                    process_job_stop(order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai, 'tunggu_konfirmasi')
+                    process_job_stop(order.controller_istirahat_shift1_mulai, order.controller_istirahat_shift1_selesai, 'istirahat')
+                    process_job_stop(order.controller_tunggu_sublet_mulai, order.controller_tunggu_sublet_selesai, 'tunggu_sublet')
+                    process_job_stop(order.controller_job_stop_lain_mulai, order.controller_job_stop_lain_selesai, 'job_stop_lain')
+
+                # Calculate averages
+                average_job_stop_durations = {}
+                for key in job_stops.keys():
+                    average_job_stop_durations[key] = (
+                        job_stop_durations[key] / completed_job_stops[key]
+                        if completed_job_stops[key] > 0
                         else 0
                     )
+                    
+                    if key in exceeded_standards:
+                        exceeded_standards[key]['percentage'] = (
+                            (exceeded_standards[key]['count'] / completed_job_stops[key] * 100)
+                            if completed_job_stops[key] > 0
+                            else 0
+                        )
 
-                # Add debug information
+                # Calculate service categories
+                service_metrics = {
+                    'categories': {
+                        'maintenance': len(orders.filtered(lambda o: o.service_category == 'maintenance')),
+                        'repair': len(orders.filtered(lambda o: o.service_category == 'repair')),
+                        'uncategorized': len(orders.filtered(lambda o: not o.service_category))
+                    },
+                    'subcategories': {
+                        'tune_up': len(orders.filtered(lambda o: o.service_subcategory == 'tune_up')),
+                        'tune_up_addition': len(orders.filtered(lambda o: o.service_subcategory == 'tune_up_addition')),
+                        'periodic_service': len(orders.filtered(lambda o: o.service_subcategory == 'periodic_service')),
+                        'periodic_service_addition': len(orders.filtered(lambda o: o.service_subcategory == 'periodic_service_addition')),
+                        'general_repair': len(orders.filtered(lambda o: o.service_subcategory == 'general_repair')),
+                        'oil_change': len(orders.filtered(lambda o: o.service_subcategory == 'oil_change')),
+                        'uncategorized': len(orders.filtered(lambda o: not o.service_subcategory))
+                    }
+                }
+
+                # Log statistics for verification
                 _logger.info(f"""
-                Job Stops Analysis:
-                Active Stops: {job_stops}
-                Total Durations: {job_stop_durations}
-                Average Durations: {avg_job_stop_durations}
+                Period Statistics:
+                Total Orders: {len(orders)}
+                Completed Orders: {len(completed_orders)}
+                Active Orders: {len(active_orders)}
+                Job Stops: {job_stops}
+                Job Stop Durations: {job_stop_durations}
+                Average Job Stop Durations: {average_job_stop_durations}
+                Exceeded Standards: {exceeded_standards}
+                Service Metrics: {service_metrics}
                 """)
-                
+
                 return {
                     'total_orders': len(orders),
                     'completed_orders': len(completed_orders),
@@ -1046,12 +1131,14 @@ class LeadTimeAPIController(http.Controller):
                     'average_completion_time': avg_completion_time,
                     'job_stops': job_stops,
                     'job_stop_durations': job_stop_durations,
-                    'average_job_stop_durations': avg_job_stop_durations,
+                    'average_job_stop_durations': average_job_stop_durations,
+                    'exceeded_standards': exceeded_standards,
                     'status_breakdown': {
                         'belum_mulai': len(orders.filtered(lambda o: not o.controller_mulai_servis)),
                         'proses': len(active_orders),
                         'selesai': len(completed_orders)
-                    }
+                    },
+                    'service_metrics': service_metrics
                 }
 
             def get_hourly_distribution(orders):
@@ -1087,18 +1174,21 @@ class LeadTimeAPIController(http.Controller):
                 if order.service_advisor_id:
                     active_advisors.update(order.service_advisor_id.ids)
 
-            # Get service category and subcategory counts
+            # Get service category and subcategory counts with uncategorized
             service_category_counts = {
-                'maintenance': len(orders.filtered(lambda o: getattr(o, 'service_category', '') == 'maintenance')),
-                'repair': len(orders.filtered(lambda o: getattr(o, 'service_category', '') == 'repair')),
+                'maintenance': len(orders.filtered(lambda o: o.service_category == 'maintenance')),
+                'repair': len(orders.filtered(lambda o: o.service_category == 'repair')),
+                'uncategorized': len(orders.filtered(lambda o: not o.service_category))
             }
             
             service_subcategory_counts = {
-                'tune_up': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'tune_up')),
-                'tune_up_addition': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'tune_up_addition')),
-                'periodic_service': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'periodic_service')),
-                'periodic_service_addition': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'periodic_service_addition')),
-                'general_repair': len(orders.filtered(lambda o: getattr(o, 'service_subcategory', '') == 'general_repair')),
+                'tune_up': len(orders.filtered(lambda o: o.service_subcategory == 'tune_up')),
+                'tune_up_addition': len(orders.filtered(lambda o: o.service_subcategory == 'tune_up_addition')),
+                'periodic_service': len(orders.filtered(lambda o: o.service_subcategory == 'periodic_service')),
+                'periodic_service_addition': len(orders.filtered(lambda o: o.service_subcategory == 'periodic_service_addition')),
+                'general_repair': len(orders.filtered(lambda o: o.service_subcategory == 'general_repair')),
+                'oil_change': len(orders.filtered(lambda o: o.service_subcategory == 'oil_change')),
+                'uncategorized': len(orders.filtered(lambda o: not o.service_subcategory))
             }
 
             # Compile complete statistics

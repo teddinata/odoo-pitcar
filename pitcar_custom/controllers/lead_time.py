@@ -1506,6 +1506,154 @@ class LeadTimeAPIController(http.Controller):
 
         return min(progress, 100)
 
+    def _calculate_comparison_stats(self, current_orders, date_range='month'):
+        """Calculate stats with comparison to previous period"""
+        try:
+            # Get current period stats
+            current_stats = {
+                'total_services': len(current_orders),
+                'avg_service_time': 0,
+                'completion_rate': 0,
+                'customer_satisfaction': 0
+            }
+            
+            completed_orders = current_orders.filtered(lambda o: o.controller_selesai)
+            
+            # Calculate average service time
+            if completed_orders:
+                total_time = sum((o.controller_selesai - o.controller_mulai_servis).total_seconds() / 3600 
+                            for o in completed_orders if o.controller_mulai_servis)
+                current_stats['avg_service_time'] = total_time / len(completed_orders)
+            
+            # Calculate completion rate
+            if current_orders:
+                current_stats['completion_rate'] = (len(completed_orders) / len(current_orders)) * 100
+            
+            # Calculate customer satisfaction (assuming there's a rating field)
+            satisfied_orders = completed_orders.filtered(lambda o: getattr(o, 'customer_rating', 0) >= 4)
+            if completed_orders:
+                current_stats['customer_satisfaction'] = (len(satisfied_orders) / len(completed_orders)) * 100
+
+            # Get previous period domain
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            if date_range == 'month':
+                # Current month start
+                current_start = now.replace(day=1)
+                # Previous month
+                if now.month == 1:
+                    prev_start = now.replace(year=now.year-1, month=12, day=1)
+                else:
+                    prev_start = now.replace(month=now.month-1, day=1)
+            elif date_range == 'week':
+                # Current week start
+                current_start = now - timedelta(days=now.weekday())
+                # Previous week
+                prev_start = current_start - timedelta(days=7)
+            else:  # day
+                current_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                prev_start = current_start - timedelta(days=1)
+
+            # Convert to UTC for database query
+            current_start_utc = current_start.astimezone(pytz.UTC)
+            prev_start_utc = prev_start.astimezone(pytz.UTC)
+            
+            # Get previous period orders
+            prev_domain = [
+                ('sa_cetak_pkb', '!=', False),
+                ('sa_jam_masuk', '>=', prev_start_utc),
+                ('sa_jam_masuk', '<', current_start_utc)
+            ]
+            
+            previous_orders = request.env['sale.order'].search(prev_domain)
+            prev_completed = previous_orders.filtered(lambda o: o.controller_selesai)
+            
+            # Calculate previous period stats
+            prev_stats = {
+                'total_services': len(previous_orders),
+                'avg_service_time': 0,
+                'completion_rate': 0,
+                'customer_satisfaction': 0
+            }
+            
+            if prev_completed:
+                # Avg service time
+                prev_total_time = sum((o.controller_selesai - o.controller_mulai_servis).total_seconds() / 3600 
+                                    for o in prev_completed if o.controller_mulai_servis)
+                prev_stats['avg_service_time'] = prev_total_time / len(prev_completed)
+                
+                # Customer satisfaction
+                prev_satisfied = prev_completed.filtered(lambda o: getattr(o, 'customer_rating', 0) >= 4)
+                prev_stats['customer_satisfaction'] = (len(prev_satisfied) / len(prev_completed)) * 100
+            
+            if previous_orders:
+                prev_stats['completion_rate'] = (len(prev_completed) / len(previous_orders)) * 100
+
+            # Calculate changes
+            changes = {
+                'total_services': self._calculate_percentage_change(
+                    prev_stats['total_services'], 
+                    current_stats['total_services']
+                ),
+                'avg_service_time': self._calculate_percentage_change(
+                    prev_stats['avg_service_time'], 
+                    current_stats['avg_service_time']
+                ),
+                'completion_rate': self._calculate_percentage_change(
+                    prev_stats['completion_rate'], 
+                    current_stats['completion_rate']
+                ),
+                'customer_satisfaction': self._calculate_percentage_change(
+                    prev_stats['customer_satisfaction'], 
+                    current_stats['customer_satisfaction']
+                )
+            }
+
+            # Return formatted stats
+            return {
+                'total_services': {
+                    'value': current_stats['total_services'],
+                    'change': changes['total_services'],
+                    'trend': 'up' if changes['total_services'] > 0 else 'down',
+                    'comparison': 'better' if changes['total_services'] > 0 else 'worse'
+                },
+                'avg_service_time': {
+                    'value': f"{current_stats['avg_service_time']:.1f}h",
+                    'change': changes['avg_service_time'],
+                    'trend': 'down' if changes['avg_service_time'] < 0 else 'up',
+                    'comparison': 'better' if changes['avg_service_time'] < 0 else 'worse'
+                },
+                'completion_rate': {
+                    'value': f"{current_stats['completion_rate']:.1f}%",
+                    'change': changes['completion_rate'],
+                    'trend': 'up' if changes['completion_rate'] > 0 else 'down',
+                    'comparison': 'better' if changes['completion_rate'] > 0 else 'worse'
+                },
+                'customer_satisfaction': {
+                    'value': f"{current_stats['customer_satisfaction']:.1f}%",
+                    'change': changes['customer_satisfaction'],
+                    'trend': 'up' if changes['customer_satisfaction'] > 0 else 'down',
+                    'comparison': 'better' if changes['customer_satisfaction'] > 0 else 'worse'
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error calculating comparison stats: {str(e)}", exc_info=True)
+            return {
+                'total_services': {'value': 0, 'change': 0, 'trend': 'neutral', 'comparison': 'same'},
+                'avg_service_time': {'value': '0h', 'change': 0, 'trend': 'neutral', 'comparison': 'same'},
+                'completion_rate': {'value': '0%', 'change': 0, 'trend': 'neutral', 'comparison': 'same'},
+                'customer_satisfaction': {'value': '0%', 'change': 0, 'trend': 'neutral', 'comparison': 'same'}
+            }
+
+    def _calculate_percentage_change(self, old_value, new_value):
+        """Calculate percentage change between two values"""
+        if old_value == 0:
+            return 100 if new_value > 0 else 0
+        return ((new_value - old_value) / old_value) * 100
+
+
     @http.route('/web/service-report/table', type='json', auth='user', methods=['POST'], csrf=False)
     def get_report_table(self, **kw):
         """Get paginated service report data with filtering"""
@@ -1624,6 +1772,9 @@ class LeadTimeAPIController(http.Controller):
             completed = len([r for r in rows if r['status']['code'] == 'completed'])
             avg_time = sum([r['service_time'] for r in rows if r['service_time'] > 0]) / completed if completed > 0 else 0
 
+            # Get comparison stats
+            comparison_stats = self._calculate_comparison_stats(orders, date_range)
+
             summary = {
                 'total_services': len(rows),
                 'avg_service_time': avg_time,
@@ -1634,6 +1785,7 @@ class LeadTimeAPIController(http.Controller):
                 'status': 'success',
                 'data': {
                     'rows': rows,
+                    'stats': comparison_stats,  # Tambahkan ini
                     'summary': summary,
                     'pagination': {
                         'total_items': total_count,

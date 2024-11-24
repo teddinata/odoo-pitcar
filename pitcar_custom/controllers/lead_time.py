@@ -1273,6 +1273,489 @@ class LeadTimeAPIController(http.Controller):
             _logger.error(f"Error in get_statistics: {str(e)}", exc_info=True)
             return {'status': 'error', 'message': str(e)}
 
+    def _build_service_timeline(self, order):
+        """
+        Build comprehensive service timeline from sa_jam_masuk to controller_selesai
+        Returns timeline events with durations and status
+        """
+        timeline = []
+        
+        # Standards for validating durations (in minutes)
+        duration_standards = {
+            'tunggu_penerimaan': 15,  # Tunggu dari jam masuk ke mulai penerimaan
+            'penerimaan': 15,         # Proses penerimaan sampai cetak PKB
+            'tunggu_servis': 15,      # Tunggu dari PKB ke mulai servis
+            'tunggu_konfirmasi': 40,  # Waktu tunggu konfirmasi
+            'tunggu_part': 45         # Waktu tunggu part
+        }
+
+        def calculate_duration(start, end):
+            """Calculate duration in minutes between two timestamps"""
+            if start and end and end > start:
+                return (end - start).total_seconds() / 60
+            return 0
+
+        def add_timeline_event(event_type, title, start_time, end_time=None, standard_time=None, notes=None):
+            """Add event to timeline with duration analysis"""
+            if not start_time:
+                return
+
+            duration = calculate_duration(start_time, end_time) if end_time else 0
+            exceeded = False
+            exceeded_by = 0
+
+            if standard_time and end_time:
+                exceeded = duration > standard_time
+                exceeded_by = max(0, duration - standard_time)
+
+            event = {
+                'type': event_type,
+                'title': title,
+                'start_time': self._format_local_datetime(start_time),
+                'end_time': self._format_local_datetime(end_time) if end_time else None,
+                'duration_minutes': duration,
+                'duration_text': f"{int(duration)} menit" if duration else None,
+                'status': 'completed' if end_time else 'in_progress',
+                'notes': notes
+            }
+
+            if standard_time:
+                event.update({
+                    'standard_time': standard_time,
+                    'exceeded': exceeded,
+                    'exceeded_by': exceeded_by,
+                    'exceeded_text': f"{int(exceeded_by)} menit melebihi standar" if exceeded else None
+                })
+
+            timeline.append(event)
+
+        # 1. Check In / Jam Masuk
+        add_timeline_event(
+            'check_in',
+            'Customer Check In',
+            order.sa_jam_masuk,
+            order.sa_mulai_penerimaan,
+            duration_standards['tunggu_penerimaan']
+        )
+
+        # 2. Penerimaan oleh Service Advisor
+        add_timeline_event(
+            'reception',
+            'Penerimaan oleh Service Advisor',
+            order.sa_mulai_penerimaan,
+            order.sa_cetak_pkb,
+            duration_standards['penerimaan']
+        )
+
+        # 3. Cetak PKB
+        add_timeline_event(
+            'pkb',
+            'PKB Dicetak',
+            order.sa_cetak_pkb,
+            order.controller_mulai_servis,
+            duration_standards['tunggu_servis']
+        )
+
+        # 4. Mulai Servis
+        if order.controller_mulai_servis:
+            add_timeline_event(
+                'service_start',
+                'Mulai Servis',
+                order.controller_mulai_servis
+            )
+
+            # Track job stops between mulai and selesai servis
+            # 4a. Tunggu Konfirmasi
+            if order.controller_tunggu_konfirmasi_mulai:
+                add_timeline_event(
+                    'tunggu_konfirmasi',
+                    'Tunggu Konfirmasi Customer',
+                    order.controller_tunggu_konfirmasi_mulai,
+                    order.controller_tunggu_konfirmasi_selesai,
+                    duration_standards['tunggu_konfirmasi']
+                )
+
+            # 4b. Tunggu Part 1
+            if order.controller_tunggu_part1_mulai:
+                add_timeline_event(
+                    'tunggu_part1',
+                    'Tunggu Part 1',
+                    order.controller_tunggu_part1_mulai,
+                    order.controller_tunggu_part1_selesai,
+                    duration_standards['tunggu_part']
+                )
+
+            # 4c. Tunggu Part 2
+            if order.controller_tunggu_part2_mulai:
+                add_timeline_event(
+                    'tunggu_part2',
+                    'Tunggu Part 2',
+                    order.controller_tunggu_part2_mulai,
+                    order.controller_tunggu_part2_selesai,
+                    duration_standards['tunggu_part']
+                )
+
+            # 4d. Istirahat
+            if order.controller_istirahat_shift1_mulai:
+                add_timeline_event(
+                    'istirahat',
+                    'Istirahat',
+                    order.controller_istirahat_shift1_mulai,
+                    order.controller_istirahat_shift1_selesai
+                )
+
+            # 4e. Tunggu Sublet
+            if order.controller_tunggu_sublet_mulai:
+                add_timeline_event(
+                    'tunggu_sublet',
+                    'Tunggu Sublet',
+                    order.controller_tunggu_sublet_mulai,
+                    order.controller_tunggu_sublet_selesai
+                )
+
+            # 4f. Job Stop Lain
+            if order.controller_job_stop_lain_mulai:
+                add_timeline_event(
+                    'job_stop_lain',
+                    'Job Stop Lain',
+                    order.controller_job_stop_lain_mulai,
+                    order.controller_job_stop_lain_selesai,
+                    notes=order.job_stop_lain_keterangan
+                )
+
+        # 5. Selesai Servis
+        if order.controller_selesai:
+            add_timeline_event(
+                'service_complete',
+                'Selesai Servis',
+                order.controller_selesai
+            )
+
+        # Calculate additional metrics
+        total_duration = calculate_duration(order.sa_jam_masuk, order.controller_selesai)
+        active_duration = total_duration
+        delay_duration = 0
+
+        # Calculate total delay time from job stops
+        job_stops = ['tunggu_konfirmasi', 'tunggu_part1', 'tunggu_part2', 'istirahat', 'tunggu_sublet', 'job_stop_lain']
+        for event in timeline:
+            if event['type'] in job_stops and event['duration_minutes']:
+                delay_duration += event['duration_minutes']
+
+        # Calculate active service time (excluding delays)
+        if total_duration > 0:
+            active_duration = max(0, total_duration - delay_duration)
+
+        metrics = {
+            'total_duration': total_duration,
+            'total_duration_text': f"{int(total_duration)} menit",
+            'active_duration': active_duration,
+            'active_duration_text': f"{int(active_duration)} menit",
+            'delay_duration': delay_duration,
+            'delay_duration_text': f"{int(delay_duration)} menit",
+            'is_completed': bool(order.controller_selesai),
+            'has_delays': delay_duration > 0
+        }
+
+        # Sort timeline by start_time
+        timeline.sort(key=lambda x: x['start_time'] if x['start_time'] else '')
+
+        return {
+            'events': timeline,
+            'metrics': metrics
+        }
+
+    # Tambahkan fungsi helper untuk endpoint report detail
+    def _get_service_progress(self, order):
+        """Calculate service progress from sa_jam_masuk to controller_selesai"""
+        if not order.sa_jam_masuk:
+            return 0
+
+        # Define progress weights for each stage
+        stages = [
+            ('sa_jam_masuk', 10),             # Check in: 10%
+            ('sa_mulai_penerimaan', 15),      # Start reception: 15%
+            ('sa_cetak_pkb', 15),             # Print PKB: 15%
+            ('controller_mulai_servis', 30),   # Start service: 30%
+            ('controller_selesai', 30)         # Complete service: 30%
+        ]
+
+        # Calculate completed stages
+        progress = 0
+        for field, weight in stages:
+            if getattr(order, field):
+                progress += weight
+
+        # Adjust for active job stops
+        active_job_stops = 0
+        if order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai:
+            active_job_stops += 1
+        if order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai:
+            active_job_stops += 1
+        if order.controller_tunggu_part2_mulai and not order.controller_tunggu_part2_selesai:
+            active_job_stops += 1
+        if order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai:
+            active_job_stops += 1
+        if order.controller_tunggu_sublet_mulai and not order.controller_tunggu_sublet_selesai:
+            active_job_stops += 1
+        if order.controller_job_stop_lain_mulai and not order.controller_job_stop_lain_selesai:
+            active_job_stops += 1
+
+        # Reduce progress by 5% for each active job stop
+        progress = max(0, progress - (active_job_stops * 5))
+
+        return min(progress, 100)
+
+    @http.route('/web/service-report/table', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_report_table(self, **kw):
+        """Get paginated service report data with filtering"""
+        try:
+            # Get parameters
+            params = request.get_json_data().get('params', {})
+            
+            # Extract filter parameters
+            date_range = params.get('date_range', 'today')  # today, week, month, custom
+            start_date = params.get('start_date')
+            end_date = params.get('end_date')
+            service_type = params.get('service_type', 'all')  # all, regular, repair, warranty
+            status = params.get('status', 'all')  # all, completed, in_progress, delayed
+            search = params.get('search', '')  # Search by ID or customer
+            
+            # Pagination
+            page = int(params.get('page', 1))
+            limit = int(params.get('limit', 20))
+            
+            # Build domain
+            domain = [('sa_cetak_pkb', '!=', False)]
+            
+            # Process date range
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            if date_range == 'today':
+                today = now.date()
+                domain.append(('sa_jam_masuk', '>=', today.strftime('%Y-%m-%d 00:00:00')))
+                domain.append(('sa_jam_masuk', '<', (today + timedelta(days=1)).strftime('%Y-%m-%d 00:00:00')))
+            elif date_range == 'week':
+                # Calculate week start and end
+                week_start = (now - timedelta(days=now.weekday())).date()
+                week_end = week_start + timedelta(days=7)
+                domain.append(('sa_jam_masuk', '>=', week_start.strftime('%Y-%m-%d 00:00:00')))
+                domain.append(('sa_jam_masuk', '<', week_end.strftime('%Y-%m-%d 00:00:00')))
+            elif date_range == 'month':
+                # Calculate month start and end
+                month_start = now.replace(day=1).date()
+                if now.month == 12:
+                    month_end = now.replace(year=now.year + 1, month=1, day=1).date()
+                else:
+                    month_end = now.replace(month=now.month + 1, day=1).date()
+                domain.append(('sa_jam_masuk', '>=', month_start.strftime('%Y-%m-%d 00:00:00')))
+                domain.append(('sa_jam_masuk', '<', month_end.strftime('%Y-%m-%d 00:00:00')))
+            elif date_range == 'custom' and start_date and end_date:
+                domain.append(('sa_jam_masuk', '>=', f"{start_date} 00:00:00"))
+                domain.append(('sa_jam_masuk', '<', f"{end_date} 23:59:59"))
+
+            # Service type filter
+            if service_type != 'all':
+                if service_type == 'repair':
+                    domain.append(('service_category', '=', 'repair'))
+                elif service_type == 'maintenance':
+                    domain.append(('service_category', '=', 'maintenance'))
+
+            # Status filter
+            if status != 'all':
+                if status == 'completed':
+                    domain.append(('controller_selesai', '!=', False))
+                elif status == 'in_progress':
+                    domain.append(('controller_mulai_servis', '!=', False))
+                    domain.append(('controller_selesai', '=', False))
+                elif status == 'delayed':
+                    domain.append(('controller_estimasi_selesai', '!=', False))
+                    domain.append(('controller_selesai', '=', False))
+                    domain.append(('controller_estimasi_selesai', '<', fields.Datetime.now()))
+
+            # Search
+            if search:
+                search_domain = ['|', '|', '|', '|',
+                    ('name', 'ilike', search),
+                    ('partner_id.name', 'ilike', search),
+                    ('partner_car_id.number_plate', 'ilike', search),
+                    ('service_advisor_id.name', 'ilike', search),
+                    ('generated_mechanic_team', 'ilike', search)
+                ]
+                domain.extend(search_domain)
+
+            # Get total count for pagination
+            SaleOrder = request.env['sale.order']
+            total_count = SaleOrder.search_count(domain)
+            
+            # Calculate pagination
+            offset = (page - 1) * limit
+            total_pages = math.ceil(total_count / limit)
+
+            # Get records
+            orders = SaleOrder.search(domain, limit=limit, offset=offset, order='id desc')
+
+            # Format response
+            rows = []
+            for order in orders:
+                service_time = 0
+                if order.controller_mulai_servis and order.controller_selesai:
+                    service_time = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+
+                rows.append({
+                    'id': order.id,
+                    'service_id': order.name,
+                    'customer': order.partner_id.name,
+                    'vehicle': f"{order.partner_car_brand.name} {order.partner_car_brand_type.name}",
+                    'service_type': {
+                        'code': order.service_category,
+                        'name': dict(order._fields['service_category'].selection).get(order.service_category, 'Uncategorized')
+                    },
+                    'start_date': self._format_local_datetime(order.controller_mulai_servis),
+                    'completion_date': self._format_local_datetime(order.controller_selesai),
+                    'service_time': service_time,
+                    'status': self._get_order_status(order),
+                    'advisor': ', '.join(order.service_advisor_id.mapped('name')),
+                    'mechanic': order.generated_mechanic_team
+                })
+
+            # Get summary stats
+            completed = len([r for r in rows if r['status']['code'] == 'completed'])
+            avg_time = sum([r['service_time'] for r in rows if r['service_time'] > 0]) / completed if completed > 0 else 0
+
+            summary = {
+                'total_services': len(rows),
+                'avg_service_time': avg_time,
+                'completion_rate': (completed / len(rows) * 100) if rows else 0
+            }
+
+            return {
+                'status': 'success',
+                'data': {
+                    'rows': rows,
+                    'summary': summary,
+                    'pagination': {
+                        'total_items': total_count,
+                        'total_pages': total_pages,
+                        'current_page': page,
+                        'items_per_page': limit,
+                        'has_next': page < total_pages,
+                        'has_previous': page > 1
+                    }
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_report_table: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    # Endpoint untuk export report
+    @http.route('/web/service-report/export', type='json', auth='user', methods=['POST'], csrf=False)
+    def export_service_report(self, **kw):
+        """Generate exportable service report data"""
+        try:
+            # Implementation for export...
+            pass
+        except Exception as e:
+            _logger.error(f"Error in export_service_report: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    # Endpoint untuk detail report
+    @http.route('/web/service-report/detail', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_report_detail(self, **kw):
+        """Get detailed service report information"""
+        try:
+            # Get order ID from params
+            data = request.get_json_data()
+            params = data.get('params', {})
+            order_id = params.get('order_id')
+            
+            if not order_id:
+                return {
+                    'status': 'error',
+                    'message': 'Order ID is required'
+                }
+
+            # Get order
+            order = self._validate_access(order_id)
+            if not order:
+                return {
+                    'status': 'error',
+                    'message': 'Order not found or access denied'
+                }
+
+            # Get timeline and progress
+            timeline_data = self._build_service_timeline(order)
+            progress = self._get_service_progress(order)
+
+            # Build detailed response
+            detail = {
+                'basic_info': {
+                    'id': order.id,
+                    'service_id': order.name,
+                    'status': self._get_order_status(order),
+                    'create_date': self._format_local_datetime(order.create_date),
+                    'progress': progress
+                },
+                'customer': {
+                    'id': order.partner_id.id,
+                    'name': order.partner_id.name,
+                    'phone': order.partner_id.phone
+                },
+                'vehicle': {
+                    'brand': order.partner_car_brand.name,
+                    'type': order.partner_car_brand_type.name,
+                    'plate': order.partner_car_id.number_plate,
+                    'year': order.partner_car_year,
+                    'transmission': order.partner_car_transmission.name,
+                    'color': order.partner_car_color
+                },
+                'service': {
+                    'category': {
+                        'code': order.service_category,
+                        'name': dict(order._fields['service_category'].selection).get(order.service_category, 'Uncategorized')
+                    },
+                    'subcategory': {
+                        'code': order.service_subcategory,
+                        'name': dict(order._fields['service_subcategory'].selection).get(order.service_subcategory, 'Uncategorized')
+                    }
+                },
+                'timeline': timeline_data,
+                'staff': {
+                    'advisors': [{
+                        'id': advisor.id,
+                        'name': advisor.name
+                    } for advisor in order.service_advisor_id],
+                    'mechanics': order.generated_mechanic_team
+                },
+                'completion': {
+                    'estimated': self._format_local_datetime(order.controller_estimasi_selesai),
+                    'actual': self._format_local_datetime(order.controller_selesai),
+                    'is_delayed': order.controller_estimasi_selesai and order.controller_selesai and 
+                                order.controller_selesai > order.controller_estimasi_selesai,
+                    'notes': order.lead_time_catatan
+                }
+            }
+
+            return {
+                'status': 'success',
+                'data': detail
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_report_detail: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
 
 
     # NEW VERSION API : SIMPLE WAY

@@ -54,12 +54,18 @@ class LeadTimeAPIController(http.Controller):
             utc_dt = pytz.utc.localize(utc_dt)
         return utc_dt.astimezone(tz)
 
-    def _format_local_datetime(self, dt):
+    def _format_local_datetime_id(self, dt):
         """Format datetime to Asia/Jakarta timezone string"""
         if not dt:
             return None
         local_dt = self._convert_to_local_time(dt)
         return local_dt.strftime('%Y-%m-%d %H:%M:%S WIB')
+
+    def _format_local_datetime(self, dt):
+        """Format datetime to ISO format without timezone"""
+        if not dt:
+            return None
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
 
     def _format_local_time(self, dt):
         """Format time to Asia/Jakarta timezone HH:MM string"""
@@ -1653,6 +1659,174 @@ class LeadTimeAPIController(http.Controller):
             return 100 if new_value > 0 else 0
         return ((new_value - old_value) / old_value) * 100
 
+    def _get_previous_period_stats(self, date_range='month'):
+        """Get statistics from previous period for comparison"""
+        try:
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date ranges based on period
+            if date_range == 'month':
+                if now.month == 1:
+                    prev_start = now.replace(year=now.year-1, month=12, day=1)
+                    prev_end = now.replace(year=now.year, month=1, day=1)
+                else:
+                    prev_start = now.replace(month=now.month-1, day=1)
+                    prev_end = now.replace(month=now.month, day=1)
+            elif date_range == 'week':
+                week_start = now - timedelta(days=now.weekday())
+                prev_start = week_start - timedelta(days=7)
+                prev_end = week_start
+            else:  # day
+                prev_start = now - timedelta(days=1)
+                prev_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            # Convert to UTC for database query
+            prev_start_utc = prev_start.astimezone(pytz.UTC).replace(tzinfo=None)
+            prev_end_utc = prev_end.astimezone(pytz.UTC).replace(tzinfo=None)
+
+            # Get orders from previous period
+            domain = [
+                ('sa_cetak_pkb', '!=', False),
+                ('sa_jam_masuk', '>=', prev_start_utc),
+                ('sa_jam_masuk', '<', prev_end_utc)
+            ]
+            
+            orders = request.env['sale.order'].search(domain)
+            completed_orders = orders.filtered(lambda o: o.controller_selesai)
+            
+            # Calculate basic stats
+            total_orders = len(orders)
+            completion_rate = (len(completed_orders) / total_orders * 100) if total_orders > 0 else 0
+            
+            # Calculate average service time
+            service_times = []
+            wait_times = []
+            for order in completed_orders:
+                if order.controller_mulai_servis and order.controller_selesai:
+                    service_time = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                    service_times.append(service_time)
+                
+                if order.sa_jam_masuk and order.controller_mulai_servis:
+                    wait_time = (order.controller_mulai_servis - order.sa_jam_masuk).total_seconds() / 3600
+                    wait_times.append(wait_time)
+
+            avg_service_time = sum(service_times) / len(service_times) if service_times else 0
+            avg_wait_time = sum(wait_times) / len(wait_times) if wait_times else 0
+            
+            # Calculate delay rate
+            delayed_orders = completed_orders.filtered(lambda o: 
+                o.controller_estimasi_selesai and o.controller_selesai > o.controller_estimasi_selesai
+            )
+            delay_rate = (len(delayed_orders) / len(completed_orders) * 100) if completed_orders else 0
+
+            return {
+                'total_orders': total_orders,
+                'completion_rate': completion_rate,
+                'avg_service_time': avg_service_time,
+                'avg_wait_time': avg_wait_time,
+                'delay_rate': delay_rate
+            }
+
+        except Exception as e:
+            _logger.error(f"Error getting previous period stats: {str(e)}", exc_info=True)
+            return {}
+
+    def _calculate_service_statistics(self, orders, date_range='month'):
+        """Calculate comprehensive service statistics"""
+        try:
+            # Basic counts
+            total_orders = len(orders)
+            completed_orders = orders.filtered(lambda o: o.controller_selesai)
+            active_orders = orders.filtered(lambda o: o.controller_mulai_servis and not o.controller_selesai)
+            delayed_orders = orders.filtered(lambda o: 
+                o.controller_estimasi_selesai and o.controller_selesai and 
+                o.controller_selesai > o.controller_estimasi_selesai
+            )
+
+            # Service time calculations
+            service_times = []
+            wait_times = []
+            for order in completed_orders:
+                if order.controller_mulai_servis and order.controller_selesai:
+                    service_time = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                    service_times.append(service_time)
+                
+                if order.sa_jam_masuk and order.controller_mulai_servis:
+                    wait_time = (order.controller_mulai_servis - order.sa_jam_masuk).total_seconds() / 3600
+                    wait_times.append(wait_time)
+
+            # Calculate percentages and averages
+            completion_rate = (len(completed_orders) / total_orders * 100) if total_orders > 0 else 0
+            avg_service_time = sum(service_times) / len(service_times) if service_times else 0
+            avg_wait_time = sum(wait_times) / len(wait_times) if wait_times else 0
+            delay_rate = (len(delayed_orders) / len(completed_orders) * 100) if completed_orders else 0
+
+            # Get previous period stats for comparison
+            prev_stats = self._get_previous_period_stats(date_range)
+
+            # Build main stats with comparison
+            main_stats = {
+                'service_volume': {
+                    'value': total_orders,
+                    'change': self._calculate_percentage_change(prev_stats.get('total_orders', 0), total_orders),
+                    'label': 'Total Services'
+                },
+                'completion': {
+                    'value': completion_rate,
+                    'change': self._calculate_percentage_change(prev_stats.get('completion_rate', 0), completion_rate),
+                    'label': 'Completion Rate',
+                    'format': 'percentage'
+                },
+                'service_time': {
+                    'value': avg_service_time,
+                    'change': self._calculate_percentage_change(prev_stats.get('avg_service_time', 0), avg_service_time),
+                    'label': 'Average Service Time',
+                    'format': 'hours'
+                },
+                'wait_time': {
+                    'value': avg_wait_time,
+                    'change': self._calculate_percentage_change(prev_stats.get('avg_wait_time', 0), avg_wait_time),
+                    'label': 'Average Wait Time',
+                    'format': 'hours'
+                }
+            }
+
+            # Build additional metrics
+            additional_metrics = {
+                'active_orders': len(active_orders),
+                'job_stops': {
+                    'tunggu_part': len(orders.filtered(lambda o: 
+                        (o.controller_tunggu_part1_mulai and not o.controller_tunggu_part1_selesai) or
+                        (o.controller_tunggu_part2_mulai and not o.controller_tunggu_part2_selesai)
+                    )),
+                    'tunggu_konfirmasi': len(orders.filtered(lambda o: 
+                        o.controller_tunggu_konfirmasi_mulai and not o.controller_tunggu_konfirmasi_selesai
+                    ))
+                },
+                'service_types': {
+                    'maintenance': len(orders.filtered(lambda o: o.service_category == 'maintenance')),
+                    'repair': len(orders.filtered(lambda o: o.service_category == 'repair')),
+                    'uncategorized': len(orders.filtered(lambda o: not o.service_category))
+                }
+            }
+
+            return {
+                'main_stats': main_stats,
+                'additional_metrics': additional_metrics,
+                'date_range': {
+                    'start': self._format_local_datetime(orders[0].create_date) if orders else None,
+                    'end': self._format_local_datetime(fields.Datetime.now())
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error calculating service statistics: {str(e)}", exc_info=True)
+            return {
+                'main_stats': {},
+                'additional_metrics': {},
+                'date_range': {}
+            }
 
     @http.route('/web/service-report/table', type='json', auth='user', methods=['POST'], csrf=False)
     def get_report_table(self, **kw):
@@ -1773,7 +1947,9 @@ class LeadTimeAPIController(http.Controller):
             avg_time = sum([r['service_time'] for r in rows if r['service_time'] > 0]) / completed if completed > 0 else 0
 
             # Get comparison stats
-            comparison_stats = self._calculate_comparison_stats(orders, date_range)
+            # comparison_stats = self._calculate_comparison_stats(orders, date_range)
+            # Calculate statistics
+            stats = self._calculate_service_statistics(orders, date_range)
 
             summary = {
                 'total_services': len(rows),
@@ -1785,7 +1961,7 @@ class LeadTimeAPIController(http.Controller):
                 'status': 'success',
                 'data': {
                     'rows': rows,
-                    'stats': comparison_stats,  # Tambahkan ini
+                    'stats': stats,
                     'summary': summary,
                     'pagination': {
                         'total_items': total_count,

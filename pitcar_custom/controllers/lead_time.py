@@ -1860,6 +1860,46 @@ class LeadTimeAPIController(http.Controller):
                 'date_range': {}
             }
 
+    def _build_date_domain(self, date_range, start_date=None, end_date=None):
+        """Build domain for date filtering"""
+        try:
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            if date_range == 'today':
+                start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                end = start + timedelta(days=1)
+            elif date_range == 'week':
+                start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+                end = start + timedelta(days=7)
+            elif date_range == 'month':
+                start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                if now.month == 12:
+                    end = now.replace(year=now.year + 1, month=1, day=1)
+                else:
+                    end = now.replace(month=now.month + 1, day=1)
+            elif date_range == 'custom' and start_date and end_date:
+                start = datetime.strptime(f"{start_date} 00:00:00", '%Y-%m-%d %H:%M:%S')
+                end = datetime.strptime(f"{end_date} 23:59:59", '%Y-%m-%d %H:%M:%S')
+                # Convert to timezone aware
+                start = tz.localize(start)
+                end = tz.localize(end)
+            else:
+                return []
+
+            # Convert to UTC for database query
+            start_utc = start.astimezone(pytz.UTC).replace(tzinfo=None)
+            end_utc = end.astimezone(pytz.UTC).replace(tzinfo=None)
+
+            return [
+                ('sa_jam_masuk', '>=', start_utc),
+                ('sa_jam_masuk', '<', end_utc)
+            ]
+
+        except Exception as e:
+            _logger.error(f"Error building date domain: {str(e)}", exc_info=True)
+            return []
+
     @http.route('/web/service-report/table', type='json', auth='user', methods=['POST'], csrf=False)
     def get_report_table(self, **kw):
         """Get paginated service report data with filtering"""
@@ -1871,7 +1911,7 @@ class LeadTimeAPIController(http.Controller):
             date_range = params.get('date_range', 'today')  # today, week, month, custom
             start_date = params.get('start_date')
             end_date = params.get('end_date')
-            service_type = params.get('service_type', 'all')  # all, regular, repair, warranty
+            service_type = params.get('service_type', 'all')  # all, maintenance, repair
             status = params.get('status', 'all')  # all, completed, in_progress, delayed
             search = params.get('search', '')  # Search by ID or customer
             
@@ -1879,56 +1919,39 @@ class LeadTimeAPIController(http.Controller):
             page = int(params.get('page', 1))
             limit = int(params.get('limit', 20))
             
-            # Build domain
-            domain = [('sa_cetak_pkb', '!=', False)]
+            # Build base domain
+            base_domain = [('sa_cetak_pkb', '!=', False)]
             
-            # Process date range
-            tz = pytz.timezone('Asia/Jakarta')
-            now = datetime.now(tz)
+            # Add date domain
+            date_domain = self._build_date_domain(date_range, start_date, end_date)
+            if date_domain:
+                base_domain.extend(date_domain)
             
-            if date_range == 'today':
-                today = now.date()
-                domain.append(('sa_jam_masuk', '>=', today.strftime('%Y-%m-%d 00:00:00')))
-                domain.append(('sa_jam_masuk', '<', (today + timedelta(days=1)).strftime('%Y-%m-%d 00:00:00')))
-            elif date_range == 'week':
-                # Calculate week start and end
-                week_start = (now - timedelta(days=now.weekday())).date()
-                week_end = week_start + timedelta(days=7)
-                domain.append(('sa_jam_masuk', '>=', week_start.strftime('%Y-%m-%d 00:00:00')))
-                domain.append(('sa_jam_masuk', '<', week_end.strftime('%Y-%m-%d 00:00:00')))
-            elif date_range == 'month':
-                # Calculate month start and end
-                month_start = now.replace(day=1).date()
-                if now.month == 12:
-                    month_end = now.replace(year=now.year + 1, month=1, day=1).date()
-                else:
-                    month_end = now.replace(month=now.month + 1, day=1).date()
-                domain.append(('sa_jam_masuk', '>=', month_start.strftime('%Y-%m-%d 00:00:00')))
-                domain.append(('sa_jam_masuk', '<', month_end.strftime('%Y-%m-%d 00:00:00')))
-            elif date_range == 'custom' and start_date and end_date:
-                domain.append(('sa_jam_masuk', '>=', f"{start_date} 00:00:00"))
-                domain.append(('sa_jam_masuk', '<', f"{end_date} 23:59:59"))
-
             # Service type filter
             if service_type != 'all':
                 if service_type == 'repair':
-                    domain.append(('service_category', '=', 'repair'))
+                    base_domain.append(('service_category', '=', 'repair'))
                 elif service_type == 'maintenance':
-                    domain.append(('service_category', '=', 'maintenance'))
+                    base_domain.append(('service_category', '=', 'maintenance'))
 
             # Status filter
             if status != 'all':
                 if status == 'completed':
-                    domain.append(('controller_selesai', '!=', False))
+                    base_domain.append(('controller_selesai', '!=', False))
                 elif status == 'in_progress':
-                    domain.append(('controller_mulai_servis', '!=', False))
-                    domain.append(('controller_selesai', '=', False))
+                    base_domain.extend([
+                        ('controller_mulai_servis', '!=', False),
+                        ('controller_selesai', '=', False)
+                    ])
                 elif status == 'delayed':
-                    domain.append(('controller_estimasi_selesai', '!=', False))
-                    domain.append(('controller_selesai', '=', False))
-                    domain.append(('controller_estimasi_selesai', '<', fields.Datetime.now()))
+                    base_domain.extend([
+                        ('controller_estimasi_selesai', '!=', False),
+                        ('controller_selesai', '=', False),
+                        ('controller_estimasi_selesai', '<', fields.Datetime.now())
+                    ])
 
-            # Search
+            # Search domain
+            search_domain = []
             if search:
                 search_domain = ['|', '|', '|', '|',
                     ('name', 'ilike', search),
@@ -1937,26 +1960,31 @@ class LeadTimeAPIController(http.Controller):
                     ('service_advisor_id.name', 'ilike', search),
                     ('generated_mechanic_team', 'ilike', search)
                 ]
-                domain.extend(search_domain)
 
-            # Get total count for pagination
+            # Combine domains
+            final_domain = expression.AND([base_domain, search_domain]) if search_domain else base_domain
+
+            # Get all matching orders for statistics (without pagination)
             SaleOrder = request.env['sale.order']
-            total_count = SaleOrder.search_count(domain)
+            all_matching_orders = SaleOrder.search(final_domain)
             
-            # Calculate pagination
+            # Calculate statistics from all matching orders
+            stats = self._calculate_service_statistics(all_matching_orders, date_range)
+            
+            # Get paginated data
+            total_count = len(all_matching_orders)
             offset = (page - 1) * limit
-            total_pages = math.ceil(total_count / limit)
+            
+            paginated_orders = SaleOrder.search(
+                final_domain,
+                limit=limit,
+                offset=offset,
+                order='sa_jam_masuk desc, id desc'
+            )
 
-            # Get records
-            orders = SaleOrder.search(domain, limit=limit, offset=offset, order='id desc')
-
-            # Format response
+            # Format paginated data
             rows = []
-            for order in orders:
-                service_time = 0
-                if order.controller_mulai_servis and order.controller_selesai:
-                    service_time = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
-
+            for order in paginated_orders:
                 rows.append({
                     'id': order.id,
                     'service_id': order.name,
@@ -1966,41 +1994,24 @@ class LeadTimeAPIController(http.Controller):
                         'code': order.service_category,
                         'name': dict(order._fields['service_category'].selection).get(order.service_category, 'Uncategorized')
                     },
-                    'start_date': self._format_local_datetime(order.controller_mulai_servis),
+                    'start_date': self._format_local_datetime(order.sa_jam_masuk),
                     'completion_date': self._format_local_datetime(order.controller_selesai),
-                    'service_time': service_time,
                     'status': self._get_order_status(order),
                     'advisor': ', '.join(order.service_advisor_id.mapped('name')),
                     'mechanic': order.generated_mechanic_team
                 })
 
-            # Get summary stats
-            completed = len([r for r in rows if r['status']['code'] == 'completed'])
-            avg_time = sum([r['service_time'] for r in rows if r['service_time'] > 0]) / completed if completed > 0 else 0
-
-            # Get comparison stats
-            # comparison_stats = self._calculate_comparison_stats(orders, date_range)
-            # Calculate statistics
-            stats = self._calculate_service_statistics(orders, date_range)
-
-            summary = {
-                'total_services': len(rows),
-                'avg_service_time': avg_time,
-                'completion_rate': (completed / len(rows) * 100) if rows else 0
-            }
-
             return {
                 'status': 'success',
                 'data': {
-                    'rows': rows,
                     'stats': stats,
-                    'summary': summary,
+                    'rows': rows,
                     'pagination': {
                         'total_items': total_count,
-                        'total_pages': total_pages,
+                        'total_pages': math.ceil(total_count / limit),
                         'current_page': page,
                         'items_per_page': limit,
-                        'has_next': page < total_pages,
+                        'has_next': page < math.ceil(total_count / limit),
                         'has_previous': page > 1
                     }
                 }
@@ -2012,6 +2023,8 @@ class LeadTimeAPIController(http.Controller):
                 'status': 'error',
                 'message': str(e)
             }
+
+    
 
     # Endpoint untuk export report
     @http.route('/web/service-report/export', type='json', auth='user', methods=['POST'], csrf=False)

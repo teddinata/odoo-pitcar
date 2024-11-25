@@ -1765,6 +1765,14 @@ class LeadTimeAPIController(http.Controller):
             # Get previous period stats for comparison
             prev_stats = self._get_previous_period_stats(date_range)
 
+            # Calculate on time completion
+            completed_with_estimate = completed_orders.filtered(lambda o: o.controller_estimasi_selesai)
+            on_time_orders = completed_with_estimate.filtered(lambda o: 
+                o.controller_selesai and o.controller_estimasi_selesai and 
+                o.controller_selesai <= o.controller_estimasi_selesai
+            )
+            on_time_rate = (len(on_time_orders) / len(completed_with_estimate) * 100) if completed_with_estimate else 0
+
             # Build main stats with comparison
             main_stats = {
                 'service_volume': {
@@ -1789,6 +1797,12 @@ class LeadTimeAPIController(http.Controller):
                     'change': self._calculate_percentage_change(prev_stats.get('avg_wait_time', 0), avg_wait_time),
                     'label': 'Average Wait Time',
                     'format': 'hours'
+                },
+                    'on_time_completion': {          # Metrik baru
+                    'value': on_time_rate,
+                    'change': self._calculate_percentage_change(prev_stats.get('on_time_rate', 0), on_time_rate),
+                    'label': 'On Time Completion',
+                    'format': 'percentage'
                 }
             }
 
@@ -1810,6 +1824,16 @@ class LeadTimeAPIController(http.Controller):
                     'uncategorized': len(orders.filtered(lambda o: not o.service_category))
                 }
             }
+
+             # Tambahkan detail on time completion ke additional metrics
+            additional_metrics.update({
+                'completion_details': {
+                    'total_completed': len(completed_orders),
+                    'with_estimate': len(completed_with_estimate),
+                    'on_time': len(on_time_orders),
+                    'delayed': len(completed_with_estimate) - len(on_time_orders)
+                }
+            })
 
             return {
                 'main_stats': main_stats,
@@ -2019,12 +2043,16 @@ class LeadTimeAPIController(http.Controller):
                     'message': 'Order not found or access denied'
                 }
 
+            # Get navigation info
+            nav_info = self._get_navigation_info(order)
+
             # Get timeline and progress
             timeline_data = self._build_service_timeline(order)
             progress = self._get_service_progress(order)
 
             # Build detailed response
             detail = {
+                'navigation': nav_info,
                 'basic_info': {
                     'id': order.id,
                     'service_id': order.name,
@@ -2083,7 +2111,59 @@ class LeadTimeAPIController(http.Controller):
                 'status': 'error',
                 'message': str(e)
             }
+    def _get_navigation_info(self, current_order):
+        """Get previous and next order IDs for navigation"""
+        try:
+            # Get base domain (same as your table endpoint)
+            base_domain = [('sa_cetak_pkb', '!=', False)]
+            
+            # Find orders before current order
+            prev_domain = base_domain + [
+                ('sa_jam_masuk', '<=', current_order.sa_jam_masuk),
+                ('id', '!=', current_order.id)
+            ]
+            prev_order = request.env['sale.order'].search(
+                prev_domain, 
+                order='sa_jam_masuk desc, id desc', 
+                limit=1
+            )
 
+            # Find orders after current order
+            next_domain = base_domain + [
+                ('sa_jam_masuk', '>=', current_order.sa_jam_masuk),
+                ('id', '!=', current_order.id)
+            ]
+            next_order = request.env['sale.order'].search(
+                next_domain, 
+                order='sa_jam_masuk asc, id asc', 
+                limit=1
+            )
+
+            return {
+                'previous': {
+                    'id': prev_order.id if prev_order else None,
+                    'service_id': prev_order.name if prev_order else None,
+                    'customer': prev_order.partner_id.name if prev_order else None
+                } if prev_order else None,
+                'next': {
+                    'id': next_order.id if next_order else None,
+                    'service_id': next_order.name if next_order else None,
+                    'customer': next_order.partner_id.name if next_order else None
+                } if next_order else None,
+                'current_position': {
+                    'id': current_order.id,
+                    'service_id': current_order.name,
+                    'customer': current_order.partner_id.name
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error getting navigation info: {str(e)}", exc_info=True)
+            return {
+                'previous': None,
+                'next': None,
+                'current_position': None
+            }
 
 
     # NEW VERSION API : SIMPLE WAY

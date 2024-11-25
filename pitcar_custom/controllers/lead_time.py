@@ -62,10 +62,18 @@ class LeadTimeAPIController(http.Controller):
         return local_dt.strftime('%Y-%m-%d %H:%M:%S WIB')
 
     def _format_local_datetime(self, dt):
-        """Format datetime to ISO format without timezone"""
+        """Format datetime to Jakarta timezone"""
         if not dt:
             return None
-        return dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Convert to Jakarta timezone
+        tz = pytz.timezone('Asia/Jakarta')
+        if not dt.tzinfo:
+            dt = pytz.UTC.localize(dt)
+        local_dt = dt.astimezone(tz)
+        
+        # Format without timezone info
+        return local_dt.strftime('%Y-%m-%d %H:%M:%S')
 
     def _format_local_time(self, dt):
         """Format time to Asia/Jakarta timezone HH:MM string"""

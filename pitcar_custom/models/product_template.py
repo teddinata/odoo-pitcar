@@ -8,6 +8,12 @@ _logger = logging.getLogger(__name__)
 class ProductTemplate(models.Model):
     _inherit = 'product.template'
 
+    service_duration = fields.Float(
+        string='Durasi Layanan (Jam)',
+        help='Durasi estimasi untuk menyelesaikan layanan ini',
+        default=0.0
+    )
+
     oldest_stock_entry_date = fields.Datetime(string='Oldest Stock Entry Date', compute='_compute_oldest_stock_entry_date', store=True)
     inventory_age = fields.Char(string='Umur Persediaan', compute='_compute_inventory_age', store=True)
     inventory_age_days = fields.Integer(string='Lama Penyimpanan (hari)', compute='_compute_inventory_age', store=True)

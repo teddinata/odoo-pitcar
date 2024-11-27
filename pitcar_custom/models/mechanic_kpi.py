@@ -39,16 +39,16 @@ class MechanicKPI(models.Model):
         help='Number of services completed later than estimated')
     average_delay = fields.Float('Average Delay (Minutes)', compute='_compute_metrics', store=True,
         help='Average delay in service completion when late')
+    
+     # Tambahan metrics untuk durasi
+    total_estimated_duration = fields.Float('Total Estimated Duration', compute='_compute_metrics', store=True)
+    total_actual_duration = fields.Float('Total Actual Duration', compute='_compute_metrics', store=True)
+    duration_accuracy = fields.Float('Duration Accuracy (%)', compute='_compute_metrics', store=True)
+    average_duration_deviation = fields.Float('Avg Duration Deviation (%)', compute='_compute_metrics', store=True)
+    monthly_target = fields.Float('Monthly Target', compute='_compute_monthly_target', store=True)
+    revenue_achievement = fields.Float('Achievement (%)', compute='_compute_revenue_achievement', store=True)
 
-    @api.depends('mechanic_id', 'date')
-    def _compute_name(self):
-        for record in self:
-            if record.mechanic_id and record.date:
-                record.name = f"{record.mechanic_id.name} - {record.date}"
-            else:
-                record.name = "New KPI"
-
-    @api.depends('mechanic_id', 'date')
+    @api.depends('mechanic_id', 'date')  # Hapus dependencies yang tidak ada
     def _compute_metrics(self):
         for record in self:
             if not record.mechanic_id or not record.date:
@@ -57,20 +57,32 @@ class MechanicKPI(models.Model):
             start_date = datetime.combine(record.date, datetime.min.time())
             end_date = datetime.combine(record.date, datetime.max.time())
 
-            # Get orders for mechanic
-            orders = self.env['sale.order'].search([
-                ('car_mechanic_id_new', 'in', [record.mechanic_id.id]),
-                ('date_completed', '>=', start_date),
-                ('date_completed', '<=', end_date),
-                ('state', '=', 'sale')
+            # Get paid invoices dengan filter payment_date
+            paid_invoices = self.env['account.move'].search([
+                ('move_type', '=', 'out_invoice'),
+                ('state', '=', 'posted'),
+                ('payment_state', '=', 'paid'),
+                ('sale_order_id.car_mechanic_id_new', '=', record.mechanic_id.id),
+                ('payment_date', '>=', start_date),
+                ('payment_date', '<=', end_date)
             ])
 
-            # Basic metrics
-            record.total_orders = len(orders)
-            record.total_revenue = sum(orders.mapped('amount_total'))
+            # Get related orders dari paid invoices
+            orders = paid_invoices.mapped('sale_order_id')
+
+            # Log untuk debugging
+            _logger.info(f"""
+                Computing metrics for {record.mechanic_id.name} on {record.date}:
+                Found invoices: {len(paid_invoices)}
+                Found orders: {len(orders)}
+            """)
+
+            # Update basic metrics
+            record.total_revenue = sum(paid_invoices.mapped('amount_total'))
+            record.total_orders = len(paid_invoices)
             record.average_order_value = record.total_revenue / record.total_orders if record.total_orders else 0
 
-            # Performance Metrics - Perbaikan perhitungan waktu
+            # Initialize counters
             completed_on_time = 0
             completion_times = []
             early_starts = 0
@@ -78,10 +90,17 @@ class MechanicKPI(models.Model):
             early_completions = 0
             late_completions = 0
             delays = []
-
             
+            # Durasi metrics
+            total_estimated = 0
+            total_actual = 0
+            deviations = []
+
             for order in orders:
-                # Cek estimasi waktu dan aktual waktu
+                # Hitung durasi dari order lines
+                order_estimated = sum(order.order_line.mapped('service_duration'))
+                total_estimated += order_estimated
+
                 if (order.controller_estimasi_mulai and order.controller_estimasi_selesai and 
                     order.controller_mulai_servis and order.controller_selesai):
                     
@@ -105,37 +124,68 @@ class MechanicKPI(models.Model):
                         delay = (actual_end - est_end).total_seconds() / 60
                         delays.append(delay)
 
-                    # Hitung durasi estimasi dan aktual dalam menit
-                    est_duration = (est_end - est_start).total_seconds() / 60
-                    actual_duration = (actual_end - actual_start).total_seconds() / 60
-                    
-                    # Cek apakah selesai tepat waktu
-                    # 1. Mulai tidak lebih lambat dari estimasi mulai
-                    # 2. Selesai tidak lebih lambat dari estimasi selesai
-                    if actual_start <= est_start and actual_end <= est_end:
-                        completed_on_time += 1
-                    
-                    # Simpan waktu pengerjaan aktual
+                    # Hitung durasi aktual
+                    actual_duration = (actual_end - actual_start).total_seconds() / 3600
+                    total_actual += actual_duration
                     completion_times.append(actual_duration)
 
+                    # Hitung deviasi jika ada estimasi
+                    if order_estimated:
+                        deviation = ((actual_duration - order_estimated) / order_estimated) * 100
+                        deviations.append(deviation)
+
+                    # Cek on-time completion
+                    if actual_start <= est_start and actual_end <= est_end:
+                        completed_on_time += 1
+
+            # Update semua metrics
             record.early_starts = early_starts
             record.late_starts = late_starts
             record.early_completions = early_completions
             record.late_completions = late_completions
             record.average_delay = sum(delays) / len(delays) if delays else 0
-
-            # Update metrics
+            
             record.completed_on_time = completed_on_time
-            record.on_time_rate = (completed_on_time / record.total_orders) if record.total_orders else 0
+            record.on_time_rate = (completed_on_time / record.total_orders) * 100 if record.total_orders else 0
             record.average_completion_time = sum(completion_times) / len(completion_times) if completion_times else 0
 
-            # Quality Metrics tetap sama
+            # Duration metrics
+            record.total_estimated_duration = total_estimated
+            record.total_actual_duration = total_actual
+            if total_estimated:
+                record.duration_accuracy = (1 - abs(total_actual - total_estimated) / total_estimated) * 100
+            record.average_duration_deviation = sum(deviations) / len(deviations) if deviations else 0
+
+            # Quality Metrics
             ratings = orders.filtered(lambda x: x.customer_rating).mapped(lambda x: int(x.customer_rating or '0'))
             record.average_rating = sum(ratings) / len(ratings) if ratings else 0
             
             complaints = orders.filtered(lambda x: x.customer_satisfaction in ['very_dissatisfied', 'dissatisfied'])
             record.total_complaints = len(complaints)
-            record.complaint_rate = (record.total_complaints / record.total_orders) if record.total_orders else 0
+            record.complaint_rate = (record.total_complaints / record.total_orders) * 100 if record.total_orders else 0
+
+    @api.depends('mechanic_id')
+    def _compute_monthly_target(self):
+        for record in self:
+            if record.mechanic_id.position_code == 'leader':
+                team_members = self.env['pitcar.mechanic.new'].search([
+                    ('leader_id', '=', record.mechanic_id.id)
+                ])
+                record.monthly_target = len(team_members) * 64000000
+            else:
+                record.monthly_target = 64000000
+
+    @api.depends('total_revenue', 'monthly_target')
+    def _compute_revenue_achievement(self):
+        for record in self:
+            if record.monthly_target:
+                # Revenue dan target dalam nilai yang sama (rupiah)
+                # Tidak perlu konversi ke jutaan karena akan membuat persentase tidak tepat
+                achievement = (record.total_revenue / record.monthly_target)
+                
+                record.revenue_achievement = achievement
+            else:
+                record.revenue_achievement = 0
 
     @api.model
     def _update_today_kpi(self):
@@ -157,3 +207,22 @@ class MechanicKPI(models.Model):
             else:
                 # Trigger recompute
                 kpi.write({'date': today})
+
+    last_computed = fields.Datetime(
+        'Last Computed',
+        readonly=True,
+        tracking=True
+    )
+
+    def write(self, vals):
+        vals['last_computed'] = fields.Datetime.now()
+        return super().write(vals)
+    
+    def force_recompute(self):
+        self.invalidate_cache()
+        self._compute_metrics()
+
+    @api.model
+    def recompute_all_kpi(self):
+        kpis = self.search([('date', '=', fields.Date.today())])
+        kpis.force_recompute()

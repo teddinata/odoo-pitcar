@@ -48,16 +48,35 @@
         <field name="model">mechanic.kpi</field>
         <field name="arch" type="xml">
             <tree>
+                <!-- Informasi Utama - Selalu Tampil -->
                 <field name="date"/>
                 <field name="mechanic_id"/>
+                <field name="total_revenue" sum="Total Revenue" widget="monetary"/>
+                <field name="monthly_target" widget="monetary"/>
+                <field name="revenue_achievement" avg="Achievement %" widget="percentage"/>
+                
+                <!-- Metrics Utama - Selalu Tampil -->
                 <field name="total_orders" sum="Total Orders"/>
-                <field name="total_revenue" sum="Total"/>
-                <field name="average_order_value" avg="Average"/>
-                <field name="completed_on_time"/>
-                <field name="on_time_rate" widget="percentage"/>
-                <field name="average_completion_time" avg="Average"/>
-                <field name="average_rating" avg="Average"/>
-                <field name="complaint_rate" widget="percentage"/>
+                <field name="on_time_rate" avg="On-Time %" widget="percentage"/>
+                <field name="average_rating" avg="Rating"/>
+
+                <!-- Performance Metrics - Optional Show -->
+                <field name="average_order_value" avg="Avg Value" widget="monetary" optional="show"/>
+                <field name="completed_on_time" sum="On-Time Count" optional="show"/>
+                <field name="average_completion_time" avg="Avg Time" widget="float_time" optional="show"/>
+                <field name="duration_accuracy" avg="Accuracy %" widget="percentage" optional="show"/>
+                
+                <!-- Details - Optional Hide -->
+                <field name="total_estimated_duration" widget="float_time" optional="hide"/>
+                <field name="total_actual_duration" widget="float_time" optional="hide"/>
+                <field name="average_duration_deviation" widget="percentage" optional="hide"/>
+                <field name="total_complaints" optional="hide"/>
+                <field name="complaint_rate" widget="percentage" optional="hide"/>
+                <field name="early_starts" optional="hide"/>
+                <field name="late_starts" optional="hide"/>
+                <field name="early_completions" optional="hide"/>
+                <field name="late_completions" optional="hide"/>
+                <field name="average_delay" optional="hide"/>
             </tree>
         </field>
     </record>
@@ -68,6 +87,12 @@
         <field name="model">mechanic.kpi</field>
         <field name="arch" type="xml">
             <form>
+                <header>
+                    <button name="force_recompute" 
+                            string="Refresh Data" 
+                            type="object" 
+                            class="oe_highlight"/>
+                </header>
                 <sheet>
                     <div class="oe_title">
                         <h1><field name="name"/></h1>
@@ -89,6 +114,12 @@
                             <field name="average_rating"/>
                             <field name="total_complaints"/>
                             <field name="complaint_rate" widget="percentage"/>
+                        </group>
+                        <group string="Duration Performance">
+                            <field name="total_estimated_duration" widget="float_time"/>
+                            <field name="total_actual_duration" widget="float_time"/>
+                            <field name="duration_accuracy" widget="percentage"/>
+                            <field name="average_duration_deviation" widget="percentage"/>
                         </group>
                     </group>
                 </sheet>

@@ -1,41 +1,172 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
 <odoo>
-	<record id="action_pitcar_mechanic_new" model="ir.actions.act_window">
+     <!-- Action Window -->
+    <record id="action_pitcar_mechanic_new" model="ir.actions.act_window">
         <field name="name">Mechanic Teams</field>
         <field name="res_model">pitcar.mechanic.new</field>
-        <field name="view_mode">tree,form</field>
+        <field name="view_mode">kanban,tree,form</field>
         <field name="domain">[]</field>
         <field name="help" type="html">
             <p class="oe_view_nocontent_create">
                 Create a mechanic team
-			</p>
+            </p>
         </field>
     </record>
 
-	<record id="view_pitcar_mechanic_new_tree" model="ir.ui.view">
-		<field name="name">pitcar.mechanic.new.tree</field>
-		<field name="model">pitcar.mechanic.new</field>
-		<field name="arch" type="xml">
-			<tree string="Mechanic Teams">
-				<field name="name"/>
-				<field name="color"/>
-			</tree>
-		</field>
-	</record>
+    <!-- Tree View -->
+     <!-- Tree View -->
+    <record id="view_pitcar_mechanic_new_tree" model="ir.ui.view">
+        <field name="name">pitcar.mechanic.new.tree</field>
+        <field name="model">pitcar.mechanic.new</field>
+        <field name="arch" type="xml">
+            <tree string="Mechanic Teams">
+                <field name="name"/>
+                <field name="position_id"/>
+                <field name="leader_id" optional="show"/>
+                <field name="monthly_target" sum="Total Target" widget="monetary"/>
+                <field name="current_revenue" sum="Total Revenue" widget="monetary"/>
+                <field name="target_achievement" widget="percentage"/>
+                <field name="color" optional="hide"/>
+            </tree>
+        </field>
+    </record>
 
-	<record id="view_pitcar_mechanic_new_form" model="ir.ui.view">
-		<field name="name">pitcar.mechanic.new.form</field>
-		<field name="model">pitcar.mechanic.new</field>
-		<field name="arch" type="xml">
-			<form string="Mechanic Teams" duplicate="0">
-				<sheet>
-					<group>
-						<field name="name"/>
-						<field name="color" required="True" widget="color_picker"/>
-					</group>
-				</sheet>
-			</form>
-		</field>
+    <!-- Form View -->
+   <!-- Form View -->
+    <record id="view_pitcar_mechanic_new_form" model="ir.ui.view">
+        <field name="name">pitcar.mechanic.new.form</field>
+        <field name="model">pitcar.mechanic.new</field>
+        <field name="arch" type="xml">
+            <form string="Mechanic Teams" duplicate="0">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Mechanic Name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Basic Information">
+                            <field name="position_id"/>
+                            <field name="position_code" invisible="1"/>
+                            <field name="leader_id" 
+                                attrs="{'invisible': [('position_code', '=', 'leader')],
+                                       'required': [('position_code', '=', 'mechanic')]}"/>
+                            <field name="color" required="True" widget="color_picker"/>
+                        </group>
+                        <group string="Performance Metrics">
+                            <field name="monthly_target" widget="monetary"/>
+                            <field name="current_revenue" widget="monetary"/>
+                            <field name="target_achievement" widget="percentage"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Team Members" 
+                              attrs="{'invisible': [('position_code', '!=', 'leader')]}">
+                            <field name="team_member_ids" mode="tree">
+                                <tree editable="bottom">
+                                    <field name="name"/>
+                                    <field name="monthly_target" widget="monetary"/>
+                                    <field name="current_revenue" widget="monetary"/>
+                                    <field name="target_achievement" widget="percentage"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Kanban View -->
+    <record id="view_pitcar_mechanic_new_kanban" model="ir.ui.view">
+        <field name="name">pitcar.mechanic.new.kanban</field>
+        <field name="model">pitcar.mechanic.new</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile" default_group_by="position_id">
+                <field name="name"/>
+                <field name="position_id"/>
+                <field name="leader_id"/>
+                <field name="monthly_target"/>
+                <field name="current_revenue"/>
+                <field name="target_achievement"/>
+                <field name="color"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div t-attf-class="oe_kanban_card oe_kanban_global_click o_kanban_record_has_image_fill">
+                            <div class="o_kanban_card_header">
+                                <div class="o_kanban_card_header_title">
+                                    <div class="o_primary">
+                                        <strong><field name="name"/></strong>
+                                    </div>
+                                    <div class="o_secondary">
+                                        <field name="position_id"/>
+                                        <t t-if="record.leader_id.raw_value">
+                                            - Leader: <field name="leader_id"/>
+                                        </t>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="o_kanban_card_content" t-attf-style="background-color: #{record.color.raw_value};">
+                                <div class="row">
+                                    <div class="col-6">Target:</div>
+                                    <div class="col-6">
+                                        <field name="monthly_target" widget="monetary"/>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-6">Current:</div>
+                                    <div class="col-6">
+                                        <field name="current_revenue" widget="monetary"/>
+                                    </div>
+                                </div>
+                                <div class="o_kanban_progress mt-2">
+                                    <div class="progress">
+                                        <div class="progress-bar" role="progressbar" 
+                                             t-attf-style="width: #{record.target_achievement.raw_value}%"
+                                             t-attf-aria-valuenow="#{record.target_achievement.raw_value}"
+                                             aria-valuemin="0" aria-valuemax="100">
+                                            <field name="target_achievement"/>%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <!-- Search View -->
+		<record id="view_pitcar_mechanic_new_search" model="ir.ui.view">
+			<field name="name">pitcar.mechanic.new.search</field>
+			<field name="model">pitcar.mechanic.new</field>
+			<field name="arch" type="xml">
+					<search>
+							<field name="name"/>
+							<field name="position_id"/>
+							<field name="leader_id"/>
+							<separator/>
+							<filter string="Leaders" name="leaders" domain="[('position_code', '=', 'leader')]"/>
+							<filter string="Mechanics" name="mechanics" domain="[('position_code', '=', 'mechanic')]"/>
+							<separator/>
+							<!-- Performance filters -->
+							<!-- <filter string="Above Target (≥100%)" 
+											name="above_target" 
+											domain="[('target_achievement', '>=', 100)]"/>
+							<filter string="Near Target (80-99%)" 
+											name="near_target" 
+											domain="[('target_achievement', '>=', 80), ('target_achievement', '&lt;', 100)]"/>
+							<filter string="Below Target (&lt;80%)" 
+											name="below_target" 
+											domain="[('target_achievement', '&lt;', 80)]"/> -->
+							<group expand="0" string="Group By">
+									<filter string="Position" name="group_position" context="{'group_by': 'position_id'}"/>
+									<filter string="Team Leader" name="group_leader" context="{'group_by': 'leader_id'}"/>
+									<filter string="Performance Level" name="group_performance" context="{'group_by': 'target_achievement'}"/>
+							</group>
+					</search>
+			</field>
 	</record>
 </odoo>

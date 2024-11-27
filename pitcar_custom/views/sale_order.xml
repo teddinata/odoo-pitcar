@@ -374,6 +374,18 @@
                         <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2 mb-8"/>
                     </div>
                 </xpath>
+                 <!-- Tambahkan xpath untuk service duration dari view kedua -->
+                <xpath expr="//field[@name='order_line']/tree//field[@name='price_unit']" position="before">
+                    <field name="service_duration" widget="float_time"/>
+                </xpath>
+                
+                <xpath expr="//field[@name='order_line']/form//field[@name='price_unit']" position="before">
+                    <field name="service_duration" widget="float_time"/>
+                </xpath>
+                
+                <!-- <xpath expr="//field[@name='amount_total']" position="after">
+                    <field name="total_service_duration" widget="float_time"/>
+                </xpath> -->
                  <xpath expr="//form" position="inside">
                     <field name="is_arrival_time_set" invisible="1"/>
                 </xpath>
@@ -600,6 +612,24 @@
                 </xpath>
             </field>
         </record>
+
+        <!-- views/sale_views.xml -->
+        <!-- <record id="view_order_form_inherit" model="ir.ui.view">
+            <field name="name">sale.order.form.inherit</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='order_line']/tree//field[@name='price_unit']" position="before">
+                    <field name="service_duration" widget="float_time"/>
+                </xpath>
+                <xpath expr="//field[@name='order_line']/form//field[@name='price_unit']" position="before">
+                    <field name="service_duration" widget="float_time"/>
+                </xpath>
+                <xpath expr="//field[@name='amount_total']" position="after">
+                    <field name="total_service_duration" widget="float_time"/>
+                </xpath>
+            </field>
+        </record> -->
 
         <record id="sale_order_form_custom" model="ir.ui.view">
             <field name="name">sale.order.form.custom</field>

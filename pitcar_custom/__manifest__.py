@@ -43,6 +43,7 @@
         'data/res_partner_car_data.xml',
         'data/lead_time_data.xml',
         # 'data/cron_jobs.xml',
+        'data/pitcar_position_data.xml',
 
         'report/ir_actions_report_templates.xml',
         'report/ir_actions_report.xml',
@@ -83,5 +84,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.30'
+    'version':'16.0.40'
 }

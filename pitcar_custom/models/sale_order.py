@@ -167,6 +167,86 @@ class SaleOrder(models.Model):
         required=False,
         tracking=True,
     )
+    total_service_duration = fields.Float(
+        string='Total Durasi (Jam)',
+        compute='_compute_total_duration',
+        store=True
+    )
+
+    @api.depends('order_line.service_duration')
+    def _compute_total_duration(self):
+        for order in self:
+            order.total_service_duration = sum(order.order_line.mapped('service_duration'))
+
+     # Tambahkan field baru untuk tracking performance
+    actual_vs_estimated_duration = fields.Float(
+        string='Deviasi Durasi (%)',
+        compute='_compute_duration_performance',
+        store=True,
+        help='Persentase deviasi antara estimasi dan aktual durasi'
+    )
+    
+    is_on_time = fields.Boolean(
+        string='On Time',
+        compute='_compute_duration_performance',
+        store=True
+    )
+
+    total_estimated_duration = fields.Float(
+        string='Total Estimated Duration',
+        compute='_compute_total_estimated_duration',
+        store=True
+    )
+
+    duration_deviation = fields.Float(
+        string='Duration Deviation (%)',
+        compute='_compute_duration_deviation',
+        store=True
+    )
+
+    @api.onchange('order_line')
+    def _onchange_order_line(self):
+        if self.order_line:
+            total_duration = sum(line.service_duration for line in self.order_line)
+            if total_duration:
+                start_time = fields.Datetime.now()
+                self.controller_estimasi_mulai = start_time 
+                self.controller_estimasi_selesai = start_time + timedelta(hours=total_duration)
+
+    @api.depends('controller_mulai_servis', 'controller_selesai', 'order_line.service_duration')
+    def _compute_duration_performance(self):
+        for order in self:
+            if order.controller_mulai_servis and order.controller_selesai:
+                # Hitung durasi aktual
+                actual_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                
+                # Hitung total estimasi durasi dari order lines
+                estimated_duration = sum(order.order_line.mapped('service_duration'))
+                
+                if estimated_duration:
+                    # Hitung deviasi dalam persen
+                    deviation = ((actual_duration - estimated_duration) / estimated_duration) * 100
+                    order.actual_vs_estimated_duration = deviation
+                    
+                    # Tentukan apakah on time (misalnya, toleransi 10%)
+                    order.is_on_time = deviation <= 10
+                else:
+                    order.actual_vs_estimated_duration = 0
+                    order.is_on_time = False
+                    
+    @api.depends('order_line.service_duration')
+    def _compute_total_estimated_duration(self):
+        for order in self:
+            order.total_estimated_duration = sum(order.order_line.mapped('service_duration'))
+
+    @api.depends('total_estimated_duration', 'controller_mulai_servis', 'controller_selesai')
+    def _compute_duration_deviation(self):
+        for order in self:
+            if order.total_estimated_duration and order.controller_mulai_servis and order.controller_selesai:
+                actual_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                order.duration_deviation = ((actual_duration - order.total_estimated_duration) / order.total_estimated_duration) * 100
+            else:
+                order.duration_deviation = 0
 
     is_willing_to_feedback = fields.Selection([
         ('yes', 'Yes'),
@@ -751,8 +831,8 @@ class SaleOrder(models.Model):
 
         # Handle estimasi waktu
         if ('controller_estimasi_mulai' in vals or 'controller_estimasi_selesai' in vals):
-            if self.env.user.pitcar_role != 'controller':
-                raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
+            # if self.env.user.pitcar_role != 'controller':
+            #     raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
             
             # Log perubahan dengan format WIB
             tz = pytz.timezone('Asia/Jakarta')
@@ -802,8 +882,8 @@ class SaleOrder(models.Model):
             if record.controller_selesai:
                 raise UserError("Tidak dapat memberikan estimasi karena servis sudah selesai")
             if record.controller_estimasi_mulai or record.controller_estimasi_selesai:
-                if self.env.user.pitcar_role != 'controller':
-                    raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
+                # if self.env.user.pitcar_role != 'controller':
+                #     raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
                 if record.controller_estimasi_mulai and record.controller_estimasi_selesai:
                     if record.controller_estimasi_selesai < record.controller_estimasi_mulai:
                         raise UserError("Waktu estimasi selesai tidak boleh lebih awal dari waktu estimasi mulai.")

@@ -77,3 +77,13 @@ class AccountMove(models.Model):
         for account in self:
             account.service_advisor_id = [(6, 0, account.partner_id.service_advisor_ids.ids)]
         return True
+    
+    def _post(self, soft=True):
+        res = super()._post(soft=soft)
+        self._update_mechanic_kpi()
+        return res
+
+    def action_register_payment(self):
+        res = super().action_register_payment()
+        self._update_mechanic_kpi()
+        return res

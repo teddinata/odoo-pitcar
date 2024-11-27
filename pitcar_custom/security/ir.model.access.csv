@@ -29,3 +29,5 @@ pitcar_custom.access_mechanic_kpi_user,mechanic.kpi.user,model_mechanic_kpi,base
 pitcar_custom.access_mechanic_kpi_manager,mechanic.kpi.manager,model_mechanic_kpi,base.group_system,1,1,1,1
 pitcar_custom.access_service_advisor_overview_user,service.advisor.overview user,model_service_advisor_overview,base.group_user,1,0,0,0
 pitcar_custom.access_mechanic_overview_user,mechanic.overview.user,model_mechanic_overview,base.group_user,1,0,0,0
+pitcar_custom.access_pitcar_position_user,access_pitcar_position_user,model_pitcar_position,base.group_user,1,1,1,1
+pitcar_custom.access_pitcar_mechanic_new_user,access_pitcar_mechanic_new_user,model_pitcar_mechanic_new,base.group_user,1,1,1,1

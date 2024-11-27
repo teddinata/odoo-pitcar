@@ -43,7 +43,7 @@ class PitcarMechanic(models.Model):
     
 class PitcarMechanicNew(models.Model):
     _name = 'pitcar.mechanic.new'
-    _description = 'Mechanic New'
+    _description = 'Mechanic'
     _order = 'name'
     
     def _get_default_color(self):
@@ -51,6 +51,74 @@ class PitcarMechanicNew(models.Model):
 
     name = fields.Char(string="Name", required=True, tracking=True)
     color = fields.Integer('Color', default=_get_default_color)
+    position_id = fields.Many2one('pitcar.position', string="Position", required=True)
+    position_code = fields.Selection(
+        related='position_id.code',
+        string='Position Code',
+        store=True
+    )
+    leader_id = fields.Many2one(
+        'pitcar.mechanic.new',
+        string='Team Leader',
+        domain="[('position_code', '=', 'leader')]"
+    )
+    team_member_ids = fields.One2many(
+        'pitcar.mechanic.new',
+        'leader_id',
+        string='Team Members'
+    )
+    monthly_target = fields.Float(
+        string='Monthly Target',
+        compute='_compute_monthly_target',
+        store=True
+    )
+    current_revenue = fields.Float(
+        string='Current Revenue',
+        compute='_compute_revenue_metrics'
+    )
+    target_achievement = fields.Float(
+        string='Target Achievement (%)',
+        compute='_compute_revenue_metrics'
+    )
+
+    @api.depends('position_id', 'team_member_ids')
+    def _compute_monthly_target(self):
+        for mechanic in self:
+            if mechanic.position_code == 'leader':
+                mechanic.monthly_target = len(mechanic.team_member_ids) * 64000000
+            else:
+                mechanic.monthly_target = 64000000
+
+    @api.depends('monthly_target')
+    def _compute_revenue_metrics(self):
+        today = fields.Date.today()
+        first_day = today.replace(day=1)
+        
+        for mechanic in self:
+            # Calculate revenue
+            if mechanic.position_code == 'leader':
+                domain = [
+                    ('car_mechanic_id_new', 'in', mechanic.team_member_ids.ids),
+                    ('date_order', '>=', first_day),
+                    ('date_order', '<=', today),
+                    ('state', '=', 'sale')
+                ]
+            else:
+                domain = [
+                    ('car_mechanic_id_new', '=', mechanic.id),
+                    ('date_order', '>=', first_day),
+                    ('date_order', '<=', today),
+                    ('state', '=', 'sale')
+                ]
+
+            orders = self.env['sale.order'].search(domain)
+            mechanic.current_revenue = sum(orders.mapped('amount_total'))
+            
+            # Calculate achievement percentage
+            if mechanic.monthly_target:
+                mechanic.target_achievement = (mechanic.current_revenue / mechanic.monthly_target) * 100
+            else:
+                mechanic.target_achievement = 0
     
     _sql_constraints = [
         ('name_uniq', 'unique (name)', "Mechanic name already exists !"),

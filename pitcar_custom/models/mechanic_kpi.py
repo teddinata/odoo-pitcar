@@ -57,16 +57,22 @@ class MechanicKPI(models.Model):
             start_date = datetime.combine(record.date, datetime.min.time())
             end_date = datetime.combine(record.date, datetime.max.time())
 
-            # Get paid invoices dengan filter payment_date
+            # Cari sales orders terlebih dahulu
+            sales_orders = self.env['sale.order'].search([
+                ('car_mechanic_id_new', '=', record.mechanic_id.id),
+                ('state', 'in', ['sale', 'done'])
+            ])
+
+            # Kemudian cari invoices yang terkait
             paid_invoices = self.env['account.move'].search([
                 ('move_type', '=', 'out_invoice'),
                 ('state', '=', 'posted'),
                 ('payment_state', '=', 'paid'),
-                ('sale_order_id.car_mechanic_id_new', '=', record.mechanic_id.id)
+                ('invoice_origin', 'in', sales_orders.mapped('name'))
             ])
 
             # Get related orders dari paid invoices
-            orders = paid_invoices.mapped('sale_order_id')
+            orders = sales_orders.filtered(lambda so: so.invoice_ids & paid_invoices)
 
             # Log untuk debugging
             _logger.info(f"""

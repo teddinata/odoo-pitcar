@@ -62,9 +62,7 @@ class MechanicKPI(models.Model):
                 ('move_type', '=', 'out_invoice'),
                 ('state', '=', 'posted'),
                 ('payment_state', '=', 'paid'),
-                ('sale_order_id.car_mechanic_id_new', '=', record.mechanic_id.id),
-                ('payment_date', '>=', start_date),
-                ('payment_date', '<=', end_date)
+                ('sale_order_id.car_mechanic_id_new', '=', record.mechanic_id.id)
             ])
 
             # Get related orders dari paid invoices

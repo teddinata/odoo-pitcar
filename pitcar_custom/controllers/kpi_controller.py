@@ -293,7 +293,7 @@ class KPIController(http.Controller):
         
         return ranges.get(range_type, ranges['today'])
 
-    @http.route('/web/v2/dashboard/mechanic', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/web/v2/dashboard/mechanic', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_mechanic_kpi_dashboard(self, **kw):
         try:
             # Get date range
@@ -311,7 +311,7 @@ class KPIController(http.Controller):
             start_date_utc = start_date.astimezone(pytz.UTC)
             end_date_utc = end_date.astimezone(pytz.UTC)
 
-            # Get KPI records for the date range
+            # Get KPIs with strict date filtering
             kpi_domain = [
                 ('date', '>=', start_date_utc.date()),
                 ('date', '<=', end_date_utc.date())
@@ -319,13 +319,16 @@ class KPIController(http.Controller):
             
             kpis = request.env['mechanic.kpi'].search(kpi_domain)
             
+            # Filter KPIs by date and verify the data
+            kpis = kpis.filtered(lambda k: 
+                k.date >= start_date_utc.date() and 
+                k.date <= end_date_utc.date() and
+                k.total_revenue > 0  # Only include KPIs with valid revenue
+            )
+
             # Calculate dashboard metrics
             dashboard_data = self._calculate_dashboard_metrics(kpis)
-            
-            # Get team performance
             teams_data = self._get_team_performance(kpis)
-            
-            # Get individual mechanic performance
             mechanics_data = self._get_mechanic_performance(kpis)
             
             return {
@@ -346,9 +349,16 @@ class KPIController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_mechanic_kpi_dashboard: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    def _calculate_revenue_for_period(self, kpis):
+        """Calculate accurate revenue for the given period"""
+        if not kpis:
+            return 0
+            
+        return sum(kpis.mapped('total_revenue'))
 
     def _calculate_dashboard_metrics(self, kpis):
-        """Calculate overall dashboard metrics"""
+        """Calculate overall dashboard metrics with accurate filtering"""
         if not kpis:
             return {
                 'total_revenue': 0,
@@ -366,10 +376,12 @@ class KPIController(http.Controller):
                 }
             }
 
-        total_orders = sum(kpis.mapped('total_orders'))
-        
+        # Calculate accurate revenue
+        total_revenue = self._calculate_revenue_for_period(kpis)
+        total_orders = len(kpis)
+
         return {
-            'total_revenue': sum(kpis.mapped('total_revenue')),
+            'total_revenue': total_revenue,
             'total_orders': total_orders,
             'average_rating': sum(kpis.mapped('average_rating')) / len(kpis) if kpis else 0,
             'on_time_rate': sum(kpis.mapped('on_time_rate')) / len(kpis) if kpis else 0,

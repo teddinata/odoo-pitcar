@@ -172,6 +172,9 @@
                                     <div>Orders: <field name="total_orders"/> | Rating: <field name="average_rating" widget="float" digits="[16,1]"/>/5.0</div>
                                     <div>On-Time: <field name="on_time_rate" widget="float" digits="[16,1]"/>% | Accuracy: <field name="duration_accuracy" widget="float" digits="[16,1]"/>%</div>
                                     <div t-if="record.team_achievement.raw_value">Team Achievement: <field name="team_achievement" widget="float" digits="[16,1]"/>%</div>
+                                    <div class="mt-2">Target Achievement: <field name="target_achievement" widget="float" digits="[16,1]"/>%</div>
+                                    <div class="mt-2">Target Revenue: <field name="target_revenue" widget="float" digits="[16,1]"/></div>
+                                    <!-- <div t-if="record.target_achievement.raw_value">Target Achievement: <field name="target_achievement" widget="float" digits="[16,1]"/>%</div> -->
                                 </div>
                             </div>
                         </div>

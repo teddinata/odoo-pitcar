@@ -21,6 +21,7 @@ class MechanicOverview(models.Model):
     duration_accuracy = fields.Float('Duration Accuracy (%)', readonly=True)
     target_revenue = fields.Float('Target Revenue', readonly=True)
     revenue_achievement = fields.Float('Revenue Achievement (%)', readonly=True)
+    target_achievement = fields.Float('Target Achievement (%)', readonly=True)
 
     # Fields untuk team leader (store=False)
     team_leader_id = fields.Many2one('pitcar.mechanic.new', string='Team Leader', compute='_compute_team_leader', store=False)
@@ -48,7 +49,7 @@ class MechanicOverview(models.Model):
                         date_trunc('month', so.date_order)::date as date,
                         EXTRACT(MONTH FROM so.date_order)::integer as month,
                         EXTRACT(YEAR FROM so.date_order)::integer as year,
-                        COALESCE(SUM(so.amount_total), 0) as total_revenue,
+                        COALESCE(SUM(inv.amount_total_signed), 0) as total_revenue,
                         COUNT(so.id) as total_orders,
                         ROUND(COALESCE(AVG(
                             CASE 
@@ -138,6 +139,11 @@ class MechanicOverview(models.Model):
                     LEFT JOIN 
                         sale_order so ON so.id = rel.sale_order_id 
                         AND so.state in ('sale', 'done')
+                    LEFT JOIN
+                        account_move inv ON inv.invoice_origin = so.name
+                        AND inv.state = 'posted'
+                        AND inv.payment_state = 'paid'
+                        AND inv.move_type = 'out_invoice'
                     GROUP BY 
                         m.id,
                         date_trunc('month', so.date_order),
@@ -148,12 +154,22 @@ class MechanicOverview(models.Model):
                     row_number() OVER () as id,
                     ms.*,
                     %s as currency_id,
-                    64000000 as target_revenue,
+                    CASE 
+                        WHEN EXTRACT(MONTH FROM ms.date) = EXTRACT(MONTH FROM CURRENT_DATE)
+                        AND EXTRACT(YEAR FROM ms.date) = EXTRACT(YEAR FROM CURRENT_DATE)
+                        THEN 64000000 
+                        ELSE 0 
+                    END as target_revenue,
                     ROUND((CASE 
                         WHEN ms.total_revenue > 0 AND 64000000 > 0 
                         THEN (ms.total_revenue / 64000000) * 100
                         ELSE 0
-                    END)::numeric, 1) as revenue_achievement
+                    END)::numeric, 1) as revenue_achievement,
+                    ROUND((CASE
+                        WHEN ms.total_revenue > 0 
+                        THEN (ms.total_revenue / 64000000) * 100
+                        ELSE 0
+                    END)::numeric, 1) as target_achievement
                 FROM monthly_stats ms
                 ORDER BY ms.total_revenue DESC
             )

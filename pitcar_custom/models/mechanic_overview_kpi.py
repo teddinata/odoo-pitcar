@@ -1,4 +1,7 @@
 from odoo import models, fields, tools, api
+import logging
+
+_logger = logging.getLogger(__name__)
 
 class MechanicOverview(models.Model):
     _name = 'mechanic.overview'
@@ -89,17 +92,17 @@ class MechanicOverview(models.Model):
                                 ELSE 0
                             END
                         ), 0) as total_actual_duration,
-                        CASE 
-                            WHEN COALESCE(SUM(
+                        ROUND(
+                            (
                                 CASE 
-                                    WHEN so.controller_estimasi_selesai IS NOT NULL AND so.controller_mulai_servis IS NOT NULL
-                                    THEN EXTRACT(EPOCH FROM (so.controller_estimasi_selesai - so.controller_mulai_servis))/3600
-                                    ELSE 0
-                                END
-                            ), 0) > 0 
-                            THEN ROUND(
-                                (
-                                    1 - ABS(
+                                    WHEN COALESCE(SUM(
+                                        CASE 
+                                            WHEN so.controller_estimasi_selesai IS NOT NULL AND so.controller_mulai_servis IS NOT NULL
+                                            THEN EXTRACT(EPOCH FROM (so.controller_estimasi_selesai - so.controller_mulai_servis))/3600
+                                            ELSE 0
+                                        END
+                                    ), 0) > 0 
+                                    THEN (1 - ABS(
                                         COALESCE(SUM(
                                             CASE 
                                                 WHEN so.controller_selesai IS NOT NULL AND so.controller_mulai_servis IS NOT NULL
@@ -122,12 +125,12 @@ class MechanicOverview(models.Model):
                                                 ELSE 0
                                             END
                                         ), 0)
-                                    , 0) * 100
-                                )::numeric
-                                , 1
-                            )
-                            ELSE 0
-                        END as duration_accuracy
+                                    , 0)) * 100
+                                    ELSE 0
+                                END
+                            )::numeric
+                            , 1
+                        ) as duration_accuracy
                     FROM 
                         pitcar_mechanic_new m
                     LEFT JOIN 
@@ -159,18 +162,49 @@ class MechanicOverview(models.Model):
     @api.depends('mechanic_id')
     def _compute_team_leader(self):
         for record in self:
-            if record.mechanic_id.position_code == 'leader':
-                record.team_leader_id = record.mechanic_id
-            else:
-                record.team_leader_id = record.mechanic_id.leader_id
+            try:
+                if record.mechanic_id:
+                    if record.mechanic_id.position_code == 'leader':
+                        record.team_leader_id = record.mechanic_id
+                    else:
+                        record.team_leader_id = record.mechanic_id.leader_id
+                else:
+                    record.team_leader_id = False
+            except Exception as e:
+                record.team_leader_id = False
+                _logger.error(f"Error computing team leader for record {record.id}: {str(e)}")
 
     @api.depends('team_leader_id')
     def _compute_team_metrics(self):
         for record in self:
-            if record.team_leader_id:
-                team_members = self.env['pitcar.mechanic.new'].search([
-                    ('leader_id', '=', record.team_leader_id.id)
-                ])
-                record.team_target = len(team_members) * 64000000
-                record.team_revenue = sum(team_members.mapped('current_revenue'))
-                record.team_achievement = (record.team_revenue / record.team_target * 100) if record.team_target else 0
+            try:
+                # Initialize default values
+                record.team_target = 0.0
+                record.team_revenue = 0.0
+                record.team_achievement = 0.0
+
+                if record.team_leader_id:
+                    team_members = self.env['pitcar.mechanic.new'].search([
+                        ('leader_id', '=', record.team_leader_id.id)
+                    ])
+                    
+                    if team_members:
+                        target = len(team_members) * 64000000.0
+                        revenue = sum([member.current_revenue or 0.0 for member in team_members])
+                        
+                        record.team_target = target
+                        record.team_revenue = revenue
+                        
+                        # Safely calculate achievement percentage
+                        if target > 0:
+                            achievement = (revenue / target * 100)
+                            record.team_achievement = round(achievement, 1)
+                        else:
+                            record.team_achievement = 0.0
+
+            except Exception as e:
+                # Set default values in case of error
+                record.team_target = 0.0
+                record.team_revenue = 0.0
+                record.team_achievement = 0.0
+                _logger.error(f"Error computing team metrics for record {record.id}: {str(e)}")

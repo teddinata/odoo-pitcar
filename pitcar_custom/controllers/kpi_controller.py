@@ -310,27 +310,40 @@ class KPIController(http.Controller):
             # Convert to UTC for database queries
             start_date_utc = start_date.astimezone(pytz.UTC)
             end_date_utc = end_date.astimezone(pytz.UTC)
-
-            # Get KPIs with strict date filtering
-            kpi_domain = [
-                ('date', '>=', start_date_utc.date()),
-                ('date', '<=', end_date_utc.date())
+            
+            # Get KPIs for specific date range only
+            domain = [
+                ('date', '=', start_date_utc.date()),  # Exact date match for 'today'
+                ('mechanic_id', '!=', False),  # Must have valid mechanic
+                ('total_revenue', '>', 0)  # Only include records with revenue
             ]
             
-            kpis = request.env['mechanic.kpi'].search(kpi_domain)
+            if date_range != 'today':
+                domain[0] = ('date', '>=', start_date_utc.date())
+                domain.append(('date', '<=', end_date_utc.date()))
             
-            # Filter KPIs by date and verify the data
-            kpis = kpis.filtered(lambda k: 
-                k.date >= start_date_utc.date() and 
-                k.date <= end_date_utc.date() and
-                k.total_revenue > 0  # Only include KPIs with valid revenue
-            )
+            kpis = request.env['mechanic.kpi'].search(domain)
+            
+            if not kpis:
+                return {
+                    'status': 'success',
+                    'data': {
+                        'date_range': {
+                            'type': date_range,
+                            'start': start_date.strftime('%Y-%m-%d'),
+                            'end': end_date.strftime('%Y-%m-%d')
+                        },
+                        'overview': self._calculate_dashboard_metrics([]),
+                        'teams': [],
+                        'mechanics': [],
+                        'trends': []
+                    }
+                }
 
-            # Calculate dashboard metrics
-            dashboard_data = self._calculate_dashboard_metrics(kpis)
-            teams_data = self._get_team_performance(kpis)
-            mechanics_data = self._get_mechanic_performance(kpis)
-            
+            # Get all mechanics once
+            mechanics = request.env['pitcar.mechanic.new'].search([])
+            mechanic_dict = {m.id: m for m in mechanics}
+
             return {
                 'status': 'success',
                 'data': {
@@ -339,9 +352,9 @@ class KPIController(http.Controller):
                         'start': start_date.strftime('%Y-%m-%d'),
                         'end': end_date.strftime('%Y-%m-%d')
                     },
-                    'overview': dashboard_data,
-                    'teams': teams_data,
-                    'mechanics': mechanics_data,
+                    'overview': self._calculate_dashboard_metrics(kpis),
+                    'teams': self._get_team_performance(kpis, mechanic_dict, start_date_utc, end_date_utc),
+                    'mechanics': self._get_mechanic_performance(kpis, mechanic_dict, start_date_utc, end_date_utc),
                     'trends': self._calculate_trends(kpis)
                 }
             }
@@ -349,16 +362,120 @@ class KPIController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_mechanic_kpi_dashboard: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    def _get_team_performance(self, kpis, mechanic_dict, start_date_utc, end_date_utc):
+        """Calculate team performance metrics"""
+        team_list = []
+        days_in_range = (end_date_utc.date() - start_date_utc.date()).days + 1
         
-    def _calculate_revenue_for_period(self, kpis):
-        """Calculate accurate revenue for the given period"""
-        if not kpis:
-            return 0
+        # Group KPIs by team leader
+        team_kpis = {}
+        for kpi in kpis:
+            mechanic = mechanic_dict.get(kpi.mechanic_id.id)
+            if not mechanic:
+                continue
+                
+            leader_id = mechanic.leader_id.id if mechanic.leader_id else (
+                mechanic.id if mechanic.position_code == 'leader' else None
+            )
             
-        return sum(kpis.mapped('total_revenue'))
+            if leader_id:
+                if leader_id not in team_kpis:
+                    team_kpis[leader_id] = []
+                team_kpis[leader_id].append(kpi)
+        
+        # Calculate team metrics
+        for leader_id, leader_kpis in team_kpis.items():
+            leader = mechanic_dict.get(leader_id)
+            if not leader or leader.position_code != 'leader':
+                continue
+
+            team_members = [m for m in mechanic_dict.values() if m.leader_id.id == leader_id]
+            member_count = len(team_members) + 1  # Include leader
+            
+            # Calculate target based on days in range
+            monthly_target = member_count * 64000000  # Base monthly target
+            adjusted_target = (monthly_target / 30) * days_in_range
+            
+            total_revenue = sum(k.total_revenue for k in leader_kpis)
+            total_orders = sum(k.total_orders for k in leader_kpis)
+            
+            team_list.append({
+                'id': leader_id,
+                'name': leader.name,
+                'position': 'Team',
+                'member_count': member_count,
+                'metrics': {
+                    'revenue': {
+                        'total': total_revenue,
+                        'target': adjusted_target,
+                        'achievement': (total_revenue / adjusted_target * 100) if adjusted_target else 0
+                    },
+                    'orders': {
+                        'total': total_orders,
+                        'average_value': total_revenue / total_orders if total_orders else 0
+                    },
+                    'performance': {
+                        'on_time_rate': sum(k.on_time_rate for k in leader_kpis) / len(leader_kpis) if leader_kpis else 0,
+                        'rating': sum(k.average_rating for k in leader_kpis) / len(leader_kpis) if leader_kpis else 0,
+                        'duration_accuracy': sum(k.duration_accuracy for k in leader_kpis) / len(leader_kpis) if leader_kpis else 0
+                    }
+                }
+            })
+        
+        return team_list
+
+    def _get_mechanic_performance(self, kpis, mechanic_dict, start_date_utc, end_date_utc):
+        """Calculate individual mechanic performance"""
+        days_in_range = (end_date_utc.date() - start_date_utc.date()).days + 1
+        mechanic_kpis = {}
+        
+        # Group KPIs by mechanic
+        for kpi in kpis:
+            mech_id = kpi.mechanic_id.id
+            if mech_id not in mechanic_kpis:
+                mechanic_kpis[mech_id] = []
+            mechanic_kpis[mech_id].append(kpi)
+        
+        mechanics_data = []
+        for mech_id, mech_kpis in mechanic_kpis.items():
+            mechanic = mechanic_dict.get(mech_id)
+            if not mechanic:
+                continue
+                
+            # Calculate target based on days in range
+            monthly_target = mechanic.monthly_target or 64000000
+            adjusted_target = (monthly_target / 30) * days_in_range
+            
+            total_revenue = sum(k.total_revenue for k in mech_kpis)
+            total_orders = sum(k.total_orders for k in mech_kpis)
+            
+            mechanics_data.append({
+                'id': mech_id,
+                'name': mechanic.name,
+                'position': 'Team Leader' if mechanic.position_code == 'leader' else 'Mechanic',
+                'metrics': {
+                    'revenue': {
+                        'total': total_revenue,
+                        'target': adjusted_target,
+                        'achievement': (total_revenue / adjusted_target * 100) if adjusted_target else 0
+                    },
+                    'orders': {
+                        'total': total_orders,
+                        'average_value': total_revenue / total_orders if total_orders else 0
+                    },
+                    'performance': {
+                        'on_time_rate': sum(k.on_time_rate for k in mech_kpis) / len(mech_kpis) if mech_kpis else 0,
+                        'rating': sum(k.average_rating for k in mech_kpis) / len(mech_kpis) if mech_kpis else 0,
+                        'duration_accuracy': sum(k.duration_accuracy for k in mech_kpis) / len(mech_kpis) if mech_kpis else 0
+                    }
+                }
+            })
+        
+        return mechanics_data
 
     def _calculate_dashboard_metrics(self, kpis):
-        """Calculate overall dashboard metrics with accurate filtering"""
+        """Calculate overall dashboard metrics"""
         if not kpis:
             return {
                 'total_revenue': 0,
@@ -376,9 +493,9 @@ class KPIController(http.Controller):
                 }
             }
 
-        # Calculate accurate revenue
-        total_revenue = self._calculate_revenue_for_period(kpis)
-        total_orders = len(kpis)
+        total_revenue = sum(kpis.mapped('total_revenue'))
+        total_orders = sum(kpis.mapped('total_orders'))
+        total_complaints = sum(kpis.mapped('total_complaints'))
 
         return {
             'total_revenue': total_revenue,
@@ -386,127 +503,15 @@ class KPIController(http.Controller):
             'average_rating': sum(kpis.mapped('average_rating')) / len(kpis) if kpis else 0,
             'on_time_rate': sum(kpis.mapped('on_time_rate')) / len(kpis) if kpis else 0,
             'complaints': {
-                'total': sum(kpis.mapped('total_complaints')),
-                'rate': (sum(kpis.mapped('total_complaints')) / total_orders * 100) if total_orders else 0
+                'total': total_complaints,
+                'rate': (total_complaints / total_orders * 100) if total_orders else 0
             },
             'performance': {
                 'duration_accuracy': sum(kpis.mapped('duration_accuracy')) / len(kpis) if kpis else 0,
-                'early_completion_rate': sum(kpis.mapped('early_completions')) / total_orders * 100 if total_orders else 0,
-                'late_completion_rate': sum(kpis.mapped('late_completions')) / total_orders * 100 if total_orders else 0
+                'early_completion_rate': (sum(kpis.mapped('early_completions')) / total_orders * 100) if total_orders else 0,
+                'late_completion_rate': (sum(kpis.mapped('late_completions')) / total_orders * 100) if total_orders else 0
             }
         }
-
-    def _get_team_performance(self, kpis):
-        """Calculate team performance metrics"""
-        team_list = []
-        
-        # Get all team leaders
-        team_leaders = request.env['pitcar.mechanic.new'].search([
-            ('position_code', '=', 'leader')
-        ])
-        
-        for leader in team_leaders:
-            # Get team members
-            team_members = request.env['pitcar.mechanic.new'].search([
-                ('leader_id', '=', leader.id)
-            ])
-            
-            # Include leader in member count
-            member_count = len(team_members) + 1
-            team_member_ids = team_members.ids + [leader.id]
-            
-            # Get KPIs for the entire team
-            team_kpis = kpis.filtered(lambda k: k.mechanic_id.id in team_member_ids)
-            
-            if not team_kpis:
-                continue
-
-            total_revenue = sum(team_kpis.mapped('total_revenue'))
-            total_orders = sum(team_kpis.mapped('total_orders'))
-            monthly_target = member_count * 64000000  # Base target per mechanic
-            
-            team_list.append({
-                'id': leader.id,
-                'name': leader.name,
-                'position': 'Team',
-                'member_count': member_count,
-                'metrics': {
-                    'revenue': {
-                        'total': total_revenue,
-                        'target': monthly_target,
-                        'achievement': (total_revenue / monthly_target * 100) if monthly_target else 0
-                    },
-                    'orders': {
-                        'total': total_orders,
-                        'average_value': total_revenue / total_orders if total_orders else 0
-                    },
-                    'performance': {
-                        'on_time_rate': sum(team_kpis.mapped('on_time_rate')) / len(team_kpis) if team_kpis else 0,
-                        'rating': sum(team_kpis.mapped('average_rating')) / len(team_kpis) if team_kpis else 0,
-                        'duration_accuracy': sum(team_kpis.mapped('duration_accuracy')) / len(team_kpis) if team_kpis else 0
-                    }
-                }
-            })
-
-        return team_list
-
-    def _get_mechanic_performance(self, kpis):
-        """Calculate individual mechanic performance"""
-        mechanic_data = {}
-        
-        for kpi in kpis:
-            mechanic_id = kpi.mechanic_id.id
-            if mechanic_id not in mechanic_data:
-                mechanic_data[mechanic_id] = {
-                    'id': mechanic_id,
-                    'name': kpi.mechanic_id.name,
-                    'position': 'Team Leader' if kpi.mechanic_id.position_code == 'leader' else 'Mechanic',
-                    'metrics': {
-                        'revenue': {
-                            'total': 0,
-                            'target': kpi.monthly_target,
-                            'achievement': 0
-                        },
-                        'orders': {
-                            'total': 0,
-                            'average_value': 0
-                        },
-                        'performance': {
-                            'on_time_rate': 0,
-                            'rating': 0,
-                            'duration_accuracy': 0
-                        }
-                    }
-                }
-            
-            data = mechanic_data[mechanic_id]
-            data['metrics']['revenue']['total'] += kpi.total_revenue
-            data['metrics']['orders']['total'] += kpi.total_orders
-            
-            # Update averages
-            kpi_count = len(kpis.filtered(lambda k: k.mechanic_id.id == mechanic_id))
-            if kpi_count:
-                data['metrics']['performance']['on_time_rate'] = sum(
-                    kpis.filtered(lambda k: k.mechanic_id.id == mechanic_id).mapped('on_time_rate')
-                ) / kpi_count
-                data['metrics']['performance']['rating'] = sum(
-                    kpis.filtered(lambda k: k.mechanic_id.id == mechanic_id).mapped('average_rating')
-                ) / kpi_count
-                data['metrics']['performance']['duration_accuracy'] = sum(
-                    kpis.filtered(lambda k: k.mechanic_id.id == mechanic_id).mapped('duration_accuracy')
-                ) / kpi_count
-            
-            # Calculate achievement and average order value
-            if data['metrics']['revenue']['target']:
-                data['metrics']['revenue']['achievement'] = (
-                    data['metrics']['revenue']['total'] / data['metrics']['revenue']['target'] * 100
-                )
-            if data['metrics']['orders']['total']:
-                data['metrics']['orders']['average_value'] = (
-                    data['metrics']['revenue']['total'] / data['metrics']['orders']['total']
-                )
-
-        return list(mechanic_data.values())
 
     def _calculate_trends(self, kpis):
         """Calculate trend data for the dashboard"""
@@ -519,13 +524,16 @@ class KPIController(http.Controller):
         for date in dates:
             day_kpis = kpis.filtered(lambda k: k.date == date)
             if day_kpis:
+                total_revenue = sum(day_kpis.mapped('total_revenue'))
+                total_orders = sum(day_kpis.mapped('total_orders'))
+                
                 trends.append({
                     'date': date.strftime('%Y-%m-%d'),
                     'metrics': {
-                        'revenue': sum(day_kpis.mapped('total_revenue')),
-                        'orders': sum(day_kpis.mapped('total_orders')),
-                        'on_time_rate': sum(day_kpis.mapped('on_time_rate')) / len(day_kpis),
-                        'rating': sum(day_kpis.mapped('average_rating')) / len(day_kpis)
+                        'revenue': total_revenue,
+                        'orders': total_orders,
+                        'on_time_rate': sum(day_kpis.mapped('on_time_rate')) / len(day_kpis) if day_kpis else 0,
+                        'rating': sum(day_kpis.mapped('average_rating')) / len(day_kpis) if day_kpis else 0
                     }
                 })
 

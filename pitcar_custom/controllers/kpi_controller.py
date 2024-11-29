@@ -410,33 +410,34 @@ class KPIController(http.Controller):
                         mech_data['total_rating'] += float(order.customer_rating)
                         mech_data['rated_orders'] += 1
 
-            # Calculate team metrics using proper target calculation
+            # Calculate team metrics
             teams_data = {}
             for mechanic_id, data in mechanics_data.items():
                 mechanic = mechanic_dict.get(mechanic_id)
                 if not mechanic:
                     continue
-                        
+                    
                 leader_id = mechanic.leader_id.id if mechanic.leader_id else (mechanic_id if mechanic.position_code == 'leader' else None)
                 
-                if leader_id and mechanic.position_code != 'leader':  # Only process team members, not leaders
+                if leader_id:  # Process both leader and members
                     if leader_id not in teams_data:
                         leader = mechanic_dict.get(leader_id)
+                        leader_data = mechanics_data.get(leader_id, {})  # Get leader's own metrics
                         teams_data[leader_id] = {
                             'id': leader_id,
                             'name': leader.name,
                             'position': 'Team',
-                            'member_count': 0,  # Start from 0, will count actual members
-                            'total_rated_orders': 0,  # For calculating team rating
-                            'total_rating_sum': 0,    # For calculating team rating
+                            'member_count': 0,  # Will count actual members only
+                            'total_rated_orders': 0,
+                            'total_rating_sum': 0,
                             'metrics': {
                                 'revenue': {
-                                    'total': 0,
-                                    'target': 0,  # Will be updated based on member count
+                                    'total': leader_data.get('revenue', 0),  # Start with leader's revenue
+                                    'target': 0,  # Will be set based on member count
                                     'achievement': 0
                                 },
                                 'orders': {
-                                    'total': 0,
+                                    'total': leader_data.get('orders', 0),  # Start with leader's orders
                                     'average_value': 0
                                 },
                                 'performance': {
@@ -447,33 +448,30 @@ class KPIController(http.Controller):
                                 }
                             }
                         }
+                    
+                    if mechanic.position_code != 'leader':  # Count and accumulate only for members
+                        team_data = teams_data[leader_id]
+                        team_data['member_count'] += 1
+                        team_data['metrics']['revenue']['total'] += data['revenue']
+                        team_data['metrics']['orders']['total'] += data['orders']
                         
-                    team_data = teams_data[leader_id]
-                    team_data['member_count'] += 1  # Count actual team members
-                    
-                    # Accumulate team metrics
-                    team_data['metrics']['revenue']['total'] += data['revenue']
-                    team_data['metrics']['orders']['total'] += data['orders']
-                    
-                    # Accumulate rating data properly
-                    if data['rated_orders'] > 0:
-                        team_data['total_rated_orders'] += data['rated_orders']
-                        team_data['total_rating_sum'] += (data['total_rating'])
-                    
-                    # Accumulate performance metrics
-                    if data['orders'] > 0:
-                        team_data['metrics']['performance']['on_time_rate'] += (data['on_time_orders'] / data['orders'] * 100)
-                    if data['total_completions'] > 0:
-                        team_data['metrics']['performance']['early_completion_rate'] += (data['early_completions'] / data['total_completions'] * 100)
-                        team_data['metrics']['performance']['late_completion_rate'] += (data['late_completions'] / data['total_completions'] * 100)
+                        if data['rated_orders'] > 0:
+                            team_data['total_rated_orders'] += data['rated_orders']
+                            team_data['total_rating_sum'] += data['total_rating']
+                        
+                        if data['orders'] > 0:
+                            team_data['metrics']['performance']['on_time_rate'] += (data['on_time_orders'] / data['orders'] * 100)
+                        if data['total_completions'] > 0:
+                            team_data['metrics']['performance']['early_completion_rate'] += (data['early_completions'] / data['total_completions'] * 100)
+                            team_data['metrics']['performance']['late_completion_rate'] += (data['late_completions'] / data['total_completions'] * 100)
 
             # Calculate final team metrics
             for team in teams_data.values():
                 if team['member_count'] > 0:
-                    # Calculate target based on actual member count (excluding leader)
+                    # Set target based on member count only (not including leader)
                     team['metrics']['revenue']['target'] = team['member_count'] * 64000000
                     
-                    # Calculate achievement
+                    # Calculate achievement using total revenue (leader + members) against member-based target
                     team['metrics']['revenue']['achievement'] = (
                         team['metrics']['revenue']['total'] / team['metrics']['revenue']['target'] * 100
                     ) if team['metrics']['revenue']['target'] else 0
@@ -489,7 +487,7 @@ class KPIController(http.Controller):
                         if team['total_rated_orders'] > 0 else 0
                     )
                     
-                    # Average other performance metrics
+                    # Average performance metrics by member count
                     team['metrics']['performance']['on_time_rate'] /= team['member_count']
                     team['metrics']['performance']['early_completion_rate'] /= team['member_count']
                     team['metrics']['performance']['late_completion_rate'] /= team['member_count']
@@ -540,6 +538,19 @@ class KPIController(http.Controller):
             # Calculate overview metrics
             total_revenue = sum(order.amount_total for order in orders)
             total_orders = len(orders)
+            total_completions = sum(1 for order in orders if order.controller_selesai)
+            total_duration_accuracy = 0
+            total_duration_orders = 0
+            for order in orders:
+                if order.controller_selesai and order.controller_estimasi_selesai:
+                    total_duration_orders += 1
+                    estimated_duration = (order.controller_estimasi_selesai - order.controller_estimasi_mulai).total_seconds() / 3600
+                    actual_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                    if estimated_duration > 0:
+                        accuracy = (1 - abs(actual_duration - estimated_duration) / estimated_duration) * 100
+                        total_duration_accuracy += accuracy
+            avg_duration_accuracy = total_duration_accuracy / total_duration_orders if total_duration_orders > 0 else 0
+
             total_completions = sum(order.controller_selesai is not None for order in orders)
             early_completions = sum(1 for order in orders if order.controller_selesai and 
                                 order.controller_estimasi_selesai and 
@@ -566,7 +577,7 @@ class KPIController(http.Controller):
                     'rate': (complaints / total_orders * 100) if total_orders else 0
                 },
                 'performance': {
-                    'duration_accuracy': 0,
+                    'duration_accuracy': avg_duration_accuracy,
                     'early_completion_rate': (early_completions / total_completions * 100) if total_completions else 0,
                     'late_completion_rate': (late_completions / total_completions * 100) if total_completions else 0
                 }

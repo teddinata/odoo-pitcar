@@ -296,48 +296,277 @@ class KPIController(http.Controller):
     @http.route('/web/v2/dashboard/mechanic', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_mechanic_kpi_dashboard(self, **kw):
         try:
-            # Get date range
+            # Get date range parameters
             date_range = kw.get('date_range', 'today')
-            start_date, end_date = self._get_date_range(
-                date_range, 
-                kw.get('start_date'), 
-                kw.get('end_date')
-            )
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
             
-            if not start_date or not end_date:
-                return {'status': 'error', 'message': 'Invalid date range'}
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
 
             # Convert to UTC for database queries
-            start_date_utc = start_date.astimezone(pytz.UTC)
-            end_date_utc = end_date.astimezone(pytz.UTC)
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
 
-            # Get KPIs
+            # Build domain for orders
+            domain = [
+                ('date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale')
+            ]
+
+            # Get orders
+            orders = request.env['sale.order'].sudo().search(domain)
+
+            # Calculate metrics per mechanic
+            mechanics_data = {}
+            for order in orders:
+                for mechanic in order.car_mechanic_id_new:
+                    if mechanic.id not in mechanics_data:
+                        mechanics_data[mechanic.id] = {
+                            'id': mechanic.id,
+                            'name': mechanic.name,
+                            'position': 'Team Leader' if mechanic.position_code == 'leader' else 'Mechanic',
+                            'revenue': 0,
+                            'orders': 0,
+                            'total_rating': 0,
+                            'rated_orders': 0,
+                            'on_time_orders': 0
+                        }
+                    
+                    # Calculate revenue (divide by number of mechanics if multiple)
+                    mechanic_count = len(order.car_mechanic_id_new)
+                    mechanics_data[mechanic.id]['revenue'] += order.amount_total / mechanic_count
+                    mechanics_data[mechanic.id]['orders'] += 1
+                    
+                    # Calculate ratings
+                    if order.customer_rating:
+                        mechanics_data[mechanic.id]['total_rating'] += float(order.customer_rating)
+                        mechanics_data[mechanic.id]['rated_orders'] += 1
+                    
+                    # Calculate on-time performance
+                    if order.is_on_time:
+                        mechanics_data[mechanic.id]['on_time_orders'] += 1
+
+                # Filter mechanics data to only include active ones
+                active_mechanics = []
+                for data in mechanics_data.values():
+                    if data['orders'] > 0 or data['revenue'] > 0:  # Only include mechanics with activity
+                        days = (end - start).days + 1
+                        target = (128000000 if data['position'] == 'Team Leader' else 64000000) / 30 * days
+                        
+                        active_mechanics.append({
+                            'id': data['id'],
+                            'name': data['name'],
+                            'position': data['position'],
+                            'metrics': {
+                                'revenue': {
+                                    'total': data['revenue'],
+                                    'target': target,
+                                    'achievement': (data['revenue'] / target * 100) if target else 0
+                                },
+                                'orders': {
+                                    'total': data['orders'],
+                                    'average_value': data['revenue'] / data['orders'] if data['orders'] else 0
+                                },
+                                'performance': {
+                                    'on_time_rate': (data['on_time_orders'] / data['orders'] * 100) if data['orders'] else 0,
+                                    'rating': data['total_rating'] / data['rated_orders'] if data['rated_orders'] else 0,
+                                    'duration_accuracy': 0  # Calculate if needed
+                                }
+                            }
+                        })
+
+            # Calculate team metrics
+            teams_data = {}
+            for mechanic_id, data in mechanics_data.items():
+                mechanic = request.env['pitcar.mechanic.new'].sudo().browse(mechanic_id)
+                leader_id = mechanic.leader_id.id if mechanic.leader_id else (mechanic_id if mechanic.position_code == 'leader' else None)
+                
+                if leader_id and mechanic.position_code != 'leader':
+                    if leader_id not in teams_data:
+                        teams_data[leader_id] = {
+                            'id': leader_id,
+                            'name': mechanic.leader_id.name,
+                            'position': 'Team',
+                            'member_count': 1,
+                            'revenue': 0,
+                            'orders': 0,
+                            'total_rating': 0,
+                            'rated_orders': 0,
+                            'on_time_orders': 0
+                        }
+                    
+                    teams_data[leader_id]['revenue'] += data['revenue']
+                    teams_data[leader_id]['orders'] += data['orders']
+                    teams_data[leader_id]['total_rating'] += data['total_rating']
+                    teams_data[leader_id]['rated_orders'] += data['rated_orders']
+                    teams_data[leader_id]['on_time_orders'] += data['on_time_orders']
+                    teams_data[leader_id]['member_count'] += 1
+
+            # Format mechanics data
+            mechanics_result = []
+            for data in mechanics_data.values():
+                days = (end - start).days + 1
+                target = (128000000 if data['position'] == 'Team Leader' else 64000000) / 30 * days
+                
+                mechanics_result.append({
+                    'id': data['id'],
+                    'name': data['name'],
+                    'position': data['position'],
+                    'metrics': {
+                        'revenue': {
+                            'total': data['revenue'],
+                            'target': target,
+                            'achievement': (data['revenue'] / target * 100) if target else 0
+                        },
+                        'orders': {
+                            'total': data['orders'],
+                            'average_value': data['revenue'] / data['orders'] if data['orders'] else 0
+                        },
+                        'performance': {
+                            'on_time_rate': (data['on_time_orders'] / data['orders'] * 100) if data['orders'] else 0,
+                            'rating': data['total_rating'] / data['rated_orders'] if data['rated_orders'] else 0,
+                            'duration_accuracy': 0  # Calculate if needed
+                        }
+                    }
+                })
+
+            # Calculate overview metrics
+            total_revenue = sum(order.amount_total for order in orders)
+            total_orders = len(orders)
+
+            # Calculate rating metrics from orders with ratings
+            rated_orders = orders.filtered(lambda o: o.customer_rating)
+            average_rating = (
+                sum(float(order.customer_rating) for order in rated_orders) / len(rated_orders)
+                if rated_orders else 0
+            )
+
+            # Calculate on-time rate
+            on_time_orders = orders.filtered(lambda o: o.is_on_time)
+            on_time_rate = (len(on_time_orders) / total_orders * 100) if total_orders else 0
+
+            # Calculate completion metrics berdasarkan actual_vs_estimated_duration
+            early_completions = len(orders.filtered(lambda o: o.actual_vs_estimated_duration <= 0))
+            late_completions = len(orders.filtered(lambda o: o.actual_vs_estimated_duration > 0))
+
+            # Calculate complaints
+            complaints = len(orders.filtered(lambda o: o.customer_rating in ['1', '2']))
+
+            # Get KPIs for duration accuracy
             kpis = request.env['mechanic.kpi'].sudo().search([
-                ('date', '>=', start_date_utc.date()),
-                ('date', '<=', end_date_utc.date())
+                ('date', '>=', start_utc.strftime('%Y-%m-%d')),
+                ('date', '<=', end_utc.strftime('%Y-%m-%d'))
             ])
 
-            # Get leaders and their teams
-            leaders = request.env['pitcar.mechanic.new'].sudo().search([
-                ('position_code', '=', 'leader')
-            ])
+            # Calculate average duration accuracy from KPIs
+            avg_duration_accuracy = sum(kpis.mapped('duration_accuracy')) / len(kpis) if kpis else 0
 
-            # Calculate days in range for target adjustment
-            days_in_range = (end_date_utc.date() - start_date_utc.date()).days + 1
+            overview = {
+                'total_revenue': total_revenue,
+                'total_orders': total_orders,
+                'average_rating': average_rating,
+                'on_time_rate': on_time_rate,
+                'complaints': {
+                    'total': complaints,
+                    'rate': (complaints / total_orders * 100) if total_orders else 0
+                },
+                'performance': {
+                    'duration_accuracy': avg_duration_accuracy,
+                    'early_completion_rate': (early_completions / total_orders * 100) if total_orders else 0,
+                    'late_completion_rate': (late_completions / total_orders * 100) if total_orders else 0
+                }
+            }
 
-            # Calculate metrics
+            # Calculate daily trends
+            trends = []
+            current = start
+            while current <= end:
+                try:
+                    current_end = min(current.replace(hour=23, minute=59, second=59), end)
+                    current_start = current.replace(hour=0, minute=0, second=0)
+                    
+                    # Convert to UTC for query
+                    current_start_utc = current_start.astimezone(pytz.UTC)
+                    current_end_utc = current_end.astimezone(pytz.UTC)
+                    
+                    # Get orders for current day by creating a new domain
+                    day_domain = [
+                        ('date_completed', '>=', current_start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                        ('date_completed', '<=', current_end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                        ('state', '=', 'sale')
+                    ]
+                    day_orders = request.env['sale.order'].sudo().search(day_domain)
+                    
+                    if day_orders:
+                        # Calculate daily metrics
+                        daily_revenue = sum(order.amount_total for order in day_orders)
+                        daily_order_count = len(day_orders)
+                        
+                        # Calculate rating metrics
+                        rated_orders = day_orders.filtered(lambda o: o.customer_rating)
+                        daily_rating = 0
+                        if rated_orders:
+                            total_rating = sum(float(order.customer_rating) for order in rated_orders if order.customer_rating)
+                            daily_rating = total_rating / len(rated_orders)
+                        
+                        # Calculate on-time metrics
+                        on_time_orders = len(day_orders.filtered(lambda o: o.is_on_time))
+                        daily_on_time_rate = (on_time_orders / daily_order_count * 100) if daily_order_count else 0
+                        
+                        trends.append({
+                            'date': current.strftime('%Y-%m-%d'),
+                            'metrics': {
+                                'revenue': daily_revenue,
+                                'orders': daily_order_count,
+                                'on_time_rate': daily_on_time_rate,
+                                'rating': daily_rating
+                            }
+                        })
+                    
+                    current += timedelta(days=1)
+                
+                except Exception as e:
+                    _logger.error(f"Error calculating trends for {current.strftime('%Y-%m-%d')}: {str(e)}")
+                    continue
+
             return {
                 'status': 'success',
                 'data': {
                     'date_range': {
                         'type': date_range,
-                        'start': start_date.strftime('%Y-%m-%d'),
-                        'end': end_date.strftime('%Y-%m-%d')
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
                     },
-                    'overview': self._calculate_dashboard_metrics(kpis),
-                    'teams': self._get_team_performance(kpis, leaders, days_in_range),
-                    'mechanics': self._get_mechanic_performance(kpis, days_in_range),
-                    'trends': self._calculate_trends(kpis)
+                    'overview': overview,
+                    'teams': list(teams_data.values()),
+                    'mechanics': active_mechanics,  # Use filtered list instead of all mechanics
+                    'trends': trends  # Add trends to response
                 }
             }
 

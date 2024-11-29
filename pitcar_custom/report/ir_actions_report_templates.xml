@@ -346,7 +346,7 @@
                 </div>
 
                 <!-- Warranty info dengan kondisi hanya untuk invoice -->
-                <div t-if="doc.state == 'sale' and not env.context.get('work_order', False)" 
+                <!-- <div t-if="doc.state == 'sale' and not env.context.get('work_order', False)" 
                     class="warranty-info" 
                     style="position: absolute; bottom: 0; left: 0; right: 0; margin-bottom: 20px;">
                     <div style="border-top: 1px solid #ddd; padding-top: 10px;">
@@ -365,7 +365,7 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </div> -->
 
                 <div t-if="doc.signature" class="mt-4 ml64 mr4" name="signature">
                     <div class="offset-8">

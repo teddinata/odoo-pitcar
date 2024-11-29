@@ -349,14 +349,11 @@ class KPIController(http.Controller):
             # Get orders
             orders = request.env['sale.order'].sudo().search(domain)
 
-            # Get KPIs in one query
-            kpi_domain = [
-                ('date', '>=', start_utc.date()),
-                ('date', '<=', end_utc.date())
-            ]
-            kpis = request.env['mechanic.kpi'].sudo().search(kpi_domain)
-            
-            # Calculate mechanic metrics with performance data
+            # Get all mechanics
+            mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+            mechanic_dict = {m.id: m for m in mechanics}
+
+            # Calculate mechanic metrics
             mechanics_data = {}
             for order in orders:
                 if not order.car_mechanic_id_new:
@@ -377,7 +374,7 @@ class KPIController(http.Controller):
                             'late_starts': 0,
                             'early_completions': 0,
                             'late_completions': 0,
-                            'duration_accuracy': 0
+                            'total_completions': 0
                         }
                     
                     mechanic_count = len(order.car_mechanic_id_new)
@@ -387,12 +384,7 @@ class KPIController(http.Controller):
                     mech_data['revenue'] += order.amount_total / mechanic_count
                     mech_data['orders'] += 1
                     
-                    # Performance metrics from KPIs
-                    mechanic_kpis = kpis.filtered(lambda k: k.mechanic_id.id == mechanic.id)
-                    if mechanic_kpis:
-                        mech_data['duration_accuracy'] = sum(mechanic_kpis.mapped('duration_accuracy')) / len(mechanic_kpis)
-                    
-                    # Timing metrics if all required timestamps exist
+                    # Timing metrics
                     if all([order.controller_estimasi_mulai, order.controller_estimasi_selesai,
                         order.controller_mulai_servis, order.controller_selesai]):
                         
@@ -401,6 +393,8 @@ class KPIController(http.Controller):
                         actual_start = fields.Datetime.from_string(order.controller_mulai_servis)
                         actual_end = fields.Datetime.from_string(order.controller_selesai)
 
+                        mech_data['total_completions'] += 1
+                        
                         if actual_start < est_start:
                             mech_data['early_starts'] += 1
                         elif actual_start > est_start:
@@ -416,23 +410,27 @@ class KPIController(http.Controller):
                         mech_data['total_rating'] += float(order.customer_rating)
                         mech_data['rated_orders'] += 1
 
-            # Calculate team metrics
+            # Calculate team metrics using proper target calculation
             teams_data = {}
             for mechanic_id, data in mechanics_data.items():
-                mechanic = request.env['pitcar.mechanic.new'].sudo().browse(mechanic_id)
+                mechanic = mechanic_dict.get(mechanic_id)
+                if not mechanic:
+                    continue
+                    
                 leader_id = mechanic.leader_id.id if mechanic.leader_id else (mechanic_id if mechanic.position_code == 'leader' else None)
                 
                 if leader_id and mechanic.position_code != 'leader':
                     if leader_id not in teams_data:
+                        leader = mechanic_dict.get(leader_id)
                         teams_data[leader_id] = {
                             'id': leader_id,
-                            'name': mechanic.leader_id.name,
+                            'name': leader.name,
                             'position': 'Team',
                             'member_count': 1,
                             'metrics': {
                                 'revenue': {
                                     'total': 0,
-                                    'target': 0,
+                                    'target': leader.monthly_target,  # Get target from leader's monthly_target
                                     'achievement': 0
                                 },
                                 'orders': {
@@ -442,7 +440,6 @@ class KPIController(http.Controller):
                                 'performance': {
                                     'on_time_rate': 0,
                                     'rating': 0,
-                                    'duration_accuracy': 0,
                                     'early_completion_rate': 0,
                                     'late_completion_rate': 0
                                 }
@@ -450,54 +447,34 @@ class KPIController(http.Controller):
                         }
                     
                     team_data = teams_data[leader_id]
-                    days = (end - start).days + 1
-                    target = 64000000 / 30 * days  # Monthly target adjusted for days
-                    
                     team_data['metrics']['revenue']['total'] += data['revenue']
-                    team_data['metrics']['revenue']['target'] += target
                     team_data['metrics']['orders']['total'] += data['orders']
-                    
+                    team_data['member_count'] += 1
+
+                    if data['total_completions'] > 0:
+                        completions = data['total_completions']
+                        team_data['metrics']['performance']['early_completion_rate'] += (data['early_completions'] / completions * 100)
+                        team_data['metrics']['performance']['late_completion_rate'] += (data['late_completions'] / completions * 100)
+                        
                     if data['orders'] > 0:
                         team_data['metrics']['performance']['on_time_rate'] += (data['on_time_orders'] / data['orders'] * 100)
-                        team_data['metrics']['performance']['early_completion_rate'] += (data['early_completions'] / data['orders'] * 100)
-                        team_data['metrics']['performance']['late_completion_rate'] += (data['late_completions'] / data['orders'] * 100)
                     
                     if data['rated_orders'] > 0:
                         team_data['metrics']['performance']['rating'] += (data['total_rating'] / data['rated_orders'])
-                    
-                    team_data['metrics']['performance']['duration_accuracy'] += data['duration_accuracy']
-                    team_data['member_count'] += 1
 
-            # Calculate final team metrics
-            for team in teams_data.values():
-                if team['member_count'] > 0:
-                    team['metrics']['revenue']['achievement'] = (
-                        team['metrics']['revenue']['total'] / team['metrics']['revenue']['target'] * 100
-                    ) if team['metrics']['revenue']['target'] else 0
-                    
-                    team['metrics']['orders']['average_value'] = (
-                        team['metrics']['revenue']['total'] / team['metrics']['orders']['total']
-                    ) if team['metrics']['orders']['total'] else 0
-                    
-                    # Average the performance metrics
-                    team['metrics']['performance']['on_time_rate'] /= team['member_count']
-                    team['metrics']['performance']['rating'] /= team['member_count']
-                    team['metrics']['performance']['duration_accuracy'] /= team['member_count']
-                    team['metrics']['performance']['early_completion_rate'] /= team['member_count']
-                    team['metrics']['performance']['late_completion_rate'] /= team['member_count']
-
-            # Filter and format mechanic data
+            # Format mechanic data with proper targets
             active_mechanics = []
             for data in mechanics_data.values():
                 if data['orders'] > 0:
-                    days = (end - start).days + 1
-                    target = (128000000 if data['position'] == 'Team Leader' else 64000000) / 30 * days
-                    
+                    mechanic = mechanic_dict.get(data['id'])
+                    if not mechanic:
+                        continue
+
                     metrics = {
                         'revenue': {
                             'total': data['revenue'],
-                            'target': target,
-                            'achievement': (data['revenue'] / target * 100) if target else 0
+                            'target': mechanic.monthly_target,  # Get target from mechanic's monthly_target
+                            'achievement': (data['revenue'] / mechanic.monthly_target * 100) if mechanic.monthly_target else 0
                         },
                         'orders': {
                             'total': data['orders'],
@@ -506,11 +483,10 @@ class KPIController(http.Controller):
                         'performance': {
                             'on_time_rate': (data['on_time_orders'] / data['orders'] * 100) if data['orders'] else 0,
                             'rating': data['total_rating'] / data['rated_orders'] if data['rated_orders'] else 0,
-                            'duration_accuracy': data['duration_accuracy'],
-                            'early_start_rate': (data['early_starts'] / data['orders'] * 100) if data['orders'] else 0,
-                            'late_start_rate': (data['late_starts'] / data['orders'] * 100) if data['orders'] else 0,
-                            'early_completion_rate': (data['early_completions'] / data['orders'] * 100) if data['orders'] else 0,
-                            'late_completion_rate': (data['late_completions'] / data['orders'] * 100) if data['orders'] else 0
+                            'early_start_rate': (data['early_starts'] / data['total_completions'] * 100) if data['total_completions'] else 0,
+                            'late_start_rate': (data['late_starts'] / data['total_completions'] * 100) if data['total_completions'] else 0,
+                            'early_completion_rate': (data['early_completions'] / data['total_completions'] * 100) if data['total_completions'] else 0,
+                            'late_completion_rate': (data['late_completions'] / data['total_completions'] * 100) if data['total_completions'] else 0
                         }
                     }
                     
@@ -524,35 +500,35 @@ class KPIController(http.Controller):
             # Calculate overview metrics
             total_revenue = sum(order.amount_total for order in orders)
             total_orders = len(orders)
+            total_completions = sum(order.controller_selesai is not None for order in orders)
+            early_completions = sum(1 for order in orders if order.controller_selesai and 
+                                order.controller_estimasi_selesai and 
+                                order.controller_selesai <= order.controller_estimasi_selesai)
+            late_completions = sum(1 for order in orders if order.controller_selesai and 
+                                order.controller_estimasi_selesai and 
+                                order.controller_selesai > order.controller_estimasi_selesai)
             
-            # Calculate rating metrics from orders with ratings
             rated_orders = orders.filtered(lambda o: o.customer_rating)
             average_rating = (
                 sum(float(order.customer_rating) for order in rated_orders) / len(rated_orders)
                 if rated_orders else 0
             )
             
-            # Calculate on-time rate from KPIs
-            avg_on_time_rate = sum(kpis.mapped('on_time_rate')) / len(kpis) if kpis else 0
-            
-            # Calculate completion metrics and complaints
-            early_completions = sum(kpis.mapped('early_completions'))
-            late_completions = sum(kpis.mapped('late_completions'))
             complaints = len(orders.filtered(lambda o: o.customer_rating in ['1', '2']))
 
             overview = {
                 'total_revenue': total_revenue,
                 'total_orders': total_orders,
                 'average_rating': average_rating,
-                'on_time_rate': avg_on_time_rate,
+                'on_time_rate': (early_completions / total_completions * 100) if total_completions else 0,
                 'complaints': {
                     'total': complaints,
                     'rate': (complaints / total_orders * 100) if total_orders else 0
                 },
                 'performance': {
-                    'duration_accuracy': sum(kpis.mapped('duration_accuracy')) / len(kpis) if kpis else 0,
-                    'early_completion_rate': (early_completions / total_orders * 100) if total_orders else 0,
-                    'late_completion_rate': (late_completions / total_orders * 100) if total_orders else 0
+                    'duration_accuracy': 0,
+                    'early_completion_rate': (early_completions / total_completions * 100) if total_completions else 0,
+                    'late_completion_rate': (late_completions / total_completions * 100) if total_completions else 0
                 }
             }
 
@@ -564,11 +540,9 @@ class KPIController(http.Controller):
                     current_end = min(current.replace(hour=23, minute=59, second=59), end)
                     current_start = current.replace(hour=0, minute=0, second=0)
                     
-                    # Convert to UTC for query
                     current_start_utc = current_start.astimezone(pytz.UTC)
                     current_end_utc = current_end.astimezone(pytz.UTC)
                     
-                    # Get orders for current day by creating a new domain
                     day_domain = [
                         ('date_completed', '>=', current_start_utc.strftime('%Y-%m-%d %H:%M:%S')),
                         ('date_completed', '<=', current_end_utc.strftime('%Y-%m-%d %H:%M:%S')),
@@ -577,33 +551,29 @@ class KPIController(http.Controller):
                     day_orders = request.env['sale.order'].sudo().search(day_domain)
                     
                     if day_orders:
-                        # Calculate daily metrics
+                        daily_completions = sum(1 for order in day_orders if order.controller_selesai)
+                        daily_early_completions = sum(1 for order in day_orders 
+                                                if order.controller_selesai and order.controller_estimasi_selesai
+                                                and order.controller_selesai <= order.controller_estimasi_selesai)
+
                         daily_revenue = sum(order.amount_total for order in day_orders)
-                        daily_order_count = len(day_orders)
-                        
-                        # Calculate rating metrics
-                        rated_orders = day_orders.filtered(lambda o: o.customer_rating)
-                        daily_rating = 0
-                        if rated_orders:
-                            total_rating = sum(float(order.customer_rating) for order in rated_orders if order.customer_rating)
-                            daily_rating = total_rating / len(rated_orders)
-                        
-                        # Calculate on-time metrics from day's KPIs
-                        day_kpis = kpis.filtered(lambda k: k.date == current_start_utc.date())
-                        daily_on_time_rate = sum(day_kpis.mapped('on_time_rate')) / len(day_kpis) if day_kpis else 0
+                        daily_rated_orders = day_orders.filtered(lambda o: o.customer_rating)
+                        daily_rating = (
+                            sum(float(order.customer_rating) for order in daily_rated_orders) / len(daily_rated_orders)
+                            if daily_rated_orders else 0
+                        )
                         
                         trends.append({
                             'date': current.strftime('%Y-%m-%d'),
                             'metrics': {
                                 'revenue': daily_revenue,
-                                'orders': daily_order_count,
-                                'on_time_rate': daily_on_time_rate,
+                                'orders': len(day_orders),
+                                'on_time_rate': (daily_early_completions / daily_completions * 100) if daily_completions else 0,
                                 'rating': daily_rating
                             }
                         })
                     
                     current += timedelta(days=1)
-                
                 except Exception as e:
                     _logger.error(f"Error calculating trends for {current.strftime('%Y-%m-%d')}: {str(e)}")
                     continue

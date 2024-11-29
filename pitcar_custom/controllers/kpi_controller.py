@@ -543,7 +543,17 @@ class KPIController(http.Controller):
             total_revenue = sum(order.amount_total for order in orders)
             total_orders = len(orders)
             total_completions = sum(1 for order in orders if order.controller_selesai)
+            total_duration_accuracy = 0
+            total_duration_orders = 0
+
+            # Calculate time distribution metrics
+            total_starts = 0
+            early_starts = 0
+            ontime_starts = 0
+            late_starts = 0
+
             for order in orders:
+                # Calculate duration accuracy
                 if (order.controller_selesai and order.controller_estimasi_selesai and 
                     order.controller_mulai_servis and order.controller_estimasi_mulai):
                     try:
@@ -555,13 +565,26 @@ class KPIController(http.Controller):
                         if estimated_duration > 0:
                             accuracy = (1 - abs(actual_duration - estimated_duration) / estimated_duration) * 100
                             total_duration_accuracy += accuracy
+                            
+                        # Calculate start time distribution
+                        total_starts += 1
+                        est_start = fields.Datetime.from_string(order.controller_estimasi_mulai)
+                        actual_start = fields.Datetime.from_string(order.controller_mulai_servis)
+                        
+                        if actual_start < est_start:
+                            early_starts += 1
+                        elif actual_start > est_start:
+                            late_starts += 1
+                        else:
+                            ontime_starts += 1
+                            
                     except Exception as e:
-                        _logger.error(f"Error calculating duration for order {order.id}: {str(e)}")
+                        _logger.error(f"Error calculating metrics for order {order.id}: {str(e)}")
                         continue
 
             avg_duration_accuracy = total_duration_accuracy / total_duration_orders if total_duration_orders > 0 else 0
 
-
+            # Calculate completion metrics
             total_completions = sum(order.controller_selesai is not None for order in orders)
             early_completions = sum(1 for order in orders if order.controller_selesai and 
                                 order.controller_estimasi_selesai and 
@@ -569,13 +592,14 @@ class KPIController(http.Controller):
             late_completions = sum(1 for order in orders if order.controller_selesai and 
                                 order.controller_estimasi_selesai and 
                                 order.controller_selesai > order.controller_estimasi_selesai)
-            
+
+            # Calculate rating metrics
             rated_orders = orders.filtered(lambda o: o.customer_rating)
             average_rating = (
                 sum(float(order.customer_rating) for order in rated_orders) / len(rated_orders)
                 if rated_orders else 0
             )
-            
+
             complaints = len(orders.filtered(lambda o: o.customer_rating in ['1', '2']))
 
             overview = {
@@ -590,7 +614,11 @@ class KPIController(http.Controller):
                 'performance': {
                     'duration_accuracy': avg_duration_accuracy,
                     'early_completion_rate': (early_completions / total_completions * 100) if total_completions else 0,
-                    'late_completion_rate': (late_completions / total_completions * 100) if total_completions else 0
+                    'late_completion_rate': (late_completions / total_completions * 100) if total_completions else 0,
+                    # Time distribution metrics
+                    'early_start_rate': (early_starts / total_starts * 100) if total_starts else 0,
+                    'ontime_start_rate': (ontime_starts / total_starts * 100) if total_starts else 0,
+                    'late_start_rate': (late_starts / total_starts * 100) if total_starts else 0
                 }
             }
 

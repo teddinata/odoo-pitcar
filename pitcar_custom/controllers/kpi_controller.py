@@ -349,6 +349,10 @@ class KPIController(http.Controller):
             # Get orders
             orders = request.env['sale.order'].sudo().search(domain)
 
+            # Calculate duration accuracy
+            total_duration_accuracy = 0
+            total_duration_orders = 0
+
             # Get all mechanics
             mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
             mechanic_dict = {m.id: m for m in mechanics}
@@ -539,17 +543,24 @@ class KPIController(http.Controller):
             total_revenue = sum(order.amount_total for order in orders)
             total_orders = len(orders)
             total_completions = sum(1 for order in orders if order.controller_selesai)
-            total_duration_accuracy = 0
-            total_duration_orders = 0
             for order in orders:
-                if order.controller_selesai and order.controller_estimasi_selesai:
-                    total_duration_orders += 1
-                    estimated_duration = (order.controller_estimasi_selesai - order.controller_estimasi_mulai).total_seconds() / 3600
-                    actual_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
-                    if estimated_duration > 0:
-                        accuracy = (1 - abs(actual_duration - estimated_duration) / estimated_duration) * 100
-                        total_duration_accuracy += accuracy
+                if (order.controller_selesai and order.controller_estimasi_selesai and 
+                    order.controller_mulai_servis and order.controller_estimasi_mulai):
+                    try:
+                        total_duration_orders += 1
+                        estimated_duration = (fields.Datetime.from_string(order.controller_estimasi_selesai) - 
+                                            fields.Datetime.from_string(order.controller_estimasi_mulai)).total_seconds() / 3600
+                        actual_duration = (fields.Datetime.from_string(order.controller_selesai) - 
+                                        fields.Datetime.from_string(order.controller_mulai_servis)).total_seconds() / 3600
+                        if estimated_duration > 0:
+                            accuracy = (1 - abs(actual_duration - estimated_duration) / estimated_duration) * 100
+                            total_duration_accuracy += accuracy
+                    except Exception as e:
+                        _logger.error(f"Error calculating duration for order {order.id}: {str(e)}")
+                        continue
+
             avg_duration_accuracy = total_duration_accuracy / total_duration_orders if total_duration_orders > 0 else 0
+
 
             total_completions = sum(order.controller_selesai is not None for order in orders)
             early_completions = sum(1 for order in orders if order.controller_selesai and 

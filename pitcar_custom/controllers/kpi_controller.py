@@ -419,18 +419,20 @@ class KPIController(http.Controller):
                         
                 leader_id = mechanic.leader_id.id if mechanic.leader_id else (mechanic_id if mechanic.position_code == 'leader' else None)
                 
-                if leader_id and mechanic.position_code != 'leader':
+                if leader_id and mechanic.position_code != 'leader':  # Only process team members, not leaders
                     if leader_id not in teams_data:
                         leader = mechanic_dict.get(leader_id)
                         teams_data[leader_id] = {
                             'id': leader_id,
                             'name': leader.name,
                             'position': 'Team',
-                            'member_count': 1,
+                            'member_count': 0,  # Start from 0, will count actual members
+                            'total_rated_orders': 0,  # For calculating team rating
+                            'total_rating_sum': 0,    # For calculating team rating
                             'metrics': {
                                 'revenue': {
                                     'total': 0,
-                                    'target': leader.monthly_target,
+                                    'target': 0,  # Will be updated based on member count
                                     'achievement': 0
                                 },
                                 'orders': {
@@ -447,48 +449,50 @@ class KPIController(http.Controller):
                         }
                         
                     team_data = teams_data[leader_id]
+                    team_data['member_count'] += 1  # Count actual team members
+                    
+                    # Accumulate team metrics
                     team_data['metrics']['revenue']['total'] += data['revenue']
                     team_data['metrics']['orders']['total'] += data['orders']
                     
-                    # Calculate metrics per member
+                    # Accumulate rating data properly
+                    if data['rated_orders'] > 0:
+                        team_data['total_rated_orders'] += data['rated_orders']
+                        team_data['total_rating_sum'] += (data['total_rating'])
+                    
+                    # Accumulate performance metrics
                     if data['orders'] > 0:
                         team_data['metrics']['performance']['on_time_rate'] += (data['on_time_orders'] / data['orders'] * 100)
-                        
-                    if data['rated_orders'] > 0:
-                        team_data['metrics']['performance']['rating'] += data['total_rating'] / data['rated_orders']
-                        
                     if data['total_completions'] > 0:
-                        early_rate = (data['early_completions'] / data['total_completions'] * 100)
-                        late_rate = (data['late_completions'] / data['total_completions'] * 100)
-                        team_data['metrics']['performance']['early_completion_rate'] += early_rate
-                        team_data['metrics']['performance']['late_completion_rate'] += late_rate
-                        
-                    team_data['member_count'] += 1
+                        team_data['metrics']['performance']['early_completion_rate'] += (data['early_completions'] / data['total_completions'] * 100)
+                        team_data['metrics']['performance']['late_completion_rate'] += (data['late_completions'] / data['total_completions'] * 100)
 
-                    # Update target based on member count
-                    team_data['metrics']['revenue']['target'] = team_data['member_count'] * 64000000
-
-                # Calculate final team metrics
-                for team in teams_data.values():
-                    if team['member_count'] > 0:
-                        # Calculate achievement
-                        team['metrics']['revenue']['achievement'] = (
-                            team['metrics']['revenue']['total'] / team['metrics']['revenue']['target'] * 100
-                        ) if team['metrics']['revenue']['target'] else 0
-                        
-                        # Calculate average value
-                        team['metrics']['orders']['average_value'] = (
-                            team['metrics']['revenue']['total'] / team['metrics']['orders']['total']
-                        ) if team['metrics']['orders']['total'] else 0
-                        
-                        # Average the performance metrics by member count
-                        team['metrics']['performance']['on_time_rate'] /= team['member_count']
-                        team['metrics']['performance']['rating'] = min(
-                            team['metrics']['performance']['rating'] / team['member_count'], 
-                            5.0  # Cap rating at 5.0
-                        )
-                        team['metrics']['performance']['early_completion_rate'] /= team['member_count']
-                        team['metrics']['performance']['late_completion_rate'] /= team['member_count']
+            # Calculate final team metrics
+            for team in teams_data.values():
+                if team['member_count'] > 0:
+                    # Calculate target based on actual member count (excluding leader)
+                    team['metrics']['revenue']['target'] = team['member_count'] * 64000000
+                    
+                    # Calculate achievement
+                    team['metrics']['revenue']['achievement'] = (
+                        team['metrics']['revenue']['total'] / team['metrics']['revenue']['target'] * 100
+                    ) if team['metrics']['revenue']['target'] else 0
+                    
+                    # Calculate average value
+                    team['metrics']['orders']['average_value'] = (
+                        team['metrics']['revenue']['total'] / team['metrics']['orders']['total']
+                    ) if team['metrics']['orders']['total'] else 0
+                    
+                    # Calculate proper team rating
+                    team['metrics']['performance']['rating'] = (
+                        team['total_rating_sum'] / team['total_rated_orders']
+                        if team['total_rated_orders'] > 0 else 0
+                    )
+                    
+                    # Average other performance metrics
+                    team['metrics']['performance']['on_time_rate'] /= team['member_count']
+                    team['metrics']['performance']['early_completion_rate'] /= team['member_count']
+                    team['metrics']['performance']['late_completion_rate'] /= team['member_count']
 
             # Format mechanic data with proper targets
             active_mechanics = []

@@ -1127,49 +1127,242 @@ class KPIController(http.Controller):
     def get_mechanic_detail(self, mechanic_id, **kw):
         """Get detailed KPIs for a specific mechanic"""
         try:
-            # Get date range
+            # Get date range parameters
             date_range = kw.get('date_range', 'today')
-            start_date, end_date = self._get_date_range(
-                date_range, 
-                kw.get('start_date'), 
-                kw.get('end_date')
-            )
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
             
-            if not start_date or not end_date:
-                return {'status': 'error', 'message': 'Invalid date range'}
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_year':
+                    start = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
 
             # Convert to UTC for database queries
-            start_date_utc = start_date.astimezone(pytz.UTC)
-            end_date_utc = end_date.astimezone(pytz.UTC)
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
             
-            mechanic = request.env['pitcar.mechanic.new'].browse(mechanic_id)
+            # Get mechanic data
+            mechanic = request.env['pitcar.mechanic.new'].sudo().browse(mechanic_id)
             if not mechanic.exists():
                 return {'status': 'error', 'message': 'Mechanic not found'}
 
-            # Get KPIs
-            kpis = request.env['mechanic.kpi'].search([
-                ('mechanic_id', '=', mechanic_id),
-                ('date', '>=', start_date_utc.date()),
-                ('date', '<=', end_date_utc.date())
-            ])
+            # Get orders in a single query
+            domain = [
+                ('date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale'),
+            ]
+            all_orders = request.env['sale.order'].sudo().search(domain)
 
-            # Calculate target
-            monthly_target = mechanic.monthly_target or 64000000.0
-            days_in_range = (end_date - start_date).days + 1
-            adjusted_target = (monthly_target / 30) * days_in_range
+            # Filter orders for this mechanic
+            mechanic_orders = all_orders.filtered(lambda o: mechanic_id in o.car_mechanic_id_new.ids)
 
-            # Get team data if leader
+            # Pre-process orders by date for trends
+            orders_by_date = {}
+            for order in mechanic_orders:
+                order_date = order.date_completed.date()
+                if order_date not in orders_by_date:
+                    orders_by_date[order_date] = []
+                orders_by_date[order_date].append(order)
+
+            # Calculate metrics in a single pass
+            total_revenue = 0
+            total_orders = len(mechanic_orders)
+            total_starts = 0
+            early_starts = 0
+            ontime_starts = 0
+            late_starts = 0
+            total_completions = 0
+            early_completions = 0
+            late_completions = 0
+            total_duration_accuracy = 0
+            total_duration_orders = 0
+            total_rating = 0
+            total_rated_orders = 0
+
+            for order in mechanic_orders:
+                # Calculate revenue considering multiple mechanics
+                mechanic_count = len(order.car_mechanic_id_new)
+                total_revenue += order.amount_total / mechanic_count
+
+                # Calculate time-based metrics if all required fields exist
+                if all([order.controller_estimasi_mulai, order.controller_mulai_servis,
+                    order.controller_estimasi_selesai, order.controller_selesai]):
+                    try:
+                        # Convert timestamps once
+                        est_start = fields.Datetime.from_string(order.controller_estimasi_mulai)
+                        actual_start = fields.Datetime.from_string(order.controller_mulai_servis)
+                        est_end = fields.Datetime.from_string(order.controller_estimasi_selesai)
+                        actual_end = fields.Datetime.from_string(order.controller_selesai)
+
+                        # Time distribution metrics
+                        total_starts += 1
+                        if actual_start < est_start:
+                            early_starts += 1
+                        elif actual_start > est_start:
+                            late_starts += 1
+                        else:
+                            ontime_starts += 1
+
+                        # Completion metrics
+                        total_completions += 1
+                        if actual_end <= est_end:
+                            early_completions += 1
+                        else:
+                            late_completions += 1
+
+                        # Duration accuracy
+                        estimated_duration = (est_end - est_start).total_seconds() / 3600
+                        actual_duration = (actual_end - actual_start).total_seconds() / 3600
+                        if estimated_duration > 0:
+                            total_duration_orders += 1
+                            accuracy = (1 - abs(actual_duration - estimated_duration) / estimated_duration) * 100
+                            total_duration_accuracy += accuracy
+
+                    except Exception as e:
+                        _logger.error(f"Error calculating time metrics for order {order.id}: {str(e)}")
+                        continue
+
+                # Rating metrics
+                if order.customer_rating:
+                    total_rated_orders += 1
+                    total_rating += float(order.customer_rating)
+
+            # Calculate team data if mechanic is a leader
             team_data = None
             if mechanic.position_code == 'leader':
-                team_data = self._calculate_team_data(mechanic, kpis, start_date_utc, end_date_utc)
+                team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                    ('leader_id', '=', mechanic.id)
+                ])
+                
+                # Get team orders efficiently
+                team_orders = all_orders.filtered(
+                    lambda o: any(m.id in o.car_mechanic_id_new.ids for m in team_members)
+                )
+
+                if team_orders:
+                    team_metrics = self._calculate_team_metrics(team_orders, team_members)
+                    team_data = {
+                        'summary': {
+                            'total_revenue': team_metrics['revenue'] + total_revenue,
+                            'target': len(team_members) * 64000000,
+                            'total_orders': len(team_orders) + total_orders,
+                            'member_count': len(team_members)
+                        },
+                        'metrics': team_metrics
+                    }
+
+            # Calculate trends efficiently
+            trends = []
+            current = start
+            while current <= end:
+                current_date = current.date()
+                day_orders = orders_by_date.get(current_date, [])
+                
+                if day_orders:
+                    daily_stats = {
+                        'date': current_date.strftime('%Y-%m-%d'),
+                        'metrics': {
+                            'revenue': sum(o.amount_total / len(o.car_mechanic_id_new) for o in day_orders),
+                            'orders': len(day_orders),
+                            'on_time_rate': sum(
+                                1 for o in day_orders 
+                                if o.controller_selesai and o.controller_estimasi_selesai
+                                and o.controller_selesai <= o.controller_estimasi_selesai
+                            ) / len(day_orders) * 100,
+                            'rating': (
+                                sum(float(o.customer_rating) for o in day_orders if o.customer_rating) /
+                                sum(1 for o in day_orders if o.customer_rating)
+                            ) if any(o.customer_rating for o in day_orders) else 0
+                        }
+                    }
+                    trends.append(daily_stats)
+                
+                current += timedelta(days=1)
+
+            # Compile final metrics
+            metrics = {
+                'revenue': {
+                    'total': total_revenue,
+                    'target': mechanic.monthly_target,
+                    'achievement': (total_revenue / mechanic.monthly_target * 100) if mechanic.monthly_target else 0
+                },
+                'orders': {
+                    'total': total_orders,
+                    'average_value': total_revenue / total_orders if total_orders else 0
+                },
+                'performance': {
+                    'duration_accuracy': total_duration_accuracy / total_duration_orders if total_duration_orders else 0,
+                    'rating': total_rating / total_rated_orders if total_rated_orders else 0,
+                    'early_start_rate': (early_starts / total_starts * 100) if total_starts else 0,
+                    'ontime_start_rate': (ontime_starts / total_starts * 100) if total_starts else 0,
+                    'late_start_rate': (late_starts / total_starts * 100) if total_starts else 0,
+                    'early_completion_rate': (early_completions / total_completions * 100) if total_completions else 0,
+                    'late_completion_rate': (late_completions / total_completions * 100) if total_completions else 0
+                }
+            }
+
+            # Di dalam get_mechanic_detail, tambahkan ini sebelum return
+            # Get next and previous mechanic
+            all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+            mechanic_ids = all_mechanics.ids
+            current_index = mechanic_ids.index(mechanic_id)
+
+            next_mechanic = None
+            prev_mechanic = None
+
+            if current_index < len(mechanic_ids) - 1:
+                next_id = mechanic_ids[current_index + 1]
+                next_mech = request.env['pitcar.mechanic.new'].sudo().browse(next_id)
+                next_mechanic = {
+                    'id': next_mech.id,
+                    'name': next_mech.name
+                }
+
+            if current_index > 0:
+                prev_id = mechanic_ids[current_index - 1]
+                prev_mech = request.env['pitcar.mechanic.new'].sudo().browse(prev_id)
+                prev_mechanic = {
+                    'id': prev_mech.id,
+                    'name': prev_mech.name
+                }
 
             return {
                 'status': 'success',
                 'data': {
                     'date_range': {
                         'type': date_range,
-                        'start': start_date.strftime('%Y-%m-%d'),
-                        'end': end_date.strftime('%Y-%m-%d')
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
                     },
                     'mechanic': {
                         'id': mechanic.id,
@@ -1180,11 +1373,16 @@ class KPIController(http.Controller):
                             'name': mechanic.leader_id.name
                         } if mechanic.leader_id else None
                     },
-                    'metrics': self._calculate_detailed_metrics(kpis, adjusted_target),
+                    'metrics': metrics,
                     'team_data': team_data,
-                    'trends': self._get_daily_stats(kpis)
+                    'trends': trends,
+                    'navigation': {
+                        'next': next_mechanic,
+                        'previous': prev_mechanic
+                    }
                 }
             }
+
         except Exception as e:
             _logger.error(f"Error in get_mechanic_detail: {str(e)}")
             return {'status': 'error', 'message': str(e)}
@@ -1464,57 +1662,219 @@ class KPIController(http.Controller):
     def get_team_performance(self, **kw):
         """Get comprehensive team performance metrics"""
         try:
-            # Get date range
+            # Get date range parameters
             date_range = kw.get('date_range', 'today')
-            start_date, end_date = self._get_date_range(
-                date_range, 
-                kw.get('start_date'), 
-                kw.get('end_date')
-            )
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
             
-            if not start_date or not end_date:
-                return {'status': 'error', 'message': 'Invalid date range'}
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_year':
+                    start = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
 
             # Convert to UTC for database queries
-            start_date_utc = start_date.astimezone(pytz.UTC)
-            end_date_utc = end_date.astimezone(pytz.UTC)
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
 
-            # Get all team leaders
-            leaders = request.env['pitcar.mechanic.new'].search([
+            # Get all team leaders in one query
+            leaders = request.env['pitcar.mechanic.new'].sudo().search([
                 ('position_code', '=', 'leader')
             ])
 
-            # Get all KPIs in one query
-            all_kpis = request.env['mechanic.kpi'].search([
-                ('date', '>=', start_date_utc.date()),
-                ('date', '<=', end_date_utc.date())
-            ])
+            # Get all relevant orders in one query to prevent multiple database hits
+            base_domain = [
+                ('date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale'),
+            ]
+            all_orders = request.env['sale.order'].sudo().search(base_domain)
 
             teams = []
             for leader in leaders:
-                team_members = request.env['pitcar.mechanic.new'].search([
+                # Get team members
+                team_members = request.env['pitcar.mechanic.new'].sudo().search([
                     ('leader_id', '=', leader.id)
                 ])
-                
-                # Get leader and team KPIs
-                leader_kpis = all_kpis.filtered(lambda k: k.mechanic_id.id == leader.id)
-                team_kpis = all_kpis.filtered(lambda k: k.mechanic_id.id in team_members.ids)
-                all_team_kpis = leader_kpis + team_kpis
 
-                if all_team_kpis:
-                    # Calculate team target
-                    days_in_range = (end_date - start_date).days + 1
-                    total_target = ((leader.monthly_target or 64000000.0) + 
-                                sum(m.monthly_target or 64000000.0 for m in team_members))
-                    adjusted_team_target = (total_target / 30) * days_in_range
+                # Filter orders for this team from the pre-fetched orders
+                leader_orders = all_orders.filtered(lambda o: leader.id in o.car_mechanic_id_new.ids)
+                member_orders = all_orders.filtered(lambda o: any(m.id in o.car_mechanic_id_new.ids for m in team_members))
+
+                if member_orders or leader_orders:
+                    all_team_orders = leader_orders | member_orders
+
+                    # Initialize metrics counters
+                    total_starts = 0
+                    early_starts = 0
+                    ontime_starts = 0
+                    late_starts = 0
+                    total_completions = 0
+                    early_completions = 0
+                    late_completions = 0
+                    total_duration_accuracy = 0
+                    total_duration_orders = 0
+                    total_rating = 0
+                    total_rated_orders = 0
+
+                    # Pre-calculate team revenue
+                    leader_revenue = sum(order.amount_total for order in leader_orders)
+                    member_revenue = sum(order.amount_total for order in member_orders)
+                    total_revenue = leader_revenue + member_revenue
+
+                    # Group orders by date for trend calculation
+                    orders_by_date = {}
+                    for order in all_team_orders:
+                        order_date = order.date_completed.date()
+                        if order_date not in orders_by_date:
+                            orders_by_date[order_date] = []
+                        orders_by_date[order_date].append(order)
+
+                    # Calculate detailed metrics in a single pass
+                    for order in all_team_orders:
+                        required_fields = [
+                            order.controller_estimasi_mulai,
+                            order.controller_mulai_servis,
+                            order.controller_estimasi_selesai,
+                            order.controller_selesai
+                        ]
+                        
+                        if all(required_fields):
+                            try:
+                                # Convert strings to datetime only once
+                                est_start = fields.Datetime.from_string(order.controller_estimasi_mulai)
+                                actual_start = fields.Datetime.from_string(order.controller_mulai_servis)
+                                est_end = fields.Datetime.from_string(order.controller_estimasi_selesai)
+                                actual_end = fields.Datetime.from_string(order.controller_selesai)
+
+                                # Time distribution
+                                total_starts += 1
+                                if actual_start < est_start:
+                                    early_starts += 1
+                                elif actual_start > est_start:
+                                    late_starts += 1
+                                else:
+                                    ontime_starts += 1
+
+                                # Completion metrics
+                                total_completions += 1
+                                if actual_end <= est_end:
+                                    early_completions += 1
+                                else:
+                                    late_completions += 1
+
+                                # Duration accuracy
+                                estimated_duration = (est_end - est_start).total_seconds() / 3600
+                                actual_duration = (actual_end - actual_start).total_seconds() / 3600
+                                if estimated_duration > 0:
+                                    total_duration_orders += 1
+                                    accuracy = (1 - abs(actual_duration - estimated_duration) / estimated_duration) * 100
+                                    total_duration_accuracy += accuracy
+
+                            except Exception as e:
+                                _logger.error(f"Error calculating metrics for order {order.id}: {str(e)}")
+                                continue
+
+                        if order.customer_rating:
+                            total_rated_orders += 1
+                            total_rating += float(order.customer_rating)
+
+                    # Calculate trends using pre-grouped orders
+                    trends = []
+                    current = start
+                    while current <= end:
+                        current_date = current.date()
+                        day_orders = orders_by_date.get(current_date, [])
+                        
+                        if day_orders:
+                            daily_revenue = sum(o.amount_total for o in day_orders)
+                            daily_count = len(day_orders)
+                            daily_rated = [o for o in day_orders if o.customer_rating]
+                            daily_rating = (
+                                sum(float(o.customer_rating) for o in daily_rated) / len(daily_rated)
+                                if daily_rated else 0
+                            )
+                            
+                            daily_completed = [
+                                o for o in day_orders 
+                                if o.controller_selesai and o.controller_estimasi_selesai
+                            ]
+                            daily_ontime = sum(
+                                1 for o in daily_completed 
+                                if o.controller_selesai <= o.controller_estimasi_selesai
+                            )
+                            
+                            trends.append({
+                                'date': current_date.strftime('%Y-%m-%d'),
+                                'metrics': {
+                                    'revenue': daily_revenue,
+                                    'orders': daily_count,
+                                    'rating': daily_rating,
+                                    'on_time_rate': (daily_ontime / len(daily_completed) * 100) 
+                                                if daily_completed else 0
+                                }
+                            })
+                        
+                        current += timedelta(days=1)
+
+                    # Calculate team metrics
+                    team_target = len(team_members) * 64000000
+                    metrics = {
+                        'revenue': {
+                            'total': total_revenue,
+                            'target': team_target,
+                            'achievement': (total_revenue / team_target * 100) if team_target else 0
+                        },
+                        'orders': {
+                            'total': len(all_team_orders),
+                            'average_value': total_revenue / len(all_team_orders) if all_team_orders else 0
+                        },
+                        'performance': {
+                            'duration_accuracy': total_duration_accuracy / total_duration_orders if total_duration_orders else 0,
+                            'rating': total_rating / total_rated_orders if total_rated_orders else 0,
+                            'early_start_rate': (early_starts / total_starts * 100) if total_starts else 0,
+                            'ontime_start_rate': (ontime_starts / total_starts * 100) if total_starts else 0,
+                            'late_start_rate': (late_starts / total_starts * 100) if total_starts else 0,
+                            'early_completion_rate': (early_completions / total_completions * 100) if total_completions else 0,
+                            'late_completion_rate': (late_completions / total_completions * 100) if total_completions else 0
+                        }
+                    }
 
                     teams.append({
                         'id': leader.id,
                         'name': leader.name,
                         'position': 'Team',
-                        'member_count': len(team_members) + 1,  # Including leader
-                        'metrics': self._calculate_detailed_metrics(all_team_kpis, adjusted_team_target),
-                        'trends': self._get_daily_stats(all_team_kpis)
+                        'member_count': len(team_members),
+                        'metrics': metrics,
+                        'trends': trends
                     })
 
             return {
@@ -1522,12 +1882,13 @@ class KPIController(http.Controller):
                 'data': {
                     'date_range': {
                         'type': date_range,
-                        'start': start_date.strftime('%Y-%m-%d'),
-                        'end': end_date.strftime('%Y-%m-%d')
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
                     },
                     'teams': teams
                 }
             }
+
         except Exception as e:
             _logger.error(f"Error in get_team_performance: {str(e)}")
             return {'status': 'error', 'message': str(e)}
@@ -1598,3 +1959,872 @@ class KPIController(http.Controller):
             })
             
         return trend_data
+    
+    # SERVICE ADVISOR
+    @http.route('/web/v2/dashboard/service-advisor', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_service_advisor_kpi_dashboard(self, **kw):
+        """Get dashboard KPI for service advisors"""
+        try:
+            # Get date range parameters
+            date_range = kw.get('date_range', 'today')
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_year':
+                    start = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+
+            # Get all orders in one query
+            domain = [
+                ('date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale')
+            ]
+            
+            all_orders = request.env['sale.order'].sudo().search(domain)
+
+            # Get all service advisors
+            advisors = request.env['pitcar.service.advisor'].sudo().search([])
+            
+            # Calculate advisor metrics
+            advisors_data = {}
+            total_revenue = 0
+            total_orders = 0
+            total_rating_sum = 0
+            total_rated_orders = 0
+            total_complaints = 0
+            total_completed_services = 0
+            total_on_time_services = 0
+            total_confirmation_services = 0
+            total_on_time_confirmations = 0
+            total_service_time = 0
+            total_confirmation_time = 0
+
+            for order in all_orders:
+                for advisor in order.service_advisor_id:
+                    if advisor.id not in advisors_data:
+                        advisors_data[advisor.id] = {
+                            'id': advisor.id,
+                            'name': advisor.name,
+                            'revenue': 0,
+                            'orders': 0,
+                            'total_rating': 0,
+                            'rated_orders': 0,
+                            'completed_services': 0,
+                            'on_time_services': 0,
+                            'service_times': [],
+                            'confirmation_services': 0,
+                            'on_time_confirmations': 0,
+                            'confirmation_times': [],
+                            'complaints': 0,
+                            'feedback_received': 0,
+                            'google_reviews': 0,
+                            'instagram_follows': 0
+                        }
+                    
+                    advisor_data = advisors_data[advisor.id]
+                    
+                    # Calculate revenue
+                    advisor_count = len(order.service_advisor_id)
+                    order_revenue = order.amount_total / advisor_count
+                    advisor_data['revenue'] += order_revenue
+                    advisor_data['orders'] += 1
+                    
+                    # Calculate service time metrics
+                    if order.sa_mulai_penerimaan and order.sa_cetak_pkb:
+                        advisor_data['completed_services'] += 1
+                        service_time = (order.sa_cetak_pkb - order.sa_mulai_penerimaan).total_seconds() / 60
+                        advisor_data['service_times'].append(service_time)
+                        
+                        if service_time <= 15:  # 15 minutes target for service
+                            advisor_data['on_time_services'] += 1
+                            
+                        total_completed_services += 1
+                        total_service_time += service_time
+                        if service_time <= 15:
+                            total_on_time_services += 1
+
+                    # Calculate confirmation time metrics
+                    if order.controller_tunggu_konfirmasi_mulai and order.controller_tunggu_konfirmasi_selesai:
+                        advisor_data['confirmation_services'] += 1
+                        confirmation_time = (order.controller_tunggu_konfirmasi_selesai - 
+                                        order.controller_tunggu_konfirmasi_mulai).total_seconds() / 60
+                        advisor_data['confirmation_times'].append(confirmation_time)
+                        
+                        if confirmation_time <= 40:  # 40 minutes target for confirmation
+                            advisor_data['on_time_confirmations'] += 1
+                            
+                        total_confirmation_services += 1
+                        total_confirmation_time += confirmation_time
+                        if confirmation_time <= 40:
+                            total_on_time_confirmations += 1
+
+                    # Rating and feedback metrics
+                    if order.customer_rating:
+                        advisor_data['rated_orders'] += 1
+                        rating = float(order.customer_rating)
+                        advisor_data['total_rating'] += rating
+                        total_rating_sum += rating
+                        total_rated_orders += 1
+
+                    if order.customer_satisfaction in ['very_dissatisfied', 'dissatisfied']:
+                        advisor_data['complaints'] += 1
+                        total_complaints += 1
+
+                    if order.is_willing_to_feedback == 'yes':
+                        advisor_data['feedback_received'] += 1
+                    if order.review_google == 'yes':
+                        advisor_data['google_reviews'] += 1
+                    if order.follow_instagram == 'yes':
+                        advisor_data['instagram_follows'] += 1
+
+                    total_revenue += order_revenue
+                    total_orders += 1
+
+            # Process active advisors
+            active_advisors = []
+            for data in advisors_data.values():
+                if data['orders'] > 0:
+                    metrics = {
+                        'revenue': {
+                            'total': data['revenue'],
+                            'average': data['revenue'] / data['orders']
+                        },
+                        'orders': {
+                            'total': data['orders']
+                        },
+                        'performance': {
+                            'service': {
+                                'average_time': sum(data['service_times']) / len(data['service_times']) if data['service_times'] else 0,
+                                'on_time_rate': (data['on_time_services'] / data['completed_services'] * 100) 
+                                            if data['completed_services'] else 0,
+                                'total_services': data['completed_services'],
+                                'on_time_services': data['on_time_services']
+                            },
+                            'confirmation': {
+                                'average_time': sum(data['confirmation_times']) / len(data['confirmation_times']) 
+                                            if data['confirmation_times'] else 0,
+                                'on_time_rate': (data['on_time_confirmations'] / data['confirmation_services'] * 100) 
+                                            if data['confirmation_services'] else 0,
+                                'total_services': data['confirmation_services'],
+                                'on_time_services': data['on_time_confirmations']
+                            },
+                            'rating': data['total_rating'] / data['rated_orders'] if data['rated_orders'] else 0,
+                            'complaint_rate': (data['complaints'] / data['orders'] * 100) if data['orders'] else 0
+                        },
+                        'engagement': {
+                            'feedback_rate': (data['feedback_received'] / data['orders'] * 100) if data['orders'] else 0,
+                            'google_reviews': data['google_reviews'],
+                            'instagram_follows': data['instagram_follows']
+                        }
+                    }
+
+                    active_advisors.append({
+                        'id': data['id'],
+                        'name': data['name'],
+                        'metrics': metrics
+                    })
+
+            # Calculate overview metrics
+            overview = {
+                'total_revenue': total_revenue,
+                'total_orders': total_orders,
+                'average_rating': total_rating_sum / total_rated_orders if total_rated_orders else 0,
+                'service_performance': {
+                    'average_time': total_service_time / total_completed_services if total_completed_services else 0,
+                    'on_time_rate': (total_on_time_services / total_completed_services * 100) 
+                                if total_completed_services else 0,
+                    'total_services': total_completed_services,
+                    'on_time_services': total_on_time_services
+                },
+                'confirmation_performance': {
+                    'average_time': total_confirmation_time / total_confirmation_services 
+                                if total_confirmation_services else 0,
+                    'on_time_rate': (total_on_time_confirmations / total_confirmation_services * 100) 
+                                if total_confirmation_services else 0,
+                    'total_services': total_confirmation_services,
+                    'on_time_services': total_on_time_confirmations
+                },
+                'complaints': {
+                    'total': total_complaints,
+                    'rate': (total_complaints / total_orders * 100) if total_orders else 0
+                }
+            }
+
+            # Calculate daily trends
+            trends = []
+            current = start
+            while current <= end:
+                current_date = current.date()
+                day_orders = [o for o in all_orders if o.date_completed.date() == current_date]
+                
+                if day_orders:
+                    # Calculate daily metrics
+                    daily_revenue = sum(o.amount_total for o in day_orders)
+                    daily_count = len(day_orders)
+                    
+                    # Service time metrics
+                    daily_completed_services = sum(1 for o in day_orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb)
+                    daily_on_time_services = sum(1 for o in day_orders 
+                        if o.sa_mulai_penerimaan and o.sa_cetak_pkb 
+                        and (o.sa_cetak_pkb - o.sa_mulai_penerimaan).total_seconds() / 60 <= 15)
+                    
+                    # Confirmation time metrics
+                    daily_confirmation_services = sum(1 for o in day_orders 
+                        if o.controller_tunggu_konfirmasi_mulai and o.controller_tunggu_konfirmasi_selesai)
+                    daily_on_time_confirmations = sum(1 for o in day_orders 
+                        if o.controller_tunggu_konfirmasi_mulai and o.controller_tunggu_konfirmasi_selesai 
+                        and (o.controller_tunggu_konfirmasi_selesai - o.controller_tunggu_konfirmasi_mulai).total_seconds() / 60 <= 40)
+                    
+                    # Rating metrics
+                    daily_rated = [o for o in day_orders if o.customer_rating]
+                    daily_rating = (sum(float(o.customer_rating) for o in daily_rated) / len(daily_rated)) if daily_rated else 0
+                    
+                    trends.append({
+                        'date': current_date.strftime('%Y-%m-%d'),
+                        'metrics': {
+                            'revenue': daily_revenue,
+                            'orders': daily_count,
+                            'service_performance': {
+                                'on_time_rate': (daily_on_time_services / daily_completed_services * 100) 
+                                            if daily_completed_services else 0,
+                                'total_services': daily_completed_services,
+                                'on_time_services': daily_on_time_services
+                            },
+                            'confirmation_performance': {
+                                'on_time_rate': (daily_on_time_confirmations / daily_confirmation_services * 100) 
+                                            if daily_confirmation_services else 0,
+                                'total_services': daily_confirmation_services,
+                                'on_time_services': daily_on_time_confirmations
+                            },
+                            'rating': daily_rating
+                        }
+                    })
+                
+                current += timedelta(days=1)
+
+            return {
+                'status': 'success',
+                'data': {
+                    'date_range': {
+                        'type': date_range,
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
+                    },
+                    'overview': overview,
+                    'advisors': active_advisors,
+                    'trends': trends
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_service_advisor_kpi_dashboard: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+        
+    @http.route('/web/v2/dashboard/service-advisor/<int:advisor_id>', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_service_advisor_detail(self, advisor_id, **kw):
+        """Get detailed KPIs for a specific service advisor"""
+        try:
+            # Get date range parameters
+            date_range = kw.get('date_range', 'today')
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_year':
+                    start = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+            
+            # Get advisor data
+            advisor = request.env['pitcar.service.advisor'].sudo().browse(advisor_id)
+            if not advisor.exists():
+                return {'status': 'error', 'message': 'Service Advisor not found'}
+
+            # Get orders in a single query
+            domain = [
+                ('date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale'),
+                ('service_advisor_id', 'in', [advisor_id])
+            ]
+
+            orders = request.env['sale.order'].sudo().search(domain)
+
+            # Initialize metrics counters
+            total_revenue = 0
+            total_orders = len(orders)
+            service_times = []
+            completed_services = 0
+            on_time_services = 0
+            confirmation_times = []
+            confirmation_services = 0
+            on_time_confirmations = 0
+            total_rating = 0
+            rated_orders = 0
+            complaints = 0
+            feedback_received = 0
+            google_reviews = 0
+            instagram_follows = 0
+
+            # Calculate daily performance
+            orders_by_date = {}
+            for order in orders:
+                # Get order date
+                order_date = order.date_completed.date()
+                if order_date not in orders_by_date:
+                    orders_by_date[order_date] = []
+                orders_by_date[order_date].append(order)
+
+                # Calculate revenue considering multiple advisors
+                advisor_count = len(order.service_advisor_id)
+                order_revenue = order.amount_total / advisor_count
+                total_revenue += order_revenue
+
+                # Service time metrics
+                if order.sa_mulai_penerimaan and order.sa_cetak_pkb:
+                    completed_services += 1
+                    service_time = (order.sa_cetak_pkb - order.sa_mulai_penerimaan).total_seconds() / 60
+                    service_times.append(service_time)
+                    if service_time <= 15:  # 15 minutes target for service
+                        on_time_services += 1
+
+                # Confirmation time metrics
+                if order.controller_tunggu_konfirmasi_mulai and order.controller_tunggu_konfirmasi_selesai:
+                    confirmation_services += 1
+                    confirmation_time = (order.controller_tunggu_konfirmasi_selesai - 
+                                    order.controller_tunggu_konfirmasi_mulai).total_seconds() / 60
+                    confirmation_times.append(confirmation_time)
+                    if confirmation_time <= 40:  # 40 minutes target for confirmation
+                        on_time_confirmations += 1
+
+                # Rating and feedback metrics
+                if order.customer_rating:
+                    rated_orders += 1
+                    total_rating += float(order.customer_rating)
+
+                if order.customer_satisfaction in ['very_dissatisfied', 'dissatisfied']:
+                    complaints += 1
+
+                if order.is_willing_to_feedback == 'yes':
+                    feedback_received += 1
+                if order.review_google == 'yes':
+                    google_reviews += 1
+                if order.follow_instagram == 'yes':
+                    instagram_follows += 1
+
+            # Get next and previous advisors
+            all_advisors = request.env['pitcar.service.advisor'].sudo().search([])
+            advisor_ids = all_advisors.ids
+            current_index = advisor_ids.index(advisor_id)
+
+            next_advisor = None
+            prev_advisor = None
+
+            if current_index < len(advisor_ids) - 1:
+                next_id = advisor_ids[current_index + 1]
+                next_adv = request.env['pitcar.service.advisor'].sudo().browse(next_id)
+                next_advisor = {
+                    'id': next_adv.id,
+                    'name': next_adv.name
+                }
+
+            if current_index > 0:
+                prev_id = advisor_ids[current_index - 1]
+                prev_adv = request.env['pitcar.service.advisor'].sudo().browse(prev_id)
+                prev_advisor = {
+                    'id': prev_adv.id,
+                    'name': prev_adv.name
+                }
+
+            # Calculate trends
+            trends = []
+            current = start
+            while current <= end:
+                current_date = current.date()
+                day_orders = orders_by_date.get(current_date, [])
+                
+                if day_orders:
+                    # Calculate daily service metrics
+                    daily_completed = sum(1 for o in day_orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb)
+                    daily_on_time = sum(1 for o in day_orders 
+                        if o.sa_mulai_penerimaan and o.sa_cetak_pkb 
+                        and (o.sa_cetak_pkb - o.sa_mulai_penerimaan).total_seconds() / 60 <= 15)
+
+                    # Calculate daily confirmation metrics
+                    daily_confirmations = sum(1 for o in day_orders 
+                        if o.controller_tunggu_konfirmasi_mulai and o.controller_tunggu_konfirmasi_selesai)
+                    daily_on_time_conf = sum(1 for o in day_orders 
+                        if o.controller_tunggu_konfirmasi_mulai and o.controller_tunggu_konfirmasi_selesai 
+                        and (o.controller_tunggu_konfirmasi_selesai - o.controller_tunggu_konfirmasi_mulai).total_seconds() / 60 <= 40)
+
+                    # Calculate daily revenue and rating
+                    daily_revenue = sum(o.amount_total / len(o.service_advisor_id) for o in day_orders)
+                    daily_rated = [o for o in day_orders if o.customer_rating]
+                    daily_rating = (
+                        sum(float(o.customer_rating) for o in daily_rated) / len(daily_rated)
+                        if daily_rated else 0
+                    )
+
+                    trends.append({
+                        'date': current_date.strftime('%Y-%m-%d'),
+                        'metrics': {
+                            'revenue': daily_revenue,
+                            'orders': len(day_orders),
+                            'service_performance': {
+                                'on_time_rate': (daily_on_time / daily_completed * 100) if daily_completed else 0,
+                                'total_services': daily_completed,
+                                'on_time_services': daily_on_time
+                            },
+                            'confirmation_performance': {
+                                'on_time_rate': (daily_on_time_conf / daily_confirmations * 100) if daily_confirmations else 0,
+                                'total_services': daily_confirmations,
+                                'on_time_services': daily_on_time_conf
+                            },
+                            'rating': daily_rating
+                        }
+                    })
+                
+                current += timedelta(days=1)
+
+            # Compile final metrics
+            metrics = {
+                'revenue': {
+                    'total': total_revenue,
+                    'average': total_revenue / total_orders if total_orders else 0
+                },
+                'orders': {
+                    'total': total_orders
+                },
+                'performance': {
+                    'service': {
+                        'average_time': sum(service_times) / len(service_times) if service_times else 0,
+                        'on_time_rate': (on_time_services / completed_services * 100) if completed_services else 0,
+                        'total_services': completed_services,
+                        'on_time_services': on_time_services
+                    },
+                    'confirmation': {
+                        'average_time': sum(confirmation_times) / len(confirmation_times) if confirmation_times else 0,
+                        'on_time_rate': (on_time_confirmations / confirmation_services * 100) if confirmation_services else 0,
+                        'total_services': confirmation_services,
+                        'on_time_services': on_time_confirmations
+                    },
+                    'rating': total_rating / rated_orders if rated_orders else 0,
+                    'complaint_rate': (complaints / total_orders * 100) if total_orders else 0
+                },
+                'engagement': {
+                    'feedback_rate': (feedback_received / total_orders * 100) if total_orders else 0,
+                    'google_reviews': google_reviews,
+                    'instagram_follows': instagram_follows
+                }
+            }
+
+            return {
+                'status': 'success',
+                'data': {
+                    'date_range': {
+                        'type': date_range,
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
+                    },
+                    'advisor': {
+                        'id': advisor.id,
+                        'name': advisor.name
+                    },
+                    'metrics': metrics,
+                    'trends': trends,
+                    'navigation': {
+                        'next': next_advisor,
+                        'previous': prev_advisor
+                    }
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_service_advisor_detail: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/statistics/overview', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_dashboard_overview(self, **kw):
+        """Get comprehensive dashboard overview"""
+        try:
+            # Get date range parameters
+            date_range = kw.get('date_range', 'today')
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_year':
+                    start = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+
+            # Get previous period for comparison
+            delta = end_utc - start_utc
+            prev_end = start_utc - timedelta(microseconds=1)
+            prev_start = prev_end - delta
+
+            # Get current period orders and quotations
+            current_domain = [
+                ('create_date', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('create_date', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ]
+
+            # Get previous period orders and quotations
+            prev_domain = [
+                ('create_date', '>=', prev_start.strftime('%Y-%m-%d %H:%M:%S')),
+                ('create_date', '<=', prev_end.strftime('%Y-%m-%d %H:%M:%S'))
+            ]
+
+            # Get quotations
+            current_quotations = request.env['sale.order'].sudo().search([
+                *current_domain,
+                ('state', '=', 'draft')
+            ])
+            prev_quotations = request.env['sale.order'].sudo().search([
+                *prev_domain,
+                ('state', '=', 'draft')
+            ])
+
+            # Get confirmed orders
+            current_orders = request.env['sale.order'].sudo().search([
+                *current_domain,
+                ('state', '=', 'sale')
+            ])
+            prev_orders = request.env['sale.order'].sudo().search([
+                *prev_domain,
+                ('state', '=', 'sale')
+            ])
+
+            # Calculate basic metrics
+            current_revenue = sum(order.amount_total for order in current_orders)
+            prev_revenue = sum(order.amount_total for order in prev_orders)
+            
+            metrics = {
+                'quotations': {
+                    'current': len(current_quotations),
+                    'previous': len(prev_quotations),
+                    'growth': ((len(current_quotations) - len(prev_quotations)) / len(prev_quotations) * 100) 
+                            if prev_quotations else 0
+                },
+                'orders': {
+                    'current': len(current_orders),
+                    'previous': len(prev_orders),
+                    'growth': ((len(current_orders) - len(prev_orders)) / len(prev_orders) * 100) 
+                            if prev_orders else 0
+                },
+                'revenue': {
+                    'current': current_revenue,
+                    'previous': prev_revenue,
+                    'growth': ((current_revenue - prev_revenue) / prev_revenue * 100) if prev_revenue else 0
+                },
+                'average_order': {
+                    'current': current_revenue / len(current_orders) if current_orders else 0,
+                    'previous': prev_revenue / len(prev_orders) if prev_orders else 0,
+                    'growth': (((current_revenue / len(current_orders) if current_orders else 0) - 
+                            (prev_revenue / len(prev_orders) if prev_orders else 0)) / 
+                            (prev_revenue / len(prev_orders) if prev_orders else 1) * 100)
+                            if prev_orders else 0
+                }
+            }
+
+            # Calculate daily/monthly sales trend
+            trends = []
+            current = start
+            while current <= end:
+                current_end = min(current.replace(hour=23, minute=59, second=59), end)
+                day_orders = request.env['sale.order'].sudo().search([
+                    ('create_date', '>=', current.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('create_date', '<=', current_end.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('state', '=', 'sale')
+                ])
+                
+                if day_orders:
+                    trends.append({
+                        'date': current.strftime('%Y-%m-%d'),
+                        'revenue': sum(order.amount_total for order in day_orders),
+                        'orders': len(day_orders)
+                    })
+                
+                current += timedelta(days=1)
+
+            # Get top products
+            order_lines = request.env['sale.order.line'].sudo().search([
+                ('order_id.state', '=', 'sale'),
+                *current_domain
+            ])
+            
+            products_data = {}
+            for line in order_lines:
+                if line.product_id.id not in products_data:
+                    products_data[line.product_id.id] = {
+                        'id': line.product_id.id,
+                        'name': line.product_id.name,
+                        'orders': 0,
+                        'revenue': 0
+                    }
+                products_data[line.product_id.id]['orders'] += line.product_uom_qty
+                products_data[line.product_id.id]['revenue'] += line.price_subtotal
+
+            top_products = sorted(
+                products_data.values(),
+                key=lambda x: x['revenue'],
+                reverse=True
+            )[:10]
+
+            # Get top quotations
+            top_quotations = [{
+                'id': quot.id,
+                'name': quot.name,
+                'customer': quot.partner_id.name,
+                'service_advisor': [sa.name for sa in quot.service_advisor_id],
+                'amount': quot.amount_total
+            } for quot in sorted(
+                current_quotations,
+                key=lambda x: x.amount_total,
+                reverse=True
+            )[:10]]
+
+            # Get top sales orders
+            top_sales = [{
+                'id': order.id,
+                'name': order.name,
+                'customer': order.partner_id.name,
+                'service_advisor': [sa.name for sa in order.service_advisor_id],
+                'mechanic': [m.name for m in order.car_mechanic_id_new],
+                'amount': order.amount_total
+            } for order in sorted(
+                current_orders,
+                key=lambda x: x.amount_total,
+                reverse=True
+            )[:10]]
+
+            # Get top customers
+            customer_data = {}
+            for order in current_orders:
+                if order.partner_id.id not in customer_data:
+                    customer_data[order.partner_id.id] = {
+                        'id': order.partner_id.id,
+                        'name': order.partner_id.name,
+                        'orders': 0,
+                        'revenue': 0
+                    }
+                customer_data[order.partner_id.id]['orders'] += 1
+                customer_data[order.partner_id.id]['revenue'] += order.amount_total
+
+            top_customers = sorted(
+                customer_data.values(),
+                key=lambda x: x['revenue'],
+                reverse=True
+            )[:10]
+
+            # Get top service categories
+            # categories_data = {}
+            # for line in order_lines:
+            #     categ_id = line.product_id.categ_id.id
+            #     if categ_id not in categories_data:
+            #         categories_data[categ_id] = {
+            #             'id': categ_id,
+            #             'name': line.product_id.categ_id.name,
+            #             'orders': 0,
+            #             'revenue': 0
+            #         }
+            #     categories_data[categ_id]['orders'] += line.product_uom_qty
+            #     categories_data[categ_id]['revenue'] += line.price_subtotal
+
+            # top_categories = sorted(
+            #     categories_data.values(),
+            #     key=lambda x: x['revenue'],
+            #     reverse=True
+            # )[:10]
+
+             # Get top service categories 
+            subcategory_data = {key: {'name': label, 'orders': 0, 'revenue': 0}
+                    for key, label in request.env['sale.order']._fields['service_subcategory'].selection}
+
+            # Calculate subcategories data
+            for order in current_orders:
+                if order.service_subcategory:
+                    subcategory_data[order.service_subcategory]['orders'] += 1
+                    subcategory_data[order.service_subcategory]['revenue'] += order.amount_total
+
+            # Format and sort categories (with empty list fallback)
+            formatted_categories = []
+            if current_orders:
+                formatted_categories = [
+                    {
+                        'id': subcat_key,
+                        'name': subcat['name'], 
+                        'orders': subcat['orders'],
+                        'revenue': subcat['revenue']
+                    }
+                    for subcat_key, subcat in subcategory_data.items() 
+                    if subcat['orders'] > 0
+                ]
+                formatted_categories.sort(key=lambda x: x['revenue'], reverse=True)
+
+            # Get top service advisors
+            advisor_data = {}
+            for order in current_orders:
+                for advisor in order.service_advisor_id:
+                    if advisor.id not in advisor_data:
+                        advisor_data[advisor.id] = {
+                            'id': advisor.id,
+                            'name': advisor.name,
+                            'orders': 0,
+                            'revenue': 0
+                        }
+                    advisor_data[advisor.id]['orders'] += 1
+                    advisor_data[advisor.id]['revenue'] += order.amount_total / len(order.service_advisor_id)
+
+            top_advisors = sorted(
+                advisor_data.values(),
+                key=lambda x: x['revenue'],
+                reverse=True
+            )[:10]
+
+            # Get top mechanics
+            mechanic_data = {}
+            for order in current_orders:
+                for mechanic in order.car_mechanic_id_new:
+                    if mechanic.id not in mechanic_data:
+                        mechanic_data[mechanic.id] = {
+                            'id': mechanic.id,
+                            'name': mechanic.name,
+                            'orders': 0,
+                            'revenue': 0
+                        }
+                    mechanic_data[mechanic.id]['orders'] += 1
+                    mechanic_data[mechanic.id]['revenue'] += order.amount_total / len(order.car_mechanic_id_new)
+
+            top_mechanics = sorted(
+                mechanic_data.values(),
+                key=lambda x: x['revenue'],
+                reverse=True
+            )[:10]
+
+            return {
+                'status': 'success',
+                'data': {
+                    'date_range': {
+                        'type': date_range,
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
+                    },
+                    'metrics': metrics,
+                    'trends': trends,
+                    'top_data': {
+                        'products': top_products,
+                        'quotations': top_quotations,
+                        'sales': top_sales,
+                        'customers': top_customers,
+                        # 'categories': top_categories,
+                        'categories': formatted_categories,
+                        'advisors': top_advisors,
+                        'mechanics': top_mechanics
+                    }
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_dashboard_overview: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

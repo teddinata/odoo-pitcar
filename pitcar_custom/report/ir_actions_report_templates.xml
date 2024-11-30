@@ -28,7 +28,7 @@
                     <span t-else="">Order # </span>
                     <span t-field="doc.name" />
                 </h2>
-                <div class="main-content" style="padding-bottom: 500px;"> 
+                <div class="main-content"> 
 
                     <div id="informations" class="mt-4 mb-4">
                         <div class="row">

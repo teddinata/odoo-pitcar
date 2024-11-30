@@ -1270,7 +1270,94 @@ class KPIController(http.Controller):
                 )
 
                 if team_orders:
-                    team_metrics = self._calculate_team_metrics(team_orders, team_members)
+                    # Calculate team metrics here directly instead of separate function
+                    team_metrics = {
+                        'revenue': 0,
+                        'orders': len(team_orders),
+                        'performance': {
+                            'duration_accuracy': 0,
+                            'rating': 0,
+                            'early_start_rate': 0,
+                            'ontime_start_rate': 0,
+                            'late_start_rate': 0,
+                            'early_completion_rate': 0,
+                            'late_completion_rate': 0
+                        }
+                    }
+                    
+                    # Tracking totals for averages
+                    total_starts = 0
+                    early_starts = 0
+                    ontime_starts = 0
+                    late_starts = 0
+                    total_completions = 0
+                    early_completions = 0
+                    late_completions = 0
+                    total_duration_accuracy = 0
+                    total_duration_orders = 0
+                    total_rating = 0
+                    total_rated_orders = 0
+
+                    for order in team_orders:
+                        # Calculate revenue per mechanic
+                        team_mechanics_count = sum(1 for m in order.car_mechanic_id_new if m in team_members)
+                        if team_mechanics_count > 0:  # Only count if team members worked on it
+                            team_metrics['revenue'] += order.amount_total / len(order.car_mechanic_id_new) * team_mechanics_count
+
+                        # Calculate time-based metrics
+                        if all([order.controller_estimasi_mulai, order.controller_mulai_servis,
+                                order.controller_estimasi_selesai, order.controller_selesai]):
+                            try:
+                                # Convert timestamps
+                                est_start = fields.Datetime.from_string(order.controller_estimasi_mulai)
+                                actual_start = fields.Datetime.from_string(order.controller_mulai_servis)
+                                est_end = fields.Datetime.from_string(order.controller_estimasi_selesai)
+                                actual_end = fields.Datetime.from_string(order.controller_selesai)
+
+                                # Time distribution metrics
+                                total_starts += 1
+                                if actual_start < est_start:
+                                    early_starts += 1
+                                elif actual_start > est_start:
+                                    late_starts += 1
+                                else:
+                                    ontime_starts += 1
+
+                                # Completion metrics
+                                total_completions += 1
+                                if actual_end <= est_end:
+                                    early_completions += 1
+                                else:
+                                    late_completions += 1
+
+                                # Duration accuracy
+                                estimated_duration = (est_end - est_start).total_seconds() / 3600
+                                actual_duration = (actual_end - actual_start).total_seconds() / 3600
+                                if estimated_duration > 0:
+                                    total_duration_orders += 1
+                                    accuracy = (1 - abs(actual_duration - estimated_duration) / estimated_duration) * 100
+                                    total_duration_accuracy += accuracy
+
+                            except Exception as e:
+                                _logger.error(f"Error calculating team time metrics for order {order.id}: {str(e)}")
+                                continue
+
+                        # Rating metrics
+                        if order.customer_rating:
+                            total_rated_orders += 1
+                            total_rating += float(order.customer_rating)
+
+                    # Calculate final performance metrics
+                    team_metrics['performance'].update({
+                        'duration_accuracy': total_duration_accuracy / total_duration_orders if total_duration_orders else 0,
+                        'rating': total_rating / total_rated_orders if total_rated_orders else 0,
+                        'early_start_rate': (early_starts / total_starts * 100) if total_starts else 0,
+                        'ontime_start_rate': (ontime_starts / total_starts * 100) if total_starts else 0,
+                        'late_start_rate': (late_starts / total_starts * 100) if total_starts else 0,
+                        'early_completion_rate': (early_completions / total_completions * 100) if total_completions else 0,
+                        'late_completion_rate': (late_completions / total_completions * 100) if total_completions else 0
+                    })
+
                     team_data = {
                         'summary': {
                             'total_revenue': team_metrics['revenue'] + total_revenue,

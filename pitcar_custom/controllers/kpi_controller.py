@@ -2740,20 +2740,37 @@ class KPIController(http.Controller):
                 *current_domain
             ])
             
-            products_data = {}
+            # Get top products separated by category
+            service_products = {}
+            physical_products = {}
+
             for line in order_lines:
-                if line.product_id.id not in products_data:
-                    products_data[line.product_id.id] = {
-                        'id': line.product_id.id,
-                        'name': line.product_id.name,
+                product = line.product_id
+                # Check if product is a service
+                is_service = product.type == 'service'  # or use your own criteria to determine service
+                
+                # Choose target dictionary based on product type
+                target_dict = service_products if is_service else physical_products
+                
+                if product.id not in target_dict:
+                    target_dict[product.id] = {
+                        'id': product.id,
+                        'name': product.name,
                         'orders': 0,
                         'revenue': 0
                     }
-                products_data[line.product_id.id]['orders'] += line.product_uom_qty
-                products_data[line.product_id.id]['revenue'] += line.price_subtotal
+                target_dict[product.id]['orders'] += line.product_uom_qty
+                target_dict[product.id]['revenue'] += line.price_subtotal
 
-            top_products = sorted(
-                products_data.values(),
+            # Sort and get top 10 for each category
+            top_services = sorted(
+                service_products.values(),
+                key=lambda x: x['revenue'],
+                reverse=True
+            )[:10]
+
+            top_physical_products = sorted(
+                physical_products.values(),
                 key=lambda x: x['revenue'],
                 reverse=True
             )[:10]
@@ -2900,7 +2917,10 @@ class KPIController(http.Controller):
                     'metrics': metrics,
                     'trends': trends,
                     'top_data': {
-                        'products': top_products,
+                         'products': {
+                            'services': top_services,
+                            'physical': top_physical_products
+                        },
                         'quotations': top_quotations,
                         'sales': top_sales,
                         'customers': top_customers,

@@ -962,9 +962,13 @@ class CustomerRatingAPI(Controller):
                 'message': str(e)
             }
     
-    @route('/web/after-service/feedback/<int:order_id>', type='json', auth='public', methods=['POST'])
-    def get_feedback_details(self, order_id):
+    # Backend endpoint untuk mendapatkan detail feedback
+    @route('/web/after-service/feedback/<int:order_id>/<string:database>', type='json', auth='public', methods=['POST'])
+    def get_feedback_details(self, order_id, database):
         try:
+            # Set database sebelum query
+            request.session.db = database
+            
             if not order_id:
                 return {'status': 'error', 'message': 'Order ID is required'}
 
@@ -974,12 +978,11 @@ class CustomerRatingAPI(Controller):
             if not order.exists():
                 return {'status': 'error', 'message': 'Order not found'}
 
-            # Check expiry only if feedback_link_expiry exists and has a value
+            # Pengecekan expiry
             if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):
                 if fields.Datetime.now() > order.feedback_link_expiry:
                     return {'status': 'error', 'message': 'Feedback link expired'}
 
-            # Safely handle date formatting
             completion_date = order.date_completed.strftime('%Y-%m-%d') if order.date_completed else None
 
             return {
@@ -1004,13 +1007,15 @@ class CustomerRatingAPI(Controller):
             _logger.error(f"Error in get_feedback_details: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
+
     @route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'])
     def submit_feedback(self, **kwargs):
         """Submit feedback for order"""
         try:
-            order_id = kwargs.get('order_id')
-            rating = kwargs.get('rating')
-            feedback = kwargs.get('feedback')
+            params = kwargs
+            order_id = params.get('order_id')
+            rating = params.get('rating')
+            feedback = params.get('feedback')
 
             if not all([order_id, rating]):
                 return {'status': 'error', 'message': 'Missing required fields'}
@@ -1021,11 +1026,11 @@ class CustomerRatingAPI(Controller):
             if not order.exists():
                 return {'status': 'error', 'message': 'Order not found'}
 
-            # Check if feedback link has expired
-            if fields.Datetime.now() > order.feedback_link_expiry:
-                return {'status': 'error', 'message': 'Feedback link has expired'}
+            # Perbaikan pengecekan expiry
+            if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):
+                if fields.Datetime.now() > order.feedback_link_expiry:
+                    return {'status': 'error', 'message': 'Feedback link expired'}
 
-            # Update order with feedback
             order.write({
                 'post_service_rating': str(rating),
                 'post_service_feedback': feedback
@@ -1037,4 +1042,5 @@ class CustomerRatingAPI(Controller):
             }
 
         except Exception as e:
+            _logger.error(f"Error in submit_feedback: {str(e)}")
             return {'status': 'error', 'message': str(e)}

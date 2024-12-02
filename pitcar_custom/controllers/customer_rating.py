@@ -6,6 +6,7 @@ import logging
 import pytz
 from math import ceil
 import urllib.parse
+import base64
 
 _logger = logging.getLogger(__name__)
 
@@ -872,7 +873,65 @@ class CustomerRatingAPI(Controller):
         except Exception as e:
             _logger.error(f"Error in get_reminder_dashboard: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+    # def _generate_feedback_token(self, order):
+    #     try:
+    #         # Ambil data yang akan dienkripsi
+    #         data = {
+    #             'order_id': order.id,
+    #             'database': request.env.cr.dbname,
+    #             'timestamp': fields.Datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    #         }
+            
+    #         # Enkripsi data menggunakan secret key
+    #         secret_key = request.env['ir.config_parameter'].sudo().get_param('database.secret')
+    #         encrypted = self._encrypt_data(data, secret_key)
+            
+    #         # Convert ke base64 agar aman di URL
+    #         token = base64.urlsafe_b64encode(encrypted).decode()
+            
+    #         return token
+            
+    #     except Exception as e:
+    #         _logger.error(f"Error generating token: {str(e)}")
+    #         return None
+        
+    # def _generate_whatsapp_link(self, order):
+    #     try:
+    #         if not order.partner_id.mobile:
+    #             return None
 
+    #         # Clean phone number
+    #         phone = order.partner_id.mobile
+    #         clean_phone = ''.join(filter(str.isdigit, phone))
+    #         if clean_phone.startswith('0'):
+    #             clean_phone = '62' + clean_phone[1:]
+    #         elif not clean_phone.startswith('62'):
+    #             clean_phone = '62' + clean_phone
+
+    #         # Generate encrypted token
+    #         token = self._generate_feedback_token(order)
+    #         if not token:
+    #             return None
+
+    #         # Generate message
+    #         base_url = "https://pitscore.pitcar.co.id"
+    #         feedback_url = f"{base_url}/feedback/{token}"
+            
+    #         message = f"""Halo {order.partner_id.name},
+
+    # Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di bengkel kami.
+
+    # Bagaimana kondisi kendaraan Anda setelah 3 hari servis? Mohon berikan penilaian Anda melalui link berikut:
+    # {feedback_url}
+
+    # Terima kasih atas feedback Anda!"""
+
+    #         return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
+            
+    #     except Exception as e:
+    #         _logger.error(f"Error generating WhatsApp link: {str(e)}")
+    #         return None
+        
     def _generate_whatsapp_link(self, order):
         """Helper function to generate WhatsApp link"""
         try:
@@ -887,10 +946,12 @@ class CustomerRatingAPI(Controller):
             elif not clean_phone.startswith('62'):
                 clean_phone = '62' + clean_phone
 
-            # Generate message
-            # base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url')
+            # Get current database
+            database = request.env.cr.dbname
+
+            # Generate message with database parameter
             base_url = "https://pitscore.pitcar.co.id"
-            feedback_url = f"{base_url}/feedback/{order.id}"
+            feedback_url = f"{base_url}/feedback/{order.id}?db={database}"
             
             message = f"""Halo {order.partner_id.name},
 

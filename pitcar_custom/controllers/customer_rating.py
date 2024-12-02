@@ -1024,17 +1024,29 @@ class CustomerRatingAPI(Controller):
             }
     
     # Backend endpoint untuk mendapatkan detail feedback
-    @route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'])
+    @route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST']) 
     def get_feedback_details(self, **kwargs):
         try:
-            params = kwargs.get('params', {})
+            # Debug log untuk melihat raw input
+            _logger.info(f"Raw input kwargs: {kwargs}")
+
+            # Cek jika params ada dalam kwargs
+            params = kwargs
+            _logger.info(f"Params: {params}")
+
             order_id = params.get('order_id')
             database = params.get('db')
+            
+            _logger.info(f"Extracted values - order_id: {order_id}, database: {database}")
 
+            # Validasi parameter
             if not all([order_id, database]):
-                return {'status': 'error', 'message': 'Missing required parameters'}
+                return {
+                    'status': 'error',
+                    'message': f'Missing required parameters. Got order_id={order_id}, db={database}'
+                }
 
-            # Set database
+            # Set database ke session
             request.session.db = database
 
             SaleOrder = request.env['sale.order'].sudo()
@@ -1042,7 +1054,6 @@ class CustomerRatingAPI(Controller):
 
             if not order.exists():
                 return {'status': 'error', 'message': 'Order not found'}
-
 
             # Pengecekan expiry
             if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):
@@ -1068,7 +1079,6 @@ class CustomerRatingAPI(Controller):
                     } for line in order.order_line if line.product_id]
                 }
             }
-
         except Exception as e:
             _logger.error(f"Error in get_feedback_details: {str(e)}")
             return {'status': 'error', 'message': str(e)}

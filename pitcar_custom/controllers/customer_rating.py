@@ -5,6 +5,7 @@ import json
 import logging
 import pytz
 from math import ceil
+import urllib.parse
 
 _logger = logging.getLogger(__name__)
 
@@ -718,3 +719,191 @@ class CustomerRatingAPI(Controller):
                 'status': 'error',
                 'message': str(e)
             }
+        
+    # REMINDER API
+    @route('/web/reminder/dashboard', type='json', auth='public', methods=['POST'])
+    def get_reminder_dashboard(self, **kwargs):
+        """Get dashboard data including pending reminders and history"""
+        try:
+            SaleOrder = request.env['sale.order'].sudo()
+            tz = pytz.timezone('Asia/Jakarta')
+            today = datetime.now(tz).date()
+            three_days_ago = today - timedelta(days=3)
+
+            # Get pending reminders
+            pending_domain = [
+                ('date_completed', '>=', three_days_ago.strftime('%Y-%m-%d 00:00:00')),
+                ('date_completed', '<=', three_days_ago.strftime('%Y-%m-%d 23:59:59')),
+                ('state', 'in', ['sale', 'done']),
+                ('reminder_sent', '=', False)
+            ]
+
+            # Get reminder history (last 7 days)
+            history_domain = [
+                ('reminder_sent', '=', True),
+                ('reminder_sent_date', '>=', (today - timedelta(days=7)).strftime('%Y-%m-%d'))
+            ]
+
+            pending_orders = SaleOrder.search(pending_domain)
+            reminder_history = SaleOrder.search(history_domain)
+
+            # Calculate statistics
+            total_reminders_sent = len(reminder_history)
+            total_feedback_received = len(reminder_history.filtered(lambda o: o.post_service_rating))
+            response_rate = (total_feedback_received / total_reminders_sent * 100) if total_reminders_sent > 0 else 0
+
+            result = {
+                'pending_reminders': [{
+                    'id': order.id,
+                    'name': order.name,
+                    'customer_name': order.partner_id.name,
+                    'customer_phone': order.partner_id.mobile,
+                    'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                    'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
+                    'whatsapp_link': self._generate_whatsapp_link(order)
+                } for order in pending_orders],
+                
+                'reminder_history': [{
+                    'id': order.id,
+                    'name': order.name,
+                    'customer_name': order.partner_id.name,
+                    'reminder_date': order.reminder_sent_date.strftime('%Y-%m-%d %H:%M:%S'),
+                    'has_feedback': bool(order.post_service_rating),
+                    'rating': order.post_service_rating,
+                    'feedback': order.post_service_feedback
+                } for order in reminder_history],
+
+                'statistics': {
+                    'total_pending': len(pending_orders),
+                    'total_reminders_sent': total_reminders_sent,
+                    'total_feedback_received': total_feedback_received,
+                    'response_rate': round(response_rate, 2)
+                }
+            }
+
+            return {'status': 'success', 'data': result}
+
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    def _generate_whatsapp_link(self, order):
+        """Generate WhatsApp link with message for order"""
+        base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        feedback_url = f"{base_url}/feedback/{order.id}"
+        
+        message = f"""Halo {order.partner_id.name},
+
+Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di bengkel kami.
+
+Bagaimana kondisi kendaraan Anda setelah 3 hari servis? Mohon berikan penilaian Anda melalui link berikut:
+{feedback_url}
+
+Terima kasih atas feedback Anda!"""
+
+        phone = order.partner_id.mobile
+        clean_phone = ''.join(filter(str.isdigit, phone or ''))
+        if clean_phone.startswith('0'):
+            clean_phone = '62' + clean_phone[1:]
+        elif not clean_phone.startswith('62'):
+            clean_phone = '62' + clean_phone
+
+        return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
+
+    @route('/web/reminder/mark-sent', type='json', auth='public', methods=['POST'])
+    def mark_reminders_sent(self, **kwargs):
+        """Mark selected orders as reminder sent"""
+        try:
+            order_ids = kwargs.get('order_ids', [])
+            if not order_ids:
+                return {'status': 'error', 'message': 'No orders selected'}
+
+            SaleOrder = request.env['sale.order'].sudo()
+            orders = SaleOrder.browse(order_ids)
+            
+            # Set reminder sent and expiry date
+            now = fields.Datetime.now()
+            orders.write({
+                'reminder_sent': True,
+                'reminder_sent_date': now,
+                'feedback_link_expiry': now + timedelta(days=7)
+            })
+
+            return {'status': 'success', 'message': f'{len(orders)} reminders marked as sent'}
+
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+        
+    
+    @route('/web/after-service/feedback/<int:order_id>', type='http', auth='public', website=True)
+    def feedback_page(self, order_id):
+        """Render feedback page for order"""
+        try:
+            SaleOrder = request.env['sale.order'].sudo()
+            order = SaleOrder.browse(order_id)
+
+            if not order.exists():
+                return request.render('website.404')
+
+            # Check if feedback link has expired
+            if fields.Datetime.now() > order.feedback_link_expiry:
+                return request.render('website.404', {
+                    'error': 'This feedback link has expired'
+                })
+
+            # Prepare data for template
+            values = {
+                'order': {
+                    'name': order.name,
+                    'completion_date': order.date_completed.strftime('%Y-%m-%d') if order.date_completed else '',
+                    'customer_name': order.partner_id.name,
+                    'vehicle': {
+                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                        'brand': order.partner_car_brand.name if order.partner_car_brand else '',
+                        'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+                    },
+                    'services': [{
+                        'name': line.product_id.name,
+                        'quantity': line.product_uom_qty,
+                    } for line in order.order_line]
+                }
+            }
+
+            return request.render('your_module.feedback_template', values)
+
+        except Exception as e:
+            return request.render('website.404')
+
+    @route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'])
+    def submit_feedback(self, **kwargs):
+        """Submit feedback for order"""
+        try:
+            order_id = kwargs.get('order_id')
+            rating = kwargs.get('rating')
+            feedback = kwargs.get('feedback')
+
+            if not all([order_id, rating]):
+                return {'status': 'error', 'message': 'Missing required fields'}
+
+            SaleOrder = request.env['sale.order'].sudo()
+            order = SaleOrder.browse(int(order_id))
+
+            if not order.exists():
+                return {'status': 'error', 'message': 'Order not found'}
+
+            # Check if feedback link has expired
+            if fields.Datetime.now() > order.feedback_link_expiry:
+                return {'status': 'error', 'message': 'Feedback link has expired'}
+
+            # Update order with feedback
+            order.write({
+                'post_service_rating': str(rating),
+                'post_service_feedback': feedback
+            })
+
+            return {
+                'status': 'success',
+                'message': 'Thank you for your feedback!'
+            }
+
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}

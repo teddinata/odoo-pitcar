@@ -419,7 +419,48 @@ class SaleOrder(models.Model):
                             raise ValidationError(f"Invalid value for {rating}. Must be between 1 and 5.")
                 except Exception as e:
                     raise ValidationError(f"Invalid detailed ratings format: {str(e)}")
-     # Fields for 3 months reminder
+
+    # REMINDER AFTER SERVICE 3 DAYS
+    # # Fields untuk H+3 Follow-up
+    post_service_rating = fields.Selection([
+        ('1', '1'), ('2', '2'), ('3', '3'), ('4', '4'), ('5', '5')
+    ], string='Post-Service Rating',
+    help='Penilaian customer terhadap hasil servis setelah 3 hari penggunaan')
+    
+    post_service_feedback = fields.Text(
+        string='Post-Service Feedback',
+        help='Feedback customer terhadap hasil servis setelah 3 hari penggunaan'
+    )
+
+    # Fields untuk tracking reminder
+    reminder_sent = fields.Boolean('Reminder Sent', default=False)
+    reminder_sent_date = fields.Datetime('Reminder Sent Date')
+    feedback_link_expiry = fields.Datetime('Feedback Link Expiry')
+    
+    # Fields untuk status follow-up
+    post_service_satisfaction = fields.Selection([
+        ('very_dissatisfied', 'Very Dissatisfied'),
+        ('dissatisfied', 'Dissatisfied'),
+        ('neutral', 'Neutral'),
+        ('satisfied', 'Satisfied'),
+        ('very_satisfied', 'Very Satisfied')
+    ], string='Post-Service Satisfaction', compute='_compute_post_service_satisfaction', store=True)
+
+    @api.depends('post_service_rating')
+    def _compute_post_service_satisfaction(self):
+        for order in self:
+            rating_to_satisfaction = {
+                '1': 'very_dissatisfied',
+                '2': 'dissatisfied',
+                '3': 'neutral',
+                '4': 'satisfied',
+                '5': 'very_satisfied'
+            }
+            order.post_service_satisfaction = rating_to_satisfaction.get(
+                order.post_service_rating, 'neutral'
+            )
+             
+    # Fields for 3 months reminder
     reminder_3_months = fields.Selection([('yes', 'Yes'), ('no', 'No')], string="Reminder 3 Bulan?")
     date_follow_up_3_months = fields.Date(string="Date Follow Up (3 Bulan)")
     notif_follow_up_3_months = fields.Char(

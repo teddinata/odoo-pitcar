@@ -724,11 +724,13 @@ class CustomerRatingAPI(Controller):
     @route('/web/reminder/dashboard', type='json', auth='public', methods=['POST'])
     def get_reminder_dashboard(self, **kwargs):
         try:
+            # Mendapatkan parameter dari request
             params = kwargs.get('params', {})
             page = int(params.get('page', 1))
-            limit = int(params.get('limit', 10))
+            limit = int(params.get('limit', 10))  # Default 10 jika tidak diset
             date_range = params.get('date_range', 'all')
             search = params.get('search', '')
+            reminder_status = params.get('reminder_status', 'all')
 
             SaleOrder = request.env['sale.order'].sudo()
             tz = pytz.timezone('Asia/Jakarta')
@@ -743,14 +745,26 @@ class CustomerRatingAPI(Controller):
                 ('reminder_sent', '=', False)
             ]
 
-            # History domain untuk semua order yang sudah selesai
+            # Base domain untuk history
             history_domain = [
                 ('state', 'in', ['sale', 'done']),
                 ('date_completed', '!=', False)
             ]
 
+            # Add reminder status filter
+            if reminder_status != 'all':
+                if reminder_status == 'not_reminded':
+                    history_domain.append(('reminder_sent', '=', False))
+                elif reminder_status == 'reminded':
+                    history_domain.append(('reminder_sent', '=', True))
+                elif reminder_status == 'responded':
+                    history_domain.extend([
+                        ('reminder_sent', '=', True),
+                        ('post_service_rating', '!=', False)
+                    ])
+
             # Add date range filter
-            if date_range != 'all':
+            if date_range and date_range != 'all':
                 if date_range == 'today':
                     date_start = today
                     date_end = today
@@ -771,12 +785,16 @@ class CustomerRatingAPI(Controller):
 
             # Add search filter
             if search:
-                history_domain.extend(['|', '|', '|',
+                history_domain = ['&'] + history_domain + ['|', '|', '|',
                     ('name', 'ilike', search),
                     ('partner_id.name', 'ilike', search),
                     ('partner_car_id.number_plate', 'ilike', search),
                     ('partner_id.mobile', 'ilike', search)
-                ])
+                ]
+
+            # Debug log
+            _logger.info(f"History Domain: {history_domain}")
+            _logger.info(f"Page: {page}, Limit: {limit}")
 
             # Get total count for pagination
             total_count = SaleOrder.search_count(history_domain)
@@ -790,6 +808,10 @@ class CustomerRatingAPI(Controller):
                 limit=limit, 
                 offset=offset
             )
+
+            # Debug log for results
+            _logger.info(f"Total count: {total_count}, Total pages: {total_pages}")
+            _logger.info(f"Fetched records: {len(history_orders)}")
 
             result = {
                 'pending_reminders': [{
@@ -824,13 +846,13 @@ class CustomerRatingAPI(Controller):
                 },
 
                 'statistics': {
-                    'total_pending': len(pending_domain),
-                    'total_reminders_sent': len(SaleOrder.search([('reminder_sent', '=', True)])),
-                    'total_feedback_received': len(SaleOrder.search([('post_service_rating', '!=', False)])),
+                    'total_pending': SaleOrder.search_count(pending_domain),
+                    'total_reminders_sent': SaleOrder.search_count([('reminder_sent', '=', True)]),
+                    'total_feedback_received': SaleOrder.search_count([('post_service_rating', '!=', False)]),
                     'response_rate': round(
-                        (len(SaleOrder.search([('post_service_rating', '!=', False)])) / 
-                        len(SaleOrder.search([('reminder_sent', '=', True)])) * 100)
-                        if len(SaleOrder.search([('reminder_sent', '=', True)])) > 0 else 0,
+                        (SaleOrder.search_count([('post_service_rating', '!=', False)]) / 
+                        SaleOrder.search_count([('reminder_sent', '=', True)]) * 100)
+                        if SaleOrder.search_count([('reminder_sent', '=', True)]) > 0 else 0,
                         2
                     )
                 }
@@ -875,6 +897,56 @@ class CustomerRatingAPI(Controller):
             _logger.error(f"Error generating WhatsApp link: {str(e)}")
             return None
         
+    @route('/web/reminder/mark-sent', type='json', auth='public', methods=['POST'])
+    def mark_reminders_sent(self, **kwargs):
+        """Mark orders as reminder sent"""
+        try:
+            params = kwargs.get('params', {})
+            order_ids = params.get('order_ids', [])
+            
+            if not order_ids:
+                return {
+                    'status': 'error',
+                    'message': 'Order IDs are required'
+                }
+
+            SaleOrder = request.env['sale.order'].sudo()
+            orders = SaleOrder.browse(order_ids)
+
+            if not orders.exists():
+                return {
+                    'status': 'error',
+                    'message': 'No valid orders found'
+                }
+
+            # Set current time with timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Update orders
+            for order in orders:
+                order.write({
+                    'reminder_sent': True,
+                    'reminder_sent_date': now.strftime('%Y-%m-%d %H:%M:%S'),
+                    # Set expiry date to 7 days from now
+                    'feedback_link_expiry': (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+                })
+
+            return {
+                'status': 'success',
+                'message': f'{len(orders)} reminder(s) marked as sent',
+                'data': {
+                    'updated_orders': order_ids,
+                    'reminder_date': now.strftime('%Y-%m-%d %H:%M:%S')
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in mark_reminders_sent: {str(e)}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
     
     @route('/web/after-service/feedback/<int:order_id>', type='http', auth='public', website=True)
     def feedback_page(self, order_id):

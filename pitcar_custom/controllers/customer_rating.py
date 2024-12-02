@@ -724,20 +724,32 @@ class CustomerRatingAPI(Controller):
     @route('/web/reminder/dashboard', type='json', auth='public', methods=['POST'])
     def get_reminder_dashboard(self, **kwargs):
         try:
-            # Mendapatkan parameter dari request
-            params = kwargs.get('params', {})
-            page = int(params.get('page', 1))
-            limit = int(params.get('limit', 10))  # Default 10 jika tidak diset
-            date_range = params.get('date_range', 'all')
-            search = params.get('search', '')
-            reminder_status = params.get('reminder_status', 'all')
+            # Get params directly from kwargs since it's already the params object
+            page = int(kwargs.get('page', 1))
+            limit = int(kwargs.get('limit', 10))
+            date_range = kwargs.get('date_range', 'all')
+            search = kwargs.get('search', '').strip()
+            reminder_status = kwargs.get('reminder_status', 'all')
+
+            # Validate limit
+            if limit not in [10, 25, 50]:
+                limit = 10
+
+            _logger.info(f"""
+            Received parameters:
+            - Page: {page}
+            - Limit: {limit}
+            - Date Range: {date_range}
+            - Search: {search}
+            - Status: {reminder_status}
+            """)
 
             SaleOrder = request.env['sale.order'].sudo()
             tz = pytz.timezone('Asia/Jakarta')
             today = datetime.now(tz).date()
             three_days_ago = today - timedelta(days=3)
 
-            # Pending reminders tetap sama (H+3)
+            # Pending reminders domain (H+3)
             pending_domain = [
                 ('date_completed', '>=', three_days_ago.strftime('%Y-%m-%d 00:00:00')),
                 ('date_completed', '<=', three_days_ago.strftime('%Y-%m-%d 23:59:59')),
@@ -745,7 +757,7 @@ class CustomerRatingAPI(Controller):
                 ('reminder_sent', '=', False)
             ]
 
-            # Base domain untuk history
+            # Base domain for history
             history_domain = [
                 ('state', 'in', ['sale', 'done']),
                 ('date_completed', '!=', False)
@@ -783,35 +795,32 @@ class CustomerRatingAPI(Controller):
                     ('date_completed', '<=', date_end.strftime('%Y-%m-%d 23:59:59'))
                 ])
 
-            # Add search filter
+            # Add search filter if search term is provided
             if search:
-                history_domain = ['&'] + history_domain + ['|', '|', '|',
+                search_domain = ['|', '|', '|',
                     ('name', 'ilike', search),
                     ('partner_id.name', 'ilike', search),
                     ('partner_car_id.number_plate', 'ilike', search),
                     ('partner_id.mobile', 'ilike', search)
                 ]
+                history_domain = ['&'] + history_domain + search_domain
 
-            # Debug log
-            _logger.info(f"History Domain: {history_domain}")
-            _logger.info(f"Page: {page}, Limit: {limit}")
+            _logger.info(f"Final history domain: {history_domain}")
 
             # Get total count for pagination
             total_count = SaleOrder.search_count(history_domain)
             total_pages = ceil(total_count / limit)
+            offset = (page - 1) * limit
+
+            _logger.info(f"Pagination: total={total_count}, pages={total_pages}, offset={offset}, limit={limit}")
 
             # Get paginated records
-            offset = (page - 1) * limit
             history_orders = SaleOrder.search(
-                history_domain, 
-                order='date_completed desc', 
-                limit=limit, 
+                history_domain,
+                order='date_completed desc',
+                limit=limit,
                 offset=offset
             )
-
-            # Debug log for results
-            _logger.info(f"Total count: {total_count}, Total pages: {total_pages}")
-            _logger.info(f"Fetched records: {len(history_orders)}")
 
             result = {
                 'pending_reminders': [{
@@ -879,7 +888,8 @@ class CustomerRatingAPI(Controller):
                 clean_phone = '62' + clean_phone
 
             # Generate message
-            base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url')
+            # base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url')
+            base_url = "https://pitscore.pitcar.co.id"
             feedback_url = f"{base_url}/feedback/{order.id}"
             
             message = f"""Halo {order.partner_id.name},

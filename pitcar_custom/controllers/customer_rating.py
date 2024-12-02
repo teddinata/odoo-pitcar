@@ -962,32 +962,28 @@ class CustomerRatingAPI(Controller):
                 'message': str(e)
             }
     
-    @route('/web/after-service/feedback/<int:order_id>', type='http', auth='public', website=True)
-    def feedback_page(self, order_id):
-        """Render feedback page for order"""
+    @route('/web/after-service/feedback/<int:order_id>', type='json', auth='public', methods=['POST'])
+    def get_feedback_details(self, order_id):
         try:
             SaleOrder = request.env['sale.order'].sudo()
             order = SaleOrder.browse(order_id)
 
             if not order.exists():
-                return request.render('website.404')
+                return {'status': 'error', 'message': 'Order not found'}
 
-            # Check if feedback link has expired
             if fields.Datetime.now() > order.feedback_link_expiry:
-                return request.render('website.404', {
-                    'error': 'This feedback link has expired'
-                })
+                return {'status': 'error', 'message': 'Feedback link expired'}
 
-            # Prepare data for template
-            values = {
-                'order': {
+            return {
+                'status': 'success',
+                'data': {
                     'name': order.name,
-                    'completion_date': order.date_completed.strftime('%Y-%m-%d') if order.date_completed else '',
+                    'completion_date': order.date_completed.strftime('%Y-%m-%d'),
                     'customer_name': order.partner_id.name,
                     'vehicle': {
-                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
-                        'brand': order.partner_car_brand.name if order.partner_car_brand else '',
-                        'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+                        'plate_number': order.partner_car_id.number_plate,
+                        'brand': order.partner_car_brand.name,
+                        'type': order.partner_car_brand_type.name,
                     },
                     'services': [{
                         'name': line.product_id.name,
@@ -996,10 +992,8 @@ class CustomerRatingAPI(Controller):
                 }
             }
 
-            return request.render('your_module.feedback_template', values)
-
         except Exception as e:
-            return request.render('website.404')
+            return {'status': 'error', 'message': str(e)}
 
     @route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'])
     def submit_feedback(self, **kwargs):

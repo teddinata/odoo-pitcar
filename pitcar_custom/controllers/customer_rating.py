@@ -911,9 +911,14 @@ class CustomerRatingAPI(Controller):
     def mark_reminders_sent(self, **kwargs):
         """Mark orders as reminder sent"""
         try:
-            params = kwargs.get('params', {})
-            order_ids = params.get('order_ids', [])
+            # Log raw input
+            _logger.info(f"Raw input: {kwargs}")
             
+            # Extract order_ids directly from kwargs
+            order_ids = kwargs.get('order_ids', [])
+            
+            _logger.info(f"Extracted order_ids: {order_ids}")
+
             if not order_ids:
                 return {
                     'status': 'error',
@@ -938,7 +943,6 @@ class CustomerRatingAPI(Controller):
                 order.write({
                     'reminder_sent': True,
                     'reminder_sent_date': now.strftime('%Y-%m-%d %H:%M:%S'),
-                    # Set expiry date to 7 days from now
                     'feedback_link_expiry': (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
                 })
 

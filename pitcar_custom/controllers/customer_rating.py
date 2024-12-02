@@ -1024,20 +1024,25 @@ class CustomerRatingAPI(Controller):
             }
     
     # Backend endpoint untuk mendapatkan detail feedback
-    @route('/web/after-service/feedback/<int:order_id>/<string:database>', type='json', auth='public', methods=['POST'])
-    def get_feedback_details(self, order_id, database):
+    @route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'])
+    def get_feedback_details(self, **kwargs):
         try:
-            # Set database sebelum query
+            params = kwargs.get('params', {})
+            order_id = params.get('order_id')
+            database = params.get('db')
+
+            if not all([order_id, database]):
+                return {'status': 'error', 'message': 'Missing required parameters'}
+
+            # Set database
             request.session.db = database
-            
-            if not order_id:
-                return {'status': 'error', 'message': 'Order ID is required'}
 
             SaleOrder = request.env['sale.order'].sudo()
-            order = SaleOrder.browse(order_id)
+            order = SaleOrder.browse(int(order_id))
 
             if not order.exists():
                 return {'status': 'error', 'message': 'Order not found'}
+
 
             # Pengecekan expiry
             if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):

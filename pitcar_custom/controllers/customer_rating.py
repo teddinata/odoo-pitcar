@@ -723,14 +723,19 @@ class CustomerRatingAPI(Controller):
     # REMINDER API
     @route('/web/reminder/dashboard', type='json', auth='public', methods=['POST'])
     def get_reminder_dashboard(self, **kwargs):
-        """Get dashboard data including pending reminders and history"""
         try:
+            params = kwargs.get('params', {})
+            page = int(params.get('page', 1))
+            limit = int(params.get('limit', 10))
+            date_range = params.get('date_range', 'all')
+            search = params.get('search', '')
+
             SaleOrder = request.env['sale.order'].sudo()
             tz = pytz.timezone('Asia/Jakarta')
             today = datetime.now(tz).date()
             three_days_ago = today - timedelta(days=3)
 
-            # Get pending reminders
+            # Pending reminders tetap sama (H+3)
             pending_domain = [
                 ('date_completed', '>=', three_days_ago.strftime('%Y-%m-%d 00:00:00')),
                 ('date_completed', '<=', three_days_ago.strftime('%Y-%m-%d 23:59:59')),
@@ -738,19 +743,53 @@ class CustomerRatingAPI(Controller):
                 ('reminder_sent', '=', False)
             ]
 
-            # Get reminder history (last 7 days)
+            # History domain untuk semua order yang sudah selesai
             history_domain = [
-                ('reminder_sent', '=', True),
-                ('reminder_sent_date', '>=', (today - timedelta(days=7)).strftime('%Y-%m-%d'))
+                ('state', 'in', ['sale', 'done']),
+                ('date_completed', '!=', False)
             ]
 
-            pending_orders = SaleOrder.search(pending_domain)
-            reminder_history = SaleOrder.search(history_domain)
+            # Add date range filter
+            if date_range != 'all':
+                if date_range == 'today':
+                    date_start = today
+                    date_end = today
+                elif date_range == 'week':
+                    date_start = today - timedelta(days=today.weekday())
+                    date_end = today
+                elif date_range == 'month':
+                    date_start = today.replace(day=1)
+                    date_end = today
+                elif date_range == 'year':
+                    date_start = today.replace(month=1, day=1)
+                    date_end = today
 
-            # Calculate statistics
-            total_reminders_sent = len(reminder_history)
-            total_feedback_received = len(reminder_history.filtered(lambda o: o.post_service_rating))
-            response_rate = (total_feedback_received / total_reminders_sent * 100) if total_reminders_sent > 0 else 0
+                history_domain.extend([
+                    ('date_completed', '>=', date_start.strftime('%Y-%m-%d 00:00:00')),
+                    ('date_completed', '<=', date_end.strftime('%Y-%m-%d 23:59:59'))
+                ])
+
+            # Add search filter
+            if search:
+                history_domain.extend(['|', '|', '|',
+                    ('name', 'ilike', search),
+                    ('partner_id.name', 'ilike', search),
+                    ('partner_car_id.number_plate', 'ilike', search),
+                    ('partner_id.mobile', 'ilike', search)
+                ])
+
+            # Get total count for pagination
+            total_count = SaleOrder.search_count(history_domain)
+            total_pages = ceil(total_count / limit)
+
+            # Get paginated records
+            offset = (page - 1) * limit
+            history_orders = SaleOrder.search(
+                history_domain, 
+                order='date_completed desc', 
+                limit=limit, 
+                offset=offset
+            )
 
             result = {
                 'pending_reminders': [{
@@ -760,78 +799,81 @@ class CustomerRatingAPI(Controller):
                     'customer_phone': order.partner_id.mobile,
                     'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
                     'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
-                    'whatsapp_link': self._generate_whatsapp_link(order)
-                } for order in pending_orders],
+                    'whatsapp_link': self._generate_whatsapp_link(order),
+                } for order in SaleOrder.search(pending_domain)],
                 
                 'reminder_history': [{
                     'id': order.id,
                     'name': order.name,
                     'customer_name': order.partner_id.name,
-                    'reminder_date': order.reminder_sent_date.strftime('%Y-%m-%d %H:%M:%S'),
+                    'customer_phone': order.partner_id.mobile,
+                    'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                    'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
+                    'reminder_date': order.reminder_sent_date.strftime('%Y-%m-%d %H:%M:%S') if order.reminder_sent_date else None,
+                    'reminder_sent': bool(order.reminder_sent),
                     'has_feedback': bool(order.post_service_rating),
                     'rating': order.post_service_rating,
-                    'feedback': order.post_service_feedback
-                } for order in reminder_history],
+                    'whatsapp_link': self._generate_whatsapp_link(order)
+                } for order in history_orders],
+
+                'pagination': {
+                    'total_records': total_count,
+                    'total_pages': total_pages,
+                    'current_page': page,
+                    'limit': limit
+                },
 
                 'statistics': {
-                    'total_pending': len(pending_orders),
-                    'total_reminders_sent': total_reminders_sent,
-                    'total_feedback_received': total_feedback_received,
-                    'response_rate': round(response_rate, 2)
+                    'total_pending': len(pending_domain),
+                    'total_reminders_sent': len(SaleOrder.search([('reminder_sent', '=', True)])),
+                    'total_feedback_received': len(SaleOrder.search([('post_service_rating', '!=', False)])),
+                    'response_rate': round(
+                        (len(SaleOrder.search([('post_service_rating', '!=', False)])) / 
+                        len(SaleOrder.search([('reminder_sent', '=', True)])) * 100)
+                        if len(SaleOrder.search([('reminder_sent', '=', True)])) > 0 else 0,
+                        2
+                    )
                 }
             }
 
             return {'status': 'success', 'data': result}
 
         except Exception as e:
+            _logger.error(f"Error in get_reminder_dashboard: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
     def _generate_whatsapp_link(self, order):
-        """Generate WhatsApp link with message for order"""
-        base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url')
-        feedback_url = f"{base_url}/feedback/{order.id}"
-        
-        message = f"""Halo {order.partner_id.name},
-
-Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di bengkel kami.
-
-Bagaimana kondisi kendaraan Anda setelah 3 hari servis? Mohon berikan penilaian Anda melalui link berikut:
-{feedback_url}
-
-Terima kasih atas feedback Anda!"""
-
-        phone = order.partner_id.mobile
-        clean_phone = ''.join(filter(str.isdigit, phone or ''))
-        if clean_phone.startswith('0'):
-            clean_phone = '62' + clean_phone[1:]
-        elif not clean_phone.startswith('62'):
-            clean_phone = '62' + clean_phone
-
-        return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
-
-    @route('/web/reminder/mark-sent', type='json', auth='public', methods=['POST'])
-    def mark_reminders_sent(self, **kwargs):
-        """Mark selected orders as reminder sent"""
+        """Helper function to generate WhatsApp link"""
         try:
-            order_ids = kwargs.get('order_ids', [])
-            if not order_ids:
-                return {'status': 'error', 'message': 'No orders selected'}
+            if not order.partner_id.mobile:
+                return None
 
-            SaleOrder = request.env['sale.order'].sudo()
-            orders = SaleOrder.browse(order_ids)
+            # Clean phone number
+            phone = order.partner_id.mobile
+            clean_phone = ''.join(filter(str.isdigit, phone))
+            if clean_phone.startswith('0'):
+                clean_phone = '62' + clean_phone[1:]
+            elif not clean_phone.startswith('62'):
+                clean_phone = '62' + clean_phone
+
+            # Generate message
+            base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url')
+            feedback_url = f"{base_url}/feedback/{order.id}"
             
-            # Set reminder sent and expiry date
-            now = fields.Datetime.now()
-            orders.write({
-                'reminder_sent': True,
-                'reminder_sent_date': now,
-                'feedback_link_expiry': now + timedelta(days=7)
-            })
+            message = f"""Halo {order.partner_id.name},
 
-            return {'status': 'success', 'message': f'{len(orders)} reminders marked as sent'}
+    Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di bengkel kami.
 
+    Bagaimana kondisi kendaraan Anda setelah 3 hari servis? Mohon berikan penilaian Anda melalui link berikut:
+    {feedback_url}
+
+    Terima kasih atas feedback Anda!"""
+
+            return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
+        
         except Exception as e:
-            return {'status': 'error', 'message': str(e)}
+            _logger.error(f"Error generating WhatsApp link: {str(e)}")
+            return None
         
     
     @route('/web/after-service/feedback/<int:order_id>', type='http', auth='public', website=True)

@@ -965,34 +965,43 @@ class CustomerRatingAPI(Controller):
     @route('/web/after-service/feedback/<int:order_id>', type='json', auth='public', methods=['POST'])
     def get_feedback_details(self, order_id):
         try:
+            if not order_id:
+                return {'status': 'error', 'message': 'Order ID is required'}
+
             SaleOrder = request.env['sale.order'].sudo()
             order = SaleOrder.browse(order_id)
 
             if not order.exists():
                 return {'status': 'error', 'message': 'Order not found'}
 
-            if fields.Datetime.now() > order.feedback_link_expiry:
-                return {'status': 'error', 'message': 'Feedback link expired'}
+            # Check expiry only if feedback_link_expiry exists and has a value
+            if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):
+                if fields.Datetime.now() > order.feedback_link_expiry:
+                    return {'status': 'error', 'message': 'Feedback link expired'}
+
+            # Safely handle date formatting
+            completion_date = order.date_completed.strftime('%Y-%m-%d') if order.date_completed else None
 
             return {
                 'status': 'success',
                 'data': {
                     'name': order.name,
-                    'completion_date': order.date_completed.strftime('%Y-%m-%d'),
-                    'customer_name': order.partner_id.name,
+                    'completion_date': completion_date,
+                    'customer_name': order.partner_id.name if order.partner_id else '',
                     'vehicle': {
-                        'plate_number': order.partner_car_id.number_plate,
-                        'brand': order.partner_car_brand.name,
-                        'type': order.partner_car_brand_type.name,
+                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                        'brand': order.partner_car_brand.name if order.partner_car_brand else '',
+                        'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
                     },
                     'services': [{
-                        'name': line.product_id.name,
+                        'name': line.product_id.name if line.product_id else '',
                         'quantity': line.product_uom_qty,
-                    } for line in order.order_line]
+                    } for line in order.order_line if line.product_id]
                 }
             }
 
         except Exception as e:
+            _logger.error(f"Error in get_feedback_details: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
     @route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'])

@@ -1128,66 +1128,206 @@ class CustomerRatingAPI(Controller):
     #         return {'status': 'error', 'message': str(e)}
 
     #  Endpoint untuk CORS preflight requests
-    @http.route([
-        '/web/after-service/feedback/details',
-        '/web/after-service/feedback/submit'
-    ], type='http', auth='none', methods=['OPTIONS'], csrf=False)
-    def options(self):
-        headers = {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, X-Requested-With',
-            'Access-Control-Max-Age': '86400',  # 24 hours
-        }
-        return Response(status=200, headers=headers)
+    # @http.route([
+    #     '/web/after-service/feedback/details',
+    #     '/web/after-service/feedback/submit'
+    # ], type='http', auth='none', methods=['OPTIONS'], csrf=False)
+    # def options(self):
+    #     headers = {
+    #         'Access-Control-Allow-Origin': '*',
+    #         'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    #         'Access-Control-Allow-Headers': 'Content-Type, X-Requested-With',
+    #         'Access-Control-Max-Age': '86400',  # 24 hours
+    #     }
+    #     return Response(status=200, headers=headers)
 
-    @http.route('/web/after-service/feedback/details', type='http', auth='none', 
-                methods=['POST'], csrf=False)
-    def get_feedback_details(self, **kwargs):
-        headers = {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-        }
+    # @http.route('/web/after-service/feedback/details', type='http', auth='none', 
+    #             methods=['POST'], csrf=False)
+    # def get_feedback_details(self, **kwargs):
+    #     headers = {
+    #         'Content-Type': 'application/json',
+    #         'Access-Control-Allow-Origin': '*',
+    #     }
         
-        try:
-            # Parse body JSON
-            body = json.loads(request.httprequest.data.decode())
-            params = body.get('params', {})
+    #     try:
+    #         # Parse body JSON
+    #         body = json.loads(request.httprequest.data.decode())
+    #         params = body.get('params', {})
             
-            order_id = params.get('order_id')
-            db = params.get('db')
+    #         order_id = params.get('order_id')
+    #         db = params.get('db')
             
-            if not all([order_id, db]):
-                return Response(
-                    json.dumps({
-                        'jsonrpc': '2.0',
-                        'id': None,
-                        'result': {
-                            'status': 'error',
-                            'message': 'Missing required parameters'
-                        }
-                    }),
-                    status=400,
-                    headers=headers
-                )
+    #         if not all([order_id, db]):
+    #             return Response(
+    #                 json.dumps({
+    #                     'jsonrpc': '2.0',
+    #                     'id': None,
+    #                     'result': {
+    #                         'status': 'error',
+    #                         'message': 'Missing required parameters'
+    #                     }
+    #                 }),
+    #                 status=400,
+    #                 headers=headers
+    #             )
 
+    #         order = request.env['sale.order'].sudo().browse(int(order_id))
+            
+    #         if not order.exists():
+    #             return Response(
+    #                 json.dumps({
+    #                     'jsonrpc': '2.0',
+    #                     'id': None,
+    #                     'result': {
+    #                         'status': 'error',
+    #                         'message': 'Order not found'
+    #                     }
+    #                 }),
+    #                 status=404,
+    #                 headers=headers
+    #             )
+
+    #         data = {
+    #             'status': 'success',
+    #             'data': {
+    #                 'name': order.name,
+    #                 'customer_name': order.partner_id.name if order.partner_id else '',
+    #                 'vehicle': {
+    #                     'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+    #                     'brand': order.partner_car_brand.name if order.partner_car_brand else '',
+    #                     'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+    #                 },
+    #                 'has_rated': bool(order.post_service_rating),
+    #                 'rating': order.post_service_rating,
+    #                 'feedback': order.post_service_feedback
+    #             }
+    #         }
+
+    #         return Response(
+    #             json.dumps({
+    #                 'jsonrpc': '2.0',
+    #                 'id': None,
+    #                 'result': data
+    #             }),
+    #             status=200,
+    #             headers=headers
+    #         )
+
+    #     except Exception as e:
+    #         _logger.error("Error in get_feedback_details: %s", str(e), exc_info=True)
+    #         return Response(
+    #             json.dumps({
+    #                 'jsonrpc': '2.0',
+    #                 'id': None,
+    #                 'result': {
+    #                     'status': 'error',
+    #                     'message': str(e)
+    #                 }
+    #             }),
+    #             status=500,
+    #             headers=headers
+    #         )
+
+    # @http.route('/web/after-service/feedback/submit', type='http', auth='none', 
+    #             methods=['POST'], csrf=False)
+    # def submit_feedback(self, **kwargs):
+    #     headers = {
+    #         'Content-Type': 'application/json',
+    #         'Access-Control-Allow-Origin': '*',
+    #     }
+        
+    #     try:
+    #         body = json.loads(request.httprequest.data.decode())
+    #         params = body.get('params', {})
+            
+    #         order_id = params.get('order_id')
+    #         rating = params.get('rating')
+    #         feedback = params.get('feedback')
+    #         db = params.get('db')
+
+    #         if not all([order_id, rating, db]):
+    #             return Response(
+    #                 json.dumps({
+    #                     'jsonrpc': '2.0',
+    #                     'id': None,
+    #                     'result': {
+    #                         'status': 'error',
+    #                         'message': 'Missing required fields'
+    #                     }
+    #                 }),
+    #                 status=400,
+    #                 headers=headers
+    #             )
+
+    #         order = request.env['sale.order'].sudo().browse(int(order_id))
+            
+    #         if not order.exists():
+    #             return Response(
+    #                 json.dumps({
+    #                     'jsonrpc': '2.0',
+    #                     'id': None,
+    #                     'result': {
+    #                         'status': 'error',
+    #                         'message': 'Order not found'
+    #                     }
+    #                 }),
+    #                 status=404,
+    #                 headers=headers
+    #             )
+
+    #         order.write({
+    #             'post_service_rating': str(rating),
+    #             'post_service_feedback': feedback or ''
+    #         })
+
+    #         return Response(
+    #             json.dumps({
+    #                 'jsonrpc': '2.0',
+    #                 'id': None,
+    #                 'result': {
+    #                     'status': 'success',
+    #                     'message': 'Feedback submitted successfully'
+    #                 }
+    #             }),
+    #             status=200,
+    #             headers=headers
+    #         )
+
+    #     except Exception as e:
+    #         _logger.error("Error in submit_feedback: %s", str(e), exc_info=True)
+    #         return Response(
+    #             json.dumps({
+    #                 'jsonrpc': '2.0',
+    #                 'id': None,
+    #                 'result': {
+    #                     'status': 'error',
+    #                     'message': str(e)
+    #                 }
+    #             }),
+    #             status=500,
+    #             headers=headers
+    #         )
+
+    @http.route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'], csrf=False)
+    def get_feedback_details(self, **kw):
+        try:
+            order_id = kw.get('order_id')
+            if not order_id:
+                return {
+                    'status': 'error',
+                    'message': 'Order ID is required'
+                }
+            
+            # Menggunakan sudo() untuk mengakses data tanpa perlu authentication
             order = request.env['sale.order'].sudo().browse(int(order_id))
             
             if not order.exists():
-                return Response(
-                    json.dumps({
-                        'jsonrpc': '2.0',
-                        'id': None,
-                        'result': {
-                            'status': 'error',
-                            'message': 'Order not found'
-                        }
-                    }),
-                    status=404,
-                    headers=headers
-                )
-
-            data = {
+                return {
+                    'status': 'error',
+                    'message': 'Order not found'
+                }
+            
+            return {
                 'status': 'success',
                 'data': {
                     'name': order.name,
@@ -1202,108 +1342,48 @@ class CustomerRatingAPI(Controller):
                     'feedback': order.post_service_feedback
                 }
             }
-
-            return Response(
-                json.dumps({
-                    'jsonrpc': '2.0',
-                    'id': None,
-                    'result': data
-                }),
-                status=200,
-                headers=headers
-            )
-
-        except Exception as e:
-            _logger.error("Error in get_feedback_details: %s", str(e), exc_info=True)
-            return Response(
-                json.dumps({
-                    'jsonrpc': '2.0',
-                    'id': None,
-                    'result': {
-                        'status': 'error',
-                        'message': str(e)
-                    }
-                }),
-                status=500,
-                headers=headers
-            )
-
-    @http.route('/web/after-service/feedback/submit', type='http', auth='none', 
-                methods=['POST'], csrf=False)
-    def submit_feedback(self, **kwargs):
-        headers = {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-        }
-        
-        try:
-            body = json.loads(request.httprequest.data.decode())
-            params = body.get('params', {})
             
-            order_id = params.get('order_id')
-            rating = params.get('rating')
-            feedback = params.get('feedback')
-            db = params.get('db')
-
-            if not all([order_id, rating, db]):
-                return Response(
-                    json.dumps({
-                        'jsonrpc': '2.0',
-                        'id': None,
-                        'result': {
-                            'status': 'error',
-                            'message': 'Missing required fields'
-                        }
-                    }),
-                    status=400,
-                    headers=headers
-                )
-
+        except Exception as e:
+            _logger.error("Error in get_feedback_details: %s", str(e))
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+        
+    @http.route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'], csrf=False)
+    def submit_feedback(self, **kw):
+        try:
+            order_id = kw.get('order_id')
+            rating = kw.get('rating')
+            feedback = kw.get('feedback')
+            
+            if not all([order_id, rating]):
+                return {
+                    'status': 'error',
+                    'message': 'Order ID and rating are required'
+                }
+            
             order = request.env['sale.order'].sudo().browse(int(order_id))
             
             if not order.exists():
-                return Response(
-                    json.dumps({
-                        'jsonrpc': '2.0',
-                        'id': None,
-                        'result': {
-                            'status': 'error',
-                            'message': 'Order not found'
-                        }
-                    }),
-                    status=404,
-                    headers=headers
-                )
-
+                return {
+                    'status': 'error',
+                    'message': 'Order not found'
+                }
+            
             order.write({
                 'post_service_rating': str(rating),
                 'post_service_feedback': feedback or ''
             })
-
-            return Response(
-                json.dumps({
-                    'jsonrpc': '2.0',
-                    'id': None,
-                    'result': {
-                        'status': 'success',
-                        'message': 'Feedback submitted successfully'
-                    }
-                }),
-                status=200,
-                headers=headers
-            )
-
+            
+            return {
+                'status': 'success',
+                'message': 'Feedback submitted successfully'
+            }
+            
         except Exception as e:
-            _logger.error("Error in submit_feedback: %s", str(e), exc_info=True)
-            return Response(
-                json.dumps({
-                    'jsonrpc': '2.0',
-                    'id': None,
-                    'result': {
-                        'status': 'error',
-                        'message': str(e)
-                    }
-                }),
-                status=500,
-                headers=headers
-            )
+            _logger.error("Error in submit_feedback: %s", str(e))
+            return {
+                'status': 'error',
+                'message': str(e)
+            }

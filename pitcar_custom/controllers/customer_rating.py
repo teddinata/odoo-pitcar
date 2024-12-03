@@ -1,12 +1,13 @@
-from odoo import models, fields, api
-from datetime import datetime, timedelta
+from odoo import models, fields, api, http
 from odoo.http import Controller, route, request, Response
+from datetime import datetime, timedelta
 import json
 import logging
 import pytz
 from math import ceil
 import urllib.parse
 import base64
+import hmac
 
 _logger = logging.getLogger(__name__)
 
@@ -1025,103 +1026,284 @@ class CustomerRatingAPI(Controller):
             }
     
     # Backend endpoint untuk mendapatkan detail feedback
-    @route('/web/after-service/feedback/details', type='json', auth='none', methods=['POST'])
+    # @route('/web/after-service/feedback/details', type='json', auth='none', methods=['POST'])
+    # def get_feedback_details(self, **kwargs):
+    #     try:
+    #         # Pastikan environment baru dibuat untuk setiap request
+    #         env = request.env(context=request.context)
+            
+    #         # Log untuk debug
+    #         _logger.info('Processing request without session')
+            
+    #         # Ambil params
+    #         params = kwargs
+    #         order_id = params.get('order_id')
+    #         database = params.get('db')
+
+    #         _logger.info(f'Params received: db={database}, order_id={order_id}')
+
+    #         if not all([order_id, database]):
+    #             return {'status': 'error', 'message': 'Missing required parameters'}
+
+    #         # Set database untuk request ini
+    #         if hasattr(request, 'session'):
+    #             request.session.db = database
+    #             _logger.info(f'Database set in session: {database}')
+
+    #         # Gunakan sudo() untuk bypass security
+    #         SaleOrder = env['sale.order'].sudo()
+    #         order = SaleOrder.browse(int(order_id))
+
+    #         if not order.exists():
+    #             return {'status': 'error', 'message': 'Order not found'}
+
+
+    #         # Pengecekan expiry
+    #         if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):
+    #             if fields.Datetime.now() > order.feedback_link_expiry:
+    #                 return {'status': 'error', 'message': 'Feedback link expired'}
+
+    #         completion_date = order.date_completed.strftime('%Y-%m-%d') if order.date_completed else None
+
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'name': order.name,
+    #                 'completion_date': completion_date,
+    #                 'customer_name': order.partner_id.name if order.partner_id else '',
+    #                 'vehicle': {
+    #                     'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+    #                     'brand': order.partner_car_brand.name if order.partner_car_brand else '',
+    #                     'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+    #                 },
+    #                 'services': [{
+    #                     'name': line.product_id.name if line.product_id else '',
+    #                     'quantity': line.product_uom_qty,
+    #                 } for line in order.order_line if line.product_id],
+    #                  'has_rated': bool(order.post_service_rating),  # Tambahkan has_rated
+    #                 'rating': order.post_service_rating,           # Tambahkan current rating
+    #                 'feedback': order.post_service_feedback        # Tambahkan current feedback
+    #             }
+    #         }
+    #     except Exception as e:
+    #         _logger.error(f"Error in get_feedback_details: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
+
+
+    # @route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'])
+    # def submit_feedback(self, **kwargs):
+    #     """Submit feedback for order"""
+    #     try:
+    #         params = kwargs
+    #         order_id = params.get('order_id')
+    #         rating = params.get('rating')
+    #         feedback = params.get('feedback')
+
+    #         if not all([order_id, rating]):
+    #             return {'status': 'error', 'message': 'Missing required fields'}
+
+    #         SaleOrder = request.env['sale.order'].sudo()
+    #         order = SaleOrder.browse(int(order_id))
+
+    #         if not order.exists():
+    #             return {'status': 'error', 'message': 'Order not found'}
+
+    #         # Perbaikan pengecekan expiry
+    #         if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):
+    #             if fields.Datetime.now() > order.feedback_link_expiry:
+    #                 return {'status': 'error', 'message': 'Feedback link expired'}
+
+    #         order.write({
+    #             'post_service_rating': str(rating),
+    #             'post_service_feedback': feedback
+    #         })
+
+    #         return {
+    #             'status': 'success',
+    #             'message': 'Thank you for your feedback!'
+    #         }
+
+    #     except Exception as e:
+    #         _logger.error(f"Error in submit_feedback: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
+
+    #  Endpoint untuk CORS preflight requests
+    @http.route([
+        '/web/after-service/feedback/details',
+        '/web/after-service/feedback/submit'
+    ], type='http', auth='none', methods=['OPTIONS'], csrf=False)
+    def options(self):
+        headers = {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, X-Requested-With',
+            'Access-Control-Max-Age': '86400',  # 24 hours
+        }
+        return Response(status=200, headers=headers)
+
+    @http.route('/web/after-service/feedback/details', type='http', auth='none', 
+                methods=['POST'], csrf=False)
     def get_feedback_details(self, **kwargs):
+        headers = {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+        }
+        
         try:
-            # Pastikan environment baru dibuat untuk setiap request
-            env = request.env(context=request.context)
+            # Parse body JSON
+            body = json.loads(request.httprequest.data.decode())
+            params = body.get('params', {})
             
-            # Log untuk debug
-            _logger.info('Processing request without session')
-            
-            # Ambil params
-            params = kwargs
             order_id = params.get('order_id')
-            database = params.get('db')
+            db = params.get('db')
+            
+            if not all([order_id, db]):
+                return Response(
+                    json.dumps({
+                        'jsonrpc': '2.0',
+                        'id': None,
+                        'result': {
+                            'status': 'error',
+                            'message': 'Missing required parameters'
+                        }
+                    }),
+                    status=400,
+                    headers=headers
+                )
 
-            _logger.info(f'Params received: db={database}, order_id={order_id}')
-
-            if not all([order_id, database]):
-                return {'status': 'error', 'message': 'Missing required parameters'}
-
-            # Set database untuk request ini
-            if hasattr(request, 'session'):
-                request.session.db = database
-                _logger.info(f'Database set in session: {database}')
-
-            # Gunakan sudo() untuk bypass security
-            SaleOrder = env['sale.order'].sudo()
-            order = SaleOrder.browse(int(order_id))
-
+            order = request.env['sale.order'].sudo().browse(int(order_id))
+            
             if not order.exists():
-                return {'status': 'error', 'message': 'Order not found'}
+                return Response(
+                    json.dumps({
+                        'jsonrpc': '2.0',
+                        'id': None,
+                        'result': {
+                            'status': 'error',
+                            'message': 'Order not found'
+                        }
+                    }),
+                    status=404,
+                    headers=headers
+                )
 
-
-            # Pengecekan expiry
-            if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):
-                if fields.Datetime.now() > order.feedback_link_expiry:
-                    return {'status': 'error', 'message': 'Feedback link expired'}
-
-            completion_date = order.date_completed.strftime('%Y-%m-%d') if order.date_completed else None
-
-            return {
+            data = {
                 'status': 'success',
                 'data': {
                     'name': order.name,
-                    'completion_date': completion_date,
                     'customer_name': order.partner_id.name if order.partner_id else '',
                     'vehicle': {
                         'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
                         'brand': order.partner_car_brand.name if order.partner_car_brand else '',
                         'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
                     },
-                    'services': [{
-                        'name': line.product_id.name if line.product_id else '',
-                        'quantity': line.product_uom_qty,
-                    } for line in order.order_line if line.product_id],
-                     'has_rated': bool(order.post_service_rating),  # Tambahkan has_rated
-                    'rating': order.post_service_rating,           # Tambahkan current rating
-                    'feedback': order.post_service_feedback        # Tambahkan current feedback
+                    'has_rated': bool(order.post_service_rating),
+                    'rating': order.post_service_rating,
+                    'feedback': order.post_service_feedback
                 }
             }
+
+            return Response(
+                json.dumps({
+                    'jsonrpc': '2.0',
+                    'id': None,
+                    'result': data
+                }),
+                status=200,
+                headers=headers
+            )
+
         except Exception as e:
-            _logger.error(f"Error in get_feedback_details: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
+            _logger.error("Error in get_feedback_details: %s", str(e), exc_info=True)
+            return Response(
+                json.dumps({
+                    'jsonrpc': '2.0',
+                    'id': None,
+                    'result': {
+                        'status': 'error',
+                        'message': str(e)
+                    }
+                }),
+                status=500,
+                headers=headers
+            )
 
-
-    @route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'])
+    @http.route('/web/after-service/feedback/submit', type='http', auth='none', 
+                methods=['POST'], csrf=False)
     def submit_feedback(self, **kwargs):
-        """Submit feedback for order"""
+        headers = {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+        }
+        
         try:
-            params = kwargs
+            body = json.loads(request.httprequest.data.decode())
+            params = body.get('params', {})
+            
             order_id = params.get('order_id')
             rating = params.get('rating')
             feedback = params.get('feedback')
+            db = params.get('db')
 
-            if not all([order_id, rating]):
-                return {'status': 'error', 'message': 'Missing required fields'}
+            if not all([order_id, rating, db]):
+                return Response(
+                    json.dumps({
+                        'jsonrpc': '2.0',
+                        'id': None,
+                        'result': {
+                            'status': 'error',
+                            'message': 'Missing required fields'
+                        }
+                    }),
+                    status=400,
+                    headers=headers
+                )
 
-            SaleOrder = request.env['sale.order'].sudo()
-            order = SaleOrder.browse(int(order_id))
-
+            order = request.env['sale.order'].sudo().browse(int(order_id))
+            
             if not order.exists():
-                return {'status': 'error', 'message': 'Order not found'}
-
-            # Perbaikan pengecekan expiry
-            if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):
-                if fields.Datetime.now() > order.feedback_link_expiry:
-                    return {'status': 'error', 'message': 'Feedback link expired'}
+                return Response(
+                    json.dumps({
+                        'jsonrpc': '2.0',
+                        'id': None,
+                        'result': {
+                            'status': 'error',
+                            'message': 'Order not found'
+                        }
+                    }),
+                    status=404,
+                    headers=headers
+                )
 
             order.write({
                 'post_service_rating': str(rating),
-                'post_service_feedback': feedback
+                'post_service_feedback': feedback or ''
             })
 
-            return {
-                'status': 'success',
-                'message': 'Thank you for your feedback!'
-            }
+            return Response(
+                json.dumps({
+                    'jsonrpc': '2.0',
+                    'id': None,
+                    'result': {
+                        'status': 'success',
+                        'message': 'Feedback submitted successfully'
+                    }
+                }),
+                status=200,
+                headers=headers
+            )
 
         except Exception as e:
-            _logger.error(f"Error in submit_feedback: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
+            _logger.error("Error in submit_feedback: %s", str(e), exc_info=True)
+            return Response(
+                json.dumps({
+                    'jsonrpc': '2.0',
+                    'id': None,
+                    'result': {
+                        'status': 'error',
+                        'message': str(e)
+                    }
+                }),
+                status=500,
+                headers=headers
+            )

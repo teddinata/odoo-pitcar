@@ -1,5 +1,7 @@
 from odoo import models, fields, api, http
 from odoo.http import Controller, route, request, Response
+import odoo
+from odoo.service import security
 from datetime import datetime, timedelta
 import json
 import logging
@@ -1388,52 +1390,107 @@ class CustomerRatingAPI(Controller):
     #             'message': str(e)
     #         }
 
-    @http.route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'], csrf=False)
+    # @http.route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'], csrf=False)
+    # def get_feedback_details(self, **kw):
+    #     try:
+    #         # Ambil database dan order_id dari parameter
+    #         db = kw.get('db')
+    #         order_id = kw.get('order_id')
+            
+    #         if not all([db, order_id]):
+    #             return {
+    #                 'status': 'error',
+    #                 'message': 'Database and Order ID are required'
+    #             }
+            
+    #         # Log untuk debugging
+    #         _logger.info(f"Processing request for db: {db}, order_id: {order_id}")
+            
+    #         order = request.env['sale.order'].sudo().browse(int(order_id))
+            
+    #         if not order.exists():
+    #             return {
+    #                 'status': 'error',
+    #                 'message': 'Order not found'
+    #             }
+            
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'name': order.name,
+    #                 'customer_name': order.partner_id.name if order.partner_id else '',
+    #                 'vehicle': {
+    #                     'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+    #                     'brand': order.partner_car_brand.name if order.partner_car_brand else '',
+    #                     'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+    #                 },
+    #                 'has_rated': bool(order.post_service_rating),
+    #                 'rating': order.post_service_rating,
+    #                 'feedback': order.post_service_feedback
+    #             }
+    #         }
+            
+    #     except Exception as e:
+    #         _logger.error(f"Error in get_feedback_details: {str(e)}", exc_info=True)
+    #         return {
+    #             'status': 'error',
+    #             'message': str(e)
+    #         }
+    @http.route('/web/after-service/feedback/details', type='json', auth='none', methods=['POST'], csrf=False)
     def get_feedback_details(self, **kw):
         try:
             # Ambil database dan order_id dari parameter
-            db = kw.get('db')
+            db_name = kw.get('db')
             order_id = kw.get('order_id')
-            
-            if not all([db, order_id]):
+
+            if not db_name or not order_id:
                 return {
                     'status': 'error',
-                    'message': 'Database and Order ID are required'
+                    'message': 'Database name and Order ID are required'
                 }
+
+            # Dapatkan registry untuk database yang diminta
+            registry = odoo.registry(db_name)
             
-            # Log untuk debugging
-            _logger.info(f"Processing request for db: {db}, order_id: {order_id}")
-            
-            order = request.env['sale.order'].sudo().browse(int(order_id))
-            
-            if not order.exists():
-                return {
-                    'status': 'error',
-                    'message': 'Order not found'
+            # Gunakan registry dengan environment baru
+            with registry.cursor() as cr:
+                # Buat environment baru dengan SUPERUSER_ID
+                env = odoo.api.Environment(cr, odoo.SUPERUSER_ID, {})
+                
+                # Akses model dengan environment baru
+                order = env['sale.order'].browse(int(order_id))
+                
+                if not order.exists():
+                    return {
+                        'status': 'error',
+                        'message': 'Order not found'
+                    }
+                
+                data = {
+                    'status': 'success',
+                    'data': {
+                        'name': order.name,
+                        'customer_name': order.partner_id.name if order.partner_id else '',
+                        'vehicle': {
+                            'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                            'brand': order.partner_car_brand.name if order.partner_car_brand else '',
+                            'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+                        },
+                        'has_rated': bool(order.post_service_rating),
+                        'rating': order.post_service_rating,
+                        'feedback': order.post_service_feedback
+                    }
                 }
-            
-            return {
-                'status': 'success',
-                'data': {
-                    'name': order.name,
-                    'customer_name': order.partner_id.name if order.partner_id else '',
-                    'vehicle': {
-                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
-                        'brand': order.partner_car_brand.name if order.partner_car_brand else '',
-                        'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
-                    },
-                    'has_rated': bool(order.post_service_rating),
-                    'rating': order.post_service_rating,
-                    'feedback': order.post_service_feedback
-                }
-            }
-            
+                
+                return data
+
         except Exception as e:
-            _logger.error(f"Error in get_feedback_details: {str(e)}", exc_info=True)
+            _logger.error(f"Error in get_feedback_details: {str(e)}")
             return {
                 'status': 'error',
                 'message': str(e)
             }
+
 
     @http.route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'], csrf=False)
     def submit_feedback(self, **kw):

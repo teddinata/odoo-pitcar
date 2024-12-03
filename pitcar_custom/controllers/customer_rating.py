@@ -1308,17 +1308,102 @@ class CustomerRatingAPI(Controller):
     #             headers=headers
     #         )
 
+    # @http.route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'], csrf=False)
+    # def get_feedback_details(self, **kw):
+    #     try:
+    #         order_id = kw.get('order_id')
+    #         if not order_id:
+    #             return {
+    #                 'status': 'error',
+    #                 'message': 'Order ID is required'
+    #             }
+            
+    #         # Menggunakan sudo() untuk mengakses data tanpa perlu authentication
+    #         order = request.env['sale.order'].sudo().browse(int(order_id))
+            
+    #         if not order.exists():
+    #             return {
+    #                 'status': 'error',
+    #                 'message': 'Order not found'
+    #             }
+            
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'name': order.name,
+    #                 'customer_name': order.partner_id.name if order.partner_id else '',
+    #                 'vehicle': {
+    #                     'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+    #                     'brand': order.partner_car_brand.name if order.partner_car_brand else '',
+    #                     'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+    #                 },
+    #                 'has_rated': bool(order.post_service_rating),
+    #                 'rating': order.post_service_rating,
+    #                 'feedback': order.post_service_feedback
+    #             }
+    #         }
+            
+    #     except Exception as e:
+    #         _logger.error("Error in get_feedback_details: %s", str(e))
+    #         return {
+    #             'status': 'error',
+    #             'message': str(e)
+    #         }
+        
+    # @http.route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'], csrf=False)
+    # def submit_feedback(self, **kw):
+    #     try:
+    #         order_id = kw.get('order_id')
+    #         rating = kw.get('rating')
+    #         feedback = kw.get('feedback')
+            
+    #         if not all([order_id, rating]):
+    #             return {
+    #                 'status': 'error',
+    #                 'message': 'Order ID and rating are required'
+    #             }
+            
+    #         order = request.env['sale.order'].sudo().browse(int(order_id))
+            
+    #         if not order.exists():
+    #             return {
+    #                 'status': 'error',
+    #                 'message': 'Order not found'
+    #             }
+            
+    #         order.write({
+    #             'post_service_rating': str(rating),
+    #             'post_service_feedback': feedback or ''
+    #         })
+            
+    #         return {
+    #             'status': 'success',
+    #             'message': 'Feedback submitted successfully'
+    #         }
+            
+    #     except Exception as e:
+    #         _logger.error("Error in submit_feedback: %s", str(e))
+    #         return {
+    #             'status': 'error',
+    #             'message': str(e)
+    #         }
+
     @http.route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'], csrf=False)
     def get_feedback_details(self, **kw):
         try:
+            # Ambil database dan order_id dari parameter
+            db = kw.get('db')
             order_id = kw.get('order_id')
-            if not order_id:
+            
+            if not all([db, order_id]):
                 return {
                     'status': 'error',
-                    'message': 'Order ID is required'
+                    'message': 'Database and Order ID are required'
                 }
             
-            # Menggunakan sudo() untuk mengakses data tanpa perlu authentication
+            # Log untuk debugging
+            _logger.info(f"Processing request for db: {db}, order_id: {order_id}")
+            
             order = request.env['sale.order'].sudo().browse(int(order_id))
             
             if not order.exists():
@@ -1344,24 +1429,29 @@ class CustomerRatingAPI(Controller):
             }
             
         except Exception as e:
-            _logger.error("Error in get_feedback_details: %s", str(e))
+            _logger.error(f"Error in get_feedback_details: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)
             }
-        
+
     @http.route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'], csrf=False)
     def submit_feedback(self, **kw):
         try:
+            # Ambil semua parameter yang diperlukan
+            db = kw.get('db')
             order_id = kw.get('order_id')
             rating = kw.get('rating')
             feedback = kw.get('feedback')
             
-            if not all([order_id, rating]):
+            if not all([db, order_id, rating]):
                 return {
                     'status': 'error',
-                    'message': 'Order ID and rating are required'
+                    'message': 'Database, Order ID and rating are required'
                 }
+            
+            # Log untuk debugging
+            _logger.info(f"Processing feedback for db: {db}, order_id: {order_id}")
             
             order = request.env['sale.order'].sudo().browse(int(order_id))
             
@@ -1382,7 +1472,7 @@ class CustomerRatingAPI(Controller):
             }
             
         except Exception as e:
-            _logger.error("Error in submit_feedback: %s", str(e))
+            _logger.error(f"Error in submit_feedback: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)

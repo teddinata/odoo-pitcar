@@ -1024,7 +1024,7 @@ class CustomerRatingAPI(Controller):
             }
     
     # Backend endpoint untuk mendapatkan detail feedback
-    @route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST']) 
+    @route('/web/after-service/feedback/details', type='json', auth='none', methods=['POST']) 
     def get_feedback_details(self, **kwargs):
         try:
             # Debug log untuk melihat raw input

@@ -1024,31 +1024,34 @@ class CustomerRatingAPI(Controller):
             }
     
     # Backend endpoint untuk mendapatkan detail feedback
-    @route('/web/after-service/feedback/details', type='json', auth='none', methods=['POST']) 
+    @route('/web/after-service/feedback/details', type='json', auth='none', methods=['POST', 'OPTIONS'])  # Tambahkan OPTIONS
     def get_feedback_details(self, **kwargs):
+        """Get feedback details"""
         try:
+            # Handle CORS preflight request
+            if request.httprequest.method == 'OPTIONS':
+                headers = {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                }
+                return request.make_response('', headers=headers)
             # Debug log untuk melihat raw input
             _logger.info(f"Raw input kwargs: {kwargs}")
 
             # Cek jika params ada dalam kwargs
+            # Extract params dari body request
             params = kwargs
-            _logger.info(f"Params: {params}")
-
             order_id = params.get('order_id')
             database = params.get('db')
-            
-            _logger.info(f"Extracted values - order_id: {order_id}, database: {database}")
 
-            # Validasi parameter
             if not all([order_id, database]):
-                return {
-                    'status': 'error',
-                    'message': f'Missing required parameters. Got order_id={order_id}, db={database}'
-                }
+                return {'status': 'error', 'message': 'Missing required parameters'}
 
-            # Set database ke session
+            # Set database session
             request.session.db = database
 
+            # Get order details
             SaleOrder = request.env['sale.order'].sudo()
             order = SaleOrder.browse(int(order_id))
 

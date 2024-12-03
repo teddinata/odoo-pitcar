@@ -845,6 +845,7 @@ class CustomerRatingAPI(Controller):
                     'reminder_sent': bool(order.reminder_sent),
                     'has_feedback': bool(order.post_service_rating),
                     'rating': order.post_service_rating,
+                    'feedback': order.post_service_feedback,  # Tambahkan feedback
                     'whatsapp_link': self._generate_whatsapp_link(order)
                 } for order in history_orders],
 
@@ -1024,39 +1025,37 @@ class CustomerRatingAPI(Controller):
             }
     
     # Backend endpoint untuk mendapatkan detail feedback
-    @route('/web/after-service/feedback/details', type='json', auth='none', methods=['POST', 'OPTIONS'])  # Tambahkan OPTIONS
+    @route('/web/after-service/feedback/details', type='json', auth='none', methods=['POST'])
     def get_feedback_details(self, **kwargs):
-        """Get feedback details"""
         try:
-            # Handle CORS preflight request
-            if request.httprequest.method == 'OPTIONS':
-                headers = {
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'POST',
-                    'Access-Control-Allow-Headers': 'Content-Type'
-                }
-                return request.make_response('', headers=headers)
-            # Debug log untuk melihat raw input
-            _logger.info(f"Raw input kwargs: {kwargs}")
-
-            # Cek jika params ada dalam kwargs
-            # Extract params dari body request
+            # Pastikan environment baru dibuat untuk setiap request
+            env = request.env(context=request.context)
+            
+            # Log untuk debug
+            _logger.info('Processing request without session')
+            
+            # Ambil params
             params = kwargs
             order_id = params.get('order_id')
             database = params.get('db')
 
+            _logger.info(f'Params received: db={database}, order_id={order_id}')
+
             if not all([order_id, database]):
                 return {'status': 'error', 'message': 'Missing required parameters'}
 
-            # Set database session
-            request.session.db = database
+            # Set database untuk request ini
+            if hasattr(request, 'session'):
+                request.session.db = database
+                _logger.info(f'Database set in session: {database}')
 
-            # Get order details
-            SaleOrder = request.env['sale.order'].sudo()
+            # Gunakan sudo() untuk bypass security
+            SaleOrder = env['sale.order'].sudo()
             order = SaleOrder.browse(int(order_id))
 
             if not order.exists():
                 return {'status': 'error', 'message': 'Order not found'}
+
 
             # Pengecekan expiry
             if order.feedback_link_expiry and isinstance(order.feedback_link_expiry, fields.Datetime):
@@ -1079,7 +1078,10 @@ class CustomerRatingAPI(Controller):
                     'services': [{
                         'name': line.product_id.name if line.product_id else '',
                         'quantity': line.product_uom_qty,
-                    } for line in order.order_line if line.product_id]
+                    } for line in order.order_line if line.product_id],
+                     'has_rated': bool(order.post_service_rating),  # Tambahkan has_rated
+                    'rating': order.post_service_rating,           # Tambahkan current rating
+                    'feedback': order.post_service_feedback        # Tambahkan current feedback
                 }
             }
         except Exception as e:

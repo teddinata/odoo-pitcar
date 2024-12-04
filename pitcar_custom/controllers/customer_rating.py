@@ -674,34 +674,26 @@ class CustomerRatingAPI(Controller):
                 ('customer_rating', '!=', '')
             ]
 
-            # Add search filter
-            if search:
-                domain.extend(['|', '|', '|',
-                    ('partner_id.name', 'ilike', search),
-                    ('partner_car_id.number_plate', 'ilike', search),
-                    ('name', 'ilike', search),
-                    ('customer_feedback', 'ilike', search)
-                ])
+            # Handle date range
+            now = datetime.now()
+            now_local = tz.localize(now)
+            start_dt = None
+            end_dt = None
 
-            # Handle date range - Sesuaikan dengan endpoint dashboard
             if date_range != 'all':
-                now = datetime.now()
-                now_local = tz.localize(now)
-                
                 if date_range == 'custom' and date_start and date_end:
                     try:
+                        # Parse string dates to naive datetime
                         start_dt = datetime.strptime(date_start, '%Y-%m-%d')
                         end_dt = datetime.strptime(date_end, '%Y-%m-%d')
                         
+                        # Set time range
                         start_dt = start_dt.replace(hour=0, minute=0, second=0)
                         end_dt = end_dt.replace(hour=23, minute=59, second=59)
                         
-                        start_dt = tz.localize(start_dt)
-                        end_dt = tz.localize(end_dt)
-                        
                     except ValueError:
                         return {'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}
-                        
+                    
                     if start_dt > end_dt:
                         return {'status': 'error', 'message': 'Start date must be before end date'}
                 else:
@@ -709,8 +701,7 @@ class CustomerRatingAPI(Controller):
                         start_dt = now_local.replace(hour=0, minute=0, second=0)
                         end_dt = now_local
                     elif date_range == 'week':
-                        start_dt = now_local - timedelta(days=now_local.weekday())
-                        start_dt = start_dt.replace(hour=0, minute=0, second=0)
+                        start_dt = (now_local - timedelta(days=now_local.weekday())).replace(hour=0, minute=0, second=0)
                         end_dt = now_local
                     elif date_range == 'month':
                         start_dt = now_local.replace(day=1, hour=0, minute=0, second=0)
@@ -719,15 +710,22 @@ class CustomerRatingAPI(Controller):
                         start_dt = now_local.replace(month=1, day=1, hour=0, minute=0, second=0)
                         end_dt = now_local
 
-                # Convert to UTC for database query
-                start_utc = start_dt.astimezone(pytz.UTC)
-                end_utc = end_dt.astimezone(pytz.UTC)
-                
-                # Gunakan strftime seperti di dashboard
-                domain.extend([
-                    ('sa_cetak_pkb', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                    ('sa_cetak_pkb', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
-                ])
+                if start_dt and end_dt:
+                    # Localize dates if they aren't already
+                    if not start_dt.tzinfo:
+                        start_dt = tz.localize(start_dt)
+                    if not end_dt.tzinfo:
+                        end_dt = tz.localize(end_dt)
+                    
+                    # Convert to UTC for database query
+                    start_utc = start_dt.astimezone(pytz.UTC)
+                    end_utc = end_dt.astimezone(pytz.UTC)
+                    
+                    date_field = 'sa_cetak_pkb' if date_type == 'pkb' else 'create_date'
+                    domain.extend([
+                        (date_field, '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                        (date_field, '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                    ])
 
             # Add rating and satisfaction filters
             if rating_filter:
@@ -736,11 +734,19 @@ class CustomerRatingAPI(Controller):
             if satisfaction_filter:
                 domain.append(('customer_satisfaction', '=', satisfaction_filter))
 
-            # Calculate total records
+            # Add search domain if search term exists
+            if search:
+                domain.extend(['|', '|',
+                    ('partner_id.name', 'ilike', search),
+                    ('partner_car_id.number_plate', 'ilike', search),
+                    ('name', 'ilike', search)
+                ])
+
+            # Calculate total records for pagination
             total_records = SaleOrder.search_count(domain)
             total_pages = ceil(total_records / limit)
 
-            # Sort mapping
+            # Set up sorting
             sort_mapping = {
                 'pkb_date': 'sa_cetak_pkb',
                 'order_date': 'create_date',
@@ -760,46 +766,51 @@ class CustomerRatingAPI(Controller):
                 offset=offset
             )
 
-            # Filter category ratings
+            # Process category ratings filter
             if any([service_rating, price_rating, facility_rating]):
-                filtered_orders = []
+                filtered_orders = SaleOrder.browse()
                 for order in orders:
+                    if not order.detailed_ratings:
+                        continue
+                        
                     try:
-                        if not order.detailed_ratings:
-                            continue
-                            
                         ratings = order.detailed_ratings
                         if isinstance(ratings, str):
                             ratings = json.loads(ratings)
                             
+                        matches_filters = True
                         if service_rating and float(ratings.get('service_rating', 0)) != float(service_rating):
-                            continue
+                            matches_filters = False
                         if price_rating and float(ratings.get('price_rating', 0)) != float(price_rating):
-                            continue
+                            matches_filters = False
                         if facility_rating and float(ratings.get('facility_rating', 0)) != float(facility_rating):
-                            continue
+                            matches_filters = False
                             
-                        filtered_orders.append(order)
+                        if matches_filters:
+                            filtered_orders |= order
+                            
                     except (json.JSONDecodeError, AttributeError, ValueError):
                         continue
                         
                 orders = filtered_orders
 
-            # Process reviews
+            # Format reviews
             reviews = []
             for order in orders:
                 try:
+                    # Format dates
                     pkb_date = None
                     order_date = None
 
                     if order.sa_cetak_pkb:
-                        pkb_time = fields.Datetime.context_timestamp(request, order.sa_cetak_pkb)
-                        pkb_date = pkb_time.strftime('%Y-%m-%d %H:%M:%S')
+                        pkb_date = fields.Datetime.context_timestamp(request, order.sa_cetak_pkb)
+                        pkb_date = pkb_date.strftime('%Y-%m-%d %H:%M:%S')
 
                     if order.create_date:
-                        create_time = fields.Datetime.context_timestamp(request, order.create_date)
-                        order_date = create_time.strftime('%Y-%m-%d %H:%M:%S')
+                        order_date = fields.Datetime.context_timestamp(request, order.create_date)
+                        order_date = order_date.strftime('%Y-%m-%d %H:%M:%S')
 
+                    # Get detailed ratings
                     category_ratings = {'service': 0, 'price': 0, 'facility': 0}
                     if order.detailed_ratings:
                         try:
@@ -807,9 +818,9 @@ class CustomerRatingAPI(Controller):
                             if isinstance(ratings, str):
                                 ratings = json.loads(ratings)
                             category_ratings = {
-                                'service': ratings.get('service_rating', 0),
-                                'price': ratings.get('price_rating', 0),
-                                'facility': ratings.get('facility_rating', 0)
+                                'service': float(ratings.get('service_rating', 0)),
+                                'price': float(ratings.get('price_rating', 0)),
+                                'facility': float(ratings.get('facility_rating', 0))
                             }
                         except (json.JSONDecodeError, AttributeError) as e:
                             _logger.warning(f"Error parsing detailed ratings for order {order.id}: {str(e)}")

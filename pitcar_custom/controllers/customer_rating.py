@@ -1310,47 +1310,47 @@ class CustomerRatingAPI(Controller):
     #             headers=headers
     #         )
 
-    # @http.route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'], csrf=False)
-    # def get_feedback_details(self, **kw):
-    #     try:
-    #         order_id = kw.get('order_id')
-    #         if not order_id:
-    #             return {
-    #                 'status': 'error',
-    #                 'message': 'Order ID is required'
-    #             }
+    @http.route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'], csrf=False)
+    def get_feedback_details(self, **kw):
+        try:
+            order_id = kw.get('order_id')
+            if not order_id:
+                return {
+                    'status': 'error',
+                    'message': 'Order ID is required'
+                }
             
-    #         # Menggunakan sudo() untuk mengakses data tanpa perlu authentication
-    #         order = request.env['sale.order'].sudo().browse(int(order_id))
+            # Menggunakan sudo() untuk mengakses data tanpa perlu authentication
+            order = request.env['sale.order'].sudo().browse(int(order_id))
             
-    #         if not order.exists():
-    #             return {
-    #                 'status': 'error',
-    #                 'message': 'Order not found'
-    #             }
+            if not order.exists():
+                return {
+                    'status': 'error',
+                    'message': 'Order not found'
+                }
             
-    #         return {
-    #             'status': 'success',
-    #             'data': {
-    #                 'name': order.name,
-    #                 'customer_name': order.partner_id.name if order.partner_id else '',
-    #                 'vehicle': {
-    #                     'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
-    #                     'brand': order.partner_car_brand.name if order.partner_car_brand else '',
-    #                     'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
-    #                 },
-    #                 'has_rated': bool(order.post_service_rating),
-    #                 'rating': order.post_service_rating,
-    #                 'feedback': order.post_service_feedback
-    #             }
-    #         }
+            return {
+                'status': 'success',
+                'data': {
+                    'name': order.name,
+                    'customer_name': order.partner_id.name if order.partner_id else '',
+                    'vehicle': {
+                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                        'brand': order.partner_car_brand.name if order.partner_car_brand else '',
+                        'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
+                    },
+                    'has_rated': bool(order.post_service_rating),
+                    'rating': order.post_service_rating,
+                    'feedback': order.post_service_feedback
+                }
+            }
             
-    #     except Exception as e:
-    #         _logger.error("Error in get_feedback_details: %s", str(e))
-    #         return {
-    #             'status': 'error',
-    #             'message': str(e)
-    #         }
+        except Exception as e:
+            _logger.error("Error in get_feedback_details: %s", str(e))
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
         
     # @http.route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'], csrf=False)
     # def submit_feedback(self, **kw):
@@ -1490,76 +1490,6 @@ class CustomerRatingAPI(Controller):
     #             'status': 'error',
     #             'message': str(e)
     #         }
-
-    @http.route(['/public/feedback/<dbname>/details'], type='http', auth='none', methods=['POST'], csrf=False)
-    def get_feedback_details(self, dbname, **kw):
-        _logger.info(f"Request to /public/feedback/{dbname}/details")
-        headers = {'Content-Type': 'application/json'}
-        
-        try:
-            # Validate database
-            if not db.exp_db_exist(dbname):
-                return Response(
-                    json.dumps({'error': 'Invalid database'}),
-                    status=400, 
-                    headers=headers
-                )
-
-            # Get data from request body
-            body = json.loads(request.httprequest.data.decode())
-            order_id = body.get('order_id')
-            
-            if not order_id:
-                return Response(
-                    json.dumps({'error': 'Order ID is required'}),
-                    status=400,
-                    headers=headers
-                )
-
-            # Use registry to access database
-            with odoo.registry(dbname).cursor() as cr:
-                env = odoo.api.Environment(cr, odoo.SUPERUSER_ID, {})
-                order = env['sale.order'].browse(int(order_id))
-                
-                if not order.exists():
-                    return Response(
-                        json.dumps({'error': 'Order not found'}),
-                        status=404,
-                        headers=headers
-                    )
-                
-                data = {
-                    'status': 'success',
-                    'data': {
-                        'name': order.name,
-                        'customer_name': order.partner_id.name if order.partner_id else '',
-                        'vehicle': {
-                            'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
-                            'brand': order.partner_car_brand.name if order.partner_car_brand else '',
-                            'type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
-                        }
-                    }
-                }
-                
-                return Response(
-                    json.dumps(data),
-                    status=200,
-                    headers=headers
-                )
-                
-        except json.JSONDecodeError:
-            return Response(
-                json.dumps({'error': 'Invalid JSON'}),
-                status=400,
-                headers=headers
-            )
-        except Exception as e:
-            _logger.error(f"Error processing request: {str(e)}", exc_info=True)
-            return Response(
-                json.dumps({'error': str(e)}),
-                status=500,
-                headers=headers
-            )
 
 
     @http.route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'], csrf=False)

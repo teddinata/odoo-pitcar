@@ -481,6 +481,9 @@ class CustomerRatingAPI(Controller):
             params = kwargs
             dbname = params.get('db')
             date_range = params.get('date_range', 'all')  # all, today, week, month, year
+            # Tambahkan di bagian atas params untuk kedua fungsi
+            date_start = params.get('date_start')
+            date_end = params.get('date_end')
 
             if not dbname:
                 return {'status': 'error', 'message': 'Database name is required'}
@@ -494,25 +497,40 @@ class CustomerRatingAPI(Controller):
             # Build base domain
             domain = [('state', 'in', ['sale', 'done'])]
 
-            # Only add date filters if not 'all'
             if date_range != 'all':
-                if date_range == 'today':
-                    date_start = now.replace(hour=0, minute=0, second=0)
-                    date_end = now
-                elif date_range == 'week':
-                    date_start = now - timedelta(days=now.weekday())
-                    date_end = now
-                elif date_range == 'month':
-                    date_start = now.replace(day=1)
-                    date_end = now
-                elif date_range == 'year':
-                    date_start = now.replace(month=1, day=1)
-                    date_end = now
-                
-                # Convert to UTC for database query
-                date_start_utc = date_start.astimezone(pytz.UTC)
-                date_end_utc = date_end.astimezone(pytz.UTC)
-                
+                if date_range == 'custom' and date_start and date_end:
+                    try:
+                        date_start = datetime.strptime(date_start, '%Y-%m-%d')
+                        date_end = datetime.strptime(date_end, '%Y-%m-%d')
+                        # Set time untuk range yang lengkap
+                        date_start = date_start.replace(hour=0, minute=0, second=0)
+                        date_end = date_end.replace(hour=23, minute=59, second=59)
+                    except ValueError:
+                        return {'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}
+                else:
+                    # Existing date range logic
+                    if date_range == 'today':
+                        date_start = now.replace(hour=0, minute=0, second=0)
+                        date_end = now
+                    elif date_range == 'week':
+                        date_start = now - timedelta(days=now.weekday())
+                        date_end = now
+                    elif date_range == 'month':
+                        date_start = now.replace(day=1)
+                        date_end = now
+                    elif date_range == 'year':
+                        date_start = now.replace(month=1, day=1)
+                        date_end = now
+
+                # Validasi date range
+                if date_start > date_end:
+                    return {'status': 'error', 'message': 'Start date must be before end date'}
+
+                # Convert ke UTC untuk query database
+                date_start_utc = tz.localize(date_start).astimezone(pytz.UTC)
+                date_end_utc = date_end.astimezone(pytz.UTC) if isinstance(date_end, datetime) else tz.localize(date_end).astimezone(pytz.UTC)
+
+                # Update domain dengan date range, selalu gunakan sa_cetak_pkb
                 domain.extend([
                     ('sa_cetak_pkb', '>=', date_start_utc.strftime('%Y-%m-%d %H:%M:%S')),
                     ('sa_cetak_pkb', '<=', date_end_utc.strftime('%Y-%m-%d %H:%M:%S'))
@@ -630,6 +648,9 @@ class CustomerRatingAPI(Controller):
             date_type = params.get('date_type', 'pkb')
             rating_filter = params.get('rating')
             satisfaction_filter = params.get('satisfaction')
+            # Tambahkan di bagian atas params untuk kedua fungsi
+            date_start = params.get('date_start')
+            date_end = params.get('date_end')
 
             if not dbname:
                 return {'status': 'error', 'message': 'Database name is required'}
@@ -646,26 +667,45 @@ class CustomerRatingAPI(Controller):
                 ('customer_rating', '!=', '')
             ]
 
-            # Add date range filter if not 'all'
+            # Modifikasi bagian date range filter
             if date_range != 'all':
-                if date_range == 'today':
-                    date_start = now.replace(hour=0, minute=0, second=0)
-                    date_end = now
-                elif date_range == 'week':
-                    date_start = now - timedelta(days=now.weekday())
-                    date_end = now
-                elif date_range == 'month':
-                    date_start = now.replace(day=1)
-                    date_end = now
-                elif date_range == 'year':
-                    date_start = now.replace(month=1, day=1)
-                    date_end = now
+                if date_range == 'custom' and date_start and date_end:
+                    try:
+                        date_start = datetime.strptime(date_start, '%Y-%m-%d')
+                        date_end = datetime.strptime(date_end, '%Y-%m-%d')
+                        # Set time untuk range yang lengkap
+                        date_start = date_start.replace(hour=0, minute=0, second=0)
+                        date_end = date_end.replace(hour=23, minute=59, second=59)
+                    except ValueError:
+                        return {'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}
+                else:
+                    # Existing date range logic
+                    if date_range == 'today':
+                        date_start = now.replace(hour=0, minute=0, second=0)
+                        date_end = now
+                    elif date_range == 'week':
+                        date_start = now - timedelta(days=now.weekday())
+                        date_end = now
+                    elif date_range == 'month':
+                        date_start = now.replace(day=1)
+                        date_end = now
+                    elif date_range == 'year':
+                        date_start = now.replace(month=1, day=1)
+                        date_end = now
 
-                # Format dates in Asia/Jakarta timezone
+                # Validasi date range
+                if date_start > date_end:
+                    return {'status': 'error', 'message': 'Start date must be before end date'}
+
+                # Convert ke UTC untuk query database
+                date_start_utc = tz.localize(date_start).astimezone(pytz.UTC)
+                date_end_utc = date_end.astimezone(pytz.UTC) if isinstance(date_end, datetime) else tz.localize(date_end).astimezone(pytz.UTC)
+
+                # Update domain dengan date range
                 date_field = 'sa_cetak_pkb' if date_type == 'pkb' else 'create_date'
                 domain.extend([
-                    (date_field, '>=', date_start.strftime('%Y-%m-%d %H:%M:%S')),
-                    (date_field, '<=', date_end.strftime('%Y-%m-%d %H:%M:%S'))
+                    (date_field, '>=', date_start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    (date_field, '<=', date_end_utc.strftime('%Y-%m-%d %H:%M:%S'))
                 ])
 
             # Add other filters

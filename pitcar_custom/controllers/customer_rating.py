@@ -674,57 +674,60 @@ class CustomerRatingAPI(Controller):
                 ('customer_rating', '!=', '')
             ]
 
-            # Handle date range
+            # Add search filter
+            if search:
+                domain.extend(['|', '|', '|',
+                    ('partner_id.name', 'ilike', search),
+                    ('partner_car_id.number_plate', 'ilike', search),
+                    ('name', 'ilike', search),
+                    ('customer_feedback', 'ilike', search)
+                ])
+
+            # Handle date range - Sesuaikan dengan endpoint dashboard
             if date_range != 'all':
                 now = datetime.now()
-                try:
-                    if date_range == 'custom' and date_start and date_end:
-                        # Parse string dates ke datetime
+                now_local = tz.localize(now)
+                
+                if date_range == 'custom' and date_start and date_end:
+                    try:
                         start_dt = datetime.strptime(date_start, '%Y-%m-%d')
                         end_dt = datetime.strptime(date_end, '%Y-%m-%d')
                         
-                        # Set waktu
                         start_dt = start_dt.replace(hour=0, minute=0, second=0)
                         end_dt = end_dt.replace(hour=23, minute=59, second=59)
                         
-                        # Validasi tanggal
-                        if start_dt > end_dt:
-                            return {'status': 'error', 'message': 'Start date must be before end date'}
+                        start_dt = tz.localize(start_dt)
+                        end_dt = tz.localize(end_dt)
                         
-                    else:
-                        # Default date ranges
-                        if date_range == 'today':
-                            start_dt = now.replace(hour=0, minute=0, second=0)
-                            end_dt = now
-                        elif date_range == 'week':
-                            start_dt = now - timedelta(days=now.weekday())
-                            start_dt = start_dt.replace(hour=0, minute=0, second=0)
-                            end_dt = now
-                        elif date_range == 'month':
-                            start_dt = now.replace(day=1, hour=0, minute=0, second=0)
-                            end_dt = now
-                        elif date_range == 'year':
-                            start_dt = now.replace(month=1, day=1, hour=0, minute=0, second=0)
-                            end_dt = now
+                    except ValueError:
+                        return {'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}
+                        
+                    if start_dt > end_dt:
+                        return {'status': 'error', 'message': 'Start date must be before end date'}
+                else:
+                    if date_range == 'today':
+                        start_dt = now_local.replace(hour=0, minute=0, second=0)
+                        end_dt = now_local
+                    elif date_range == 'week':
+                        start_dt = now_local - timedelta(days=now_local.weekday())
+                        start_dt = start_dt.replace(hour=0, minute=0, second=0)
+                        end_dt = now_local
+                    elif date_range == 'month':
+                        start_dt = now_local.replace(day=1, hour=0, minute=0, second=0)
+                        end_dt = now_local
+                    elif date_range == 'year':
+                        start_dt = now_local.replace(month=1, day=1, hour=0, minute=0, second=0)
+                        end_dt = now_local
 
-                    # Set timezone for dates
-                    start_dt = tz.localize(start_dt)
-                    end_dt = tz.localize(end_dt)
-                    
-                    # Convert to UTC for database query
-                    start_utc = start_dt.astimezone(pytz.UTC)
-                    end_utc = end_dt.astimezone(pytz.UTC)
-                    
-                    # Add date range to domain
-                    date_field = 'sa_cetak_pkb' if date_type == 'pkb' else 'create_date'
-                    domain.extend([
-                        (date_field, '>=', start_utc),
-                        (date_field, '<=', end_utc)
-                    ])
+                # Convert to UTC for database query
+                start_utc = start_dt.astimezone(pytz.UTC)
+                end_utc = end_dt.astimezone(pytz.UTC)
                 
-                except (ValueError, AttributeError) as e:
-                    _logger.error(f"Error in date handling: {str(e)}")
-                    return {'status': 'error', 'message': 'Invalid date format or range'}
+                # Gunakan strftime seperti di dashboard
+                domain.extend([
+                    ('sa_cetak_pkb', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('sa_cetak_pkb', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                ])
 
             # Add rating and satisfaction filters
             if rating_filter:
@@ -733,21 +736,22 @@ class CustomerRatingAPI(Controller):
             if satisfaction_filter:
                 domain.append(('customer_satisfaction', '=', satisfaction_filter))
 
-            # Calculate total records for base pagination
+            # Calculate total records
             total_records = SaleOrder.search_count(domain)
             total_pages = ceil(total_records / limit)
 
+            # Sort mapping
             sort_mapping = {
                 'pkb_date': 'sa_cetak_pkb',
                 'order_date': 'create_date',
-                'date': 'sa_cetak_pkb',  # Frontend menggunakan 'date'
+                'date': 'sa_cetak_pkb',
                 'rating': 'customer_rating',
                 'customer': 'partner_id.name',
                 'order': 'name'
             }
             sort_field = sort_mapping.get(sort_by, 'sa_cetak_pkb')
             
-            # Get the base records
+            # Get paginated records
             offset = (page - 1) * limit
             orders = SaleOrder.search(
                 domain,
@@ -756,7 +760,7 @@ class CustomerRatingAPI(Controller):
                 offset=offset
             )
 
-            # Filter for category ratings directly in the main function
+            # Filter category ratings
             if any([service_rating, price_rating, facility_rating]):
                 filtered_orders = []
                 for order in orders:
@@ -768,7 +772,6 @@ class CustomerRatingAPI(Controller):
                         if isinstance(ratings, str):
                             ratings = json.loads(ratings)
                             
-                        # Check each category rating if specified
                         if service_rating and float(ratings.get('service_rating', 0)) != float(service_rating):
                             continue
                         if price_rating and float(ratings.get('price_rating', 0)) != float(price_rating):
@@ -782,11 +785,10 @@ class CustomerRatingAPI(Controller):
                         
                 orders = filtered_orders
 
-            # Process orders into reviews
+            # Process reviews
             reviews = []
             for order in orders:
                 try:
-                    # Format dates
                     pkb_date = None
                     order_date = None
 
@@ -798,7 +800,6 @@ class CustomerRatingAPI(Controller):
                         create_time = fields.Datetime.context_timestamp(request, order.create_date)
                         order_date = create_time.strftime('%Y-%m-%d %H:%M:%S')
 
-                    # Get detailed ratings
                     category_ratings = {'service': 0, 'price': 0, 'facility': 0}
                     if order.detailed_ratings:
                         try:

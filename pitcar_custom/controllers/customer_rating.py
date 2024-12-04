@@ -655,10 +655,10 @@ class CustomerRatingAPI(Controller):
             date_start = params.get('date_start')
             date_end = params.get('date_end')
             
-            # Tambahkan filter untuk kategori rating spesifik
-            service_rating = params.get('service_rating')  # filter rating pelayanan
-            price_rating = params.get('price_rating')      # filter rating harga
-            facility_rating = params.get('facility_rating') # filter rating fasilitas
+            # Filter untuk kategori rating spesifik
+            service_rating = params.get('service_rating')
+            price_rating = params.get('price_rating')
+            facility_rating = params.get('facility_rating')
 
             if not dbname:
                 return {'status': 'error', 'message': 'Database name is required'}
@@ -674,21 +674,19 @@ class CustomerRatingAPI(Controller):
                 ('customer_rating', '!=', '')
             ]
 
+            # Handle date range
             if date_range != 'all':
                 now = datetime.now()
                 now_local = tz.localize(now)
                 
                 if date_range == 'custom' and date_start and date_end:
                     try:
-                        # Parse string dates to naive datetime
                         start_dt = datetime.strptime(date_start, '%Y-%m-%d')
                         end_dt = datetime.strptime(date_end, '%Y-%m-%d')
                         
-                        # Set time range
                         start_dt = start_dt.replace(hour=0, minute=0, second=0)
                         end_dt = end_dt.replace(hour=23, minute=59, second=59)
                         
-                        # Localize to Asia/Jakarta
                         start_dt = tz.localize(start_dt)
                         end_dt = tz.localize(end_dt)
                         
@@ -715,7 +713,7 @@ class CustomerRatingAPI(Controller):
                 # Convert to UTC for database query
                 start_utc = start_dt.astimezone(pytz.UTC)
                 end_utc = end_dt.astimezone(pytz.UTC)
-
+                
                 # Update domain dengan date range
                 date_field = 'sa_cetak_pkb' if date_type == 'pkb' else 'create_date'
                 domain.extend([
@@ -723,7 +721,7 @@ class CustomerRatingAPI(Controller):
                     (date_field, '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
                 ])
 
-            # Add other filters
+            # Add search filter
             if search:
                 domain.extend(['|', '|', '|',
                     ('partner_id.name', 'ilike', search),
@@ -732,81 +730,68 @@ class CustomerRatingAPI(Controller):
                     ('customer_feedback', 'ilike', search)
                 ])
 
+            # Add rating and satisfaction filters
             if rating_filter:
                 domain.append(('customer_rating', '=', str(rating_filter)))
 
             if satisfaction_filter:
                 domain.append(('customer_satisfaction', '=', satisfaction_filter))
 
-            # Filter orders berdasarkan kategori rating
-            filtered_orders = None
-            category_filters = {
-                'service_rating': service_rating,
-                'price_rating': price_rating,
-                'facility_rating': facility_rating
-            }
-            
-            # Jika ada filter kategori yang aktif
-            if any(category_filters.values()):
-                # Cari semua order yang sesuai dengan domain dasar
-                all_orders = SaleOrder.search(domain)
-                filtered_orders = all_orders.filtered(lambda order: 
-                    all(
-                        self._check_category_rating(
-                            order, 
-                            category, 
-                            float(rating) if rating else None
-                        )
-                        for category, rating in category_filters.items()
-                        if rating is not None
-                    )
-                )
-                # Update total records untuk pagination
-                total_records = len(filtered_orders)
-                total_pages = ceil(total_records / limit)
-                
-                # Apply sorting and pagination manually karena sudah di-filter
-                sort_reverse = sort_order == 'desc'
-                if sort_by in sort_mapping:
-                    filtered_orders = sorted(
-                        filtered_orders, 
-                        key=lambda x: getattr(x, sort_mapping[sort_by], ''),
-                        reverse=sort_reverse
-                    )
-                
-                # Manual pagination
-                start_idx = (page - 1) * limit
-                end_idx = start_idx + limit
-                orders = filtered_orders[start_idx:end_idx]
-                
-            else:
-                # Jika tidak ada filter kategori, gunakan query biasa
-                total_records = SaleOrder.search_count(domain)
-                total_pages = ceil(total_records / limit)
-                
-                # Determine sort field
-                sort_mapping = {
-                    'pkb_date': 'sa_cetak_pkb',
-                    'order_date': 'create_date',
-                    'rating': 'customer_rating',
-                    'customer': 'partner_id.name',
-                    'order': 'name'
-                }
-                sort_field = sort_mapping.get(sort_by, 'sa_cetak_pkb')
-                
-                # Get paginated records
-                offset = (page - 1) * limit
-                orders = SaleOrder.search(
-                    domain,
-                    order=f"{sort_field} {sort_order}",
-                    limit=limit,
-                    offset=offset
-                )
+            # Calculate total records for base pagination
+            total_records = SaleOrder.search_count(domain)
+            total_pages = ceil(total_records / limit)
 
+            # Determine sort field
+            sort_mapping = {
+                'pkb_date': 'sa_cetak_pkb',
+                'order_date': 'create_date',
+                'date': 'sa_cetak_pkb',  # Handle 'date' sort
+                'rating': 'customer_rating',
+                'customer': 'partner_id.name',
+                'order': 'name'
+            }
+            sort_field = sort_mapping.get(sort_by, 'sa_cetak_pkb')
+            
+            # Get the base records
+            offset = (page - 1) * limit
+            orders = SaleOrder.search(
+                domain,
+                order=f"{sort_field} {sort_order}",
+                limit=limit,
+                offset=offset
+            )
+
+            # Filter for category ratings directly in the main function
+            if any([service_rating, price_rating, facility_rating]):
+                filtered_orders = []
+                for order in orders:
+                    try:
+                        if not order.detailed_ratings:
+                            continue
+                            
+                        ratings = order.detailed_ratings
+                        if isinstance(ratings, str):
+                            ratings = json.loads(ratings)
+                            
+                        # Check each category rating if specified
+                        if service_rating and float(ratings.get('service_rating', 0)) != float(service_rating):
+                            continue
+                        if price_rating and float(ratings.get('price_rating', 0)) != float(price_rating):
+                            continue
+                        if facility_rating and float(ratings.get('facility_rating', 0)) != float(facility_rating):
+                            continue
+                            
+                        filtered_orders.append(order)
+                    except (json.JSONDecodeError, AttributeError, ValueError):
+                        continue
+                        
+                orders = filtered_orders
+
+            # Process orders into reviews
             reviews = []
             for order in orders:
                 try:
-                    # Format dates in Asia/Jakarta timezone
+                    # Format dates
                     pkb_date = None
                     order_date = None
 

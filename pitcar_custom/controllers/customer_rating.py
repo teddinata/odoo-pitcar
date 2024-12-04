@@ -10,10 +10,76 @@ from math import ceil
 import urllib.parse
 import base64
 import hmac
+import base64
+import hashlib
+import time
 
 _logger = logging.getLogger(__name__)
 
 class CustomerRatingAPI(Controller):
+    def _get_secret_key(self):
+        """Get secret key from system parameter"""
+        return request.env['ir.config_parameter'].sudo().get_param(
+            'feedback.secret.key', 
+            default='your-secret-key-here'
+        )
+
+    def _encode_id(self, order_id):
+        """Encode order ID dengan timestamp dan signature"""
+        try:
+            # Data yang akan dienkripsi
+            data = {
+                'id': order_id,
+                'ts': int(time.time()),  # Unix timestamp
+            }
+            
+            # Convert ke JSON dan encode ke base64
+            json_data = json.dumps(data)
+            encoded = base64.urlsafe_b64encode(json_data.encode()).decode()
+            
+            # Generate signature
+            signature = hmac.new(
+                self._get_secret_key().encode(),
+                encoded.encode(),
+                hashlib.sha256
+            ).hexdigest()
+            
+            # Combine encoded data dan signature
+            return f"{encoded}.{signature}"
+        except Exception as e:
+            _logger.error(f"Encoding error: {str(e)}")
+            return None
+
+    def _decode_id(self, encoded_str):
+        """Decode dan validasi encoded ID"""
+        try:
+            # Split encoded data dan signature
+            encoded, signature = encoded_str.split('.')
+            
+            # Verify signature
+            expected_sig = hmac.new(
+                self._get_secret_key().encode(),
+                encoded.encode(),
+                hashlib.sha256
+            ).hexdigest()
+            
+            if not hmac.compare_digest(signature, expected_sig):
+                _logger.warning("Invalid signature detected")
+                return None
+            
+            # Decode data
+            json_data = base64.urlsafe_b64decode(encoded).decode()
+            data = json.loads(json_data)
+            
+            # Check timestamp (optional, misal expired setelah 7 hari)
+            if time.time() - data['ts'] > 7 * 24 * 3600:
+                _logger.warning("Expired token detected")
+                return None
+            
+            return data['id']
+        except Exception as e:
+            _logger.error(f"Decoding error: {str(e)}")
+            return None
     def _validate_token(self, token):
         """Validate API token"""
         if not token:
@@ -936,6 +1002,42 @@ class CustomerRatingAPI(Controller):
     #         _logger.error(f"Error generating WhatsApp link: {str(e)}")
     #         return None
         
+    # def _generate_whatsapp_link(self, order):
+    #     """Helper function to generate WhatsApp link"""
+    #     try:
+    #         if not order.partner_id.mobile:
+    #             return None
+
+    #         # Clean phone number
+    #         phone = order.partner_id.mobile
+    #         clean_phone = ''.join(filter(str.isdigit, phone))
+    #         if clean_phone.startswith('0'):
+    #             clean_phone = '62' + clean_phone[1:]
+    #         elif not clean_phone.startswith('62'):
+    #             clean_phone = '62' + clean_phone
+
+    #         # Get current database
+    #         database = request.env.cr.dbname
+
+    #         # Generate message with database parameter
+    #         base_url = "https://pitscore.pitcar.co.id"
+    #         feedback_url = f"{base_url}/feedback/{order.id}?db={database}"
+            
+    #         message = f"""Halo {order.partner_id.name},
+
+    # Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di bengkel kami.
+
+    # Bagaimana kondisi kendaraan Anda setelah 3 hari servis? Mohon berikan penilaian Anda melalui link berikut:
+    # {feedback_url}
+
+    # Terima kasih atas feedback Anda!"""
+
+    #         return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
+        
+    #     except Exception as e:
+    #         _logger.error(f"Error generating WhatsApp link: {str(e)}")
+    #         return None
+
     def _generate_whatsapp_link(self, order):
         """Helper function to generate WhatsApp link"""
         try:
@@ -950,24 +1052,28 @@ class CustomerRatingAPI(Controller):
             elif not clean_phone.startswith('62'):
                 clean_phone = '62' + clean_phone
 
+            # Generate encoded order ID
+            encoded_id = self._encode_id(order.id)
+            if not encoded_id:
+                return None
+
             # Get current database
             database = request.env.cr.dbname
 
-            # Generate message with database parameter
+            # Generate message with encoded ID
             base_url = "https://pitscore.pitcar.co.id"
-            feedback_url = f"{base_url}/feedback/{order.id}?db={database}"
+            feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
             
             message = f"""Halo {order.partner_id.name},
 
-    Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di bengkel kami.
+Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar.
 
-    Bagaimana kondisi kendaraan Anda setelah 3 hari servis? Mohon berikan penilaian Anda melalui link berikut:
-    {feedback_url}
+Bagaimana kondisi kendaraan Anda setelah 3 hari servis? Mohon berikan penilaian Anda melalui link berikut:
+{feedback_url}
 
-    Terima kasih atas feedback Anda!"""
+Terima kasih atas feedback Anda!"""
 
             return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
-        
         except Exception as e:
             _logger.error(f"Error generating WhatsApp link: {str(e)}")
             return None
@@ -1313,14 +1419,16 @@ class CustomerRatingAPI(Controller):
     @http.route('/web/after-service/feedback/details', type='json', auth='public', methods=['POST'], csrf=False)
     def get_feedback_details(self, **kw):
         try:
-            order_id = kw.get('order_id')
-            if not order_id:
-                return {
-                    'status': 'error',
-                    'message': 'Order ID is required'
-                }
+            encoded_id = kw.get('order_id')
+            database = kw.get('db')
+            if not encoded_id:
+                return {'status': 'error', 'message': 'Encoded Order ID is required'}
             
-            # Menggunakan sudo() untuk mengakses data tanpa perlu authentication
+            # Decode order ID
+            order_id = self._decode_id(encoded_id)
+            if not order_id:
+                return {'status': 'error', 'message': 'Invalid or expired order ID'}
+            
             order = request.env['sale.order'].sudo().browse(int(order_id))
             
             if not order.exists():
@@ -1495,20 +1603,17 @@ class CustomerRatingAPI(Controller):
     @http.route('/web/after-service/feedback/submit', type='json', auth='public', methods=['POST'], csrf=False)
     def submit_feedback(self, **kw):
         try:
-            # Ambil semua parameter yang diperlukan
-            db = kw.get('db')
-            order_id = kw.get('order_id')
-            rating = kw.get('rating')
-            feedback = kw.get('feedback')
+            encoded_id = kw.get('order_id')
+            rating = kw.get('rating')      # Tambahkan ini
+            feedback = kw.get('feedback')  # Tambahkan ini
+            database = kw.get('db')
+            if not encoded_id:
+                return {'status': 'error', 'message': 'Encoded Order ID is required'}
             
-            if not all([db, order_id, rating]):
-                return {
-                    'status': 'error',
-                    'message': 'Database, Order ID and rating are required'
-                }
-            
-            # Log untuk debugging
-            _logger.info(f"Processing feedback for db: {db}, order_id: {order_id}")
+            # Decode order ID
+            order_id = self._decode_id(encoded_id)
+            if not order_id:
+                return {'status': 'error', 'message': 'Invalid or expired order ID'}
             
             order = request.env['sale.order'].sudo().browse(int(order_id))
             

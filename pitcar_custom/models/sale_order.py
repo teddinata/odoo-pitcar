@@ -42,6 +42,27 @@ READONLY_FIELD_STATES = {
 #             waktu_kerja += waktu_kerja_hari_ini
     
 #     return waktu_kerja
+
+def format_duration(duration_in_hours):
+    """
+    Convert decimal hours to a human-readable format
+    Example: 
+    1.5 -> "1 jam 30 menit"
+    0.75 -> "45 menit"
+    2.25 -> "2 jam 15 menit"
+    """
+    if not duration_in_hours:
+        return "0 menit"
+        
+    hours = int(duration_in_hours)
+    minutes = int((duration_in_hours - hours) * 60)
+    
+    if hours == 0:
+        return f"{minutes} menit"
+    elif minutes == 0:
+        return f"{hours} jam"
+    else:
+        return f"{hours} jam {minutes} menit"
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
@@ -172,11 +193,21 @@ class SaleOrder(models.Model):
         compute='_compute_total_duration',
         store=True
     )
+    formatted_total_duration = fields.Char(
+        string='Total Durasi',
+        compute='_compute_formatted_duration',
+        store=False
+    )
 
     @api.depends('order_line.service_duration')
     def _compute_total_duration(self):
         for order in self:
             order.total_service_duration = sum(order.order_line.mapped('service_duration'))
+
+    @api.depends('total_service_duration')
+    def _compute_formatted_duration(self):
+        for order in self:
+            order.formatted_total_duration = format_duration(order.total_service_duration)
 
      # Tambahkan field baru untuk tracking performance
     actual_vs_estimated_duration = fields.Float(

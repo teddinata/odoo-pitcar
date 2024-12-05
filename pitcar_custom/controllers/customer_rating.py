@@ -1187,19 +1187,24 @@ class CustomerRatingAPI(Controller):
             
             # Format pesan tanpa emoji dan dengan teks rata kiri
             message = f"""Halo {order.partner_id.name}
-Saya, {sa_names} dari Pitcar
-Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar
-Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
-{feedback_url}
-Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
-- Garansi servis: 2 minggu
-- Garansi sparepart: 3 bulan (kecuali part dari luar ya)
-Terima kasih atas kepercayaan Anda kepada Pitcar!"""
+    Saya, {sa_names} dari Pitcar
+    Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar
+    Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
+    {feedback_url}
+    Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
+    - Garansi servis: 2 minggu
+    - Garansi sparepart: 3 bulan (kecuali part dari luar ya)
+    Terima kasih atas kepercayaan Anda kepada Pitcar!"""
 
             # Log untuk debugging
             _logger.info(f"Generated message for order {order.id} with SA: {sa_names}")
             _logger.info(f"Full message: {message}")
 
+            return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
+            
+        except Exception as e:
+            _logger.error(f"Error generating WhatsApp link: {str(e)}")
+            return None
         
     @route('/web/reminder/mark-sent', type='json', auth='public', methods=['POST'])
     def mark_reminders_sent(self, **kwargs):

@@ -888,6 +888,9 @@ class CustomerRatingAPI(Controller):
             date_range = kwargs.get('date_range', 'all')
             search = kwargs.get('search', '').strip()
             reminder_status = kwargs.get('reminder_status', 'all')
+             # Add custom date filter parameters
+            custom_date_start = kwargs.get('date_start')
+            custom_date_end = kwargs.get('date_end')
 
             # Validate limit
             if limit not in [10, 25, 50]:
@@ -933,25 +936,41 @@ class CustomerRatingAPI(Controller):
                         ('post_service_rating', '!=', False)
                     ])
 
-            # Add date range filter
-            if date_range and date_range != 'all':
-                if date_range == 'today':
-                    date_start = today
-                    date_end = today
-                elif date_range == 'week':
-                    date_start = today - timedelta(days=today.weekday())
-                    date_end = today
-                elif date_range == 'month':
-                    date_start = today.replace(day=1)
-                    date_end = today
-                elif date_range == 'year':
-                    date_start = today.replace(month=1, day=1)
-                    date_end = today
+            # Handle date filtering
+            if custom_date_start and custom_date_end:
+                # Parse the custom dates
+                try:
+                    date_start = datetime.strptime(custom_date_start, '%Y-%m-%d').date()
+                    date_end = datetime.strptime(custom_date_end, '%Y-%m-%d').date()
+                    
+                    # Add date range filter with custom dates
+                    history_domain.extend([
+                        ('date_completed', '>=', date_start.strftime('%Y-%m-%d 00:00:00')),
+                        ('date_completed', '<=', date_end.strftime('%Y-%m-%d 23:59:59'))
+                    ])
+                except ValueError as e:
+                    _logger.error(f"Invalid date format: {str(e)}")
+                    return {'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}
+            else:
+                # Original date range filter
+                if date_range and date_range != 'all':
+                    if date_range == 'today':
+                        date_start = today
+                        date_end = today
+                    elif date_range == 'week':
+                        date_start = today - timedelta(days=today.weekday())
+                        date_end = today
+                    elif date_range == 'month':
+                        date_start = today.replace(day=1)
+                        date_end = today
+                    elif date_range == 'year':
+                        date_start = today.replace(month=1, day=1)
+                        date_end = today
 
-                history_domain.extend([
-                    ('date_completed', '>=', date_start.strftime('%Y-%m-%d 00:00:00')),
-                    ('date_completed', '<=', date_end.strftime('%Y-%m-%d 23:59:59'))
-                ])
+                    history_domain.extend([
+                        ('date_completed', '>=', date_start.strftime('%Y-%m-%d 00:00:00')),
+                        ('date_completed', '<=', date_end.strftime('%Y-%m-%d 23:59:59'))
+                    ])
 
             # Add search filter if search term is provided
             if search:
@@ -965,7 +984,7 @@ class CustomerRatingAPI(Controller):
 
             _logger.info(f"Final history domain: {history_domain}")
 
-            # Get total count for pagination
+             # Get total count for pagination
             total_count = SaleOrder.search_count(history_domain)
             total_pages = ceil(total_count / limit)
             offset = (page - 1) * limit

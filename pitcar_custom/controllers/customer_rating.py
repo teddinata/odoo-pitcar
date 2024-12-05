@@ -1180,21 +1180,30 @@ class CustomerRatingAPI(Controller):
             base_url = "https://pitscore.pitcar.co.id"
             feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
 
-            # Get SA names - pastikan menggunakan service_advisor_id dan akses name dengan benar
+            # Get SA names with proper debugging
             sa_names = ""
             if order.service_advisor_id:
-                sa_names = ", ".join([sa.name for sa in order.service_advisor_id])
+                # Log untuk debugging service advisor
+                _logger.info(f"Service Advisors for order {order.id}: {order.service_advisor_id}")
+                _logger.info(f"Service Advisor details: {[(sa.id, sa.user_id.name) for sa in order.service_advisor_id]}")
+                
+                # Ambil nama dari user_id
+                sa_names = ", ".join([sa.user_id.name for sa in order.service_advisor_id if sa.user_id])
+                
+                if not sa_names:
+                    _logger.warning(f"No SA names found for order {order.id}")
             
             # Format pesan tanpa emoji dan dengan teks rata kiri
             message = f"""Halo {order.partner_id.name}
-    Saya, {sa_names} dari Pitcar
-    Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar
-    Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
-    {feedback_url}
-    Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
-    - Garansi servis: 2 minggu
-    - Garansi sparepart: 3 bulan (kecuali part dari luar ya)
-    Terima kasih atas kepercayaan Anda kepada Pitcar!"""
+Saya {sa_names} dari Pitcar
+Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar
+Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
+{feedback_url}
+
+Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
+- Garansi servis: 2 minggu
+- Garansi sparepart: 3 bulan (kecuali part dari luar ya)
+Terima kasih atas kepercayaan Anda kepada Pitcar!"""
 
             # Log untuk debugging
             _logger.info(f"Generated message for order {order.id} with SA: {sa_names}")

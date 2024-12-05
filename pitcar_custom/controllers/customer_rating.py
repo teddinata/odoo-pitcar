@@ -990,9 +990,10 @@ class CustomerRatingAPI(Controller):
                     'id': order.id,
                     'name': order.name,
                     'customer_name': order.partner_id.name,
-                    'customer_phone': order.partner_id.mobile,
+                    'customer_phone': order.partner_id.mobile or order.partner_id.phone,  # Added phone fallback
                     'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
                     'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
+                    'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],  # Added SA
                     'whatsapp_link': self._generate_whatsapp_link(order),
                 } for order in SaleOrder.search(pending_domain)],
                 
@@ -1000,7 +1001,7 @@ class CustomerRatingAPI(Controller):
                     'id': order.id,
                     'name': order.name,
                     'customer_name': order.partner_id.name,
-                    'customer_phone': order.partner_id.mobile,
+                    'customer_phone': order.partner_id.mobile or order.partner_id.phone,  # Added phone fallback
                     'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
                     'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
                     'reminder_date': order.reminder_sent_date.strftime('%Y-%m-%d %H:%M:%S') if order.reminder_sent_date else None,
@@ -1008,6 +1009,7 @@ class CustomerRatingAPI(Controller):
                     'has_feedback': bool(order.post_service_rating),
                     'rating': order.post_service_rating,
                     'feedback': order.post_service_feedback,  # Tambahkan feedback
+                    'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],  # Added SA
                     'whatsapp_link': self._generate_whatsapp_link(order)
                 } for order in history_orders],
 
@@ -1135,11 +1137,12 @@ class CustomerRatingAPI(Controller):
     def _generate_whatsapp_link(self, order):
         """Helper function to generate WhatsApp link"""
         try:
-            if not order.partner_id.mobile:
+            # Check for either mobile or phone number
+            phone = order.partner_id.mobile or order.partner_id.phone
+            if not phone:
                 return None
-
+                
             # Clean phone number
-            phone = order.partner_id.mobile
             clean_phone = ''.join(filter(str.isdigit, phone))
             if clean_phone.startswith('0'):
                 clean_phone = '62' + clean_phone[1:]
@@ -1157,24 +1160,25 @@ class CustomerRatingAPI(Controller):
             # Generate message with encoded ID
             base_url = "https://pitscore.pitcar.co.id"
             feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
+
+            # Get SA names
+            sa_names = ", ".join([sa.name for sa in order.service_advisor_id])
             
-            message = f"""Halo *{order.partner_id.name}* 👋
-
-        Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar 🚗
-
-        Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
-        {feedback_url}
-
-        Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
-            ✅ Garansi servis: 2 minggu
-            ✅ Garansi sparepart: 3 bulan (kecuali part dari luar ya)
-
-        Terima kasih atas kepercayaan Anda kepada Pitcar! 🙏"""
+            message = f"""Halo {order.partner_id.name} 👋
+    Saya, {sa_names} dari Pitcar
+    Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar 🚗
+    Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
+    {feedback_url}
+    Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
+    ✅ Garansi servis: 2 minggu
+    ✅ Garansi sparepart: 3 bulan (kecuali part dari luar ya)
+    Terima kasih atas kepercayaan Anda kepada Pitcar! 🙏"""
 
             return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
         except Exception as e:
             _logger.error(f"Error generating WhatsApp link: {str(e)}")
             return None
+
         
     @route('/web/reminder/mark-sent', type='json', auth='public', methods=['POST'])
     def mark_reminders_sent(self, **kwargs):

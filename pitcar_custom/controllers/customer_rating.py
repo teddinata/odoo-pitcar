@@ -1131,14 +1131,18 @@ class CustomerRatingAPI(Controller):
             base_url = "https://pitscore.pitcar.co.id"
             feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
             
-            message = f"""Halo {order.partner_id.name},
+            message = f"""Halo *{order.partner_id.name}* 👋
 
-Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar.
+        Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar 🚗
 
-Bagaimana kondisi kendaraan Anda setelah 3 hari servis? Mohon berikan penilaian Anda melalui link berikut:
-{feedback_url}
+        Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
+        {feedback_url}
 
-Terima kasih atas feedback Anda!"""
+        Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
+            ✅ Garansi servis: 2 minggu
+            ✅ Garansi sparepart: 3 bulan (kecuali part dari luar ya)
+
+        Terima kasih atas kepercayaan Anda kepada Pitcar! 🙏"""
 
             return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
         except Exception as e:

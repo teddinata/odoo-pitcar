@@ -587,9 +587,13 @@ class CustomerRatingAPI(Controller):
 
             # Calculate average ratings
             category_ratings = {'service': 0, 'price': 0, 'facility': 0}
+            post_service_stats = {'rating': 0, 'count': 0}
             if rated_orders:
                 service_total = price_total = facility_total = 0
+                initial_rating_count = 0
                 rating_count = 0
+                post_service_rating_total = 0
+                post_service_count = 0
                 
                 for order in rated_orders:
                     if order.detailed_ratings:
@@ -600,15 +604,31 @@ class CustomerRatingAPI(Controller):
                             service_total += ratings.get('service_rating', 0)
                             price_total += ratings.get('price_rating', 0)
                             facility_total += ratings.get('facility_rating', 0)
-                            rating_count += 1
+                            initial_rating_count += 1
                         except (json.JSONDecodeError, AttributeError):
                             continue
 
-                if rating_count > 0:
+                    # Hitung post service rating (H+3)
+                    if order.post_service_rating:
+                        try:
+                            rating_value = float(order.post_service_rating)
+                            post_service_rating_total += rating_value
+                            post_service_count += 1
+                        except (ValueError, TypeError):
+                            continue
+
+                 # Calculate averages
+                if initial_rating_count > 0:
                     category_ratings = {
-                        'service': round(service_total / rating_count, 2),
-                        'price': round(price_total / rating_count, 2),
-                        'facility': round(facility_total / rating_count, 2)
+                        'service': round(service_total / initial_rating_count, 2),
+                        'price': round(price_total / initial_rating_count, 2),
+                        'facility': round(facility_total / initial_rating_count, 2)
+                    }
+
+                if post_service_count > 0:
+                    post_service_stats = {
+                        'rating': round(post_service_rating_total / post_service_count, 2),
+                        'count': post_service_count
                     }
 
             result = {
@@ -621,6 +641,7 @@ class CustomerRatingAPI(Controller):
                 'rating_distribution': rating_distribution,
                 'satisfaction_distribution': satisfaction_distribution,
                 'category_ratings': category_ratings,
+                'post_service_stats': post_service_stats,
                 'recent_reviews': recent_reviews,
                 'time_period': date_range
             }
@@ -959,6 +980,11 @@ class CustomerRatingAPI(Controller):
                 offset=offset
             )
 
+            # Tambahkan perhitungan rata-rata post service rating
+            rated_orders = SaleOrder.search([('post_service_rating', '!=', False)])
+            post_service_total = sum(float(order.post_service_rating) for order in rated_orders if order.post_service_rating)
+            post_service_count = len(rated_orders)
+
             result = {
                 'pending_reminders': [{
                     'id': order.id,
@@ -1001,7 +1027,8 @@ class CustomerRatingAPI(Controller):
                         SaleOrder.search_count([('reminder_sent', '=', True)]) * 100)
                         if SaleOrder.search_count([('reminder_sent', '=', True)]) > 0 else 0,
                         2
-                    )
+                    ),
+                    'average_post_service_rating': round(post_service_total / post_service_count, 2) if post_service_count > 0 else 0
                 }
             }
 

@@ -1197,7 +1197,8 @@ class CustomerRatingAPI(Controller):
             message = f"""Halo, *{order.partner_id.name}*.
 Saya {sa_names} dari Pitcar,
 
-Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar
+Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar.
+
 Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
 {feedback_url}
 

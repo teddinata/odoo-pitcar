@@ -1194,7 +1194,7 @@ class CustomerRatingAPI(Controller):
                     _logger.warning(f"No SA names found for order {order.id}")
             
             # Format pesan tanpa emoji dan dengan teks rata kiri
-            message = f"""Halo, *{order.partner_id.name}*
+            message = f"""Halo, *{order.partner_id.name}*.
 Saya {sa_names} dari Pitcar,
 
 Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar
@@ -1204,6 +1204,7 @@ Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan mas
 Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
 - Garansi servis: 2 minggu
 - Garansi sparepart: 3 bulan (kecuali part dari luar ya)
+
 Terima kasih atas kepercayaan Anda kepada Pitcar!"""
 
             # Log untuk debugging

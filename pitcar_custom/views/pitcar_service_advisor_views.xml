@@ -1,7 +1,6 @@
-<?xml version="1.0" encoding="UTF-8"?>
-
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Action untuk membuka tampilan Service Advisor -->
+    <!-- Action Window for Service Advisor -->
     <record id="action_pitcar_service_advisor" model="ir.actions.act_window">
         <field name="name">Service Advisors</field>
         <field name="res_model">pitcar.service.advisor</field>
@@ -14,14 +13,50 @@
         </field>
     </record>
 
+    <!-- Tree View untuk Service Advisor Position -->
+    <record id="view_pitcar_service_advisor_position_tree" model="ir.ui.view">
+        <field name="name">pitcar.service.advisor.position.tree</field>
+        <field name="model">pitcar.service.advisor.position</field>
+        <field name="arch" type="xml">
+            <tree string="Service Advisor Positions">
+                <field name="name"/>
+                <field name="code"/>
+                <field name="monthly_target"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View untuk Service Advisor Position -->
+    <record id="view_pitcar_service_advisor_position_form" model="ir.ui.view">
+        <field name="name">pitcar.service.advisor.position.form</field>
+        <field name="model">pitcar.service.advisor.position</field>
+        <field name="arch" type="xml">
+            <form string="Service Advisor Position">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="code"/>
+                        <field name="monthly_target"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
     <!-- Tree View untuk Service Advisor -->
     <record id="view_pitcar_service_advisor_tree" model="ir.ui.view">
         <field name="name">pitcar.service.advisor.tree</field>
         <field name="model">pitcar.service.advisor</field>
         <field name="arch" type="xml">
             <tree string="Service Advisor">
-                <field name="user_id" string="Service Advisor Name"/>
-                <field name="color"/>
+                <field name="user_id"/>
+                <field name="name"/>
+                <field name="position_id"/>
+                <field name="leader_id"/>
+                <field name="monthly_target"/>
+                <field name="current_revenue"/>
+                <field name="target_achievement" widget="percentage"/>
+                <field name="color" widget="color_picker"/>
             </tree>
         </field>
     </record>
@@ -33,10 +68,39 @@
         <field name="arch" type="xml">
             <form string="Service Advisor" duplicate="0">
                 <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
                     <group>
-                        <field name="user_id" string="Service Advisor" options="{'no_create': False}"/>
-                        <field name="color" widget="color_picker"/>
+                        <group>
+                            <field name="user_id" options="{'no_create': False}"/>
+                            <field name="position_id"/>
+                            <field name="position_code" invisible="1"/>
+                            <field name="leader_id" 
+                                   attrs="{'invisible': [('position_code', '=', 'leader')], 
+                                          'required': [('position_code', '=', 'advisor')]}"/>
+                        </group>
+                        <group>
+                            <field name="monthly_target" readonly="1"/>
+                            <field name="current_revenue" readonly="1"/>
+                            <field name="target_achievement" widget="percentage" readonly="1"/>
+                            <field name="color" widget="color_picker"/>
+                        </group>
                     </group>
+                    <notebook attrs="{'invisible': [('position_code', '!=', 'leader')]}">
+                        <page string="Team Members">
+                            <field name="team_member_ids" readonly="1">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="monthly_target"/>
+                                    <field name="current_revenue"/>
+                                    <field name="target_achievement" widget="percentage"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>

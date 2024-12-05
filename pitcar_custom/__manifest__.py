@@ -84,5 +84,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.46'
+    'version':'16.0.47'
 }

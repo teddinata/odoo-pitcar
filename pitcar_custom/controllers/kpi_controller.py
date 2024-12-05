@@ -2050,7 +2050,7 @@ class KPIController(http.Controller):
     # SERVICE ADVISOR
     @http.route('/web/v2/dashboard/service-advisor', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_service_advisor_kpi_dashboard(self, **kw):
-        """Get dashboard KPI for service advisors"""
+        """Get dashboard KPI for service advisors with team metrics"""
         try:
             # Get date range parameters
             date_range = kw.get('date_range', 'today')
@@ -2104,8 +2104,15 @@ class KPIController(http.Controller):
             
             all_orders = request.env['sale.order'].sudo().search(domain)
 
-            # Get all service advisors
+            # Get all service advisors and create lookup dictionary
             advisors = request.env['pitcar.service.advisor'].sudo().search([])
+            advisor_dict = {a.id: a for a in advisors}
+            
+            # Get position data for targets
+            positions = request.env['pitcar.service.advisor.position'].sudo().search([])
+            position_targets = {
+                pos.code: pos.monthly_target for pos in positions
+            }
             
             # Calculate advisor metrics
             advisors_data = {}
@@ -2127,6 +2134,9 @@ class KPIController(http.Controller):
                         advisors_data[advisor.id] = {
                             'id': advisor.id,
                             'name': advisor.name,
+                            'position': 'Team Leader' if advisor.position_code == 'leader' else 'Service Advisor',
+                            'position_code': advisor.position_code,
+                            'monthly_target': advisor.monthly_target,
                             'revenue': 0,
                             'orders': 0,
                             'total_rating': 0,
@@ -2144,13 +2154,13 @@ class KPIController(http.Controller):
                         }
                     
                     advisor_data = advisors_data[advisor.id]
+                    advisor_count = len(order.service_advisor_id)
                     
                     # Calculate revenue
-                    advisor_count = len(order.service_advisor_id)
                     order_revenue = order.amount_total / advisor_count
                     advisor_data['revenue'] += order_revenue
                     advisor_data['orders'] += 1
-                    
+
                     # Calculate service time metrics
                     if order.sa_mulai_penerimaan and order.sa_cetak_pkb:
                         advisor_data['completed_services'] += 1
@@ -2202,17 +2212,137 @@ class KPIController(http.Controller):
                     total_revenue += order_revenue
                     total_orders += 1
 
-            # Process active advisors
+            # Calculate team metrics
+            teams_data = {}
+            for advisor_id, data in advisors_data.items():
+                advisor = advisor_dict.get(advisor_id)
+                if not advisor:
+                    continue
+                    
+                leader_id = advisor.leader_id.id if advisor.leader_id else (advisor_id if advisor.position_code == 'leader' else None)
+                
+                if leader_id:  # Process both leader and members
+                    if leader_id not in teams_data:
+                        leader = advisor_dict.get(leader_id)
+                        leader_data = advisors_data.get(leader_id, {})
+                        teams_data[leader_id] = {
+                            'id': leader_id,
+                            'name': leader.name,
+                            'position': 'Team',
+                            'member_count': 0,
+                            'member_targets': 0,  # Track sum of member targets
+                            'total_rated_orders': 0,
+                            'total_rating_sum': 0,
+                            'metrics': {
+                                'revenue': {
+                                    'total': leader_data.get('revenue', 0),
+                                    'target': 0,
+                                    'achievement': 0
+                                },
+                                'orders': {
+                                    'total': leader_data.get('orders', 0),
+                                    'average_value': 0
+                                },
+                                'performance': {
+                                    'service': {
+                                        'average_time': 0,
+                                        'on_time_rate': 0,
+                                        'total_services': 0,
+                                        'on_time_services': 0
+                                    },
+                                    'confirmation': {
+                                        'average_time': 0,
+                                        'on_time_rate': 0,
+                                        'total_services': 0,
+                                        'on_time_services': 0
+                                    },
+                                    'rating': 0,
+                                    'complaint_rate': 0
+                                }
+                            }
+                        }
+                    
+                    if advisor.position_code != 'leader':  # Count and accumulate only for members
+                        team_data = teams_data[leader_id]
+                        team_data['member_count'] += 1
+                        team_data['member_targets'] += advisor.monthly_target
+                        
+                        # Accumulate team metrics
+                        team_data['metrics']['revenue']['total'] += data['revenue']
+                        team_data['metrics']['orders']['total'] += data['orders']
+                        
+                        if data['rated_orders'] > 0:
+                            team_data['total_rated_orders'] += data['rated_orders']
+                            team_data['total_rating_sum'] += data['total_rating']
+                        
+                        # Service performance
+                        team_data['metrics']['performance']['service']['total_services'] += data['completed_services']
+                        team_data['metrics']['performance']['service']['on_time_services'] += data['on_time_services']
+                        
+                        # Confirmation performance
+                        team_data['metrics']['performance']['confirmation']['total_services'] += data['confirmation_services']
+                        team_data['metrics']['performance']['confirmation']['on_time_services'] += data['on_time_confirmations']
+
+            # Calculate final team metrics
+            for team in teams_data.values():
+                if team['member_count'] > 0:
+                    # Set target and calculate achievement
+                    team['metrics']['revenue']['target'] = team['member_targets']
+                    if team['metrics']['revenue']['target']:
+                        team['metrics']['revenue']['achievement'] = (
+                            team['metrics']['revenue']['total'] / team['metrics']['revenue']['target'] * 100
+                        )
+                    
+                    # Calculate average order value
+                    if team['metrics']['orders']['total']:
+                        team['metrics']['orders']['average_value'] = (
+                            team['metrics']['revenue']['total'] / team['metrics']['orders']['total']
+                        )
+                    
+                    # Calculate service performance rates
+                    service_total = team['metrics']['performance']['service']['total_services']
+                    if service_total:
+                        team['metrics']['performance']['service']['on_time_rate'] = (
+                            team['metrics']['performance']['service']['on_time_services'] / service_total * 100
+                        )
+                    
+                    # Calculate confirmation performance rates
+                    conf_total = team['metrics']['performance']['confirmation']['total_services']
+                    if conf_total:
+                        team['metrics']['performance']['confirmation']['on_time_rate'] = (
+                            team['metrics']['performance']['confirmation']['on_time_services'] / conf_total * 100
+                        )
+                    
+                    # Calculate team rating
+                    if team['total_rated_orders']:
+                        team['metrics']['performance']['rating'] = (
+                            team['total_rating_sum'] / team['total_rated_orders']
+                        )
+
+            # Format advisor data with proper targets
             active_advisors = []
             for data in advisors_data.values():
                 if data['orders'] > 0:
+                    advisor = advisor_dict.get(data['id'])
+                    if not advisor:
+                        continue
+
+                    leader_info = None
+                    if advisor.leader_id:
+                        leader_info = {
+                            'id': advisor.leader_id.id,
+                            'name': advisor.leader_id.name
+                        }
+
                     metrics = {
                         'revenue': {
                             'total': data['revenue'],
-                            'average': data['revenue'] / data['orders']
+                            'target': data['monthly_target'],
+                            'achievement': (data['revenue'] / data['monthly_target'] * 100) if data['monthly_target'] else 0
                         },
                         'orders': {
-                            'total': data['orders']
+                            'total': data['orders'],
+                            'average_value': data['revenue'] / data['orders'] if data['orders'] else 0
                         },
                         'performance': {
                             'service': {
@@ -2243,6 +2373,8 @@ class KPIController(http.Controller):
                     active_advisors.append({
                         'id': data['id'],
                         'name': data['name'],
+                        'position': data['position'],
+                        'leader': leader_info,
                         'metrics': metrics
                     })
 
@@ -2333,6 +2465,7 @@ class KPIController(http.Controller):
                         'end': end.strftime('%Y-%m-%d')
                     },
                     'overview': overview,
+                    'teams': list(teams_data.values()),
                     'advisors': active_advisors,
                     'trends': trends
                 }
@@ -2405,7 +2538,7 @@ class KPIController(http.Controller):
 
             orders = request.env['sale.order'].sudo().search(domain)
 
-            # Initialize metrics counters
+           # Initialize metrics counters [semua counter tetap sama]
             total_revenue = 0
             total_orders = len(orders)
             service_times = []
@@ -2541,11 +2674,13 @@ class KPIController(http.Controller):
                 
                 current += timedelta(days=1)
 
-            # Compile final metrics
+             # Compile final metrics dengan penambahan target dan achievement
             metrics = {
                 'revenue': {
                     'total': total_revenue,
-                    'average': total_revenue / total_orders if total_orders else 0
+                    'average': total_revenue / total_orders if total_orders else 0,
+                    'target': advisor.monthly_target,  # Tambahan target
+                    'achievement': (total_revenue / advisor.monthly_target * 100) if advisor.monthly_target else 0  # Tambahan achievement
                 },
                 'orders': {
                     'total': total_orders
@@ -2573,6 +2708,18 @@ class KPIController(http.Controller):
                 }
             }
 
+            # Tambahan informasi team
+            team_info = {
+                'leader': {
+                    'id': advisor.leader_id.id,
+                    'name': advisor.leader_id.name
+                } if advisor.leader_id else None,
+                'members': [{
+                    'id': member.id,
+                    'name': member.name
+                } for member in advisor.team_member_ids] if advisor.position_code == 'leader' else []
+            }
+
             return {
                 'status': 'success',
                 'data': {
@@ -2583,7 +2730,9 @@ class KPIController(http.Controller):
                     },
                     'advisor': {
                         'id': advisor.id,
-                        'name': advisor.name
+                        'name': advisor.name,
+                        'position': 'Team Leader' if advisor.position_code == 'leader' else 'Service Advisor',
+                        'team': team_info  # Tambahan informasi team
                     },
                     'metrics': metrics,
                     'trends': trends,

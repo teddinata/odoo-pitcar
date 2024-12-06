@@ -24,62 +24,64 @@ class CustomerRatingAPI(Controller):
             default='your-secret-key-here'
         )
 
-    def _encode_id(self, order_id):
-        """Encode order ID dengan timestamp dan signature"""
-        try:
-            # Data yang akan dienkripsi
-            data = {
-                'id': order_id,
-                'ts': int(time.time()),  # Unix timestamp
-            }
+    # OLD METHOD
+    # def _encode_id(self, order_id):
+    #     """Encode order ID dengan timestamp dan signature"""
+    #     try:
+    #         # Data yang akan dienkripsi
+    #         data = {
+    #             'id': order_id,
+    #             'ts': int(time.time()),  # Unix timestamp
+    #         }
             
-            # Convert ke JSON dan encode ke base64
-            json_data = json.dumps(data)
-            encoded = base64.urlsafe_b64encode(json_data.encode()).decode()
+    #         # Convert ke JSON dan encode ke base64
+    #         json_data = json.dumps(data)
+    #         encoded = base64.urlsafe_b64encode(json_data.encode()).decode()
             
-            # Generate signature
-            signature = hmac.new(
-                self._get_secret_key().encode(),
-                encoded.encode(),
-                hashlib.sha256
-            ).hexdigest()
+    #         # Generate signature
+    #         signature = hmac.new(
+    #             self._get_secret_key().encode(),
+    #             encoded.encode(),
+    #             hashlib.sha256
+    #         ).hexdigest()
             
-            # Combine encoded data dan signature
-            return f"{encoded}.{signature}"
-        except Exception as e:
-            _logger.error(f"Encoding error: {str(e)}")
-            return None
+    #         # Combine encoded data dan signature
+    #         return f"{encoded}.{signature}"
+    #     except Exception as e:
+    #         _logger.error(f"Encoding error: {str(e)}")
+    #         return None
 
-    def _decode_id(self, encoded_str):
-        """Decode dan validasi encoded ID"""
-        try:
-            # Split encoded data dan signature
-            encoded, signature = encoded_str.split('.')
+    # def _decode_id(self, encoded_str):
+    #     """Decode dan validasi encoded ID"""
+    #     try:
+    #         # Split encoded data dan signature
+    #         encoded, signature = encoded_str.split('.')
             
-            # Verify signature
-            expected_sig = hmac.new(
-                self._get_secret_key().encode(),
-                encoded.encode(),
-                hashlib.sha256
-            ).hexdigest()
+    #         # Verify signature
+    #         expected_sig = hmac.new(
+    #             self._get_secret_key().encode(),
+    #             encoded.encode(),
+    #             hashlib.sha256
+    #         ).hexdigest()
             
-            if not hmac.compare_digest(signature, expected_sig):
-                _logger.warning("Invalid signature detected")
-                return None
+    #         if not hmac.compare_digest(signature, expected_sig):
+    #             _logger.warning("Invalid signature detected")
+    #             return None
             
-            # Decode data
-            json_data = base64.urlsafe_b64decode(encoded).decode()
-            data = json.loads(json_data)
+    #         # Decode data
+    #         json_data = base64.urlsafe_b64decode(encoded).decode()
+    #         data = json.loads(json_data)
             
-            # Check timestamp (optional, misal expired setelah 7 hari)
-            if time.time() - data['ts'] > 7 * 24 * 3600:
-                _logger.warning("Expired token detected")
-                return None
+    #         # Check timestamp (optional, misal expired setelah 7 hari)
+    #         if time.time() - data['ts'] > 7 * 24 * 3600:
+    #             _logger.warning("Expired token detected")
+    #             return None
             
-            return data['id']
-        except Exception as e:
-            _logger.error(f"Decoding error: {str(e)}")
-            return None
+    #         return data['id']
+    #     except Exception as e:
+    #         _logger.error(f"Decoding error: {str(e)}")
+    #         return None
+
     def _validate_token(self, token):
         """Validate API token"""
         if not token:
@@ -1153,6 +1155,96 @@ class CustomerRatingAPI(Controller):
     #         _logger.error(f"Error generating WhatsApp link: {str(e)}")
     #         return None
 
+    def _get_base62_chars(self):
+        """Get base62 character set"""
+        return "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+    def _encode_base62(self, num):
+        """Convert number to base62 string"""
+        chars = self._get_base62_chars()
+        base = len(chars)
+        
+        if num == 0:
+            return chars[0]
+        
+        arr = []
+        while num:
+            num, rem = divmod(num, base)
+            arr.append(chars[rem])
+        arr.reverse()
+        return ''.join(arr)
+
+    def _decode_base62(self, string):
+        """Convert base62 string to number"""
+        chars = self._get_base62_chars()
+        base = len(chars)
+        num = 0
+
+        for char in string:
+            num = num * base + chars.index(char)
+        
+        return num
+
+    def _encode_id(self, order_id):
+        """Encode order ID dengan timestamp dan signature yang lebih pendek"""
+        try:
+            # Convert order_id to base62
+            base62_id = self._encode_base62(order_id)
+            
+            # Add timestamp (dalam menit, bukan detik, untuk mempersingkat)
+            timestamp = int(time.time() / 60)  # Convert ke menit
+            base62_ts = self._encode_base62(timestamp)
+            
+            # Combine data
+            combined = f"{base62_id}.{base62_ts}"
+            
+            # Generate signature (menggunakan 8 karakter pertama saja)
+            signature = hmac.new(
+                self._get_secret_key().encode(),
+                combined.encode(),
+                hashlib.sha256
+            ).hexdigest()[:8]  # Ambil 8 karakter pertama saja
+            
+            # Return combined string
+            return f"{combined}.{signature}"
+        except Exception as e:
+            _logger.error(f"Encoding error: {str(e)}")
+            return None
+
+    def _decode_id(self, encoded_str):
+        """Decode dan validasi encoded ID yang lebih pendek"""
+        try:
+            # Split components
+            components = encoded_str.split('.')
+            if len(components) != 3:
+                raise ValueError("Invalid format")
+                
+            base62_id, base62_ts, signature = components
+            
+            # Verify signature
+            combined = f"{base62_id}.{base62_ts}"
+            expected_sig = hmac.new(
+                self._get_secret_key().encode(),
+                combined.encode(),
+                hashlib.sha256
+            ).hexdigest()[:8]  # Bandingkan 8 karakter pertama
+            
+            if not hmac.compare_digest(signature, expected_sig):
+                _logger.warning("Invalid signature detected")
+                return None
+            
+            # Decode timestamp dan cek expired
+            timestamp = self._decode_base62(base62_ts) * 60  # Convert kembali ke detik
+            if time.time() - timestamp > 7 * 24 * 3600:  # 7 hari
+                _logger.warning("Expired token detected")
+                return None
+            
+            # Decode dan return order ID
+            return self._decode_base62(base62_id)
+        except Exception as e:
+            _logger.error(f"Decoding error: {str(e)}")
+            return None
+
     def _generate_whatsapp_link(self, order):
         """Helper function to generate WhatsApp link"""
         try:
@@ -1178,22 +1270,15 @@ class CustomerRatingAPI(Controller):
 
             # Generate message with encoded ID
             base_url = "https://pitscore.pitcar.co.id"
-            feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
+            feedback_url = f"{base_url}/feedback/{encoded_id}"  # URL yang lebih pendek
 
-            # Get SA names with proper debugging
+            # Get SA names
             sa_names = ""
             if order.service_advisor_id:
-                # Log untuk debugging service advisor
-                _logger.info(f"Service Advisors for order {order.id}: {order.service_advisor_id}")
-                _logger.info(f"Service Advisor details: {[(sa.id, sa.user_id.name) for sa in order.service_advisor_id]}")
-                
-                # Ambil nama dari user_id
                 sa_names = ", ".join([sa.user_id.name for sa in order.service_advisor_id if sa.user_id])
-                
                 if not sa_names:
                     _logger.warning(f"No SA names found for order {order.id}")
             
-            # Format pesan tanpa emoji dan dengan teks rata kiri
             message = f"""Halo, *{order.partner_id.name}*.
 Saya {sa_names} dari Pitcar,
 
@@ -1207,10 +1292,6 @@ Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
 - Garansi sparepart: 3 bulan (kecuali part dari luar ya)
 
 Terima kasih atas kepercayaan Anda kepada Pitcar!"""
-
-            # Log untuk debugging
-            _logger.info(f"Generated message for order {order.id} with SA: {sa_names}")
-            _logger.info(f"Full message: {message}")
 
             return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
             

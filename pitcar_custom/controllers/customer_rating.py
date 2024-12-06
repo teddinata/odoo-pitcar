@@ -1270,7 +1270,7 @@ class CustomerRatingAPI(Controller):
 
             # Generate message with encoded ID
             base_url = "https://pitscore.pitcar.co.id"
-            feedback_url = f"{base_url}/feedback/{encoded_id}"  # URL yang lebih pendek
+            feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
 
             # Get SA names
             sa_names = ""

@@ -32,3 +32,7 @@ pitcar_custom.access_mechanic_overview_user,mechanic.overview.user,model_mechani
 pitcar_custom.access_pitcar_position_user,access_pitcar_position_user,model_pitcar_position,base.group_user,1,1,1,1
 pitcar_custom.access_pitcar_mechanic_new_user,access_pitcar_mechanic_new_user,model_pitcar_mechanic_new,base.group_user,1,1,1,1
 pitcar_custom.access_pitcar_service_advisor_position_user,access_pitcar_service_advisor_position_user,model_pitcar_service_advisor_position,base.group_user,1,1,1,1
+pitcar_custom.access_pitcar_work_location_user,access.work.location.user,model_pitcar_work_location,base.group_user,1,0,0,0
+pitcar_custom.access_pitcar_work_location_manager,access.work.location.manager,model_pitcar_work_location,hr.group_hr_manager,1,1,1,1
+pitcar_custom.access_mechanic_credential_wizard_user,access.mechanic.credential.wizard,model_mechanic_credential_wizard,base.group_user,1,1,1,0
+pitcar_custom.access_mechanic_credential_wizard_manager,access.mechanic.credential.wizard,model_mechanic_credential_wizard,hr.group_hr_manager,1,1,1,1

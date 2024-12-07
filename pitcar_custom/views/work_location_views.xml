@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Action Window -->
+    <record id="action_pitcar_work_location" model="ir.actions.act_window">
+        <field name="name">Work Locations</field>
+        <field name="res_model">pitcar.work.location</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first work location
+            </p>
+        </field>
+    </record>
+
+    <!-- Tree View -->
+    <record id="view_work_location_tree" model="ir.ui.view">
+        <field name="name">pitcar.work.location.tree</field>
+        <field name="model">pitcar.work.location</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="latitude"/>
+                <field name="longitude"/>
+                <field name="radius"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_work_location_form" model="ir.ui.view">
+        <field name="name">pitcar.work.location.form</field>
+        <field name="model">pitcar.work.location</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <!-- Tambahkan title untuk form -->
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Location Name"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group string="Basic Information">
+                            <field name="active"/>
+                            <field name="address"/>
+                        </group>
+                        <group string="Coordinates">
+                            <field name="latitude"/>
+                            <field name="longitude"/>
+                            <field name="radius"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Map container dengan notebook -->
+                    <notebook>
+                        <page string="Location Map">
+                            <div class="o_map_container">
+                                <field name="latitude" widget="map"/>
+                            </div>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hr_employee_view_form_inherit_mechanic" model="ir.ui.view">
+        <field name="name">hr.employee.view.form.inherit.mechanic</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <div name="button_box" position="inside">
+                <button name="create_mechanic" 
+                        type="object" 
+                        class="oe_stat_button"
+                        icon="fa-wrench"
+                        attrs="{'invisible': [('is_mechanic', '=', True)]}"
+                        string="Create Mechanic"/>
+            </div>
+            <notebook position="inside">
+                <page string="Mechanic Info" attrs="{'invisible': [('is_mechanic', '=', False)]}">
+                    <group>
+                        <field name="is_mechanic" invisible="1"/>
+                        <field name="position_id"/>
+                        <field name="monthly_target"/>
+                        <field name="current_revenue"/>
+                        <field name="attendance_achievement" widget="percentage"/>
+                    </group>
+                </page>
+            </notebook>
+        </field>
+    </record>
+</odoo>

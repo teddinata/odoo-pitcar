@@ -31,6 +31,12 @@
         action="action_pitcar_mechanic_new"
         sequence="21"/>
 
+    <menuitem id="menu_hr_mechanic_attendance"
+            name="Mechanic Attendance"
+            parent="hr_attendance.menu_hr_attendance_root"
+            action="action_pitcar_mechanic_new"
+            sequence="15"/>
+
     <menuitem
         id="res_partner_car_menu"
         name="Car Management"
@@ -87,6 +93,14 @@
             parent="menu_service_advisor_root"
             action="action_service_advisor_kpi_list"
             sequence="2"/>
+
+     <menuitem 
+        id="menu_hr_work_location"
+        name="Work Locations"
+        parent="menu_hr_mechanic_attendance"
+        action="action_pitcar_work_location"
+        sequence="20"
+        groups="hr.group_hr_manager"/>
 
     <!-- Mechanic Menu -->
      <!-- Mechanic Menus -->

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="pitcar_custom.MapWidget" owl="1">
+        <div id="map" class="o_map_container" />
+    </t>
+</templates>

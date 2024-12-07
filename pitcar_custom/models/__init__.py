@@ -20,3 +20,5 @@ from . import service_advisor_kpi
 from . import service_advisor_overview
 from . import mechanic_kpi
 from . import mechanic_overview_kpi
+from . import hr_employee
+from . import work_location

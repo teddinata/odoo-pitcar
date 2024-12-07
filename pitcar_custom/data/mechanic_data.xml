@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="default_mechanic_position" model="pitcar.position">
+            <field name="name">Regular Mechanic</field>
+            <field name="code">regular</field>
+        </record>
+    </data>
+</odoo>

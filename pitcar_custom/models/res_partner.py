@@ -1,5 +1,8 @@
-from odoo import models, fields, api, _, exceptions
-from random import randint
+from odoo import models, fields, api, _
+from datetime import datetime, timedelta
+from random import randint, choices
+import string  # Juga perlu import string untuk karakter yang akan digunakan
+
 
 class PartnerCategory(models.Model):
     _inherit = 'res.partner.category'
@@ -81,6 +84,45 @@ class PitcarMechanicNew(models.Model):
         compute='_compute_revenue_metrics'
     )
 
+    # New fields for HR integration
+    employee_id = fields.Many2one('hr.employee', string='Employee Reference', required=False)
+    attendance_ids = fields.One2many(
+        'hr.attendance', 
+        related='employee_id.attendance_ids',
+        string='Attendance Records'
+    )
+    attendance_state = fields.Selection(
+        related='employee_id.attendance_state',
+        string='Attendance Status'
+    )
+    current_attendance_id = fields.Many2one(
+        'hr.attendance',
+        related='employee_id.last_attendance_id'
+    )
+    hours_today = fields.Float(
+        compute='_compute_hours_today',
+        string='Working Hours Today'
+    )
+    total_attendance_hours = fields.Float(
+        compute='_compute_total_hours',
+        string='Total Attendance Hours'
+    )
+    work_hours_target = fields.Float(
+        string='Target Working Hours',
+        default=8.0,
+        help="Target working hours per day for attendance achievement calculation"
+    )
+    attendance_achievement = fields.Float(
+        string='Attendance Achievement (%)',
+        compute='_compute_attendance_achievement'
+    )
+    work_location_ids = fields.Many2many(
+        'pitcar.work.location',
+        string='Allowed Work Locations'
+    )
+    user_id = fields.Many2one('res.users', string='Related User', ondelete='restrict')
+    temp_password = fields.Char('Temporary Password', readonly=True)
+
     @api.depends('position_id', 'team_member_ids')
     def _compute_monthly_target(self):
         for mechanic in self:
@@ -119,6 +161,135 @@ class PitcarMechanicNew(models.Model):
                 mechanic.target_achievement = (mechanic.current_revenue / mechanic.monthly_target) * 100
             else:
                 mechanic.target_achievement = 0
+
+    def create_user_account(self):
+        """Create user account for mechanic"""
+        for mechanic in self:
+            if not mechanic.user_id:
+                # Create employee jika belum ada
+                if not mechanic.employee_id:
+                    # Create employee baru
+                    employee_vals = {
+                        'name': mechanic.name,
+                        'work_email': f"{mechanic.name.lower().replace(' ', '.')}@pitcar.co.id",
+                        # Tambahkan field lain yang diperlukan
+                        'job_title': mechanic.position_id.name,
+                    }
+                    employee = self.env['hr.employee'].sudo().create(employee_vals)
+                    # Link employee ke mechanic
+                    mechanic.employee_id = employee.id
+                
+                # Generate username (email)
+                email = f"{mechanic.name.lower().replace(' ', '.')}@pitcar.co.id"
+                
+                # Generate random password
+                temp_password = ''.join(choices(string.ascii_letters + string.digits, k=10))
+                
+                # Create user
+                user_values = {
+                    'name': mechanic.name,
+                    'login': email,
+                    'password': temp_password,
+                    'employee_id': mechanic.employee_id.id,
+                    'groups_id': [(6, 0, [self.env.ref('pitcar_custom.group_mechanic').id])]
+                }
+                
+                try:
+                    user = self.env['res.users'].sudo().create(user_values)
+                    
+                    # Update mechanic
+                    mechanic.write({
+                        'user_id': user.id,
+                        'temp_password': temp_password
+                    })
+                    
+                    # Update employee
+                    mechanic.employee_id.write({
+                        'user_id': user.id,
+                    })
+                    
+                    return user
+                except Exception as e:
+                    raise UserError(_("Failed to create user account: %s") % str(e))
+
+    def action_view_credentials(self):
+        """Open credential wizard"""
+        self.ensure_one()
+        return {
+            'name': 'Mechanic Credentials',
+            'type': 'ir.actions.act_window',
+            'res_model': 'mechanic.credential.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_mechanic_id': self.id}
+        }
+
+    # New compute methods for attendance
+    @api.depends('attendance_ids')
+    def _compute_hours_today(self):
+        for mechanic in self:
+            attendance = mechanic.current_attendance_id
+            if attendance:
+                mechanic.hours_today = attendance.worked_hours
+            else:
+                mechanic.hours_today = 0.0
+
+    @api.depends('attendance_ids')
+    def _compute_total_hours(self):
+        today = fields.Date.today()
+        first_day = today.replace(day=1)
+        for mechanic in self:
+            attendances = mechanic.attendance_ids.filtered(
+                lambda x: x.check_in.date() >= first_day
+            )
+            mechanic.total_attendance_hours = sum(attendances.mapped('worked_hours'))
+
+    @api.depends('total_attendance_hours', 'work_hours_target')
+    def _compute_attendance_achievement(self):
+        today = fields.Date.today()
+        first_day = today.replace(day=1)
+        
+        for mechanic in self:
+            # Hitung jumlah hari kerja dalam sebulan (asumsi Senin-Jumat)
+            working_days = 0
+            current_date = first_day
+            while current_date <= today:
+                # 0 = Monday, 6 = Sunday
+                if current_date.weekday() < 5:  # Senin-Jumat
+                    working_days += 1
+                current_date += timedelta(days=1)
+            
+            target_hours = working_days * mechanic.work_hours_target
+            if target_hours:
+                mechanic.attendance_achievement = (mechanic.total_attendance_hours / target_hours) * 100
+            else:
+                mechanic.attendance_achievement = 0
+
+    def verify_location(self, latitude, longitude):
+        """
+        Verifikasi apakah lokasi valid untuk absensi
+        """
+        if not self.work_location_ids:
+            return True  # Jika tidak ada lokasi yang didefinisikan, izinkan semua
+
+        for location in self.work_location_ids:
+            distance = location.calculate_distance(latitude, longitude)
+            if distance <= location.radius:
+                return True
+
+        return False
+
+    # Action methods
+    def action_view_attendances(self):
+        self.ensure_one()
+        return {
+            'name': _('Attendances'),
+            'res_model': 'hr.attendance',
+            'view_mode': 'tree,form',
+            'domain': [('employee_id', '=', self.employee_id.id)],
+            'type': 'ir.actions.act_window',
+            'context': {'create': False}
+        }
     
     _sql_constraints = [
         ('name_uniq', 'unique (name)', "Mechanic name already exists !"),

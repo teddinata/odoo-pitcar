@@ -155,28 +155,24 @@ class AttendanceAPI(http.Controller):
     def register_face(self, **kw):
         """Register face descriptor and image for employee"""
         try:
-            # Get data from params
-            params = kw.get('params', {})
-            if not params:
-                return {'status': 'error', 'message': 'No parameters provided'}
+            # Ambil params dari kw langsung seperti endpoint lain
+            face_descriptor = kw.get('face_descriptor')
+            face_image = kw.get('face_image')
 
-            face_descriptor = params.get('face_descriptor')
-            face_image = params.get('face_image')
+            # Validasi face descriptor
+            if not face_descriptor:
+                return {'status': 'error', 'message': 'Face descriptor is required'}
 
-            # Validate face descriptor
-            if not face_descriptor or not isinstance(face_descriptor, list):
-                return {'status': 'error', 'message': 'Invalid face descriptor'}
-
+            # Get employee
             employee = request.env.user.employee_id
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
 
             # Save to employee record
             values = {
-                'face_descriptor': json.dumps(face_descriptor)
+                'face_descriptor': json.dumps(face_descriptor),
+                'face_image': face_image if face_image else False
             }
-            if face_image:
-                values['face_image'] = face_image
 
             employee.write(values)
 

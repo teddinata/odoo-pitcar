@@ -52,17 +52,23 @@ class HrEmployee(models.Model):
     def verify_face(self, face_descriptor, threshold=0.6):
         """Verify face match with registered face"""
         if not self.face_descriptor:
+            _logger.info("No registered face descriptor found")
             return False
         
         try:
             stored = json.loads(self.face_descriptor)
-            # Konversi ke list of float jika perlu
-            stored_arr = [float(x) for x in stored]
-            desc_arr = [float(x) for x in face_descriptor]
             
-            # Hitung distance
-            distance = self._euclidean_distance(stored_arr, desc_arr)
-            return distance <= threshold
+            # Normalize arrays to same length if needed
+            if len(stored) != len(face_descriptor):
+                _logger.error("Descriptor length mismatch")
+                return False
+                
+            # Calculate distance with more lenient threshold
+            distance = self._euclidean_distance(stored, face_descriptor)
+            _logger.info(f"Face match distance: {distance}, threshold: {threshold}")
+            
+            return distance <= threshold  # Mungkin perlu sesuaikan threshold jadi lebih besar
+
         except Exception as e:
             _logger.error(f"Face verification error: {str(e)}")
             return False

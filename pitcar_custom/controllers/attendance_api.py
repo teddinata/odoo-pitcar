@@ -156,26 +156,44 @@ class AttendanceAPI(http.Controller):
         try:
             params = kw.get('params', {})
             face_descriptor = params.get('face_descriptor')
+            face_image = params.get('face_image')
             
-            if not isinstance(face_descriptor, list):
-                return {'status': 'error', 'message': 'Invalid face descriptor format'}
+            # Debug log
+            _logger.info("Received descriptor type: %s", type(face_descriptor))
+            
+            if not face_descriptor:
+                return {'status': 'error', 'message': 'Face descriptor is required'}
                 
-            # Normalize descriptor values
-            normalized_descriptor = [float(x) for x in face_descriptor]
-            
-            employee = request.env.user.employee_id
-            if not employee:
-                return {'status': 'error', 'message': 'Employee not found'}
+            # Pastikan format descriptor benar
+            try:
+                if isinstance(face_descriptor, list):
+                    normalized_descriptor = [float(x) for x in face_descriptor]
+                else:
+                    return {'status': 'error', 'message': 'Face descriptor must be an array'}
+                
+                employee = request.env.user.employee_id
+                if not employee:
+                    return {'status': 'error', 'message': 'Employee not found'}
 
-            # Save normalized descriptor
-            employee.write({
-                'face_descriptor': json.dumps(normalized_descriptor)
-            })
+                # Save descriptor dan image
+                employee.write({
+                    'face_descriptor': json.dumps(normalized_descriptor),
+                    'face_image': face_image if face_image else False
+                })
 
-            return {
-                'status': 'success',
-                'message': 'Face registered successfully'
-            }
+                return {
+                    'status': 'success',
+                    'message': 'Face registered successfully',
+                    'data': {
+                        'employee_id': employee.id,
+                        'name': employee.name
+                    }
+                }
+
+            except (ValueError, TypeError) as e:
+                _logger.error(f"Error processing descriptor: {str(e)}")
+                return {'status': 'error', 'message': 'Invalid descriptor values'}
+                
         except Exception as e:
             _logger.error(f"Error in register_face: {str(e)}")
             return {'status': 'error', 'message': str(e)}

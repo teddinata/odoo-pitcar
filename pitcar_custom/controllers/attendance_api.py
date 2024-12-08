@@ -12,16 +12,18 @@ class AttendanceAPI(http.Controller):
     @http.route('/web/v2/attendance/check', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def check_attendance(self, **kw):
         try:
-            # Get params from request body
-            params = kw.get('params', {})
-            if not params:
-                return {'status': 'error', 'message': 'Invalid request parameters'}
-
-            # Basic validation
+            # Extract params from JSONRPC request
+            if not isinstance(kw, dict):
+                return {'status': 'error', 'message': 'Invalid request format'}
+                
+            # Handle both direct params and JSONRPC format
+            params = kw.get('params', kw)
+            
+            # Basic validation of required fields
             required_fields = {
                 'action_type': params.get('action_type'),
                 'face_descriptor': params.get('face_descriptor'),
-                'location': params.get('location', {}),
+                'location': params.get('location', {})
             }
 
             # Check all required fields
@@ -42,7 +44,7 @@ class AttendanceAPI(http.Controller):
             # Verify face with more lenient threshold
             try:
                 normalized_descriptor = [float(x) for x in params['face_descriptor']]
-                if not employee.verify_face(normalized_descriptor, threshold=0.6):  # Lowered threshold
+                if not employee.verify_face(normalized_descriptor, threshold=0.6):
                     return {'status': 'error', 'message': 'Face verification failed'}
             except Exception as e:
                 _logger.error(f"Face verification error: {str(e)}")

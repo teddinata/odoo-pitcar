@@ -12,11 +12,14 @@ class AttendanceAPI(http.Controller):
     @http.route('/web/v2/attendance/check', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def check_attendance(self, **kw):
         try:
-            action_type = kw.get('action_type')
-            face_match = kw.get('face_match', False)
-            face_confidence = kw.get('face_confidence', 0)
-            location = kw.get('location', {})
-            device_info = kw.get('device_info', {})
+            params = kw.get('params', {})
+
+            # Get data from request
+            action_type = params.get('action_type')
+            face_descriptor = params.get('face_descriptor')
+            face_image = params.get('face_image')
+            location = params.get('location', {})
+            device_info = params.get('device_info', {})
             
             # Set timezone Jakarta
             tz = pytz.timezone('Asia/Jakarta')
@@ -26,22 +29,23 @@ class AttendanceAPI(http.Controller):
             utc_tz = pytz.UTC
             now_utc = now.astimezone(utc_tz)
             
+            # Get employee data
             employee = request.env.user.employee_id
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
-                
-            mechanic = request.env['pitcar.mechanic.new'].sudo().search([
-                ('employee_id', '=', employee.id)
-            ], limit=1)
 
-            if not face_match or face_confidence < 0.8:
+            # Verify face with stored descriptor
+            if not employee.verify_face(face_descriptor):
                 return {'status': 'error', 'message': 'Face verification failed'}
 
-            if not self._verify_location(mechanic, location, device_info):
+            # Validate location
+            if not self._verify_location(employee, location, device_info):
                 return {'status': 'error', 'message': 'Invalid location or mock location detected'}
 
             values = {
                 'employee_id': employee.id,
+                'face_descriptor': json.dumps(face_descriptor),
+                'face_image': face_image
             }
             
             if action_type == 'check_in':
@@ -171,13 +175,11 @@ class AttendanceAPI(http.Controller):
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
 
-            # Get current attendance
             attendance = request.env['hr.attendance'].sudo().search([
                 ('employee_id', '=', employee.id),
                 ('check_out', '=', False)
             ], limit=1)
 
-            # Get last attendance
             last_attendance = request.env['hr.attendance'].sudo().search([
                 ('employee_id', '=', employee.id)
             ], limit=1)

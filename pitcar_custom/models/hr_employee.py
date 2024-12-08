@@ -1,4 +1,11 @@
 from odoo import models, fields, api
+from datetime import timedelta
+# logging
+import logging
+import json
+import math
+
+_logger = logging.getLogger(__name__)
 
 class HrEmployee(models.Model):
     _inherit = 'hr.employee'
@@ -29,7 +36,36 @@ class HrEmployee(models.Model):
         string='Face Descriptor', 
         help='Face encoding data for recognition'
     )
-    face_image = fields.Binary('Face Image Reference')
+    face_image = fields.Binary('Face Image', attachment=True, help='Compressed face image for verification')
+    
+    def _euclidean_distance(self, arr1, arr2):
+        """Calculate Euclidean distance between two arrays"""
+        if len(arr1) != len(arr2):
+            return float('inf')
+        
+        sum_sq = 0.0
+        for i in range(len(arr1)):
+            diff = arr1[i] - arr2[i]
+            sum_sq += diff * diff
+        return math.sqrt(sum_sq)
+
+    def verify_face(self, face_descriptor, threshold=0.6):
+        """Verify face match with registered face"""
+        if not self.face_descriptor:
+            return False
+        
+        try:
+            stored = json.loads(self.face_descriptor)
+            # Konversi ke list of float jika perlu
+            stored_arr = [float(x) for x in stored]
+            desc_arr = [float(x) for x in face_descriptor]
+            
+            # Hitung distance
+            distance = self._euclidean_distance(stored_arr, desc_arr)
+            return distance <= threshold
+        except Exception as e:
+            _logger.error(f"Face verification error: {str(e)}")
+            return False
 
     @api.depends('mechanic_id')
     def _compute_is_mechanic(self):
@@ -39,7 +75,7 @@ class HrEmployee(models.Model):
     def create_mechanic(self):
         self.ensure_one()
         if not self.mechanic_id:
-            default_position = self.env.ref('your_module.default_mechanic_position', raise_if_not_found=False)
+            default_position = self.env.ref('pitcar_custom.default_mechanic_position', raise_if_not_found=False)
             mechanic = self.env['pitcar.mechanic.new'].create({
                 'name': self.name,
                 'employee_id': self.id,

@@ -36,3 +36,4 @@ pitcar_custom.access_pitcar_work_location_user,access.work.location.user,model_p
 pitcar_custom.access_pitcar_work_location_manager,access.work.location.manager,model_pitcar_work_location,hr.group_hr_manager,1,1,1,1
 pitcar_custom.access_mechanic_credential_wizard_user,access.mechanic.credential.wizard,model_mechanic_credential_wizard,base.group_user,1,1,1,0
 pitcar_custom.access_mechanic_credential_wizard_manager,access.mechanic.credential.wizard,model_mechanic_credential_wizard,hr.group_hr_manager,1,1,1,1
+pitcar_custom.access_hr_attendance_all,hr.attendance.all,hr_attendance.model_hr_attendance,base.group_user,1,1,1,0

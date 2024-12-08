@@ -93,20 +93,30 @@ class AttendanceAPI(http.Controller):
             employee = request.env.user.employee_id
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
-                
-            # Get mechanic
-            mechanic = request.env['pitcar.mechanic.new'].sudo().search([
-                ('employee_id', '=', employee.id)
-            ], limit=1)
 
-            if not mechanic:
-                return {'status': 'error', 'message': 'Mechanic not found'}
+            # Check if employee has valid work locations
+            work_locations = request.env['pitcar.work.location'].sudo().search([])
+            
+            if not work_locations:
+                # Jika tidak ada work location yang didefinisikan, anggap valid
+                return {
+                    'status': 'success',
+                    'data': {
+                        'isValid': True,
+                        'allowed_locations': []
+                    }
+                }
 
-            # Validate location using existing method
-            is_valid = mechanic.verify_location(
-                location.get('latitude'),
-                location.get('longitude')
-            )
+            # Validate location
+            is_valid = False
+            for loc in work_locations:
+                distance = loc.calculate_distance(
+                    location.get('latitude'),
+                    location.get('longitude')
+                )
+                if distance <= loc.radius:
+                    is_valid = True
+                    break
 
             return {
                 'status': 'success',
@@ -117,12 +127,76 @@ class AttendanceAPI(http.Controller):
                         'latitude': loc.latitude,
                         'longitude': loc.longitude,
                         'radius': loc.radius
-                    } for loc in mechanic.work_location_ids]
+                    } for loc in work_locations]
                 }
             }
 
         except Exception as e:
             _logger.error(f"Error in validate_location: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/attendance/register-face', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def register_face(self, **kw):
+        try:
+            face_descriptor = kw.get('face_descriptor')
+            if not face_descriptor:
+                return {'status': 'error', 'message': 'Face descriptor is required'}
+
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+
+            # Save face descriptor
+            employee.write({
+                'face_descriptor': json.dumps(face_descriptor)
+            })
+
+            return {
+                'status': 'success',
+                'message': 'Face registered successfully',
+                'data': {
+                    'employee_id': employee.id,
+                    'name': employee.name
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in register_face: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/attendance/status', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_attendance_status(self, **kw):
+        try:
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+
+            # Get current attendance
+            attendance = request.env['hr.attendance'].sudo().search([
+                ('employee_id', '=', employee.id),
+                ('check_out', '=', False)
+            ], limit=1)
+
+            # Get last attendance
+            last_attendance = request.env['hr.attendance'].sudo().search([
+                ('employee_id', '=', employee.id)
+            ], limit=1)
+
+            return {
+                'status': 'success',
+                'data': {
+                    'is_checked_in': bool(attendance),
+                    'has_face_registered': bool(employee.face_descriptor),
+                    'last_attendance': {
+                        'id': last_attendance.id,
+                        'check_in': last_attendance.check_in.strftime('%Y-%m-%d %H:%M:%S') if last_attendance.check_in else None,
+                        'check_out': last_attendance.check_out.strftime('%Y-%m-%d %H:%M:%S') if last_attendance.check_out else None,
+                    } if last_attendance else None
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_attendance_status: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/v2/attendance/dashboard', type='json', auth='user', methods=['POST'], csrf=False, cors='*')

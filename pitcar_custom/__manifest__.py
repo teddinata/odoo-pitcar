@@ -90,6 +90,7 @@
         'views/kpi_mechanic_overview.xml',
         'views/hr_employee_views.xml',
         'views/work_location_views.xml',
+        'views/hr_attendance_views.xml',  # Add views
         'views/menu.xml',
         # 'views/product_actions.xml', 
         # 'views/stock_quant_views.xml',
@@ -99,5 +100,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.50'
+    'version':'16.0.51'
 }

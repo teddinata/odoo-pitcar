@@ -12,72 +12,66 @@ class AttendanceAPI(http.Controller):
     @http.route('/web/v2/attendance/check', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def check_attendance(self, **kw):
         try:
+            # Get params from request body
             params = kw.get('params', {})
+            if not params:
+                return {'status': 'error', 'message': 'Invalid request parameters'}
 
-            # Get data from request with validation
-            action_type = params.get('action_type')
-            face_descriptor = params.get('face_descriptor')
-            face_confidence = params.get('face_confidence', 0)
-            face_image = params.get('face_image')
-            location = params.get('location', {})
-            device_info = params.get('device_info', {})
-            
-            # Validate required parameters
-            if not action_type:
-                return {'status': 'error', 'message': 'Action type is required'}
-            if not face_descriptor:
-                return {'status': 'error', 'message': 'Face descriptor is required'}
-            if face_confidence < 0.8:  # Validasi confidence dari frontend
-                return {'status': 'error', 'message': 'Low confidence face detection'}
-                
-            # Set timezone Jakarta
-            tz = pytz.timezone('Asia/Jakarta')
-            now = datetime.now(tz)
-            utc_tz = pytz.UTC
-            now_utc = now.astimezone(utc_tz)
-            
-            # Get employee data
+            # Basic validation
+            required_fields = {
+                'action_type': params.get('action_type'),
+                'face_descriptor': params.get('face_descriptor'),
+                'location': params.get('location', {}),
+            }
+
+            # Check all required fields
+            missing_fields = [k for k, v in required_fields.items() if not v]
+            if missing_fields:
+                return {'status': 'error', 'message': f"Missing required fields: {', '.join(missing_fields)}"}
+
+            # Get current employee
             employee = request.env.user.employee_id
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
 
-            # Normalize descriptor dan verify dengan threshold yang lebih toleran
+            # Set timezone and get current time
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            now_utc = now.astimezone(pytz.UTC).replace(tzinfo=None)
+
+            # Verify face with more lenient threshold
             try:
-                normalized_descriptor = [float(x) for x in face_descriptor]
-                if not employee.verify_face(normalized_descriptor, threshold=0.8):
+                normalized_descriptor = [float(x) for x in params['face_descriptor']]
+                if not employee.verify_face(normalized_descriptor, threshold=0.6):  # Lowered threshold
                     return {'status': 'error', 'message': 'Face verification failed'}
             except Exception as e:
                 _logger.error(f"Face verification error: {str(e)}")
                 return {'status': 'error', 'message': 'Face verification error'}
 
-            # Validate location
-            if not self._verify_location(employee, location, device_info):
-                return {'status': 'error', 'message': 'Invalid location or mock location detected'}
-
-            # Prepare values with normalized data
+            # Prepare attendance values
             values = {
                 'employee_id': employee.id,
                 'face_descriptor': json.dumps(normalized_descriptor),
-                'face_image': face_image
+                'face_image': params.get('face_image')
             }
-            
-            # Process attendance
-            if action_type == 'check_in':
-                values['check_in'] = now_utc.replace(tzinfo=None)
+
+            # Handle check in/out
+            if params['action_type'] == 'check_in':
+                values['check_in'] = now_utc
                 attendance = request.env['hr.attendance'].sudo().create(values)
-            else:
+            else:  # check_out
                 attendance = request.env['hr.attendance'].sudo().search([
                     ('employee_id', '=', employee.id),
                     ('check_out', '=', False)
                 ], limit=1)
                 
-                if attendance:
-                    values['check_out'] = now_utc.replace(tzinfo=None)
-                    attendance.write(values)
-                else:
+                if not attendance:
                     return {'status': 'error', 'message': 'No active attendance found'}
+                
+                values['check_out'] = now_utc
+                attendance.write(values)
 
-            # Return response with local time
+            # Return success response
             return {
                 'status': 'success',
                 'data': {
@@ -87,10 +81,10 @@ class AttendanceAPI(http.Controller):
                         'name': employee.name
                     },
                     'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
-                    'type': action_type,
+                    'type': params['action_type'],
                     'location': {
-                        'latitude': location.get('latitude'),
-                        'longitude': location.get('longitude')
+                        'latitude': params['location'].get('latitude'),
+                        'longitude': params['location'].get('longitude')
                     }
                 }
             }

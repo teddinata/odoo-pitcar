@@ -153,47 +153,42 @@ class AttendanceAPI(http.Controller):
 
     @http.route('/web/v2/attendance/register-face', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def register_face(self, **kw):
+        """Register face descriptor and image for employee"""
         try:
+            # Get data from params
             params = kw.get('params', {})
+            if not params:
+                return {'status': 'error', 'message': 'No parameters provided'}
+
             face_descriptor = params.get('face_descriptor')
             face_image = params.get('face_image')
-            
-            # Debug log
-            _logger.info("Received descriptor type: %s", type(face_descriptor))
-            
-            if not face_descriptor:
-                return {'status': 'error', 'message': 'Face descriptor is required'}
-                
-            # Pastikan format descriptor benar
-            try:
-                if isinstance(face_descriptor, list):
-                    normalized_descriptor = [float(x) for x in face_descriptor]
-                else:
-                    return {'status': 'error', 'message': 'Face descriptor must be an array'}
-                
-                employee = request.env.user.employee_id
-                if not employee:
-                    return {'status': 'error', 'message': 'Employee not found'}
 
-                # Save descriptor dan image
-                employee.write({
-                    'face_descriptor': json.dumps(normalized_descriptor),
-                    'face_image': face_image if face_image else False
-                })
+            # Validate face descriptor
+            if not face_descriptor or not isinstance(face_descriptor, list):
+                return {'status': 'error', 'message': 'Invalid face descriptor'}
 
-                return {
-                    'status': 'success',
-                    'message': 'Face registered successfully',
-                    'data': {
-                        'employee_id': employee.id,
-                        'name': employee.name
-                    }
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+
+            # Save to employee record
+            values = {
+                'face_descriptor': json.dumps(face_descriptor)
+            }
+            if face_image:
+                values['face_image'] = face_image
+
+            employee.write(values)
+
+            return {
+                'status': 'success',
+                'message': 'Face registered successfully',
+                'data': {
+                    'employee_id': employee.id,
+                    'name': employee.name
                 }
+            }
 
-            except (ValueError, TypeError) as e:
-                _logger.error(f"Error processing descriptor: {str(e)}")
-                return {'status': 'error', 'message': 'Invalid descriptor values'}
-                
         except Exception as e:
             _logger.error(f"Error in register_face: {str(e)}")
             return {'status': 'error', 'message': str(e)}

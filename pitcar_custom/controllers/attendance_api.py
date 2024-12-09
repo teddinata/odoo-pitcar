@@ -5,59 +5,136 @@ import pytz
 from datetime import datetime, timedelta
 import logging
 import json
+import math
 
 _logger = logging.getLogger(__name__)
 
 class AttendanceAPI(http.Controller):
+    def _euclidean_distance(self, descriptor1, descriptor2):
+        """Calculate Euclidean distance between two face descriptors"""
+        try:
+            if len(descriptor1) != len(descriptor2):
+                return float('inf')
+                
+            sum_squares = 0
+            for d1, d2 in zip(descriptor1, descriptor2):
+                diff = d1 - d2
+                sum_squares += diff * diff
+                
+            distance = math.sqrt(sum_squares)
+            # Convert distance to similarity score (0 to 1)
+            similarity = 1 / (1 + distance)
+            return similarity
+            
+        except Exception as e:
+            _logger.error(f"Error calculating face similarity: {str(e)}")
+            return 0
+        
+    @http.route('/web/v2/attendance/verify-face', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def verify_face(self, **kw):
+        """Verify face descriptor against registered face"""
+        try:
+            # Extract params from JSONRPC request
+            params = kw.get('params', kw)
+            face_descriptor = params.get('face_descriptor')
+            
+            if not face_descriptor:
+                return {'status': 'error', 'message': 'Face descriptor is required'}
+
+            # Get employee
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+
+            # Get stored face descriptor
+            stored_descriptor = employee.face_descriptor
+            if not stored_descriptor:
+                return {'status': 'error', 'message': 'No registered face found'}
+
+            # Verify face
+            verification_result = self._verify_face(face_descriptor, stored_descriptor)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'is_match': verification_result['is_match'],
+                    'similarity': verification_result['similarity'],
+                    'employee_name': employee.name if verification_result['is_match'] else None
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in verify_face: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    def _verify_face(self, current_descriptor, stored_descriptor, threshold=0.4):
+        """Verify face with custom threshold"""
+        try:
+            # Convert stored descriptor from string if needed
+            if isinstance(stored_descriptor, str):
+                stored_descriptor = json.loads(stored_descriptor)
+                
+            # Convert descriptors to list of floats
+            current_descriptor = [float(x) for x in current_descriptor]
+            stored_descriptor = [float(x) for x in stored_descriptor]
+            
+            # Calculate similarity
+            similarity = self._euclidean_distance(current_descriptor, stored_descriptor)
+            
+            return {
+                'is_match': similarity >= threshold,
+                'similarity': similarity
+            }
+            
+        except Exception as e:
+            _logger.error(f"Face verification error: {str(e)}")
+            return {
+                'is_match': False,
+                'similarity': 0
+            }
+
     @http.route('/web/v2/attendance/check', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def check_attendance(self, **kw):
         try:
-            # Extract params from JSONRPC request
-            if not isinstance(kw, dict):
-                return {'status': 'error', 'message': 'Invalid request format'}
-                
-            # Handle both direct params and JSONRPC format
+            # Extract params
             params = kw.get('params', kw)
             
-            # Basic validation of required fields
+            # Basic validation
             required_fields = {
                 'action_type': params.get('action_type'),
                 'face_descriptor': params.get('face_descriptor'),
                 'location': params.get('location', {})
             }
 
-            # Check all required fields
             missing_fields = [k for k, v in required_fields.items() if not v]
             if missing_fields:
                 return {'status': 'error', 'message': f"Missing required fields: {', '.join(missing_fields)}"}
 
-            # Get current employee
+            # Get employee
             employee = request.env.user.employee_id
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
+
+            # Verify face
+            verification_result = self._verify_face(
+                params['face_descriptor'], 
+                employee.face_descriptor
+            )
+            
+            if not verification_result['is_match']:
+                return {'status': 'error', 'message': 'Face verification failed'}
 
             # Set timezone and get current time
             tz = pytz.timezone('Asia/Jakarta')
             now = datetime.now(tz)
             now_utc = now.astimezone(pytz.UTC).replace(tzinfo=None)
 
-            # Verify face with more lenient threshold
-            try:
-                normalized_descriptor = [float(x) for x in params['face_descriptor']]
-                if not employee.verify_face(normalized_descriptor, threshold=0.6):
-                    return {'status': 'error', 'message': 'Face verification failed'}
-            except Exception as e:
-                _logger.error(f"Face verification error: {str(e)}")
-                return {'status': 'error', 'message': 'Face verification error'}
-
-            # Prepare attendance values
+            # Create/update attendance
             values = {
                 'employee_id': employee.id,
-                'face_descriptor': json.dumps(normalized_descriptor),
-                'face_image': params.get('face_image')
+                'face_descriptor': json.dumps(params['face_descriptor'])
             }
 
-            # Handle check in/out
             if params['action_type'] == 'check_in':
                 values['check_in'] = now_utc
                 attendance = request.env['hr.attendance'].sudo().create(values)
@@ -73,7 +150,6 @@ class AttendanceAPI(http.Controller):
                 values['check_out'] = now_utc
                 attendance.write(values)
 
-            # Return success response
             return {
                 'status': 'success',
                 'data': {
@@ -84,10 +160,7 @@ class AttendanceAPI(http.Controller):
                     },
                     'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
                     'type': params['action_type'],
-                    'location': {
-                        'latitude': params['location'].get('latitude'),
-                        'longitude': params['location'].get('longitude')
-                    }
+                    'location': params['location']
                 }
             }
 
@@ -188,10 +261,15 @@ class AttendanceAPI(http.Controller):
     @http.route('/web/v2/attendance/status', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_attendance_status(self, **kw):
         try:
+            # Extract params
+            params = kw.get('params', kw)
+            face_descriptor = params.get('face_descriptor')
+            
             employee = request.env.user.employee_id
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
 
+            # Get attendance status
             attendance = request.env['hr.attendance'].sudo().search([
                 ('employee_id', '=', employee.id),
                 ('check_out', '=', False)
@@ -199,18 +277,31 @@ class AttendanceAPI(http.Controller):
 
             last_attendance = request.env['hr.attendance'].sudo().search([
                 ('employee_id', '=', employee.id)
-            ], limit=1)
+            ], limit=1, order='check_in desc')
+
+            # Face verification if descriptor provided
+            face_verification = None
+            if face_descriptor and employee.face_descriptor:
+                face_verification = self._verify_face(
+                    face_descriptor, 
+                    employee.face_descriptor
+                )
 
             return {
                 'status': 'success',
                 'data': {
                     'is_checked_in': bool(attendance),
                     'has_face_registered': bool(employee.face_descriptor),
+                    'face_verification': face_verification,
                     'last_attendance': {
                         'id': last_attendance.id,
                         'check_in': last_attendance.check_in.strftime('%Y-%m-%d %H:%M:%S') if last_attendance.check_in else None,
                         'check_out': last_attendance.check_out.strftime('%Y-%m-%d %H:%M:%S') if last_attendance.check_out else None,
-                    } if last_attendance else None
+                    } if last_attendance else None,
+                    'employee': {
+                        'id': employee.id,
+                        'name': employee.name
+                    }
                 }
             }
 

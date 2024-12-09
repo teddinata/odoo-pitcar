@@ -951,9 +951,9 @@ class SaleOrder(models.Model):
     @api.constrains('controller_estimasi_mulai', 'controller_estimasi_selesai')
     def _check_controller_estimasi(self):
         for record in self:
-            if record.controller_selesai:
-                raise UserError("Tidak dapat memberikan estimasi karena servis sudah selesai")
-            if record.controller_estimasi_mulai or record.controller_estimasi_selesai:
+            # if record.controller_selesai:
+            #     raise UserError("Tidak dapat memberikan estimasi karena servis sudah selesai")
+            # if record.controller_estimasi_mulai or record.controller_estimasi_selesai:
                 # if self.env.user.pitcar_role != 'controller':
                 #     raise UserError("Hanya Controller yang dapat mengatur estimasi pekerjaan.")
                 if record.controller_estimasi_mulai and record.controller_estimasi_selesai:

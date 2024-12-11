@@ -46,21 +46,68 @@
                             <field name="active"/>
                             <field name="address"/>
                         </group>
+
+                        <!-- Map Widget -->
+                        <!-- <div class="row">
+                            <div class="col-12">
+                                <widget name="google_places_autocomplete"
+                                        placeholder="Search location..."
+                                        options="{'types': ['establishment']}"
+                                        on_place_changed="onPlaceChanged"/>
+                                        
+                                <widget name="google_maps" 
+                                        lat="latitude"
+                                        lng="longitude"
+                                        zoom="16"
+                                        class="mb-3 h-96"/>
+                            </div>
+                        </div> -->
+                        
                         <group string="Coordinates">
                             <field name="latitude"/>
                             <field name="longitude"/>
                             <field name="radius"/>
                         </group>
                     </group>
+
+                     <!-- Map Preview -->
+                     <!-- Map Preview - hanya tampil jika koordinat sudah diisi -->
+                    <div attrs="{'invisible': ['|', ('latitude', '=', False), ('longitude', '=', False)]}" class="row mt16">
+                        <div class="col-12">
+                            <div class="o_map" style="height: 400px;">
+                                <iframe
+                                    width="100%"
+                                    height="100%"
+                                    frameborder="0"
+                                    style="border:0"
+                                    t-attf-src="https://maps.google.com/maps?q=#{latitude},#{longitude}&amp;z=15&amp;output=embed"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                     <!-- Map Field -->
+                    <notebook>
+                        <page string="Location Map">
+                            <field name="latitude" widget="map_field" invisible="1"/>
+                            <div class="alert alert-info" role="alert">
+                                <i class="fa fa-info-circle"/> Drag marker untuk mengubah lokasi atau isi koordinat secara manual.
+                            </div>
+                        </page>
+                    </notebook>
+                    <notebook>
+                        <page string="Location Map">
+                            <field name="latitude" widget="map_widget"/>
+                        </page>
+                    </notebook>
                     
                     <!-- Map container dengan notebook -->
-                    <notebook>
+                    <!-- <notebook>
                         <page string="Location Map">
                             <div class="o_map_container">
                                 <field name="latitude" widget="map"/>
                             </div>
                         </page>
-                    </notebook>
+                    </notebook> -->
                 </sheet>
             </form>
         </field>

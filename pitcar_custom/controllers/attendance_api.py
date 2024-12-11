@@ -1,8 +1,9 @@
 # controllers/attendance_api.py
 from odoo import http
 from odoo.http import request
+from datetime import datetime, time, timedelta
+from dateutil.relativedelta import relativedelta
 import pytz
-from datetime import datetime, timedelta
 import logging
 import json
 import math
@@ -269,35 +270,142 @@ class AttendanceAPI(http.Controller):
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
 
-            # Get attendance status
-            attendance = request.env['hr.attendance'].sudo().search([
-                ('employee_id', '=', employee.id),
-                ('check_out', '=', False)
-            ], limit=1)
+            # Set timezone to Asia/Jakarta
+            jakarta_tz = pytz.timezone('Asia/Jakarta')
+            
+            # Get current datetime in Jakarta timezone
+            now = datetime.now(jakarta_tz)
+            today = now.date()
+            
+            # Get start and end of today in UTC (for database queries)
+            today_start_utc = jakarta_tz.localize(datetime.combine(today, time.min)).astimezone(pytz.UTC)
+            today_end_utc = jakarta_tz.localize(datetime.combine(today, time.max)).astimezone(pytz.UTC)
 
-            last_attendance = request.env['hr.attendance'].sudo().search([
-                ('employee_id', '=', employee.id)
+            # Get today's attendance using UTC times for query
+            today_attendance = request.env['hr.attendance'].sudo().search([
+                ('employee_id', '=', employee.id),
+                ('check_in', '>=', today_start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_in', '<', today_end_utc.strftime('%Y-%m-%d %H:%M:%S'))
             ], limit=1, order='check_in desc')
+
+            # Get last 2 attendances (excluding today)
+            last_attendances = request.env['hr.attendance'].sudo().search([
+                ('employee_id', '=', employee.id),
+                ('check_in', '<', today_start_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ], limit=2, order='check_in desc')
+
+            # Get current month summary
+            first_day = today.replace(day=1)
+            last_day = (first_day + relativedelta(months=1, days=-1))
+            
+            # Convert month boundaries to UTC for database query
+            month_start_utc = jakarta_tz.localize(datetime.combine(first_day, time.min)).astimezone(pytz.UTC)
+            month_end_utc = jakarta_tz.localize(datetime.combine(last_day, time.max)).astimezone(pytz.UTC)
+            
+            month_attendances = request.env['hr.attendance'].sudo().search([
+                ('employee_id', '=', employee.id),
+                ('check_in', '>=', month_start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_in', '<=', month_end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ])
+
+            # Calculate monthly statistics
+            # Use set to count unique dates in Jakarta timezone
+            present_days = len(set(att.check_in.astimezone(jakarta_tz).date() for att in month_attendances))
+            total_working_days = 26  # Standard working days per month
+            
+            # Standard work start time in Jakarta (8 AM)
+            work_start_time = time(8, 0)
+            
+            # Count late attendances (check-in after 8 AM Jakarta time)
+            late_attendances = []
+            total_late_minutes = 0
+            
+            for att in month_attendances:
+                check_in_jkt = att.check_in.astimezone(jakarta_tz)
+                if check_in_jkt.time() > work_start_time:
+                    late_attendances.append(att)
+                    # Calculate late duration
+                    scheduled_start = jakarta_tz.localize(
+                        datetime.combine(check_in_jkt.date(), work_start_time)
+                    )
+                    late_minutes = (check_in_jkt - scheduled_start).total_seconds() / 60
+                    total_late_minutes += late_minutes
 
             # Face verification if descriptor provided
             face_verification = None
             if face_descriptor and employee.face_descriptor:
-                face_verification = self._verify_face(
-                    face_descriptor, 
-                    employee.face_descriptor
-                )
+                face_verification = self._verify_face(face_descriptor, employee.face_descriptor)
+
+            # Check if currently checked in
+            current_attendance = request.env['hr.attendance'].sudo().search([
+                ('employee_id', '=', employee.id),
+                ('check_out', '=', False)
+            ], limit=1)
+
+            def format_attendance(attendance):
+                if not attendance:
+                    return None
+                    
+                check_in_jkt = attendance.check_in.astimezone(jakarta_tz)
+                is_late = check_in_jkt.time() > work_start_time
+                late_duration = 0
+                
+                if is_late:
+                    scheduled_start = jakarta_tz.localize(
+                        datetime.combine(check_in_jkt.date(), work_start_time)
+                    )
+                    late_duration = (check_in_jkt - scheduled_start).total_seconds() / 60
+
+                working_hours = 0
+                if attendance.check_out:
+                    check_out_jkt = attendance.check_out.astimezone(jakarta_tz)
+                    working_hours = (check_out_jkt - check_in_jkt).total_seconds() / 3600
+
+                return {
+                    'id': attendance.id,
+                    'date': check_in_jkt.date().isoformat(),
+                    'status': 'present',
+                    'check_in': check_in_jkt.isoformat(),
+                    'check_out': attendance.check_out.astimezone(jakarta_tz).isoformat() if attendance.check_out else None,
+                    'is_late': is_late,
+                    'late_duration': int(late_duration),
+                    'working_hours': round(working_hours, 2)
+                }
+
+            # Calculate total and average working hours
+            total_hours = sum(
+                (att.check_out - att.check_in).total_seconds() / 3600 
+                for att in month_attendances if att.check_out
+            )
+            avg_hours = round(total_hours / present_days, 2) if present_days > 0 else 0
 
             return {
                 'status': 'success',
                 'data': {
-                    'is_checked_in': bool(attendance),
+                    'is_checked_in': bool(current_attendance),
                     'has_face_registered': bool(employee.face_descriptor),
                     'face_verification': face_verification,
-                    'last_attendance': {
-                        'id': last_attendance.id,
-                        'check_in': last_attendance.check_in.strftime('%Y-%m-%d %H:%M:%S') if last_attendance.check_in else None,
-                        'check_out': last_attendance.check_out.strftime('%Y-%m-%d %H:%M:%S') if last_attendance.check_out else None,
-                    } if last_attendance else None,
+                    'today_attendance': format_attendance(today_attendance) if today_attendance else None,
+                    'last_attendances': [format_attendance(att) for att in last_attendances if att],
+                    'monthly_summary': {
+                        'month': now.strftime('%B'),
+                        'year': now.year,
+                        'total_working_days': total_working_days,
+                        'attendance_summary': {
+                            'present': present_days,
+                            'absent': total_working_days - present_days,
+                            'leave': 0  # Optional: bisa ditambahkan jika ada sistem cuti
+                        },
+                        'late_summary': {
+                            'total_late_days': len(late_attendances),
+                            'total_late_hours': round(total_late_minutes / 60, 1),
+                            'average_late_duration': round(total_late_minutes / len(late_attendances) if late_attendances else 0)
+                        },
+                        'working_hours_summary': {
+                            'total_hours': round(total_hours, 2),
+                            'average_hours': avg_hours
+                        }
+                    },
                     'employee': {
                         'id': employee.id,
                         'name': employee.name

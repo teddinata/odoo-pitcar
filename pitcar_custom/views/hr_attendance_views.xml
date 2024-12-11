@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- Form View -->
     <record id="hr_attendance_view_form_inherit" model="ir.ui.view">
         <field name="name">hr.attendance.form.inherit</field>
         <field name="model">hr.attendance</field>
@@ -10,4 +11,34 @@
             </field>
         </field>
     </record>
+
+    <!-- New Tree View -->
+    <record id="view_attendance_with_image" model="ir.ui.view">
+        <field name="name">hr.attendance.image.tree</field>
+        <field name="model">hr.attendance</field>
+        <field name="arch" type="xml">
+            <tree string="Attendances">
+                <field name="face_image" widget="image" options="{'size': [50, 50]}"/>
+                <field name="employee_id"/>
+                <field name="check_in"/>
+                <field name="check_out"/>
+                <field name="worked_hours" sum="Total" widget="float_time"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_attendance_with_image" model="ir.actions.act_window">
+        <field name="name">Attendance with Images</field>
+        <field name="res_model">hr.attendance</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_attendance_with_image"/>
+    </record>
+
+    <!-- Menu -->
+    <menuitem id="menu_hr_attendance_with_image"
+              name="Attendance Images"
+              parent="hr_attendance.menu_hr_attendance_root"
+              action="action_attendance_with_image"
+              sequence="20"/>
 </odoo>

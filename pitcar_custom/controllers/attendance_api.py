@@ -104,6 +104,7 @@ class AttendanceAPI(http.Controller):
             required_fields = {
                 'action_type': params.get('action_type'),
                 'face_descriptor': params.get('face_descriptor'),
+                'face_image': params.get('face_image'),  # Tambahkan face_image
                 'location': params.get('location', {})
             }
 
@@ -133,7 +134,8 @@ class AttendanceAPI(http.Controller):
             # Create/update attendance
             values = {
                 'employee_id': employee.id,
-                'face_descriptor': json.dumps(params['face_descriptor'])
+                'face_descriptor': json.dumps(params['face_descriptor']),
+                'face_image': params['face_image']  # Simpan gambar wajah
             }
 
             if params['action_type'] == 'check_in':

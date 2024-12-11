@@ -2,15 +2,21 @@
 
 import { registry } from "@web/core/registry";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
-import { Component, onMounted, onWillUnmount } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, useRef } from "@odoo/owl";
 
 export class MapWidget extends Component {
-    static template = "pitcar_custom.MapWidget";
+    static template = xml`
+        <div class="o_map_widget h-100">
+            <div t-ref="mapRef" style="height: 500px;"/>
+        </div>
+    `;
     static props = {
         ...standardFieldProps,
+        record: Object,
     };
 
     setup() {
+        this.mapRef = useRef('mapRef');
         this.map = null;
         this.marker = null;
         this.circle = null;
@@ -23,68 +29,58 @@ export class MapWidget extends Component {
         });
     }
 
-    async initMap() {
-        try {
-            if (!this.props.record) return;
+    initMap() {
+        if (typeof L === 'undefined') {
+            console.error('Leaflet is not loaded');
+            return;
+        }
 
-            const mapElement = document.getElementById('map');
-            if (!mapElement) {
-                console.error('Map container not found');
-                return;
-            }
+        const record = this.props.record;
+        const lat = record.data.latitude || -6.3089;
+        const lng = record.data.longitude || 106.8456;
+        const radius = record.data.radius || 100;
 
-            const defaultLat = this.props.record.data.latitude || -6.2088;
-            const defaultLng = this.props.record.data.longitude || 106.8456;
-            const radius = this.props.record.data.radius || 100;
+        this.map = L.map(this.mapRef.el).setView([lat, lng], 15);
 
-            // Initialize map
-            this.map = L.map(mapElement).setView([defaultLat, defaultLng], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(this.map);
 
-            // Add OpenStreetMap tiles
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(this.map);
+        this.marker = L.marker([lat, lng], {
+            draggable: true
+        }).addTo(this.map);
 
-            // Add draggable marker
-            this.marker = L.marker([defaultLat, defaultLng], {
-                draggable: true
-            }).addTo(this.map);
+        this.circle = L.circle([lat, lng], {
+            radius: radius,
+            color: 'red',
+            fillColor: '#f03',
+            fillOpacity: 0.2
+        }).addTo(this.map);
 
-            // Add radius circle
-            this.circle = L.circle([defaultLat, defaultLng], {
-                radius: radius,
-                color: '#3388ff',
-                fillOpacity: 0.2
-            }).addTo(this.map);
-
-            // Handle marker drag
-            this.marker.on('dragend', (event) => {
-                const pos = event.target.getLatLng();
-                this.updateLocation(pos.lat, pos.lng);
+        this.marker.on('dragend', (e) => {
+            const pos = e.target.getLatLng();
+            record.update({
+                latitude: pos.lat,
+                longitude: pos.lng
             });
-
-            // Force map to update its size
-            setTimeout(() => {
-                this.map.invalidateSize();
-            }, 100);
-
-        } catch (error) {
-            console.error('Error initializing map:', error);
-        }
-    }
-
-    updateLocation(lat, lng) {
-        if (!this.props.record) return;
-        
-        this.props.record.update({
-            latitude: lat,
-            longitude: lng
+            this.circle.setLatLng(pos);
         });
-        
-        if (this.circle) {
-            this.circle.setLatLng([lat, lng]);
-        }
+
+        record.addEventListener('update', () => {
+            const newLat = record.data.latitude;
+            const newLng = record.data.longitude;
+            const newRadius = record.data.radius;
+
+            if (newLat && newLng) {
+                this.marker.setLatLng([newLat, newLng]);
+                this.map.setView([newLat, newLng]);
+                this.circle.setLatLng([newLat, newLng]);
+            }
+            if (newRadius) {
+                this.circle.setRadius(newRadius);
+            }
+        });
     }
 }
 
-registry.category("fields").add("map", MapWidget);
+registry.category("fields").add("map_widget", MapWidget);

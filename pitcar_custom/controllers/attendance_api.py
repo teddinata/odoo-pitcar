@@ -1027,33 +1027,25 @@ class AttendanceAPI(http.Controller):
 
     @http.route('/web/v2/attendance/history', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_attendance_history(self, **kw):
-        """Get attendance history with filters"""
         try:
-            # Extract params
-            params = kw.get('params', {})
-            period = params.get('period')  # 'today', 'week', 'month' atau None untuk custom
-            start_date = params.get('start_date')
-            end_date = params.get('end_date')
-            status_filter = params.get('status')  # 'late', 'ontime', atau None untuk semua
-            
             # Set timezone
             tz = pytz.timezone('Asia/Jakarta')
             now = datetime.now(tz)
             
-            # Calculate date range dengan logging untuk debugging
-            _logger.info(f"Incoming params: period={period}, start_date={start_date}, end_date={end_date}")
+            # Extract parameters
+            params = kw.get('params', {})
+            period = params.get('period')
+            start_date = params.get('start_date')
+            end_date = params.get('end_date')
             
-            # Determine date range based on period or custom dates
+            _logger.info(f"Received parameters: period={period}, start_date={start_date}, end_date={end_date}")
+
+            # Calculate date range
             if start_date and end_date:
                 # Custom date range
-                try:
-                    start = tz.localize(datetime.strptime(start_date, '%Y-%m-%d').replace(hour=0, minute=0, second=0))
-                    end = tz.localize(datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59))
-                except ValueError as e:
-                    _logger.error(f"Date parsing error: {e}")
-                    return {'status': 'error', 'message': 'Invalid date format'}
+                start = datetime.strptime(f"{start_date} 00:00:00", '%Y-%m-%d %H:%M:%S')
+                end = datetime.strptime(f"{end_date} 23:59:59", '%Y-%m-%d %H:%M:%S')
             else:
-                # Predefined periods
                 if period == 'today':
                     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
                     end = now
@@ -1064,18 +1056,17 @@ class AttendanceAPI(http.Controller):
                 elif period == 'month':
                     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                     end = now
-                elif period == 'week':
+                else:  # default to 'week'
                     # Get start of week (Monday)
                     start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
                     end = now
-                else:
-                    # Default to today if no valid period specified
-                    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                    end = now
 
-            # Log calculated date range for debugging
-            _logger.info(f"Calculated date range: {start} to {end}")
+            # Localize dates
+            start = tz.localize(start)
+            end = tz.localize(end)
             
+            _logger.info(f"Calculated date range: {start} to {end}")
+
             # Convert to UTC for database queries
             start_utc = start.astimezone(pytz.UTC)
             end_utc = end.astimezone(pytz.UTC)
@@ -1141,10 +1132,10 @@ class AttendanceAPI(http.Controller):
                 }
                 
                 # Apply status filter if specified
-                if status_filter:
-                    if status_filter == 'late' and not is_late:
+                if 'status_filter' in params:
+                    if params['status_filter'] == 'late' and not is_late:
                         continue
-                    if status_filter == 'ontime' and is_late:
+                    if params['status_filter'] == 'ontime' and is_late:
                         continue
                 
                 records.append(record)
@@ -1182,36 +1173,43 @@ class AttendanceAPI(http.Controller):
 
     @http.route('/web/v2/attendance/report', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_attendance_report(self, **kw):
-        """Get attendance report with monthly stats and chart data"""
         try:
-            # Extract parameters
-            params = kw.get('params', {})
-            month = int(params.get('month', datetime.now().month - 1))  # JS month (0-11)
-            year = int(params.get('year', datetime.now().year))
-            
-            _logger.info(f"Received params - month: {month}, year: {year}")
-
             # Set timezone
             tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
             
-            # Calculate first and last day of selected month
-            # Convert JS month (0-11) to Python month (1-12)
-            python_month = month + 1
+            # Extract parameters
+            params = kw.get('params', {})
+            month = params.get('month')  # Expecting 1-12
+            year = params.get('year', now.year)
             
-            # Calculate first day of month
-            start_date = datetime(year, python_month, 1)
+            _logger.info(f"Received parameters: month={month}, year={year}")
             
-            # Calculate last day of month
-            if python_month == 12:
-                end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
+            # Calculate date range
+            if month is not None:
+                month = int(month)
+                if not 1 <= month <= 12:
+                    return {'status': 'error', 'message': 'Month must be between 1 and 12'}
+                    
+                # Create date range for month
+                start = datetime(year, month, 1)
+                if month == 12:
+                    end = datetime(year + 1, 1, 1)
+                else:
+                    end = datetime(year, month + 1, 1)
+                    
+                # Subtract one second to get end of month
+                end = end - timedelta(seconds=1)
             else:
-                end_date = datetime(year, python_month + 1, 1) - timedelta(days=1)
-            
+                # Default to current month
+                start = datetime(now.year, now.month, 1)
+                end = (start + relativedelta(months=1)) - timedelta(seconds=1)
+                
             # Localize dates
-            start = tz.localize(start_date.replace(hour=0, minute=0, second=0))
-            end = tz.localize(end_date.replace(hour=23, minute=59, second=59))
+            start = tz.localize(start)
+            end = tz.localize(end)
             
-            _logger.info(f"Calculated date range - start: {start}, end: {end}")
+            _logger.info(f"Calculated date range: {start} to {end}")
 
             # Convert to UTC for database queries
             start_utc = start.astimezone(pytz.UTC)
@@ -1235,8 +1233,8 @@ class AttendanceAPI(http.Controller):
             
             # Calculate working days in month (excluding weekends)
             total_days = 0
-            current_date = start_date
-            while current_date <= end_date:
+            current_date = start
+            while current_date <= end:
                 if current_date.weekday() < 5:  # Monday = 0, Sunday = 6
                     total_days += 1
                 current_date += timedelta(days=1)

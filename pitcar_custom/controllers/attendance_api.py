@@ -782,3 +782,156 @@ class AttendanceAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Location verification error: {str(e)}")
             return False
+
+    # Tambahkan endpoint-endpoint berikut ke class AttendanceAPI
+    @http.route('/web/v2/work-locations', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_work_locations(self, **kw):
+        """Get all work locations"""
+        try:
+            locations = request.env['pitcar.work.location'].sudo().search([])
+            return {
+                'status': 'success',
+                'data': [{
+                    'id': loc.id,
+                    'name': loc.name,
+                    'latitude': loc.latitude,
+                    'longitude': loc.longitude,
+                    'radius': loc.radius,
+                    'address': loc.address,
+                    'active': loc.active
+                } for loc in locations]
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_work_locations: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/work-locations/create', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def create_work_location(self, **kw):
+        """Create new work location"""
+        try:
+            # Extract params
+            params = kw.get('params', {})
+            required_fields = ['name', 'latitude', 'longitude', 'radius']
+            
+            # Validate required fields
+            missing_fields = [field for field in required_fields if not params.get(field)]
+            if missing_fields:
+                return {
+                    'status': 'error',
+                    'message': f"Missing required fields: {', '.join(missing_fields)}"
+                }
+                
+            # Create work location
+            values = {
+                'name': params['name'],
+                'latitude': float(params['latitude']),
+                'longitude': float(params['longitude']),
+                'radius': int(params['radius']),
+                'address': params.get('address', ''),
+                'active': params.get('active', True)
+            }
+            
+            location = request.env['pitcar.work.location'].sudo().create(values)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'id': location.id,
+                    'name': location.name,
+                    'latitude': location.latitude,
+                    'longitude': location.longitude,
+                    'radius': location.radius,
+                    'address': location.address,
+                    'active': location.active
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in create_work_location: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/work-locations/update/<int:location_id>', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def update_work_location(self, location_id, **kw):
+        """Update existing work location"""
+        try:
+            # Check if location exists
+            location = request.env['pitcar.work.location'].sudo().browse(location_id)
+            if not location.exists():
+                return {'status': 'error', 'message': 'Location not found'}
+                
+            # Extract params
+            params = kw.get('params', {})
+            
+            # Update values if provided
+            values = {}
+            if 'name' in params:
+                values['name'] = params['name']
+            if 'latitude' in params:
+                values['latitude'] = float(params['latitude'])
+            if 'longitude' in params:
+                values['longitude'] = float(params['longitude'])
+            if 'radius' in params:
+                values['radius'] = int(params['radius'])
+            if 'address' in params:
+                values['address'] = params['address']
+            if 'active' in params:
+                values['active'] = bool(params['active'])
+                
+            location.write(values)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'id': location.id,
+                    'name': location.name,
+                    'latitude': location.latitude,
+                    'longitude': location.longitude,
+                    'radius': location.radius,
+                    'address': location.address,
+                    'active': location.active
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in update_work_location: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/work-locations/delete/<int:location_id>', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def delete_work_location(self, location_id, **kw):
+        """Delete work location"""
+        try:
+            location = request.env['pitcar.work.location'].sudo().browse(location_id)
+            if not location.exists():
+                return {'status': 'error', 'message': 'Location not found'}
+                
+            location.unlink()
+            
+            return {
+                'status': 'success',
+                'message': 'Location deleted successfully'
+            }
+        except Exception as e:
+            _logger.error(f"Error in delete_work_location: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/work-locations/<int:location_id>', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_work_location(self, location_id, **kw):
+        """Get single work location by ID"""
+        try:
+            location = request.env['pitcar.work.location'].sudo().browse(location_id)
+            if not location.exists():
+                return {'status': 'error', 'message': 'Location not found'}
+                
+            return {
+                'status': 'success',
+                'data': {
+                    'id': location.id,
+                    'name': location.name,
+                    'latitude': location.latitude,
+                    'longitude': location.longitude,
+                    'radius': location.radius,
+                    'address': location.address,
+                    'active': location.active
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_work_location: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

@@ -1031,43 +1031,51 @@ class AttendanceAPI(http.Controller):
         try:
             # Extract params
             params = kw.get('params', {})
-            period = params.get('period', 'week')
+            period = params.get('period')  # 'today', 'week', 'month' atau None untuk custom
             start_date = params.get('start_date')
             end_date = params.get('end_date')
-            status_filter = params.get('status')  # 'late', 'ontime', or None for all
+            status_filter = params.get('status')  # 'late', 'ontime', atau None untuk semua
             
             # Set timezone
             tz = pytz.timezone('Asia/Jakarta')
             now = datetime.now(tz)
             
-            # Calculate date range
+            # Calculate date range dengan logging untuk debugging
+            _logger.info(f"Incoming params: period={period}, start_date={start_date}, end_date={end_date}")
+            
+            # Determine date range based on period or custom dates
             if start_date and end_date:
+                # Custom date range
                 try:
-                    start = datetime.strptime(start_date, '%Y-%m-%d')
-                    end = datetime.strptime(end_date, '%Y-%m-%d')
-                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
-                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
-                except (ValueError, TypeError):
+                    start = tz.localize(datetime.strptime(start_date, '%Y-%m-%d').replace(hour=0, minute=0, second=0))
+                    end = tz.localize(datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59))
+                except ValueError as e:
+                    _logger.error(f"Date parsing error: {e}")
                     return {'status': 'error', 'message': 'Invalid date format'}
             else:
-                # Handle predefined periods
+                # Predefined periods
                 if period == 'today':
-                    start = now.replace(hour=0, minute=0, second=0)
+                    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
                     end = now
                 elif period == 'yesterday':
                     yesterday = now - timedelta(days=1)
-                    start = yesterday.replace(hour=0, minute=0, second=0)
-                    end = yesterday.replace(hour=23, minute=59, second=59)
-                elif period == 'week':
-                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
-                    end = now
+                    start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
                 elif period == 'month':
-                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    end = now
+                elif period == 'week':
+                    # Get start of week (Monday)
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
                     end = now
                 else:
-                    start = now.replace(hour=0, minute=0, second=0)
+                    # Default to today if no valid period specified
+                    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
                     end = now
 
+            # Log calculated date range for debugging
+            _logger.info(f"Calculated date range: {start} to {end}")
+            
             # Convert to UTC for database queries
             start_utc = start.astimezone(pytz.UTC)
             end_utc = end.astimezone(pytz.UTC)
@@ -1077,12 +1085,14 @@ class AttendanceAPI(http.Controller):
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
 
-            # Build domain
+            # Build domain with logging
             domain = [
                 ('employee_id', '=', employee.id),
                 ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
                 ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
             ]
+            
+            _logger.info(f"Search domain: {domain}")
 
             # Get attendance records
             attendances = request.env['hr.attendance'].sudo().search(domain, order='check_in desc')
@@ -1129,14 +1139,14 @@ class AttendanceAPI(http.Controller):
                     'late_duration': late_duration,
                     'working_hours': working_hours
                 }
-
+                
                 # Apply status filter if specified
                 if status_filter:
                     if status_filter == 'late' and not is_late:
                         continue
                     if status_filter == 'ontime' and is_late:
                         continue
-
+                
                 records.append(record)
 
             # Calculate summary
@@ -1148,9 +1158,12 @@ class AttendanceAPI(http.Controller):
                 'ontime_count': total_ontime,
                 'total_hours': round(total_hours, 2),
                 'average_hours': round(total_hours / total_records, 2) if total_records > 0 else 0,
-                'punctuality_rate': round((total_ontime / total_records * 100), 2) if total_records > 0 else 100
+                'punctuality_rate': round((total_ontime / total_records * 100), 2) if total_records > 0 else 0
             }
 
+            # Log final response for debugging
+            _logger.info(f"Returning {len(records)} records for period {period}")
+            
             return {
                 'status': 'success',
                 'data': {
@@ -1171,24 +1184,35 @@ class AttendanceAPI(http.Controller):
     def get_attendance_report(self, **kw):
         """Get attendance report with monthly stats and chart data"""
         try:
+            # Extract parameters
             params = kw.get('params', {})
-            month = int(params.get('month', datetime.now().month - 1))  # 0-11 for JS compatibility
+            month = int(params.get('month', datetime.now().month - 1))  # JS month (0-11)
             year = int(params.get('year', datetime.now().year))
             
+            _logger.info(f"Received params - month: {month}, year: {year}")
+
             # Set timezone
             tz = pytz.timezone('Asia/Jakarta')
             
-            # Calculate date range for selected month
-            start_date = datetime(year, month + 1, 1)  # Convert from JS month (0-11) to Python month (1-12)
-            if month == 11:  # December
-                end_date = datetime(year + 1, 1, 1)
+            # Calculate first and last day of selected month
+            # Convert JS month (0-11) to Python month (1-12)
+            python_month = month + 1
+            
+            # Calculate first day of month
+            start_date = datetime(year, python_month, 1)
+            
+            # Calculate last day of month
+            if python_month == 12:
+                end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
             else:
-                end_date = datetime(year, month + 2, 1)
+                end_date = datetime(year, python_month + 1, 1) - timedelta(days=1)
             
             # Localize dates
             start = tz.localize(start_date.replace(hour=0, minute=0, second=0))
-            end = tz.localize(end_date.replace(hour=0, minute=0, second=0))
+            end = tz.localize(end_date.replace(hour=23, minute=59, second=59))
             
+            _logger.info(f"Calculated date range - start: {start}, end: {end}")
+
             # Convert to UTC for database queries
             start_utc = start.astimezone(pytz.UTC)
             end_utc = end.astimezone(pytz.UTC)
@@ -1198,37 +1222,40 @@ class AttendanceAPI(http.Controller):
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
 
-            # Get attendance records for the month
+            # Get attendance records
             domain = [
                 ('employee_id', '=', employee.id),
                 ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
                 ('check_in', '<', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
             ]
             
+            _logger.info(f"Search domain: {domain}")
+            
             attendances = request.env['hr.attendance'].sudo().search(domain, order='check_in asc')
             
             # Calculate working days in month (excluding weekends)
             total_days = 0
             current_date = start_date
-            while current_date < end_date:
+            while current_date <= end_date:
                 if current_date.weekday() < 5:  # Monday = 0, Sunday = 6
                     total_days += 1
                 current_date += timedelta(days=1)
             
-            # Initialize metrics
-            total_present = len(attendances)
+            # Process attendance records
+            present_days = set()  # Use set to count unique days
             total_late = 0
             total_late_minutes = 0
             total_hours = 0
             on_time_count = 0
+            daily_hours = {}  # For chart data
             work_start_time = time(8, 0)  # 8 AM
-            
-            # Chart data by day
-            daily_hours = {}
             
             for attendance in attendances:
                 check_in_local = pytz.UTC.localize(attendance.check_in).astimezone(tz)
                 check_out_local = attendance.check_out and pytz.UTC.localize(attendance.check_out).astimezone(tz)
+                
+                # Count unique present days
+                present_days.add(check_in_local.date())
                 
                 # Calculate late status
                 is_late = check_in_local.time() > work_start_time
@@ -1247,46 +1274,40 @@ class AttendanceAPI(http.Controller):
                     working_hours = round((check_out_local - check_in_local).total_seconds() / 3600, 2)
                     total_hours += working_hours
                     
-                    # Add to daily chart data
-                    day_str = check_in_local.strftime('%d')
-                    daily_hours[day_str] = working_hours
+                    # Aggregate working hours by day for chart
+                    day_str = f"{check_in_local.day:02d}"
+                    daily_hours[day_str] = daily_hours.get(day_str, 0) + working_hours
             
-            # Calculate average hours
-            avg_hours = round(total_hours / total_present, 2) if total_present > 0 else 0
+            # Prepare chart data
+            chart_data = [
+                {"date": day, "hours": round(hours, 2)}
+                for day, hours in sorted(daily_hours.items())
+            ]
             
-            # Prepare chart data (ensure all days have values)
-            chart_data = []
-            for day in range(1, 32):  # 1-31
-                day_str = f"{day:02d}"
-                if day_str in daily_hours:
-                    chart_data.append({
-                        'date': day_str,
-                        'hours': daily_hours[day_str]
-                    })
+            # Calculate final metrics
+            total_present = len(present_days)
             
-            # Sort chart data by date
-            chart_data.sort(key=lambda x: x['date'])
-            
-            # Prepare summary
             summary = {
                 'present': total_present,
                 'totalDays': total_days,
                 'late': total_late,
                 'lateHours': round(total_late_minutes / 60, 1),
-                'avgHours': avg_hours,
-                'punctuality': round((on_time_count / total_present * 100), 1) if total_present > 0 else 100,
+                'avgHours': round(total_hours / total_present, 2) if total_present > 0 else 0,
+                'punctuality': round((on_time_count / total_late) * 100, 1) if total_late > 0 else 0,
                 'totalHours': round(total_hours, 1),
                 'onTime': on_time_count
             }
+            
+            _logger.info(f"Generated report - present days: {total_present}, total hours: {total_hours}")
             
             return {
                 'status': 'success',
                 'data': {
                     'date_range': {
-                        'month': month,
+                        'month': month,  # Return JS month (0-11)
                         'year': year,
                         'start': start.strftime('%Y-%m-%d'),
-                        'end': (end - timedelta(days=1)).strftime('%Y-%m-%d')
+                        'end': end.strftime('%Y-%m-%d')
                     },
                     'summary': summary,
                     'chartData': chart_data

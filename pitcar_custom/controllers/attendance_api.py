@@ -1032,7 +1032,7 @@ class AttendanceAPI(http.Controller):
             tz = pytz.timezone('Asia/Jakarta')
             now = datetime.now(tz)
             
-            # Extract parameters
+            # Get date parameters from payload
             params = kw.get('params', {})
             period = params.get('period')
             start_date = params.get('start_date')
@@ -1040,49 +1040,57 @@ class AttendanceAPI(http.Controller):
             
             _logger.info(f"Received parameters: period={period}, start_date={start_date}, end_date={end_date}")
 
-            # Calculate date range
-            if start_date and end_date:
-                # Custom date range
-                start = datetime.strptime(f"{start_date} 00:00:00", '%Y-%m-%d %H:%M:%S')
-                end = datetime.strptime(f"{end_date} 23:59:59", '%Y-%m-%d %H:%M:%S')
-            else:
-                if period == 'today':
-                    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                    end = now
-                elif period == 'yesterday':
-                    yesterday = now - timedelta(days=1)
-                    start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-                    end = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
-                elif period == 'month':
-                    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                    end = now
-                else:  # default to 'week'
-                    # Get start of week (Monday)
-                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-                    end = now
-
-            # Localize dates
-            start = tz.localize(start)
-            end = tz.localize(end)
+            # Initialize variables
+            start = None
+            end = None
             
-            _logger.info(f"Calculated date range: {start} to {end}")
+            try:
+                if start_date and end_date:
+                    # Create naive datetime objects
+                    start = datetime.strptime(f"{start_date} 00:00:00", '%Y-%m-%d %H:%M:%S')
+                    end = datetime.strptime(f"{end_date} 23:59:59", '%Y-%m-%d %H:%M:%S')
+                else:
+                    # Handle predefined periods
+                    if period == 'today':
+                        start = datetime.combine(now.date(), datetime.min.time())
+                        end = now.replace(microsecond=0)
+                    elif period == 'yesterday':
+                        yesterday = (now - timedelta(days=1)).date()
+                        start = datetime.combine(yesterday, datetime.min.time())
+                        end = datetime.combine(yesterday, datetime.max.time())
+                    elif period == 'month':
+                        start = datetime.combine(now.replace(day=1).date(), datetime.min.time())
+                        end = now.replace(microsecond=0)
+                    else:  # default to 'week'
+                        start = datetime.combine((now - timedelta(days=now.weekday())).date(), datetime.min.time())
+                        end = now.replace(microsecond=0)
 
-            # Convert to UTC for database queries
-            start_utc = start.astimezone(pytz.UTC)
-            end_utc = end.astimezone(pytz.UTC)
-            
+                # Localize dates
+                start = tz.localize(start)
+                end = tz.localize(end)
+                
+                _logger.info(f"Processed date range: {start} to {end}")
+
+                # Convert to UTC for database
+                start_utc = start.astimezone(pytz.UTC).replace(tzinfo=None)
+                end_utc = end.astimezone(pytz.UTC).replace(tzinfo=None)
+
+            except (ValueError, TypeError) as e:
+                _logger.error(f"Date processing error: {str(e)}")
+                return {'status': 'error', 'message': 'Invalid date format or values'}
+
             # Get employee
             employee = request.env.user.employee_id
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
 
-            # Build domain with logging
+            # Build domain
             domain = [
                 ('employee_id', '=', employee.id),
-                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                ('check_in', '>=', start_utc),
+                ('check_in', '<=', end_utc)
             ]
-            
+
             _logger.info(f"Search domain: {domain}")
 
             # Get attendance records
@@ -1177,43 +1185,49 @@ class AttendanceAPI(http.Controller):
             # Set timezone
             tz = pytz.timezone('Asia/Jakarta')
             now = datetime.now(tz)
-            
-            # Extract parameters
+                
+            # Get parameters from payload
             params = kw.get('params', {})
-            month = params.get('month')  # Expecting 1-12
+            month = params.get('month')  # Should be 0-11 from JS
             year = params.get('year', now.year)
             
             _logger.info(f"Received parameters: month={month}, year={year}")
-            
-            # Calculate date range
-            if month is not None:
-                month = int(month)
-                if not 1 <= month <= 12:
-                    return {'status': 'error', 'message': 'Month must be between 1 and 12'}
-                    
-                # Create date range for month
-                start = datetime(year, month, 1)
-                if month == 12:
-                    end = datetime(year + 1, 1, 1)
-                else:
-                    end = datetime(year, month + 1, 1)
-                    
-                # Subtract one second to get end of month
-                end = end - timedelta(seconds=1)
-            else:
-                # Default to current month
-                start = datetime(now.year, now.month, 1)
-                end = (start + relativedelta(months=1)) - timedelta(seconds=1)
-                
-            # Localize dates
-            start = tz.localize(start)
-            end = tz.localize(end)
-            
-            _logger.info(f"Calculated date range: {start} to {end}")
 
-            # Convert to UTC for database queries
-            start_utc = start.astimezone(pytz.UTC)
-            end_utc = end.astimezone(pytz.UTC)
+            # Process month (convert from JS 0-11 to Python 1-12)
+            try:
+                if month is not None:
+                    month = int(month) + 1  # Convert JS month to Python month
+                    if not 1 <= month <= 12:
+                        return {'status': 'error', 'message': 'Invalid month value'}
+                    
+                    # Calculate start and end dates
+                    start = datetime(year, month, 1)
+                    
+                    # For end date
+                    if month == 12:
+                        end = datetime(year + 1, 1, 1)
+                    else:
+                        end = datetime(year, month + 1, 1)
+                    
+                    end = end - timedelta(seconds=1)  # End of previous month
+                else:
+                    # Default to current month
+                    start = datetime(now.year, now.month, 1)
+                    end = (start.replace(day=1) + relativedelta(months=1) - timedelta(seconds=1))
+                
+                # Localize dates after creation
+                start = tz.localize(start)
+                end = tz.localize(end)
+                
+                _logger.info(f"Calculated date range: {start} to {end}")
+
+                # Convert to UTC for database
+                start_utc = start.astimezone(pytz.UTC).replace(tzinfo=None)
+                end_utc = end.astimezone(pytz.UTC).replace(tzinfo=None)
+
+            except (ValueError, TypeError) as e:
+                _logger.error(f"Date processing error: {str(e)}")
+                return {'status': 'error', 'message': 'Invalid date format or values'}
             
             # Get employee
             employee = request.env.user.employee_id
@@ -1302,7 +1316,7 @@ class AttendanceAPI(http.Controller):
                 'status': 'success',
                 'data': {
                     'date_range': {
-                        'month': month,  # Return JS month (0-11)
+                        'month': month - 1 if month else now.month - 1,  # Convert back to JS month (0-11)
                         'year': year,
                         'start': start.strftime('%Y-%m-%d'),
                         'end': end.strftime('%Y-%m-%d')

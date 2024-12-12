@@ -1288,12 +1288,20 @@ class AttendanceAPI(http.Controller):
             attendances = request.env['hr.attendance'].sudo().search(domain, order='check_in asc')
             
             # Calculate working days (excluding weekends)
+            # total_days = 0
+            # current = start.date()
+            # while current <= end.date():
+            #     if current.weekday() < 5:  # Monday = 0, Sunday = 6
+            #         total_days += 1
+            #     current += timedelta(days=1)
+            # Calculate actual working days but cap at 26
             total_days = 0
             current = start.date()
             while current <= end.date():
-                if current.weekday() < 5:  # Monday = 0, Sunday = 6
+                if current.weekday() < 5:  # Monday = 0, Friday = 4
                     total_days += 1
                 current += timedelta(days=1)
+            total_days = min(total_days, 26)  # Cap at 26 days
 
             # Process records
             present_days = set()

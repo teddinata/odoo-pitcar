@@ -809,13 +809,26 @@ class AttendanceAPI(http.Controller):
     def create_work_location(self, **kw):
         """Create new work location"""
         try:
-            # Extract params
-            params = kw.get('params', {})
+            # Debug logging
+            _logger.info(f"Received kw: {kw}")
+            
+            # Get params from JSONRPC request
+            params = kw
+            if isinstance(kw, dict) and 'params' in kw:
+                params = kw['params']
+            
+            _logger.info(f"Extracted params: {params}")
+
             required_fields = ['name', 'latitude', 'longitude', 'radius']
             
+            # Detailed validation logging
+            for field in required_fields:
+                _logger.info(f"Checking field {field}: {params.get(field)}")
+                
             # Validate required fields
             missing_fields = [field for field in required_fields if not params.get(field)]
             if missing_fields:
+                _logger.error(f"Missing fields: {missing_fields}")
                 return {
                     'status': 'error',
                     'message': f"Missing required fields: {', '.join(missing_fields)}"
@@ -823,13 +836,15 @@ class AttendanceAPI(http.Controller):
                 
             # Create work location
             values = {
-                'name': params['name'],
+                'name': str(params['name']),
                 'latitude': float(params['latitude']),
                 'longitude': float(params['longitude']),
                 'radius': int(params['radius']),
-                'address': params.get('address', ''),
-                'active': params.get('active', True)
+                'address': str(params.get('address', '')),
+                'active': bool(params.get('active', True))
             }
+            
+            _logger.info(f"Creating location with values: {values}")
             
             location = request.env['pitcar.work.location'].sudo().create(values)
             
@@ -847,6 +862,7 @@ class AttendanceAPI(http.Controller):
             }
         except Exception as e:
             _logger.error(f"Error in create_work_location: {str(e)}")
+            _logger.error(f"Full traceback:", exc_info=True)
             return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/v2/work-locations/update/<int:location_id>', type='json', auth='user', methods=['POST'], csrf=False, cors='*')

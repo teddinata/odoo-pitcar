@@ -951,3 +951,163 @@ class AttendanceAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_work_location: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+    
+    def _get_date_range(self, period_type, start_date=None, end_date=None):
+        """Helper to get date range based on period type or custom range"""
+        tz = pytz.timezone('Asia/Jakarta')
+        now = datetime.now(tz)
+        
+        if start_date and end_date:
+            try:
+                start = datetime.strptime(start_date, '%Y-%m-%d')
+                end = datetime.strptime(end_date, '%Y-%m-%d')
+                return (
+                    tz.localize(start.replace(hour=0, minute=0, second=0)),
+                    tz.localize(end.replace(hour=23, minute=59, second=59))
+                )
+            except (ValueError, TypeError):
+                _logger.error(f"Invalid date format: start={start_date}, end={end_date}")
+                return None, None
+                
+        if period_type == 'today':
+            start = now.replace(hour=0, minute=0, second=0)
+            end = now
+        elif period_type == 'yesterday':
+            yesterday = now - timedelta(days=1)
+            start = yesterday.replace(hour=0, minute=0, second=0)
+            end = yesterday.replace(hour=23, minute=59, second=59)
+        elif period_type == 'week':
+            start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+            end = now
+        elif period_type == 'month':
+            start = now.replace(day=1, hour=0, minute=0, second=0)
+            end = now
+        else:  # default to today
+            start = now.replace(hour=0, minute=0, second=0)
+            end = now
+            
+        return start, end
+
+    def _format_attendance(self, attendance, tz):
+        """Format single attendance record with timezone handling"""
+        if not attendance:
+            return None
+            
+        # Standard work time (8 AM)
+        work_start_time = time(8, 0)
+        
+        # Convert times to local timezone
+        check_in_local = pytz.UTC.localize(attendance.check_in).astimezone(tz)
+        check_out_local = attendance.check_out and pytz.UTC.localize(attendance.check_out).astimezone(tz)
+        
+        # Calculate late status
+        is_late = check_in_local.time() > work_start_time
+        late_duration = 0
+        if is_late:
+            scheduled_start = tz.localize(
+                datetime.combine(check_in_local.date(), work_start_time)
+            )
+            late_duration = round((check_in_local - scheduled_start).total_seconds() / 60)
+        
+        # Calculate working hours
+        working_hours = 0
+        if check_out_local:
+            working_hours = round((check_out_local - check_in_local).total_seconds() / 3600, 2)
+        
+        return {
+            'id': attendance.id,
+            'date': check_in_local.date().isoformat(),
+            'check_in': check_in_local.isoformat(),
+            'check_out': check_out_local.isoformat() if check_out_local else None,
+            'is_late': is_late,
+            'late_duration': late_duration,
+            'working_hours': working_hours,
+            'status': 'present'
+        }
+
+    @http.route('/web/v2/attendance/history', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_attendance_history(self, **kw):
+        """Get attendance history with various filters"""
+        try:
+            params = kw.get('params', {})
+            
+            # Get employee
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            
+            # Get date range
+            start_date, end_date = self._get_date_range(
+                params.get('period', 'week'),
+                params.get('start_date'),
+                params.get('end_date')
+            )
+            
+            if not start_date or not end_date:
+                return {'status': 'error', 'message': 'Invalid date range'}
+            
+            # Convert to UTC for database query
+            start_utc = start_date.astimezone(pytz.UTC)
+            end_utc = end_date.astimezone(pytz.UTC)
+            
+            # Build domain
+            domain = [
+                ('employee_id', '=', employee.id),
+                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ]
+            
+            # Apply status filter
+            status = params.get('status')
+            if status:
+                work_start = time(8, 0)
+                if status == 'late':
+                    domain.append(('check_in', '>', f'{work_start.hour}:{work_start.minute}:00'))
+                elif status == 'ontime':
+                    domain.append(('check_in', '<=', f'{work_start.hour}:{work_start.minute}:00'))
+            
+            # Get attendance records
+            attendances = request.env['hr.attendance'].sudo().search(
+                domain, order='check_in desc'
+            )
+            
+            # Format results
+            results = [
+                self._format_attendance(attendance, tz)
+                for attendance in attendances
+            ]
+            
+            # Calculate summary
+            total_records = len(results)
+            late_records = sum(1 for r in results if r['is_late'])
+            total_hours = sum(r['working_hours'] for r in results)
+            total_late_minutes = sum(r['late_duration'] for r in results)
+            
+            summary = {
+                'total_records': total_records,
+                'late_count': late_records,
+                'ontime_count': total_records - late_records,
+                'total_hours': round(total_hours, 2),
+                'average_hours': round(total_hours / total_records, 2) if total_records > 0 else 0,
+                'total_late_minutes': total_late_minutes,
+                'punctuality_rate': round(((total_records - late_records) / total_records * 100), 2) if total_records > 0 else 100
+            }
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'date_range': {
+                        'start': start_date.strftime('%Y-%m-%d'),
+                        'end': end_date.strftime('%Y-%m-%d')
+                    },
+                    'records': results,
+                    'summary': summary
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_attendance_history: {str(e)}", exc_info=True)
+            return {'status': 'error', 'message': str(e)}

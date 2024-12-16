@@ -123,6 +123,48 @@ class PitcarMechanicNew(models.Model):
     user_id = fields.Many2one('res.users', string='Related User', ondelete='restrict')
     temp_password = fields.Char('Temporary Password', readonly=True)
 
+     # Field baru untuk utilization
+    labor_utilization = fields.Float(
+        string='Labor Utilization (%)', 
+        compute='_compute_labor_utilization',
+        store=True,
+        help='Persentase waktu produktif dari total waktu kehadiran'
+    )
+    productive_hours = fields.Float(
+        string='Productive Hours',
+        compute='_compute_labor_utilization'
+    )
+    attendance_hours = fields.Float(
+        string='Attendance Hours',
+        compute='_compute_labor_utilization'
+    )
+
+    @api.depends('employee_id.attendance_ids', 'repair_order_ids')
+    def _compute_labor_utilization(self):
+        for mechanic in self:
+            # Get attendance hours
+            attendances = mechanic.employee_id.attendance_ids
+            total_attendance_hours = sum(att.worked_hours for att in attendances if att.check_out)
+
+            # Get productive hours from repair orders
+            domain = [
+                ('car_mechanic_id_new', 'in', [mechanic.id]),
+                ('state', '=', 'sale'),
+                ('controller_mulai_servis', '!=', False),
+                ('controller_selesai', '!=', False)
+            ]
+            orders = self.env['sale.order'].search(domain)
+            
+            total_productive_hours = 0
+            for order in orders:
+                work_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                mechanic_count = len(order.car_mechanic_id_new)
+                total_productive_hours += work_duration / mechanic_count
+
+            mechanic.productive_hours = total_productive_hours
+            mechanic.attendance_hours = total_attendance_hours
+            mechanic.labor_utilization = (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0
+
     @api.depends('position_id', 'team_member_ids')
     def _compute_monthly_target(self):
         for mechanic in self:

@@ -668,6 +668,78 @@ class KPIController(http.Controller):
                     _logger.error(f"Error calculating trends for {current.strftime('%Y-%m-%d')}: {str(e)}")
                     continue
 
+            # Di dalam method get_mechanic_kpi_dashboard, sebelum return
+            # Tambahkan perhitungan attendance dan utilization
+            for mechanic in active_mechanics:
+                # Get attendance records for date range
+                attendance_domain = [
+                    ('employee_id', '=', mechanic_dict[mechanic['id']].employee_id.id),
+                    ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('check_out', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                ]
+                attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+                
+                # Calculate attendance hours
+                total_attendance_hours = sum(att.worked_hours for att in attendances if att.check_out)
+                
+                # Calculate productive hours from orders
+                mechanic_orders = orders.filtered(lambda o: mechanic['id'] in o.car_mechanic_id_new.ids)
+                total_productive_hours = 0
+                
+                for order in mechanic_orders:
+                    if order.controller_mulai_servis and order.controller_selesai:
+                        work_duration = (fields.Datetime.from_string(order.controller_selesai) - 
+                                    fields.Datetime.from_string(order.controller_mulai_servis)).total_seconds() / 3600
+                        mechanic_count = len(order.car_mechanic_id_new)
+                        total_productive_hours += work_duration / mechanic_count
+
+                # Add to mechanic metrics
+                mechanic['metrics']['utilization'] = {
+                    'attendance_hours': total_attendance_hours,
+                    'productive_hours': total_productive_hours,
+                    'utilization_rate': (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0,
+                    'target_rate': 85.0  # Target standard
+                }
+
+            # Add to overview metrics
+            overview['utilization'] = {
+                'total_attendance_hours': sum(m['metrics']['utilization']['attendance_hours'] for m in active_mechanics),
+                'total_productive_hours': sum(m['metrics']['utilization']['productive_hours'] for m in active_mechanics),
+                'average_utilization': sum(m['metrics']['utilization']['utilization_rate'] for m in active_mechanics) / len(active_mechanics) if active_mechanics else 0
+            }
+
+            # Add utilization to trends
+            for trend in trends:
+                current_date = datetime.strptime(trend['date'], '%Y-%m-%d').date()
+                day_attendances = request.env['hr.attendance'].sudo().search([
+                    ('employee_id.mechanic_id', '!=', False),
+                    ('check_in', '>=', f"{trend['date']} 00:00:00"),
+                    ('check_in', '<', f"{trend['date']} 23:59:59")
+                ])
+                
+                attendance_hours = sum(att.worked_hours for att in day_attendances if att.check_out)
+                
+                # Get productive hours for that day
+                day_orders = day_orders = request.env['sale.order'].sudo().search([
+                    ('date_completed', '>=', f"{trend['date']} 00:00:00"),
+                    ('date_completed', '<', f"{trend['date']} 23:59:59"),
+                    ('state', '=', 'sale')
+                ])
+                
+                productive_hours = 0
+                for order in day_orders:
+                    if order.controller_mulai_servis and order.controller_selesai:
+                        duration = (fields.Datetime.from_string(order.controller_selesai) - 
+                                fields.Datetime.from_string(order.controller_mulai_servis)).total_seconds() / 3600
+                        mechanic_count = len(order.car_mechanic_id_new)
+                        productive_hours += duration / mechanic_count
+                
+                trend['metrics']['utilization'] = {
+                    'attendance_hours': attendance_hours,
+                    'productive_hours': productive_hours,
+                    'rate': (productive_hours / attendance_hours * 100) if attendance_hours > 0 else 0
+                }
+
             return {
                 'status': 'success',
                 'data': {
@@ -1441,6 +1513,59 @@ class KPIController(http.Controller):
                 prev_mechanic = {
                     'id': prev_mech.id,
                     'name': prev_mech.name
+                }
+
+            # Calculate attendance metrics
+            attendance_domain = [
+                ('employee_id', '=', mechanic.employee_id.id),
+                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_out', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ]
+            attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+
+            # Calculate productive and attendance hours
+            total_attendance_hours = sum(att.worked_hours for att in attendances if att.check_out)
+            total_productive_hours = 0
+
+            for order in mechanic_orders:
+                if order.controller_mulai_servis and order.controller_selesai:
+                    work_duration = (fields.Datetime.from_string(order.controller_selesai) - 
+                                    fields.Datetime.from_string(order.controller_mulai_servis)).total_seconds() / 3600
+                    mechanic_count = len(order.car_mechanic_id_new)
+                    total_productive_hours += work_duration / mechanic_count
+
+            # Add to metrics
+            metrics['utilization'] = {
+                'attendance_hours': total_attendance_hours,
+                'productive_hours': total_productive_hours,
+                'utilization_rate': (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0,
+                'target_rate': 85.0
+            }
+
+            # Add utilization to trends
+            for trend in trends:
+                day_attendances = request.env['hr.attendance'].sudo().search([
+                    ('employee_id', '=', mechanic.employee_id.id),
+                    ('check_in', '>=', f"{trend['date']} 00:00:00"),
+                    ('check_in', '<', f"{trend['date']} 23:59:59")
+                ])
+                
+                attendance_hours = sum(att.worked_hours for att in day_attendances if att.check_out)
+                
+                day_productive_hours = 0
+                day_orders = orders_by_date.get(datetime.strptime(trend['date'], '%Y-%m-%d').date(), [])
+                
+                for order in day_orders:
+                    if order.controller_mulai_servis and order.controller_selesai:
+                        duration = (fields.Datetime.from_string(order.controller_selesai) - 
+                                fields.Datetime.from_string(order.controller_mulai_servis)).total_seconds() / 3600
+                        mechanic_count = len(order.car_mechanic_id_new)
+                        day_productive_hours += duration / mechanic_count
+                
+                trend['metrics']['utilization'] = {
+                    'attendance_hours': attendance_hours,
+                    'productive_hours': day_productive_hours,
+                    'rate': (day_productive_hours / attendance_hours * 100) if attendance_hours > 0 else 0
                 }
 
             return {

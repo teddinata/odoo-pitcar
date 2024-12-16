@@ -139,14 +139,14 @@ class PitcarMechanicNew(models.Model):
         compute='_compute_labor_utilization'
     )
 
-    @api.depends('employee_id.attendance_ids', 'repair_order_ids')
+    @api.depends('employee_id.attendance_ids')
     def _compute_labor_utilization(self):
         for mechanic in self:
             # Get attendance hours
             attendances = mechanic.employee_id.attendance_ids
             total_attendance_hours = sum(att.worked_hours for att in attendances if att.check_out)
 
-            # Get productive hours from repair orders
+            # Get productive hours from sale orders
             domain = [
                 ('car_mechanic_id_new', 'in', [mechanic.id]),
                 ('state', '=', 'sale'),

@@ -669,58 +669,87 @@ class KPIController(http.Controller):
                     continue
 
             # Di dalam method get_mechanic_kpi_dashboard, sebelum return
-            # Tambahkan perhitungan attendance dan utilization
+            # Ganti bagian ini di method get_mechanic_kpi_dashboard
+            def calculate_productive_hours(start_servis, end_servis, check_in, check_out):
+                """Hitung jam produktif berdasarkan overlap antara waktu servis dan attendance"""
+                start_servis_dt = fields.Datetime.from_string(start_servis)
+                end_servis_dt = fields.Datetime.from_string(end_servis)
+                check_in_dt = fields.Datetime.from_string(check_in)
+                check_out_dt = fields.Datetime.from_string(check_out)
+                
+                # Ambil intersection dari waktu servis dan attendance
+                effective_start = max(start_servis_dt, check_in_dt)
+                effective_end = min(end_servis_dt, check_out_dt)
+                
+                if effective_end > effective_start:
+                    return (effective_end - effective_start).total_seconds() / 3600
+                return 0
+
+            # Di bagian perhitungan utilization untuk setiap mekanik
             for mechanic in active_mechanics:
-                # Get attendance records for date range
-                attendance_domain = [
+                # Get attendance records for date range dengan cara yang lebih efisien
+                all_attendances = request.env['hr.attendance'].sudo().search([
                     ('employee_id', '=', mechanic_dict[mechanic['id']].employee_id.id),
                     ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                    ('check_out', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
-                ]
-                attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+                    ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('check_out', '!=', False)  # Only get completed attendance
+                ])
                 
-                # Calculate attendance hours
-                total_attendance_hours = sum(att.worked_hours for att in attendances if att.check_out)
+                # Group attendance by date
+                attendance_by_date = {}
+                for att in all_attendances:
+                    att_date = fields.Datetime.from_string(att.check_in).date()
+                    if att_date not in attendance_by_date:
+                        attendance_by_date[att_date] = []
+                    attendance_by_date[att_date].append(att)
                 
-                # Calculate productive hours from orders
+                # Calculate total attendance hours
+                total_attendance_hours = sum(att.worked_hours for att in all_attendances)
+                
+                # Calculate productive hours from orders dengan mempertimbangkan attendance
                 mechanic_orders = orders.filtered(lambda o: mechanic['id'] in o.car_mechanic_id_new.ids)
                 total_productive_hours = 0
                 
                 for order in mechanic_orders:
                     if order.controller_mulai_servis and order.controller_selesai:
-                        work_duration = (fields.Datetime.from_string(order.controller_selesai) - 
-                                    fields.Datetime.from_string(order.controller_mulai_servis)).total_seconds() / 3600
-                        mechanic_count = len(order.car_mechanic_id_new)
-                        total_productive_hours += work_duration / mechanic_count
+                        order_date = fields.Datetime.from_string(order.controller_mulai_servis).date()
+                        day_attendances = attendance_by_date.get(order_date, [])
+                        
+                        if day_attendances:  # Only count if there's attendance that day
+                            for att in day_attendances:
+                                productive_duration = calculate_productive_hours(
+                                    order.controller_mulai_servis,
+                                    order.controller_selesai,
+                                    att.check_in,
+                                    att.check_out
+                                )
+                                mechanic_count = len(order.car_mechanic_id_new)
+                                total_productive_hours += productive_duration / mechanic_count
 
-                # Add to mechanic metrics
+                # Update metrics
                 mechanic['metrics']['utilization'] = {
                     'attendance_hours': total_attendance_hours,
                     'productive_hours': total_productive_hours,
                     'utilization_rate': (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0,
-                    'target_rate': 85.0  # Target standard
+                    'target_rate': 85.0
                 }
 
-            # Add to overview metrics
-            overview['utilization'] = {
-                'total_attendance_hours': sum(m['metrics']['utilization']['attendance_hours'] for m in active_mechanics),
-                'total_productive_hours': sum(m['metrics']['utilization']['productive_hours'] for m in active_mechanics),
-                'average_utilization': sum(m['metrics']['utilization']['utilization_rate'] for m in active_mechanics) / len(active_mechanics) if active_mechanics else 0
-            }
-
-            # Add utilization to trends
+            # Juga update perhitungan utilization di trends
             for trend in trends:
-                current_date = datetime.strptime(trend['date'], '%Y-%m-%d').date()
+                trend_date = datetime.strptime(trend['date'], '%Y-%m-%d').date()
+                
+                # Get attendance untuk semua mekanik pada tanggal tersebut
                 day_attendances = request.env['hr.attendance'].sudo().search([
                     ('employee_id.mechanic_id', '!=', False),
                     ('check_in', '>=', f"{trend['date']} 00:00:00"),
-                    ('check_in', '<', f"{trend['date']} 23:59:59")
+                    ('check_in', '<', f"{trend['date']} 23:59:59"),
+                    ('check_out', '!=', False)
                 ])
                 
-                attendance_hours = sum(att.worked_hours for att in day_attendances if att.check_out)
+                attendance_hours = sum(att.worked_hours for att in day_attendances)
                 
-                # Get productive hours for that day
-                day_orders = day_orders = request.env['sale.order'].sudo().search([
+                # Get orders pada tanggal tersebut
+                day_orders = request.env['sale.order'].sudo().search([
                     ('date_completed', '>=', f"{trend['date']} 00:00:00"),
                     ('date_completed', '<', f"{trend['date']} 23:59:59"),
                     ('state', '=', 'sale')
@@ -729,10 +758,24 @@ class KPIController(http.Controller):
                 productive_hours = 0
                 for order in day_orders:
                     if order.controller_mulai_servis and order.controller_selesai:
-                        duration = (fields.Datetime.from_string(order.controller_selesai) - 
-                                fields.Datetime.from_string(order.controller_mulai_servis)).total_seconds() / 3600
-                        mechanic_count = len(order.car_mechanic_id_new)
-                        productive_hours += duration / mechanic_count
+                        # Cari overlapping attendance untuk setiap mekanik di order
+                        for mechanic_id in order.car_mechanic_id_new.ids:
+                            mechanic = mechanic_dict.get(mechanic_id)
+                            if not mechanic:
+                                continue
+                                
+                            mechanic_attendances = [att for att in day_attendances 
+                                                if att.employee_id.id == mechanic.employee_id.id]
+                            
+                            for att in mechanic_attendances:
+                                productive_duration = calculate_productive_hours(
+                                    order.controller_mulai_servis,
+                                    order.controller_selesai,
+                                    att.check_in,
+                                    att.check_out
+                                )
+                                mechanic_count = len(order.car_mechanic_id_new)
+                                productive_hours += productive_duration / mechanic_count
                 
                 trend['metrics']['utilization'] = {
                     'attendance_hours': attendance_hours,
@@ -1515,26 +1558,66 @@ class KPIController(http.Controller):
                     'name': prev_mech.name
                 }
 
-            # Calculate attendance metrics
-            attendance_domain = [
+             # 1. Get all attendance records for the period
+            all_attendances = request.env['hr.attendance'].sudo().search([
                 ('employee_id', '=', mechanic.employee_id.id),
                 ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                ('check_out', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
-            ]
-            attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+                ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ])
 
-            # Calculate productive and attendance hours
-            total_attendance_hours = sum(att.worked_hours for att in attendances if att.check_out)
+            # 2. Group attendances by date untuk memudahkan lookup nanti
+            attendance_by_date = {}
+            for attendance in all_attendances:
+                # Convert ke timezone lokal untuk grouping
+                attendance_date = fields.Datetime.from_string(attendance.check_in).astimezone(tz).date()
+                if attendance_date not in attendance_by_date:
+                    attendance_by_date[attendance_date] = []
+                attendance_by_date[attendance_date].append(attendance)
+
+            # 3. Calculate total attendance hours
+            total_attendance_hours = sum(att.worked_hours for att in all_attendances if att.check_out)
+
+            # 4. Helper function untuk calculate productive hours
+            def calculate_productive_hours(start_servis, end_servis, attendance_records):
+                """Calculate productive hours berdasarkan overlap dengan attendance"""
+                productive_hours = 0
+                start_dt = fields.Datetime.from_string(start_servis)
+                end_dt = fields.Datetime.from_string(end_servis)
+                
+                for att in attendance_records:
+                    if not att.check_out:  # Skip attendance yang belum check out
+                        continue
+                        
+                    # Calculate overlap
+                    overlap_start = max(start_dt, fields.Datetime.from_string(att.check_in))
+                    overlap_end = min(end_dt, fields.Datetime.from_string(att.check_out))
+                    
+                    if overlap_end > overlap_start:
+                        overlap_hours = (overlap_end - overlap_start).total_seconds() / 3600
+                        productive_hours += overlap_hours
+                        
+                return productive_hours
+
+            # 5. Calculate total productive hours
             total_productive_hours = 0
-
             for order in mechanic_orders:
                 if order.controller_mulai_servis and order.controller_selesai:
-                    work_duration = (fields.Datetime.from_string(order.controller_selesai) - 
-                                    fields.Datetime.from_string(order.controller_mulai_servis)).total_seconds() / 3600
-                    mechanic_count = len(order.car_mechanic_id_new)
-                    total_productive_hours += work_duration / mechanic_count
+                    # Get tanggal order
+                    order_date = fields.Datetime.from_string(order.controller_mulai_servis).astimezone(tz).date()
+                    
+                    # Cari attendance records untuk tanggal tersebut
+                    day_attendances = attendance_by_date.get(order_date, [])
+                    
+                    if day_attendances:  # Hanya hitung jika ada attendance
+                        productive_duration = calculate_productive_hours(
+                            order.controller_mulai_servis,
+                            order.controller_selesai,
+                            day_attendances
+                        )
+                        mechanic_count = len(order.car_mechanic_id_new)
+                        total_productive_hours += productive_duration / mechanic_count
 
-            # Add to metrics
+            # 6. Update metrics with utilization data
             metrics['utilization'] = {
                 'attendance_hours': total_attendance_hours,
                 'productive_hours': total_productive_hours,
@@ -1542,25 +1625,27 @@ class KPIController(http.Controller):
                 'target_rate': 85.0
             }
 
-            # Add utilization to trends
+            # 7. Update trends dengan daily utilization
             for trend in trends:
-                day_attendances = request.env['hr.attendance'].sudo().search([
-                    ('employee_id', '=', mechanic.employee_id.id),
-                    ('check_in', '>=', f"{trend['date']} 00:00:00"),
-                    ('check_in', '<', f"{trend['date']} 23:59:59")
-                ])
+                trend_date = datetime.strptime(trend['date'], '%Y-%m-%d').date()
+                day_attendances = attendance_by_date.get(trend_date, [])
                 
+                # Calculate attendance hours for the day
                 attendance_hours = sum(att.worked_hours for att in day_attendances if att.check_out)
                 
+                # Calculate productive hours for the day
                 day_productive_hours = 0
-                day_orders = orders_by_date.get(datetime.strptime(trend['date'], '%Y-%m-%d').date(), [])
+                day_orders = orders_by_date.get(trend_date, [])
                 
                 for order in day_orders:
                     if order.controller_mulai_servis and order.controller_selesai:
-                        duration = (fields.Datetime.from_string(order.controller_selesai) - 
-                                fields.Datetime.from_string(order.controller_mulai_servis)).total_seconds() / 3600
+                        productive_duration = calculate_productive_hours(
+                            order.controller_mulai_servis,
+                            order.controller_selesai,
+                            day_attendances
+                        )
                         mechanic_count = len(order.car_mechanic_id_new)
-                        day_productive_hours += duration / mechanic_count
+                        day_productive_hours += productive_duration / mechanic_count
                 
                 trend['metrics']['utilization'] = {
                     'attendance_hours': attendance_hours,

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_sale_order_template_form_inherit" model="ir.ui.view">
+        <field name="name">sale.order.template.form.inherit</field>
+        <field name="model">sale.order.template</field>
+        <field name="inherit_id" ref="sale_management.sale_order_template_view_form"/>
+        <field name="arch" type="xml">
+            <!-- Tambah field di tree view -->
+            <xpath expr="//field[@name='sale_order_template_line_ids']/tree//field[@name='product_id']" position="after">
+                <field name="service_duration" widget="float_time"/>
+            </xpath>
+            
+            <!-- Tambah field di form view -->
+            <xpath expr="//field[@name='sale_order_template_line_ids']/form//field[@name='product_id']" position="after">
+                <field name="service_duration" widget="float_time"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

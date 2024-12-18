@@ -382,6 +382,26 @@
                 <xpath expr="//field[@name='order_line']/form//field[@name='price_unit']" position="before">
                     <field name="service_duration" widget="float_time"/>
                 </xpath>
+
+                <!-- <xpath expr="//field[@name='order_line']/tree/field[@name='product_id']" position="before">
+                    <field name="sequence" widget="handle"/>
+                </xpath> -->
+                <!-- Setelah tab order lines -->
+                <xpath expr="//page[@name='order_lines']" position="after">
+                    <page string="Rekomendasi Servis" name="recommendations">
+                        <field name="recommendation_ids">
+                            <tree editable="bottom">
+                                <field name="product_id"/>
+                                <field name="name"/>
+                                <field name="estimated_date"/>
+                                <field name="service_duration" widget="float_time"/>
+                                <field name="formatted_duration"/>
+                                <field name="price_unit" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                <field name="currency_id" invisible="1"/>
+                            </tree>
+                        </field>
+                    </page>
+                </xpath>
                 
                 <!-- <xpath expr="//field[@name='amount_total']" position="after">
                     <field name="total_service_duration" widget="float_time"/>

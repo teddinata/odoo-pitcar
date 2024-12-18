@@ -199,6 +199,52 @@ class SaleOrder(models.Model):
         store=False
     )
 
+    recommendation_ids = fields.One2many(
+        'sale.order.recommendation',
+        'order_id',
+        string='Service Recommendations'
+    )
+    
+    @api.model
+    def create(self, vals):
+        res = super(SaleOrder, self).create(vals)
+        
+        # Buat sections dengan sequence yang tepat
+        order_lines = []
+        sections = [
+            ('SERVICE', 1),
+            ('PRODUCT', 500),
+            ('RECOMMENDATION', 1000)
+        ]
+        
+        for name, seq in sections:
+            order_lines.append((0, 0, {
+                'display_type': 'line_section',
+                'name': name,
+                'sequence': seq,
+                'product_id': False,
+                'product_uom_qty': 0,
+                'price_unit': 0,
+                'order_id': res.id
+            }))
+        
+        if order_lines:
+            res.write({'order_line': order_lines})
+        
+        return res
+
+    @api.model
+    def default_get(self, fields_list):
+        # Override untuk memastikan sections dibuat saat order baru
+        vals = super(SaleOrder, self).default_get(fields_list)
+        return vals
+
+    @api.model
+    def default_get(self, fields_list):
+        # Override untuk memastikan sections dibuat saat order baru
+        vals = super(SaleOrder, self).default_get(fields_list)
+        return vals
+
     @api.depends('order_line.service_duration')
     def _compute_total_duration(self):
         for order in self:

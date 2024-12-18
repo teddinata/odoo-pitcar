@@ -22,37 +22,40 @@
         'web',
         'hr',
         'hr_attendance',
-        # 'stock_quant',
     ],
     'assets': {
+        'web.assets_qweb': [
+            'pitcar_custom/static/src/xml/queue_dashboard.xml',
+            'pitcar_custom/static/src/xml/map_widget.xml',
+            'pitcar_custom/static/src/xml/lead_time_widget.xml',
+        ],
         'web.assets_backend': [
+            # CSS first
+            'pitcar_custom/static/src/css/custom_button.css',
+            'pitcar_custom/static/src/css/lead_time.css',
+            'pitcar_custom/static/src/css/custom_dashboard.css',
+            'pitcar_custom/static/src/css/map.css',
+            'pitcar_custom/static/src/scss/dashboard.scss',
+            'pitcar_custom/static/src/css/timeline.css',
+            # External CSS
+            ('include', 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.css'),
+            # JS files
+            ('include', 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js'),
             'pitcar_custom/static/src/js/product_template_list.js',
             'pitcar_custom/static/src/js/product_template_kanban.js',
             'pitcar_custom/static/src/js/lead_time_widget.js',
-            'pitcar_custom/static/src/css/custom_button.css',
-            'pitcar_custom/static/src/css/lead_time.css',
             'pitcar_custom/static/src/js/queue_dashboard.js',
-            'pitcar_custom/static/src/xml/queue_dashboard.xml',
-            'pitcar_custom/static/src/css/custom_dashboard.css',
-            'pitcar_custom/static/src/scss/dashboard.scss',
-            'pitcar_custom/static/src/css/timeline.css',
-             ('include', 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.css'),
-            ('include', 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js'),
-            'pitcar_custom/static/src/xml/map_widget.xml',
             'pitcar_custom/static/src/js/map_widget.js',
-            'pitcar_custom/static/src/css/map.css',
-            # 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css',
-        ],
-        'web.assets_qweb': [
-            'pitcar_custom/static/src/xml/map_widget.xml',
         ],
     },
-    'qweb': ['static/src/xml/lead_time_widget.xml', 'static/src/xml/map_widget.xml',],
+    'qweb': [
+        'pitcar_custom/static/src/xml/lead_time_widget.xml', 
+        # 'pitcar_custom/static/src/xml/map_widget.xml',
+    ],
     'data': [
         'data/res_partner_data.xml',
         'data/res_partner_car_data.xml',
         'data/lead_time_data.xml',
-        # 'data/cron_jobs.xml',
         'data/pitcar_position_data.xml',
 
         'report/ir_actions_report_templates.xml',
@@ -67,7 +70,7 @@
         
         'views/account_move.xml',
         'views/pitcar_mechanic_views.xml',
-        'views/pitcar_service_advisor_views.xml',  # View untuk Service Advisor
+        'views/pitcar_service_advisor_views.xml',
         'views/res_partner_car_brand.xml',
         'views/res_partner_car_type.xml',
         'views/res_partner_category.xml',
@@ -90,15 +93,13 @@
         'views/kpi_mechanic_overview.xml',
         'views/hr_employee_views.xml',
         'views/work_location_views.xml',
-        'views/hr_attendance_views.xml',  # Add views
+        'views/hr_attendance_views.xml',
         'views/menu.xml',
-        # 'views/product_actions.xml', 
-        # 'views/stock_quant_views.xml',
     ],
     'installable': True,
     'application': True,
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.53'
+    'version':'16.0.54'
 }

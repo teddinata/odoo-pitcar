@@ -87,3 +87,28 @@ class AccountMove(models.Model):
     #     res = super().action_register_payment()
     #     self._update_mechanic_kpi()
     #     return res
+
+    invoice_origin_sale_id = fields.Many2one(
+        'sale.order', 
+        string='Source Sale Order',
+        compute='_compute_invoice_origin_sale'
+    )
+
+    recommendation_ids = fields.One2many(
+        'sale.order.recommendation',
+        related='invoice_origin_sale_id.recommendation_ids',
+        string='Service Recommendations',
+        readonly=True
+    )
+
+    @api.depends('invoice_origin')
+    def _compute_invoice_origin_sale(self):
+        for move in self:
+            # Get sale order from invoice origin
+            if move.invoice_origin:
+                sale_order = self.env['sale.order'].search([
+                    ('name', '=', move.invoice_origin)
+                ], limit=1)
+                move.invoice_origin_sale_id = sale_order.id
+            else:
+                move.invoice_origin_sale_id = False

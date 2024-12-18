@@ -14,6 +14,16 @@ class ProductTemplate(models.Model):
         default=0.0
     )
 
+    def write(self, vals):
+        res = super().write(vals)
+        # Update template lines ketika service duration berubah
+        if 'service_duration' in vals:
+            template_lines = self.env['sale.order.template.line'].search([
+                ('product_id.product_tmpl_id', 'in', self.ids)
+            ])
+            template_lines.write({'service_duration': vals['service_duration']})
+        return res
+
     oldest_stock_entry_date = fields.Datetime(string='Oldest Stock Entry Date', compute='_compute_oldest_stock_entry_date', store=True)
     inventory_age = fields.Char(string='Umur Persediaan', compute='_compute_inventory_age', store=True)
     inventory_age_days = fields.Integer(string='Lama Penyimpanan (hari)', compute='_compute_inventory_age', store=True)

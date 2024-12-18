@@ -206,6 +206,20 @@
                             </tbody>
                         </table>
 
+
+                        <!-- Tax Totals -->
+                        <div class="clearfix" name="so_total_summary">
+                            <div id="total" class="row" name="total">
+                                <div t-attf-class="#{'col-6' if report_type != 'html' else 'col-sm-7 col-md-6'} ms-auto">
+                                    <table class="table table-sm table-borderless">
+                                        <!-- Tax totals -->
+                                        <t t-set="tax_totals" t-value="o.tax_totals" />
+                                        <t t-call="account.document_tax_totals" />
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Setelah bagian Invoice Lines Table, sebelum Tax Totals -->
                         <xpath expr="//table[@class='table table-sm o_main_table table-borderless mt-4']/parent::node()" position="after">
                             <t t-if="o.move_type == 'out_invoice' and o.recommendation_ids">
@@ -245,19 +259,6 @@
                                 </div>
                             </t>
                         </xpath>
-
-                        <!-- Tax Totals -->
-                        <div class="clearfix" name="so_total_summary">
-                            <div id="total" class="row" name="total">
-                                <div t-attf-class="#{'col-6' if report_type != 'html' else 'col-sm-7 col-md-6'} ms-auto">
-                                    <table class="table table-sm table-borderless">
-                                        <!-- Tax totals -->
-                                        <t t-set="tax_totals" t-value="o.tax_totals" />
-                                        <t t-call="account.document_tax_totals" />
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- Warranty info -->

@@ -77,6 +77,7 @@
         'views/res_partner_car.xml',
         'views/res_partner.xml',
         'views/sale_order.xml',
+        'views/sale_order_template.xml',
         'views/stock_picking.xml',
         'views/product_views.xml',
         'views/product_tag_views.xml',
@@ -101,5 +102,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.54'
+    'version':'16.0.55'
 }

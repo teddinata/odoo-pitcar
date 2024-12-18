@@ -199,12 +199,32 @@ class SaleOrder(models.Model):
         store=False
     )
 
+    # Tambahkan di models/sale_order.py
+    def _compute_template_line_values(self, line):
+        res = super()._compute_template_line_values(line)
+        res['service_duration'] = line.service_duration
+        return res
+    
+    # Di models/sale_order.py, tambahkan di method yang sudah ada
+    def _onchange_sale_order_template_id(self):
+        res = super()._onchange_sale_order_template_id()
+        if self.sale_order_template_id:
+            order_lines = []
+            for line in self.sale_order_template_id.sale_order_template_line_ids:
+                data = self._compute_template_line_values(line)
+                if line.product_id and line.product_id.type == 'service':
+                    data['service_duration'] = line.service_duration
+                order_lines.append((0, 0, data))
+            self.order_line = [(5, 0, 0)]  # Clear existing lines
+            self.order_line = order_lines
+        return res
+
     recommendation_ids = fields.One2many(
         'sale.order.recommendation',
         'order_id',
         string='Service Recommendations'
     )
-    
+
     @api.model
     def create(self, vals):
         res = super(SaleOrder, self).create(vals)

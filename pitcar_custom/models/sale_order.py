@@ -199,71 +199,97 @@ class SaleOrder(models.Model):
         store=False
     )
 
-    # Tambahkan di models/sale_order.py
-    def _compute_template_line_values(self, line):
-        res = super()._compute_template_line_values(line)
-        res['service_duration'] = line.service_duration
-        return res
-    
-    # Di models/sale_order.py, tambahkan di method yang sudah ada
-    def _onchange_sale_order_template_id(self):
-        res = super()._onchange_sale_order_template_id()
-        if self.sale_order_template_id:
-            order_lines = []
-            for line in self.sale_order_template_id.sale_order_template_line_ids:
-                data = self._compute_template_line_values(line)
-                if line.product_id and line.product_id.type == 'service':
-                    data['service_duration'] = line.service_duration
-                order_lines.append((0, 0, data))
-            self.order_line = [(5, 0, 0)]  # Clear existing lines
-            self.order_line = order_lines
-        return res
-
+    # Fields untuk recommendation
     recommendation_ids = fields.One2many(
         'sale.order.recommendation',
         'order_id',
         string='Service Recommendations'
     )
 
-    @api.model
-    def create(self, vals):
-        res = super(SaleOrder, self).create(vals)
-        
-        # Buat sections dengan sequence yang tepat
-        order_lines = []
+    # Method untuk membuat sections default
+    def _create_default_sections(self):
+        """Helper method untuk membuat section default"""
         sections = [
             ('SERVICE', 1),
             ('PRODUCT', 500),
             ('RECOMMENDATION', 1000)
         ]
         
-        for name, seq in sections:
-            order_lines.append((0, 0, {
-                'display_type': 'line_section',
-                'name': name,
-                'sequence': seq,
-                'product_id': False,
-                'product_uom_qty': 0,
-                'price_unit': 0,
-                'order_id': res.id
-            }))
-        
-        if order_lines:
-            res.write({'order_line': order_lines})
-        
+        return [(0, 0, {
+            'display_type': 'line_section',
+            'name': name,
+            'sequence': seq,
+            'product_id': False,
+            'product_uom_qty': 0,
+            'price_unit': 0,
+            'order_id': self.id
+        }) for name, seq in sections]
+
+    @api.model
+    def create(self, vals):
+        """Override create untuk menambahkan sections default"""
+        res = super().create(vals)
+        if not vals.get('sale_order_template_id'):  # Hanya buat sections jika tidak menggunakan template
+            if not vals.get('order_line', []):  # Hanya buat jika belum ada lines
+                res.write({'order_line': res._create_default_sections()})
         return res
 
-    @api.model
-    def default_get(self, fields_list):
-        # Override untuk memastikan sections dibuat saat order baru
-        vals = super(SaleOrder, self).default_get(fields_list)
+    @api.onchange('sale_order_template_id')
+    def _onchange_sale_order_template_id(self):
+        """Handle perubahan template"""
+        if not self.sale_order_template_id:
+            self.order_line = [(5, 0, 0)]
+            return
+        
+        lines_data = []
+        
+        # Get template lines
+        for line in self.sale_order_template_id.sale_order_template_line_ids:
+            if not line.product_id:
+                continue
+
+            line_values = {
+                'name': line.name,
+                'product_id': line.product_id.id,
+                'product_uom_qty': line.product_uom_qty,
+                'product_uom': line.product_uom_id.id,
+                'display_type': line.display_type,
+            }
+
+            # Add service duration if it's a service product
+            if line.product_id.type == 'service':
+                line_values['service_duration'] = line.service_duration
+
+            # Get price
+            if line.product_id:
+                line_values.update({
+                    'price_unit': line.product_id.list_price,
+                })
+
+            lines_data.append((0, 0, line_values))
+        
+        # Clear existing lines and set new ones
+        self.order_line = [(5, 0, 0)]
+        self.order_line = lines_data
+
+        if self.sale_order_template_id.note:
+            self.note = self.sale_order_template_id.note
+
+    def _compute_template_line_values(self, line):
+        """Inherit untuk menambahkan service duration dari template"""
+        vals = super()._compute_template_line_values(line)
+        if line.product_id.type == 'service':
+            vals['service_duration'] = line.service_duration
         return vals
 
-    @api.model
-    def default_get(self, fields_list):
-        # Override untuk memastikan sections dibuat saat order baru
-        vals = super(SaleOrder, self).default_get(fields_list)
-        return vals
+    # Computations untuk durasi
+    @api.depends('order_line.service_duration')
+    def _compute_total_duration(self):
+        """Hitung total durasi dari semua service lines"""
+        for order in self:
+            total = sum(line.service_duration for line in order.order_line 
+                       if not line.display_type and line.sequence < 1000)  # Exclude recommendation lines
+            order.total_service_duration = total
 
     @api.depends('order_line.service_duration')
     def _compute_total_duration(self):

@@ -48,10 +48,6 @@
             'pitcar_custom/static/src/js/map_widget.js',
         ],
     },
-    'qweb': [
-        'pitcar_custom/static/src/xml/lead_time_widget.xml', 
-        # 'pitcar_custom/static/src/xml/map_widget.xml',
-    ],
     'data': [
         'data/res_partner_data.xml',
         'data/res_partner_car_data.xml',
@@ -102,5 +98,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.56'
+    'version':'16.0.57'
 }

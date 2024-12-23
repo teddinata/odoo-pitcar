@@ -595,9 +595,10 @@ class KPIController(http.Controller):
 
             # Calculate rating metrics
             rated_orders = orders.filtered(lambda o: o.customer_rating)
+            total_rated_orders = len(rated_orders)
             average_rating = (
-                sum(float(order.customer_rating) for order in rated_orders) / len(rated_orders)
-                if rated_orders else 0
+                sum(float(order.customer_rating) for order in rated_orders) / total_rated_orders
+                if total_rated_orders else 0
             )
 
             complaints = len(orders.filtered(lambda o: o.customer_rating in ['1', '2']))
@@ -605,7 +606,11 @@ class KPIController(http.Controller):
             overview = {
                 'total_revenue': total_revenue,
                 'total_orders': total_orders,
-                'average_rating': average_rating,
+                # 'average_rating': average_rating,
+                'rating': {
+                    'average': average_rating,
+                    'total_rated_orders': total_rated_orders
+                },
                 'on_time_rate': (early_completions / total_completions * 100) if total_completions else 0,
                 'complaints': {
                     'total': complaints,
@@ -2524,10 +2529,11 @@ class KPIController(http.Controller):
                         )
                     
                     # Calculate team rating
-                    if team['total_rated_orders']:
-                        team['metrics']['performance']['rating'] = (
-                            team['total_rating_sum'] / team['total_rated_orders']
-                        )
+                    team['metrics']['performance']['rating'] = {
+                        'average': (team['total_rating_sum'] / team['total_rated_orders']) if team['total_rated_orders'] else 0,
+                        'total_rated_orders': team['total_rated_orders']
+                    }
+
 
             # Format advisor data with proper targets
             active_advisors = []
@@ -2570,7 +2576,10 @@ class KPIController(http.Controller):
                                 'total_services': data['confirmation_services'],
                                 'on_time_services': data['on_time_confirmations']
                             },
-                            'rating': data['total_rating'] / data['rated_orders'] if data['rated_orders'] else 0,
+                            'rating': {
+                                'average': data['total_rating'] / data['rated_orders'] if data['rated_orders'] else 0,
+                                'total_rated_orders': data['rated_orders']
+                            },
                             'complaint_rate': (data['complaints'] / data['orders'] * 100) if data['orders'] else 0
                         },
                         'engagement': {
@@ -2592,7 +2601,10 @@ class KPIController(http.Controller):
             overview = {
                 'total_revenue': total_revenue,
                 'total_orders': total_orders,
-                'average_rating': total_rating_sum / total_rated_orders if total_rated_orders else 0,
+                'rating': {
+                    'average': total_rating_sum / total_rated_orders if total_rated_orders else 0,
+                    'total_rated_orders': total_rated_orders
+                },
                 'service_performance': {
                     'average_time': total_service_time / total_completed_services if total_completed_services else 0,
                     'on_time_rate': (total_on_time_services / total_completed_services * 100) 

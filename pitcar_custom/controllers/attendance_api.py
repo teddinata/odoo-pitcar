@@ -1383,3 +1383,187 @@ class AttendanceAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_attendance_report: {str(e)}", exc_info=True)
             return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/mechanic/check-credential', type='json', auth='public', methods=['POST'], csrf=False, cors='*')
+    def check_mechanic_credential(self, **kw):
+        """Check mechanic's temporary password by email"""
+        try:
+            # Extract params from request
+            params = kw.get('params', kw)
+            email = params.get('email')
+
+            if not email:
+                return {
+                    'status': 'error',
+                    'message': 'Email is required'
+                }
+
+            # Search for mechanic by email through user
+            user = request.env['res.users'].sudo().search([
+                ('login', '=', email)
+            ], limit=1)
+
+            if not user:
+                return {
+                    'status': 'error',
+                    'message': 'Email not found'
+                }
+
+            # Get mechanic record
+            mechanic = request.env['pitcar.mechanic.new'].sudo().search([
+                ('user_id', '=', user.id)
+            ], limit=1)
+
+            if not mechanic or not mechanic.temp_password:
+                return {
+                    'status': 'error',
+                    'message': 'No temporary password found for this email'
+                }
+
+            # Return credential information
+            return {
+                'status': 'success',
+                'data': {
+                    'name': mechanic.name,
+                    'email': email,
+                    'temp_password': mechanic.temp_password,
+                    'message': 'Please change your password after first login'
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in check_mechanic_credential: {str(e)}")
+            return {
+                'status': 'error',
+                'message': 'Internal server error'
+            }
+        
+    @http.route('/web/v2/mechanic/profile', type='json', auth='user', methods=['GET'], csrf=False, cors='*')
+    def get_mechanic_profile(self, **kw):
+        """Get mechanic profile information"""
+        try:
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+
+            mechanic = request.env['pitcar.mechanic.new'].sudo().search([
+                ('employee_id', '=', employee.id)
+            ], limit=1)
+
+            if not mechanic:
+                return {'status': 'error', 'message': 'Mechanic profile not found'}
+
+            return {
+                'status': 'success',
+                'data': {
+                    'id': mechanic.id,
+                    'name': mechanic.name,
+                    'email': request.env.user.login,
+                    'position': mechanic.position_id.name if mechanic.position_id else None,
+                    'profile_picture': employee.image_1920.decode() if employee.image_1920 else None,
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_mechanic_profile: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/mechanic/profile/update', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def update_mechanic_profile(self, **kw):
+        """Update mechanic profile information (name and profile picture)"""
+        try:
+            params = kw.get('params', kw)
+            
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+
+            mechanic = request.env['pitcar.mechanic.new'].sudo().search([
+                ('employee_id', '=', employee.id)
+            ], limit=1)
+
+            if not mechanic:
+                return {'status': 'error', 'message': 'Mechanic profile not found'}
+
+            # Update values if provided
+            update_vals = {}
+            employee_vals = {}
+
+            if 'name' in params:
+                new_name = params['name'].strip()
+                if new_name:
+                    update_vals['name'] = new_name
+                    employee_vals['name'] = new_name
+                else:
+                    return {'status': 'error', 'message': 'Name cannot be empty'}
+
+            if 'profile_picture' in params:
+                # Assuming profile_picture is base64 encoded image
+                employee_vals['image_1920'] = params['profile_picture']
+
+            # Update mechanic record
+            if update_vals:
+                mechanic.write(update_vals)
+
+            # Update employee record
+            if employee_vals:
+                employee.write(employee_vals)
+
+            return {
+                'status': 'success',
+                'message': 'Profile updated successfully',
+                'data': {
+                    'id': mechanic.id,
+                    'name': mechanic.name,
+                    'email': request.env.user.login,
+                    'profile_picture': employee.image_1920.decode() if employee.image_1920 else None
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in update_mechanic_profile: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/mechanic/password/update', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def update_mechanic_password(self, **kw):
+        """Update mechanic password"""
+        try:
+            params = kw.get('params', kw)
+            
+            # Validate required parameters
+            if not params.get('current_password'):
+                return {'status': 'error', 'message': 'Current password is required'}
+            
+            if not params.get('new_password'):
+                return {'status': 'error', 'message': 'New password is required'}
+
+            if len(params['new_password']) < 8:
+                return {'status': 'error', 'message': 'New password must be at least 8 characters long'}
+
+            user = request.env.user
+
+            # Verify current password
+            try:
+                request.env['res.users'].check_credentials(request.env.user.id, params['current_password'])
+            except:
+                return {'status': 'error', 'message': 'Current password is incorrect'}
+
+            # Update password
+            user.write({'password': params['new_password']})
+
+            # Clear temporary password if exists
+            mechanic = request.env['pitcar.mechanic.new'].sudo().search([
+                ('user_id', '=', user.id)
+            ], limit=1)
+            
+            if mechanic and mechanic.temp_password:
+                mechanic.write({'temp_password': False})
+
+            return {
+                'status': 'success',
+                'message': 'Password updated successfully'
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in update_mechanic_password: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

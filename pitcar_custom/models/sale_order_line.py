@@ -35,25 +35,10 @@ class SaleOrderLine(models.Model):
     formatted_duration = fields.Char(
         string='Durasi',
         compute='_compute_formatted_duration',
+        compute_sudo=True,  # Tambahkan ini untuk performa
         store=False
     )
     sequence = fields.Integer(string='Sequence', default=10)
-
-    @api.depends('product_uom_qty', 'discount', 'price_unit', 'tax_id', 'sequence')
-    def _compute_amount(self):
-        super(SaleOrderLine, self)._compute_amount()
-        for line in self:
-            if line.display_type != 'line_section':  # Hanya untuk product lines
-                sections = line.order_id.order_line.filtered(
-                    lambda l: l.display_type == 'line_section' and 
-                            l.sequence < line.sequence
-                ).sorted('sequence', reverse=True)
-                
-                if sections and sections[0].name == 'RECOMMENDATION':
-                    line.price_unit = 0
-                    line.price_subtotal = 0
-                    line.price_tax = 0
-                    line.price_total = 0
 
     @api.onchange('product_id')
     def _onchange_product_duration(self):

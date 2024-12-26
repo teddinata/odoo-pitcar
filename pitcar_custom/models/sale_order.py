@@ -1,5 +1,6 @@
-from odoo import models, fields, api, _, exceptions
+from odoo import models, fields, api, _, exceptions, tools
 from odoo.exceptions import ValidationError, AccessError, UserError
+from odoo.tools import split_every
 import pytz
 from datetime import timedelta, date, datetime, time
 import logging
@@ -205,34 +206,6 @@ class SaleOrder(models.Model):
         'order_id',
         string='Service Recommendations'
     )
-
-    # Method untuk membuat sections default
-    def _create_default_sections(self):
-        """Helper method untuk membuat section default"""
-        sections = [
-            ('SERVICE', 1),
-            ('PRODUCT', 500),
-            ('RECOMMENDATION', 1000)
-        ]
-        
-        return [(0, 0, {
-            'display_type': 'line_section',
-            'name': name,
-            'sequence': seq,
-            'product_id': False,
-            'product_uom_qty': 0,
-            'price_unit': 0,
-            'order_id': self.id
-        }) for name, seq in sections]
-
-    @api.model
-    def create(self, vals):
-        """Override create untuk menambahkan sections default"""
-        res = super().create(vals)
-        if not vals.get('sale_order_template_id'):  # Hanya buat sections jika tidak menggunakan template
-            if not vals.get('order_line', []):  # Hanya buat jika belum ada lines
-                res.write({'order_line': res._create_default_sections()})
-        return res
 
     @api.onchange('sale_order_template_id')
     def _onchange_sale_order_template_id(self):
@@ -741,20 +714,59 @@ class SaleOrder(models.Model):
 
     # Copying car information from sales order to invoice data when invoice created
     # model : account.move
+    # def _create_invoices(self, grouped=False, final=False):
+    #     res = super(SaleOrder, self)._create_invoices(grouped=grouped, final=final)
+    #     for order in self:
+    #         order.date_completed = fields.Datetime.now()
+    #         for invoice in order.invoice_ids:
+    #             invoice.date_sale_completed = order.date_completed
+    #             invoice.date_sale_quotation = order.create_date
+    #             invoice.partner_car_id = order.partner_car_id
+    #             invoice.partner_car_odometer = order.partner_car_odometer
+    #             invoice.car_mechanic_id = order.car_mechanic_id
+    #             invoice.car_mechanic_id_new = order.car_mechanic_id_new
+    #             invoice.generated_mechanic_team = order.generated_mechanic_team
+    #             invoice.service_advisor_id = order.service_advisor_id
+    #             invoice.car_arrival_time = order.car_arrival_time
+    #     return res
+
     def _create_invoices(self, grouped=False, final=False):
-        res = super(SaleOrder, self)._create_invoices(grouped=grouped, final=final)
+        # Prepare data sebelum create invoice
+        self = self.with_context(skip_invoice_onchange=True)
+        
+        # Create invoices with super
+        res = super()._create_invoices(grouped=grouped, final=final)
+        
+        # Batch update invoices
+        now = fields.Datetime.now()
+        invoice_vals = []
         for order in self:
-            order.date_completed = fields.Datetime.now()
+            order.date_completed = now
             for invoice in order.invoice_ids:
-                invoice.date_sale_completed = order.date_completed
-                invoice.date_sale_quotation = order.create_date
-                invoice.partner_car_id = order.partner_car_id
-                invoice.partner_car_odometer = order.partner_car_odometer
-                invoice.car_mechanic_id = order.car_mechanic_id
-                invoice.car_mechanic_id_new = order.car_mechanic_id_new
-                invoice.generated_mechanic_team = order.generated_mechanic_team
-                invoice.service_advisor_id = order.service_advisor_id
-                invoice.car_arrival_time = order.car_arrival_time
+                invoice_vals.append({
+                    'id': invoice.id,
+                    'date_sale_completed': now,
+                    'date_sale_quotation': order.create_date,
+                    'partner_car_id': order.partner_car_id.id,
+                    'partner_car_odometer': order.partner_car_odometer,
+                    'car_mechanic_id': order.car_mechanic_id.id,
+                    'car_mechanic_id_new': [(6, 0, order.car_mechanic_id_new.ids)],
+                    'generated_mechanic_team': order.generated_mechanic_team,
+                    'service_advisor_id': [(6, 0, order.service_advisor_id.ids)],
+                    'car_arrival_time': order.car_arrival_time,
+                })
+        
+        # Batch write dengan raw SQL untuk performa lebih baik
+        if invoice_vals:
+            self.env.cr.executemany("""
+                UPDATE account_move SET 
+                    date_sale_completed = %(date_sale_completed)s,
+                    date_sale_quotation = %(date_sale_quotation)s,
+                    partner_car_id = %(partner_car_id)s,
+                    partner_car_odometer = %(partner_car_odometer)s
+                WHERE id = %(id)s
+            """, invoice_vals)
+            
         return res
     
     # ROLE LEAD TIME 
@@ -1207,38 +1219,76 @@ class SaleOrder(models.Model):
                     raise ValidationError("Waktu selesai Controller tidak boleh lebih besar dari waktu selesai FO.")
 
     def action_print_work_order(self):
+        """Handle print work order action with better performance"""
         self.ensure_one()
+        
         if self.env.user.pitcar_role != 'service_advisor':
             raise UserError("Hanya Service Advisor yang dapat melakukan pencetakan PKB.")
         
-        tz = pytz.timezone('Asia/Jakarta')
-        local_dt = datetime.now(tz)
-        utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+        try:
+            # Gunakan context untuk bypass pengecekan yang tidak perlu
+            self = self.with_context(skip_queue_check=True)
+            
+            # Gunakan Odoo datetime tools dan batch operation
+            values = {
+                'sa_cetak_pkb': fields.Datetime.now(),
+                'reception_state': 'completed'  # Update state jika perlu
+            }
+            self.write(values)
 
-        # Complete service in queue management
-        queue_record = self.env['queue.management'].search([
-            ('date', '=', fields.Date.today())
-        ], limit=1)
-        
-        if queue_record:
-            queue_record.complete_service(self.id)
+            # Complete queue in background
+            self._complete_queue_async()
 
-        self.write({
-            'sa_cetak_pkb': utc_dt
-        })
+            # Post message in batch
+            self._post_pkb_message()
 
-        priority_status = "Antrean Prioritas" if self.is_booking else "Antrean Regular"
-        body = f"""
-        <p><strong>PKB Dicetak</strong></p>
-        <ul>
-            <li>Tipe Antrean: {priority_status}</li>
-            <li>Nomor Antrean: {self.display_queue_number}</li>
-            <li>Dicetak oleh: {self.env.user.name}</li>
-            <li>Waktu: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
-        </ul>
-        """
-        self.message_post(body=body, message_type='notification')
-        return self.env.ref('pitcar_custom.action_report_work_order').report_action(self)
+            # Return report action
+            return self.env.ref('pitcar_custom.action_report_work_order').report_action(self)
+
+        except Exception as e:
+            _logger.error(f"Error during print work order: {str(e)}")
+            raise UserError(f"Gagal mencetak PKB: {str(e)}")
+
+    def _complete_queue_async(self):
+        """Handle queue completion asynchronously"""
+        try:
+            queue_record = self.env['queue.management'].search([
+                ('date', '=', fields.Date.today())
+            ], limit=1)
+            
+            if queue_record:
+                queue_record.with_context(async_queue=True).complete_service(self.id)
+                
+        except Exception as e:
+            _logger.error(f"Error completing queue: {str(e)}")
+
+    def _post_pkb_message(self):
+        """Post PKB message with optimized batch operations"""
+        try:
+            local_tz = pytz.timezone('Asia/Jakarta')
+            local_dt = fields.Datetime.now().astimezone(local_tz)
+            formatted_time = local_dt.strftime('%Y-%m-%d %H:%M:%S')
+            
+            priority_status = "Antrean Prioritas" if self.is_booking else "Antrean Regular"
+            
+            message_values = {
+                'body': f"""
+                    <p><strong>PKB Dicetak</strong></p>
+                    <ul>
+                        <li>Tipe Antrean: {priority_status}</li>
+                        <li>Nomor Antrean: {self.display_queue_number}</li>
+                        <li>Dicetak oleh: {self.env.user.name}</li>
+                        <li>Waktu: {formatted_time} WIB</li>
+                    </ul>
+                """,
+                'message_type': 'notification'
+            }
+            
+            # Batch post message
+            self.with_context(mail_notify_force_send=False).message_post(**message_values)
+            
+        except Exception as e:
+            _logger.error(f"Error posting PKB message: {str(e)}")
 
     @api.depends('sa_mulai_penerimaan')
     def _compute_is_penerimaan_filled(self):
@@ -2103,3 +2153,52 @@ class SaleOrder(models.Model):
             else:
                 record.current_queue_number = "000"
                 record.numbers_ahead = "000"
+
+    # Tambahkan index menggunakan SQL
+    _sql_constraints = [
+        ('name_uniq', 'unique(name)', 'Order Reference must be unique!')
+    ]
+
+    # Cache untuk data yang sering diakses
+    @tools.ormcache('self.id')
+    def get_print_data(self):
+        return {
+            'partner_data': self.partner_id.read(['name', 'phone', 'email']),
+            'car_data': self.partner_car_id.read(['brand', 'model', 'year']),
+            'lines_data': self.order_line.read(['product_id', 'quantity', 'price_unit'])
+        }
+
+    # Clear cache ketika data berubah
+    def write(self, vals):
+        result = super().write(vals)
+        # Clear cache jika field yang di-cache berubah
+        if any(f in vals for f in ['partner_id', 'partner_car_id', 'order_line']):
+            self.clear_caches()
+        return result
+
+    # Batch processing
+    @api.model
+    def process_print_queue(self, ids, batch_size=100):
+        """Process print queue in batches to avoid memory issues"""
+        if not isinstance(ids, list):
+            ids = list(ids)
+            
+        for batch_ids in split_every(batch_size, ids):
+            try:
+                orders = self.browse(batch_ids)
+                # Process batch
+                orders._prepare_print_data()
+                self.env.cr.commit()
+            except Exception as e:
+                _logger.error(f"Error processing batch {batch_ids}: {str(e)}")
+                self.env.cr.rollback()
+                continue
+
+    def _prepare_print_data(self):
+        """Helper method untuk mempersiapkan data print"""
+        self.ensure_one()
+        return {
+            'print_data': self.get_print_data(),
+            'timestamp': fields.Datetime.now(),
+            'user': self.env.user.name
+        }

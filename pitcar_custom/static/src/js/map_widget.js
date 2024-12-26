@@ -2,7 +2,7 @@
 
 import { registry } from "@web/core/registry";
 import { standardFieldProps } from "@web/views/fields/standard_field_props";
-import { Component, onMounted, onWillUnmount, useRef } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, useRef, xml } from "@odoo/owl";
 
 export class MapWidget extends Component {
     static template = xml`

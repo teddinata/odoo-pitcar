@@ -714,23 +714,23 @@ class SaleOrder(models.Model):
 
     # Copying car information from sales order to invoice data when invoice created
     # model : account.move
-    def _create_invoices(self, grouped=False, final=False):
-        res = super(SaleOrder, self)._create_invoices(grouped=grouped, final=final)
-        for order in self:
-            order.date_completed = fields.Datetime.now()
-            for invoice in order.invoice_ids:
-                invoice.date_sale_completed = order.date_completed
-                invoice.date_sale_quotation = order.create_date
-                invoice.partner_car_id = order.partner_car_id
-                invoice.partner_car_odometer = order.partner_car_odometer
-                invoice.car_mechanic_id = order.car_mechanic_id
-                invoice.car_mechanic_id_new = order.car_mechanic_id_new
-                invoice.generated_mechanic_team = order.generated_mechanic_team
-                invoice.service_advisor_id = order.service_advisor_id
-                invoice.car_arrival_time = order.car_arrival_time
-        return res
+    # def _create_invoices(self, grouped=False, final=False):
+    #     res = super(SaleOrder, self)._create_invoices(grouped=grouped, final=final)
+    #     for order in self:
+    #         order.date_completed = fields.Datetime.now()
+    #         for invoice in order.invoice_ids:
+    #             invoice.date_sale_completed = order.date_completed
+    #             invoice.date_sale_quotation = order.create_date
+    #             invoice.partner_car_id = order.partner_car_id
+    #             invoice.partner_car_odometer = order.partner_car_odometer
+    #             invoice.car_mechanic_id = order.car_mechanic_id
+    #             invoice.car_mechanic_id_new = order.car_mechanic_id_new
+    #             invoice.generated_mechanic_team = order.generated_mechanic_team
+    #             invoice.service_advisor_id = order.service_advisor_id
+    #             invoice.car_arrival_time = order.car_arrival_time
+    #     return res
 
-    
+
     # def _create_invoices(self, grouped=False, final=False):
     #     # Prepare data sebelum create invoice
     #     self = self.with_context(skip_invoice_onchange=True)
@@ -769,6 +769,40 @@ class SaleOrder(models.Model):
     #         """, invoice_vals)
             
     #     return res
+
+    def _create_invoices(self, grouped=False, final=False):
+        res = super(SaleOrder, self)._create_invoices(grouped=grouped, final=final)
+        
+        # Set completion date and update invoice data
+        now = fields.Datetime.now()
+        for order in self:
+            order.date_completed = now
+            
+            # Get values ensuring proper types for foreign keys
+            invoice_vals = {
+                'date_sale_completed': now,
+                'date_sale_quotation': order.create_date,
+                'partner_car_id': order.partner_car_id.id if order.partner_car_id else None,
+                'partner_car_odometer': order.partner_car_odometer,
+                'car_mechanic_id': order.car_mechanic_id.id if order.car_mechanic_id else None,
+                'car_arrival_time': order.car_arrival_time
+            }
+            
+            # Only set service_advisor_id and car_mechanic_id_new if they exist
+            if order.service_advisor_id:
+                invoice_vals['service_advisor_id'] = [(6, 0, order.service_advisor_id.ids)]
+                
+            if order.car_mechanic_id_new:
+                invoice_vals['car_mechanic_id_new'] = [(6, 0, order.car_mechanic_id_new.ids)]
+                
+            if order.generated_mechanic_team:
+                invoice_vals['generated_mechanic_team'] = order.generated_mechanic_team
+
+            # Update each invoice with the prepared values
+            order.invoice_ids.write(invoice_vals)
+
+        return res
+
     
     # ROLE LEAD TIME 
         

@@ -714,60 +714,61 @@ class SaleOrder(models.Model):
 
     # Copying car information from sales order to invoice data when invoice created
     # model : account.move
-    # def _create_invoices(self, grouped=False, final=False):
-    #     res = super(SaleOrder, self)._create_invoices(grouped=grouped, final=final)
-    #     for order in self:
-    #         order.date_completed = fields.Datetime.now()
-    #         for invoice in order.invoice_ids:
-    #             invoice.date_sale_completed = order.date_completed
-    #             invoice.date_sale_quotation = order.create_date
-    #             invoice.partner_car_id = order.partner_car_id
-    #             invoice.partner_car_odometer = order.partner_car_odometer
-    #             invoice.car_mechanic_id = order.car_mechanic_id
-    #             invoice.car_mechanic_id_new = order.car_mechanic_id_new
-    #             invoice.generated_mechanic_team = order.generated_mechanic_team
-    #             invoice.service_advisor_id = order.service_advisor_id
-    #             invoice.car_arrival_time = order.car_arrival_time
-    #     return res
-
     def _create_invoices(self, grouped=False, final=False):
-        # Prepare data sebelum create invoice
-        self = self.with_context(skip_invoice_onchange=True)
-        
-        # Create invoices with super
-        res = super()._create_invoices(grouped=grouped, final=final)
-        
-        # Batch update invoices
-        now = fields.Datetime.now()
-        invoice_vals = []
+        res = super(SaleOrder, self)._create_invoices(grouped=grouped, final=final)
         for order in self:
-            order.date_completed = now
+            order.date_completed = fields.Datetime.now()
             for invoice in order.invoice_ids:
-                invoice_vals.append({
-                    'id': invoice.id,
-                    'date_sale_completed': now,
-                    'date_sale_quotation': order.create_date,
-                    'partner_car_id': order.partner_car_id.id,
-                    'partner_car_odometer': order.partner_car_odometer,
-                    'car_mechanic_id': order.car_mechanic_id.id,
-                    'car_mechanic_id_new': [(6, 0, order.car_mechanic_id_new.ids)],
-                    'generated_mechanic_team': order.generated_mechanic_team,
-                    'service_advisor_id': [(6, 0, order.service_advisor_id.ids)],
-                    'car_arrival_time': order.car_arrival_time,
-                })
-        
-        # Batch write dengan raw SQL untuk performa lebih baik
-        if invoice_vals:
-            self.env.cr.executemany("""
-                UPDATE account_move SET 
-                    date_sale_completed = %(date_sale_completed)s,
-                    date_sale_quotation = %(date_sale_quotation)s,
-                    partner_car_id = %(partner_car_id)s,
-                    partner_car_odometer = %(partner_car_odometer)s
-                WHERE id = %(id)s
-            """, invoice_vals)
-            
+                invoice.date_sale_completed = order.date_completed
+                invoice.date_sale_quotation = order.create_date
+                invoice.partner_car_id = order.partner_car_id
+                invoice.partner_car_odometer = order.partner_car_odometer
+                invoice.car_mechanic_id = order.car_mechanic_id
+                invoice.car_mechanic_id_new = order.car_mechanic_id_new
+                invoice.generated_mechanic_team = order.generated_mechanic_team
+                invoice.service_advisor_id = order.service_advisor_id
+                invoice.car_arrival_time = order.car_arrival_time
         return res
+
+    
+    # def _create_invoices(self, grouped=False, final=False):
+    #     # Prepare data sebelum create invoice
+    #     self = self.with_context(skip_invoice_onchange=True)
+        
+    #     # Create invoices with super
+    #     res = super()._create_invoices(grouped=grouped, final=final)
+        
+    #     # Batch update invoices
+    #     now = fields.Datetime.now()
+    #     invoice_vals = []
+    #     for order in self:
+    #         order.date_completed = now
+    #         for invoice in order.invoice_ids:
+    #             invoice_vals.append({
+    #                 'id': invoice.id,
+    #                 'date_sale_completed': now,
+    #                 'date_sale_quotation': order.create_date,
+    #                 'partner_car_id': order.partner_car_id.id,
+    #                 'partner_car_odometer': order.partner_car_odometer,
+    #                 'car_mechanic_id': order.car_mechanic_id.id,
+    #                 'car_mechanic_id_new': [(6, 0, order.car_mechanic_id_new.ids)],
+    #                 'generated_mechanic_team': order.generated_mechanic_team,
+    #                 'service_advisor_id': [(6, 0, order.service_advisor_id.ids)],
+    #                 'car_arrival_time': order.car_arrival_time,
+    #             })
+        
+    #     # Batch write dengan raw SQL untuk performa lebih baik
+    #     if invoice_vals:
+    #         self.env.cr.executemany("""
+    #             UPDATE account_move SET 
+    #                 date_sale_completed = %(date_sale_completed)s,
+    #                 date_sale_quotation = %(date_sale_quotation)s,
+    #                 partner_car_id = %(partner_car_id)s,
+    #                 partner_car_odometer = %(partner_car_odometer)s
+    #             WHERE id = %(id)s
+    #         """, invoice_vals)
+            
+    #     return res
     
     # ROLE LEAD TIME 
         

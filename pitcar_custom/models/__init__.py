@@ -24,3 +24,4 @@ from . import hr_employee
 from . import hr_attendance
 from . import work_location
 from . import sale_order_template_line
+from . import sop

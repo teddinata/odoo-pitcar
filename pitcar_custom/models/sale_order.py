@@ -2237,3 +2237,22 @@ class SaleOrder(models.Model):
             'timestamp': fields.Datetime.now(),
             'user': self.env.user.name
         }
+    
+    # KPI 
+    sop_sampling_ids = fields.One2many('pitcar.sop.sampling', 'sale_order_id', 'SOP Sampling')
+    sampling_count = fields.Integer('Jumlah Sampling', compute='_compute_sampling_count')
+    
+    @api.depends('sop_sampling_ids')
+    def _compute_sampling_count(self):
+        for record in self:
+            record.sampling_count = len(record.sop_sampling_ids)
+
+    def action_view_sampling(self):
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'SOP Sampling',
+            'res_model': 'pitcar.sop.sampling',
+            'view_mode': 'tree,form',
+            'domain': [('sale_order_id', '=', self.id)]
+        }

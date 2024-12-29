@@ -1909,14 +1909,12 @@ class LeadTimeAPIController(http.Controller):
             params = request.get_json_data().get('params', {})
             
             # Extract filter parameters
-            date_range = params.get('date_range', 'today')  # today, week, month, custom
+            date_range = params.get('date_range', 'today')
             start_date = params.get('start_date')
             end_date = params.get('end_date')
-            service_type = params.get('service_type', 'all')  # all, maintenance, repair
-            status = params.get('status', 'all')  # all, completed, in_progress, delayed
-            search = params.get('search', '')  # Search by ID or customer
-            
-            # Pagination
+            service_type = params.get('service_type', 'all')
+            status = params.get('status', 'all')
+            search = params.get('search', '')
             page = int(params.get('page', 1))
             limit = int(params.get('limit', 20))
             
@@ -1930,10 +1928,7 @@ class LeadTimeAPIController(http.Controller):
             
             # Service type filter
             if service_type != 'all':
-                if service_type == 'repair':
-                    base_domain.append(('service_category', '=', 'repair'))
-                elif service_type == 'maintenance':
-                    base_domain.append(('service_category', '=', 'maintenance'))
+                base_domain.append(('service_category', '=', service_type))
 
             # Status filter
             if status != 'all':
@@ -1965,14 +1960,14 @@ class LeadTimeAPIController(http.Controller):
             # Combine domains
             final_domain = expression.AND([base_domain, search_domain]) if search_domain else base_domain
 
-            # Get all matching orders for statistics (without pagination)
+            # Get all matching orders for statistics
             SaleOrder = request.env['sale.order']
             all_matching_orders = SaleOrder.search(final_domain)
             
-            # Calculate statistics from all matching orders
+            # Calculate statistics
             stats = self._calculate_service_statistics(all_matching_orders, date_range)
             
-            # Get paginated data
+            # Get paginated data with selected fields
             total_count = len(all_matching_orders)
             offset = (page - 1) * limit
             
@@ -1986,6 +1981,38 @@ class LeadTimeAPIController(http.Controller):
             # Format paginated data
             rows = []
             for order in paginated_orders:
+                # Format lead times with proper handling for None values
+                def format_duration(hours):
+                    if not hours:
+                        return "0j 0m"
+                    hours_int = int(hours)
+                    minutes = int((hours - hours_int) * 60)
+                    return f"{hours_int}j {minutes}m"
+
+                # Format job stops data
+                job_stops = {
+                    'tunggu_konfirmasi': {
+                        'duration': order.lead_time_tunggu_konfirmasi or 0,
+                        'formatted': format_duration(order.lead_time_tunggu_konfirmasi)
+                    },
+                    'tunggu_part1': {
+                        'duration': order.lead_time_tunggu_part1 or 0,
+                        'formatted': format_duration(order.lead_time_tunggu_part1)
+                    },
+                    'tunggu_part2': {
+                        'duration': order.lead_time_tunggu_part2 or 0,
+                        'formatted': format_duration(order.lead_time_tunggu_part2)
+                    },
+                    'istirahat': {
+                        'duration': order.lead_time_istirahat or 0,
+                        'formatted': format_duration(order.lead_time_istirahat)
+                    },
+                    'tunggu_sublet': {
+                        'duration': order.lead_time_tunggu_sublet or 0,
+                        'formatted': format_duration(order.lead_time_tunggu_sublet)
+                    }
+                }
+
                 rows.append({
                     'id': order.id,
                     'service_id': order.name,
@@ -1999,7 +2026,19 @@ class LeadTimeAPIController(http.Controller):
                     'completion_date': self._format_local_datetime(order.controller_selesai),
                     'status': self._get_order_status(order),
                     'advisor': ', '.join(order.service_advisor_id.mapped('name')),
-                    'mechanic': order.generated_mechanic_team
+                    'mechanic': order.generated_mechanic_team,
+                    # Tambahan data lead time
+                    'lead_times': {
+                        'service': order.lead_time_servis or 0,
+                        'total': order.total_lead_time_servis or 0,
+                        'formatted_service': format_duration(order.lead_time_servis),
+                        'formatted_total': format_duration(order.total_lead_time_servis)
+                    },
+                    'job_stops': job_stops,
+                    'timestamps': {
+                        'start': self._format_local_datetime(order.controller_mulai_servis),
+                        'end': self._format_local_datetime(order.controller_selesai)
+                    }
                 })
 
             return {

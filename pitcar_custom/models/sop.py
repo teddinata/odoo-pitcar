@@ -61,6 +61,11 @@ class PitcarSOPSampling(models.Model):
     ], tracking=True)
     
     notes = fields.Text('Catatan')
+
+    # Add timestamp fields
+    create_date = fields.Datetime('Created Date', readonly=True)  # This is automatically added by Odoo
+    write_date = fields.Datetime('Last Updated', readonly=True)   # This is automatically added by Odoo
+    validation_date = fields.Datetime('Validation Date', readonly=True, tracking=True)
     
     @api.depends('date')
     def _compute_month(self):

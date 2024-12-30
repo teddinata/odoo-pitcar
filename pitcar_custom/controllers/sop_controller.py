@@ -32,31 +32,56 @@ class SOPController(http.Controller):
             is_sa = params.get('is_sa')
 
             domain = [('active', '=', True)]
+            
+            # Improved search logic
             if search:
-                domain += ['|', '|',
+                domain += [
+                    '|', '|',
                     ('name', 'ilike', search),
                     ('code', 'ilike', search),
                     ('description', 'ilike', search)
                 ]
-            if department:
+                
+            # Department filter - make sure to handle None/False values
+            if department and department not in ['all', 'false', 'null']:
                 domain.append(('department', '=', department))
-            if is_sa is not None:
+                
+            # IS SA filter - make sure to handle boolean values correctly
+            if isinstance(is_sa, bool):
                 domain.append(('is_sa', '=', is_sa))
+            elif isinstance(is_sa, str) and is_sa.lower() in ['true', 'false']:
+                domain.append(('is_sa', '=', is_sa.lower() == 'true'))
 
             SOP = request.env['pitcar.sop']
             total_count = SOP.search_count(domain)
             total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
             offset = (page - 1) * limit
 
-            sops = SOP.search(domain, limit=limit, offset=offset)
-            rows = [{
-                'id': sop.id,
-                'code': sop.code,
-                'name': sop.name,
-                'description': sop.description,
-                'department': sop.department,
-                'is_sa': sop.is_sa
-            } for sop in sops]
+            # Add order parameter for consistent sorting
+            sops = SOP.search(domain, limit=limit, offset=offset, order='sequence, name')
+            
+            rows = []
+            for sop in sops:
+                row = {
+                    'id': sop.id,
+                    'code': sop.code,
+                    'name': sop.name,
+                    'description': sop.description,
+                    'department': sop.department,
+                    'is_sa': sop.is_sa,
+                    'sequence': sop.sequence,
+                    'active': sop.active
+                }
+                
+                # Add department label
+                department_mapping = {
+                    'service': 'Service',
+                    'sparepart': 'Spare Part',
+                    'cs': 'Customer Service'
+                }
+                row['department_label'] = department_mapping.get(sop.department, '')
+                
+                rows.append(row)
 
             return {
                 'status': 'success',
@@ -78,30 +103,43 @@ class SOPController(http.Controller):
     def get_available_orders(self, **kw):
         """Get list of available sale orders for sampling"""
         try:
-            # Extract parameters dari kw
-            page = int(kw.get('page', 1))
-            limit = int(kw.get('limit', 25))
-            search = kw.get('search', '').strip()
-            is_sa = kw.get('is_sa')  # Filter untuk SOP SA/Mekanik
+            params = self._get_request_data()
+            
+            # Extract parameters
+            page = int(params.get('page', 1))
+            limit = int(params.get('limit', 25))
+            search = params.get('search', '').strip()
+            is_sa = params.get('is_sa')
 
             # Base domain untuk sale orders yang aktif
             domain = [('state', 'in', ['sale', 'done'])]
             
             # Search filter
             if search:
-                domain += ['|', '|', '|', '|',
-                    ('name', 'ilike', search),
-                    ('partner_car_id.number_plate', 'ilike', search),
-                    ('mechanic_id.name', 'ilike', search),
-                    ('service_advisor_id.name', 'ilike', search)
-                ]
+                # Buat domain search terpisah
+                domain.extend([
+                    '|',
+                        ('name', 'ilike', search),
+                    '|',
+                        ('partner_car_id.number_plate', 'ilike', search),
+                    '|',
+                        ('car_mechanic_id_new.name', 'ilike', search),
+                        ('service_advisor_id.name', 'ilike', search)
+                ])
 
             # Filter berdasarkan tipe SOP (SA/Mekanik)
-            if is_sa is not None:
+            if isinstance(is_sa, bool):
                 if is_sa:
                     domain.append(('service_advisor_id', '!=', False))
                 else:
                     domain.append(('car_mechanic_id_new', '!=', False))
+            elif isinstance(is_sa, str):
+                if is_sa.lower() == 'true':
+                    domain.append(('service_advisor_id', '!=', False))
+                elif is_sa.lower() == 'false':
+                    domain.append(('car_mechanic_id_new', '!=', False))
+
+            _logger.info(f"Search Domain: {domain}")  # Log domain untuk debugging
 
             # Hitung total dan pagination
             SaleOrder = request.env['sale.order']
@@ -109,37 +147,40 @@ class SOPController(http.Controller):
             total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
             offset = (page - 1) * limit
 
-            # Get records
-            orders = SaleOrder.search(domain, limit=limit, offset=offset)
+            # Get records dengan ordering
+            orders = SaleOrder.search(domain, limit=limit, offset=offset, order='create_date desc')
             
             # Format response
-            rows = [{
-                'id': order.id,
-                'name': order.name,
-                'date': order.create_date.strftime('%Y-%m-%d %H:%M:%S'),
-                'car_info': {
-                    'plate': order.partner_car_id.number_plate if order.partner_car_id else None,
-                    'brand': order.partner_car_brand.name if order.partner_car_brand else None,
-                    'type': order.partner_car_brand_type.name if order.partner_car_brand_type else None
-                },
-                'employee_info': {
-                    'mechanic': [{
-                        'id': mech.id,
-                        'name': mech.name,
-                        'sampling_count': len(order.sop_sampling_ids.filtered(
-                            lambda s: not s.sop_id.is_sa and mech.id in s.mechanic_id.ids
-                        ))
-                    } for mech in order.car_mechanic_id_new] if order.car_mechanic_id_new else [],
-                    'service_advisor': [{
-                        'id': sa.id,
-                        'name': sa.name,
-                        'sampling_count': len(order.sop_sampling_ids.filtered(
-                            lambda s: s.sop_id.is_sa and sa.id in s.sa_id.ids
-                        ))
-                    } for sa in order.service_advisor_id] if order.service_advisor_id else []
-                },
-                'sampling_count': len(order.sop_sampling_ids)
-            } for order in orders]
+            rows = []
+            for order in orders:
+                row = {
+                    'id': order.id,
+                    'name': order.name,
+                    'date': order.create_date.strftime('%Y-%m-%d %H:%M:%S') if order.create_date else None,
+                    'car_info': {
+                        'plate': order.partner_car_id.number_plate if order.partner_car_id else None,
+                        'brand': order.partner_car_brand.name if order.partner_car_brand else None,
+                        'type': order.partner_car_brand_type.name if order.partner_car_brand_type else None
+                    },
+                    'employee_info': {
+                        'mechanic': [{
+                            'id': mech.id,
+                            'name': mech.name,
+                            'sampling_count': len(order.sop_sampling_ids.filtered(
+                                lambda s: not s.sop_id.is_sa and mech.id in s.mechanic_id.ids
+                            ))
+                        } for mech in order.car_mechanic_id_new] if order.car_mechanic_id_new else [],
+                        'service_advisor': [{
+                            'id': sa.id,
+                            'name': sa.name,
+                            'sampling_count': len(order.sop_sampling_ids.filtered(
+                                lambda s: s.sop_id.is_sa and sa.id in s.sa_id.ids
+                            ))
+                        } for sa in order.service_advisor_id] if order.service_advisor_id else []
+                    },
+                    'sampling_count': len(order.sop_sampling_ids)
+                }
+                rows.append(row)
 
             return {
                 'status': 'success',
@@ -312,59 +353,97 @@ class SOPController(http.Controller):
             search = params.get('search', '').strip()
             month = params.get('month')
             is_sa = params.get('is_sa')
+            state = params.get('state')  # Tambahkan filter untuk state
+            result = params.get('result')  # Tambahkan filter untuk result
 
             domain = []
+
+            # Filter bulan
             if month:
                 domain.append(('month', '=', month))
+            
+            # Filter pencarian yang lebih lengkap
             if search:
-                domain += ['|', '|', '|',
+                domain += ['|', '|', '|', '|', '|',
+                    ('name', 'ilike', search),
                     ('sale_order_id.name', 'ilike', search),
                     ('sa_id.name', 'ilike', search),
                     ('mechanic_id.name', 'ilike', search),
-                    ('sop_id.name', 'ilike', search)
+                    ('sop_id.name', 'ilike', search),
+                    ('sop_id.code', 'ilike', search)
                 ]
-            if is_sa is not None:
+            
+            # Filter is_sa (SA atau Mechanic)
+            if isinstance(is_sa, bool):
                 domain.append(('sop_id.is_sa', '=', is_sa))
+            elif isinstance(is_sa, str) and is_sa.lower() in ['true', 'false']:
+                domain.append(('sop_id.is_sa', '=', is_sa.lower() == 'true'))
+
+            # Filter state
+            if state and state != 'all':
+                domain.append(('state', '=', state))
+
+            # Filter result
+            if result and result != 'all':
+                domain.append(('result', '=', result))
 
             Sampling = request.env['pitcar.sop.sampling']
             total_count = Sampling.search_count(domain)
             total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
             offset = (page - 1) * limit
 
-            samplings = Sampling.search(domain, limit=limit, offset=offset)
-            rows = [{
-                'id': sampling.id,
-                'name': sampling.name,
-                'date': sampling.date.strftime('%Y-%m-%d'),
-                'sale_order': {
-                    'id': sampling.sale_order_id.id,
-                    'name': sampling.sale_order_id.name,
-                    'car_plate': sampling.sale_order_id.partner_car_id.number_plate if sampling.sale_order_id.partner_car_id else None
-                },
-                'sop': {
-                    'id': sampling.sop_id.id,
-                    'name': sampling.sop_id.name,
-                    'code': sampling.sop_id.code,
-                    'is_sa': sampling.sop_id.is_sa
-                },
-                'employee': {
-                    'service_advisor': [{
-                        'id': sa.id,
-                        'name': sa.name
-                    } for sa in sampling.sa_id] if sampling.sa_id else [],
-                    'mechanic': [{
-                        'id': mech.id,
-                        'name': mech.name
-                    } for mech in sampling.mechanic_id] if sampling.mechanic_id else []
-                },
-                'controller': {
-                    'id': sampling.controller_id.id,
-                    'name': sampling.controller_id.name
-                } if sampling.controller_id else None,
-                'state': sampling.state,
-                'result': sampling.result,
-                'notes': sampling.notes
-            } for sampling in samplings]
+            # Tambahkan pengurutan default
+            samplings = Sampling.search(domain, limit=limit, offset=offset, order='create_date desc')
+            
+            rows = []
+            for sampling in samplings:
+                row = {
+                    'id': sampling.id,
+                    'name': sampling.name,
+                    'date': sampling.date.strftime('%Y-%m-%d') if sampling.date else None,
+                    'timestamps': {
+                        'created': sampling.create_date.strftime('%Y-%m-%d %H:%M:%S') if sampling.create_date else None,
+                        'updated': sampling.write_date.strftime('%Y-%m-%d %H:%M:%S') if sampling.write_date else None,
+                        'validated': sampling.validation_date.strftime('%Y-%m-%d %H:%M:%S') if sampling.validation_date else None
+                    },
+                    'sale_order': {
+                        'id': sampling.sale_order_id.id,
+                        'name': sampling.sale_order_id.name,
+                        'car_info': {
+                            'plate': sampling.sale_order_id.partner_car_id.number_plate if sampling.sale_order_id.partner_car_id else None,
+                            'brand': sampling.sale_order_id.partner_car_brand.name if sampling.sale_order_id.partner_car_brand else None,
+                            'type': sampling.sale_order_id.partner_car_brand_type.name if sampling.sale_order_id.partner_car_brand_type else None,
+                        }
+                    },
+                    'sop': {
+                        'id': sampling.sop_id.id,
+                        'name': sampling.sop_id.name,
+                        'code': sampling.sop_id.code,
+                        'is_sa': sampling.sop_id.is_sa,
+                        'department': sampling.sop_id.department,
+                        'department_label': dict(sampling.sop_id._fields['department'].selection).get(sampling.sop_id.department, '')
+                    },
+                    'employee': {
+                        'service_advisor': [{
+                            'id': sa.id,
+                            'name': sa.name
+                        } for sa in sampling.sa_id] if sampling.sa_id else [],
+                        'mechanic': [{
+                            'id': mech.id,
+                            'name': mech.name
+                        } for mech in sampling.mechanic_id] if sampling.mechanic_id else []
+                    },
+                    'controller': {
+                        'id': sampling.controller_id.id,
+                        'name': sampling.controller_id.name
+                    } if sampling.controller_id else None,
+                    'state': sampling.state,
+                    'state_label': dict(sampling._fields['state'].selection).get(sampling.state, ''),
+                    'result': sampling.result,
+                    'result_label': dict(sampling._fields['result'].selection).get(sampling.result, '') if sampling.result else '',
+                    'notes': sampling.notes
+                }
+                rows.append(row)
 
             return {
                 'status': 'success',
@@ -375,6 +454,17 @@ class SOPController(http.Controller):
                         'total_pages': total_pages,
                         'current_page': page,
                         'items_per_page': limit
+                    },
+                    'filters': {
+                        'states': [
+                            {'value': 'draft', 'label': 'Draft'},
+                            {'value': 'in_progress', 'label': 'In Progress'},
+                            {'value': 'done', 'label': 'Done'}
+                        ],
+                        'results': [
+                            {'value': 'pass', 'label': 'Lulus'},
+                            {'value': 'fail', 'label': 'Tidak Lulus'}
+                        ]
                     }
                 }
             }
@@ -408,7 +498,8 @@ class SOPController(http.Controller):
             values = {
                 'state': 'done',
                 'result': result,
-                'notes': notes
+                'notes': notes,
+                'validation_date': fields.Datetime.now()  # Add validation timestamp
             }
 
             sampling.write(values)
@@ -434,17 +525,12 @@ class SOPController(http.Controller):
         """Get sampling summary statistics"""
         try:
             params = self._get_request_data()
+            month = kw.get('month') or params.get('month')
             
-            # Get month parameter from both kw and params
-            month = kw.get('month') or params.get('month')  # Format: YYYY-MM
-            
-            # Validate required parameter
             if not month:
                 return {'status': 'error', 'message': 'Month parameter is required'}
 
             Sampling = request.env['pitcar.sop.sampling']
-            
-            # Get all samplings for the month
             domain = [
                 ('month', '=', month),
                 ('state', '=', 'done')
@@ -452,7 +538,7 @@ class SOPController(http.Controller):
             
             samplings = Sampling.search(domain)
             
-            # Prepare summary data
+            # Basic summary statistics
             summary = {
                 'total_sampling': len(samplings),
                 'total_pass': len(samplings.filtered(lambda s: s.result == 'pass')),
@@ -469,13 +555,93 @@ class SOPController(http.Controller):
                 }
             }
 
-            # Calculate percentages
+            # Calculate overall rates
             if summary['total_sampling'] > 0:
                 summary['pass_rate'] = round((summary['total_pass'] / summary['total_sampling']) * 100, 2)
                 summary['fail_rate'] = round((summary['total_fail'] / summary['total_sampling']) * 100, 2)
             else:
-                summary['pass_rate'] = 0
-                summary['fail_rate'] = 0
+                summary['pass_rate'] = summary['fail_rate'] = 0
+
+            # Calculate SA rates
+            if summary['sa_sampling']['total'] > 0:
+                summary['sa_sampling']['pass_rate'] = round((summary['sa_sampling']['pass'] / summary['sa_sampling']['total']) * 100, 2)
+                summary['sa_sampling']['fail_rate'] = round((summary['sa_sampling']['fail'] / summary['sa_sampling']['total']) * 100, 2)
+            else:
+                summary['sa_sampling']['pass_rate'] = summary['sa_sampling']['fail_rate'] = 0
+
+            # Calculate Mechanic rates
+            if summary['mechanic_sampling']['total'] > 0:
+                summary['mechanic_sampling']['pass_rate'] = round((summary['mechanic_sampling']['pass'] / summary['mechanic_sampling']['total']) * 100, 2)
+                summary['mechanic_sampling']['fail_rate'] = round((summary['mechanic_sampling']['fail'] / summary['mechanic_sampling']['total']) * 100, 2)
+            else:
+                summary['mechanic_sampling']['pass_rate'] = summary['mechanic_sampling']['fail_rate'] = 0
+
+            # Calculate per-mechanic statistics
+            mechanic_stats = {}
+            mechanic_samplings = samplings.filtered(lambda s: not s.sop_id.is_sa)
+            
+            for sampling in mechanic_samplings:
+                for mechanic in sampling.mechanic_id:
+                    if mechanic.id not in mechanic_stats:
+                        mechanic_stats[mechanic.id] = {
+                            'id': mechanic.id,
+                            'name': mechanic.name,
+                            'total': 0,
+                            'pass': 0,
+                            'fail': 0,
+                            'pass_rate': 0,
+                            'fail_rate': 0
+                        }
+                    
+                    mechanic_stats[mechanic.id]['total'] += 1
+                    if sampling.result == 'pass':
+                        mechanic_stats[mechanic.id]['pass'] += 1
+                    elif sampling.result == 'fail':
+                        mechanic_stats[mechanic.id]['fail'] += 1
+
+            # Calculate per-SA statistics
+            sa_stats = {}
+            sa_samplings = samplings.filtered(lambda s: s.sop_id.is_sa)
+            
+            for sampling in sa_samplings:
+                for sa in sampling.sa_id:
+                    if sa.id not in sa_stats:
+                        sa_stats[sa.id] = {
+                            'id': sa.id,
+                            'name': sa.name,
+                            'total': 0,
+                            'pass': 0,
+                            'fail': 0,
+                            'pass_rate': 0,
+                            'fail_rate': 0
+                        }
+                    
+                    sa_stats[sa.id]['total'] += 1
+                    if sampling.result == 'pass':
+                        sa_stats[sa.id]['pass'] += 1
+                    elif sampling.result == 'fail':
+                        sa_stats[sa.id]['fail'] += 1
+
+            # Calculate rates and sort by performance
+            def calculate_rates_and_sort(stats_dict):
+                stats_list = list(stats_dict.values())
+                for stat in stats_list:
+                    if stat['total'] > 0:
+                        stat['pass_rate'] = round((stat['pass'] / stat['total']) * 100, 2)
+                        stat['fail_rate'] = round((stat['fail'] / stat['total']) * 100, 2)
+                
+                # Sort by pass rate (descending)
+                stats_list.sort(key=lambda x: x['pass_rate'], reverse=True)
+                
+                # Add ranking
+                for i, stat in enumerate(stats_list, 1):
+                    stat['rank'] = i
+                
+                return stats_list
+
+            # Add detailed stats to summary
+            summary['mechanic_details'] = calculate_rates_and_sort(mechanic_stats)
+            summary['sa_details'] = calculate_rates_and_sort(sa_stats)
 
             return {
                 'status': 'success',

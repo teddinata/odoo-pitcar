@@ -1,6 +1,7 @@
 from odoo import http, fields
 from odoo.http import request, Response
 import logging
+import re
 import pytz
 from datetime import datetime
 import math
@@ -347,56 +348,78 @@ class SOPController(http.Controller):
     def get_sampling_list(self, **kw):
         """Get list of sampling records"""
         try:
-            params = self._get_request_data()
-            page = int(params.get('page', 1))
-            limit = int(params.get('limit', 25))
-            search = params.get('search', '').strip()
-            month = params.get('month')
-            is_sa = params.get('is_sa')
-            state = params.get('state')  # Tambahkan filter untuk state
-            result = params.get('result')  # Tambahkan filter untuk result
+            # Get parameters directly from kw
+            # In Odoo, when using type='json', the parameters are passed directly in kw
+            page = max(1, int(kw.get('page', 1)))
+            limit = max(1, min(100, int(kw.get('limit', 25))))  # Max 100 records per page
+            search = (kw.get('search') or '').strip()
+            month = kw.get('month', '').strip()
+            is_sa = kw.get('is_sa')
+            state = kw.get('state')
+            result = kw.get('result')
+
+            # Debug log
+            _logger.info(f"Received parameters: {kw}")
 
             domain = []
 
-            # Filter bulan
-            if month:
+            # Month filter
+            if month and re.match(r'^\d{4}-\d{2}$', month):
                 domain.append(('month', '=', month))
-            
-            # Filter pencarian yang lebih lengkap
+
+            # Search filter
             if search:
-                domain += ['|', '|', '|', '|', '|',
-                    ('name', 'ilike', search),
-                    ('sale_order_id.name', 'ilike', search),
-                    ('sa_id.name', 'ilike', search),
-                    ('mechanic_id.name', 'ilike', search),
-                    ('sop_id.name', 'ilike', search),
-                    ('sop_id.code', 'ilike', search)
-                ]
-            
-            # Filter is_sa (SA atau Mechanic)
+                domain.append('|')
+                domain.append(('name', 'ilike', search))
+                domain.append('|')
+                domain.append(('sale_order_id.name', 'ilike', search))
+                domain.append('|')
+                domain.append(('sa_id.name', 'ilike', search))
+                domain.append('|')
+                domain.append(('mechanic_id.name', 'ilike', search))
+                domain.append('|')
+                domain.append(('sop_id.name', 'ilike', search))
+                domain.append(('sop_id.code', 'ilike', search))
+
+            # IS SA filter
             if isinstance(is_sa, bool):
                 domain.append(('sop_id.is_sa', '=', is_sa))
-            elif isinstance(is_sa, str) and is_sa.lower() in ['true', 'false']:
-                domain.append(('sop_id.is_sa', '=', is_sa.lower() == 'true'))
 
-            # Filter state
+            # State filter
             if state and state != 'all':
-                domain.append(('state', '=', state))
+                if state in ['draft', 'in_progress', 'done']:
+                    domain.append(('state', '=', state))
 
-            # Filter result
+            # Result filter
             if result and result != 'all':
-                domain.append(('result', '=', result))
+                if result in ['pass', 'fail']:
+                    domain.append(('result', '=', result))
 
-            Sampling = request.env['pitcar.sop.sampling']
-            total_count = Sampling.search_count(domain)
-            total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
-            offset = (page - 1) * limit
+            # Debug domain
+            _logger.info(f"Search domain: {domain}")
 
-            # Tambahkan pengurutan default
-            samplings = Sampling.search(domain, limit=limit, offset=offset, order='create_date desc')
+            # Use sudo() for consistent access
+            Sampling = request.env['pitcar.sop.sampling'].sudo()
             
+            # Get total before pagination
+            total_count = Sampling.search_count(domain)
+            
+            # Calculate pagination
+            offset = (page - 1) * limit
+            
+            # Get records
+            samplings = Sampling.search(domain, limit=limit, offset=offset, order='create_date desc')
+
             rows = []
             for sampling in samplings:
+                # Buat dictionary untuk controller dengan data minimal
+                controller_data = None
+                if sampling.controller_id:
+                    controller_data = {
+                        'id': sampling.controller_id.id,
+                        'name': sampling.controller_id.name
+                    }
+
                 row = {
                     'id': sampling.id,
                     'name': sampling.name,
@@ -414,7 +437,7 @@ class SOPController(http.Controller):
                             'brand': sampling.sale_order_id.partner_car_brand.name if sampling.sale_order_id.partner_car_brand else None,
                             'type': sampling.sale_order_id.partner_car_brand_type.name if sampling.sale_order_id.partner_car_brand_type else None,
                         }
-                    },
+                    } if sampling.sale_order_id else None,
                     'sop': {
                         'id': sampling.sop_id.id,
                         'name': sampling.sop_id.name,
@@ -422,7 +445,7 @@ class SOPController(http.Controller):
                         'is_sa': sampling.sop_id.is_sa,
                         'department': sampling.sop_id.department,
                         'department_label': dict(sampling.sop_id._fields['department'].selection).get(sampling.sop_id.department, '')
-                    },
+                    } if sampling.sop_id else None,
                     'employee': {
                         'service_advisor': [{
                             'id': sa.id,
@@ -433,10 +456,7 @@ class SOPController(http.Controller):
                             'name': mech.name
                         } for mech in sampling.mechanic_id] if sampling.mechanic_id else []
                     },
-                    'controller': {
-                        'id': sampling.controller_id.id,
-                        'name': sampling.controller_id.name
-                    } if sampling.controller_id else None,
+                    'controller': controller_data,
                     'state': sampling.state,
                     'state_label': dict(sampling._fields['state'].selection).get(sampling.state, ''),
                     'result': sampling.result,
@@ -451,7 +471,7 @@ class SOPController(http.Controller):
                     'rows': rows,
                     'pagination': {
                         'total_items': total_count,
-                        'total_pages': total_pages,
+                        'total_pages': math.ceil(total_count / limit) if total_count > 0 else 1,
                         'current_page': page,
                         'items_per_page': limit
                     },
@@ -473,6 +493,7 @@ class SOPController(http.Controller):
             _logger.error(f"Error in get_sampling_list: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
+        
     @http.route('/web/sop/sampling/validate', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def validate_sampling(self, **kw):
         """Validate sampling result"""

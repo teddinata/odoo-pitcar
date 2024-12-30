@@ -25,42 +25,54 @@ class SOPController(http.Controller):
     def get_sop_list(self, **kw):
         """Get list of SOPs"""
         try:
-            params = self._get_request_data()
-            page = int(params.get('page', 1))
-            limit = int(params.get('limit', 25))
-            search = params.get('search', '').strip()
-            department = params.get('department')
-            is_sa = params.get('is_sa')
+            # Get parameters from request
+            page = max(1, int(kw.get('page', 1)))
+            limit = max(1, min(100, int(kw.get('limit', 25))))  # Max 100 records
+            search = (kw.get('search') or '').strip()
+            department = kw.get('department')
+            is_sa = kw.get('is_sa')
+
+            # Debug log
+            _logger.info(f"Received parameters: {kw}")
 
             domain = [('active', '=', True)]
-            
-            # Improved search logic
+
+            # Search filter - lebih powerful dengan split terms
             if search:
-                domain += [
-                    '|', '|',
-                    ('name', 'ilike', search),
-                    ('code', 'ilike', search),
-                    ('description', 'ilike', search)
-                ]
-                
-            # Department filter - make sure to handle None/False values
-            if department and department not in ['all', 'false', 'null']:
-                domain.append(('department', '=', department))
-                
-            # IS SA filter - make sure to handle boolean values correctly
+                search_terms = search.split()
+                for term in search_terms:
+                    domain.extend(['|', '|',
+                        ('name', 'ilike', term),
+                        ('code', 'ilike', term),
+                        ('description', 'ilike', term)
+                    ])
+            
+            # Department filter
+            if department and department not in ['all', 'false', 'null', '']:
+                if department in ['service', 'sparepart', 'cs']:
+                    domain.append(('department', '=', department))
+            
+            # IS SA filter
             if isinstance(is_sa, bool):
                 domain.append(('is_sa', '=', is_sa))
             elif isinstance(is_sa, str) and is_sa.lower() in ['true', 'false']:
                 domain.append(('is_sa', '=', is_sa.lower() == 'true'))
 
-            SOP = request.env['pitcar.sop']
-            total_count = SOP.search_count(domain)
-            total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
-            offset = (page - 1) * limit
+            # Debug domain
+            _logger.info(f"Search domain: {domain}")
 
-            # Add order parameter for consistent sorting
-            sops = SOP.search(domain, limit=limit, offset=offset, order='sequence, name')
+            # Use sudo() untuk konsistensi akses
+            SOP = request.env['pitcar.sop'].sudo()
             
+            # Get total before pagination
+            total_count = SOP.search_count(domain)
+            
+            # Calculate pagination
+            offset = (page - 1) * limit
+            
+            # Get records with ordering
+            sops = SOP.search(domain, limit=limit, offset=offset, order='sequence, name')
+
             rows = []
             for sop in sops:
                 row = {
@@ -69,19 +81,11 @@ class SOPController(http.Controller):
                     'name': sop.name,
                     'description': sop.description,
                     'department': sop.department,
+                    'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
                     'is_sa': sop.is_sa,
                     'sequence': sop.sequence,
                     'active': sop.active
                 }
-                
-                # Add department label
-                department_mapping = {
-                    'service': 'Service',
-                    'sparepart': 'Spare Part',
-                    'cs': 'Customer Service'
-                }
-                row['department_label'] = department_mapping.get(sop.department, '')
-                
                 rows.append(row)
 
             return {
@@ -90,12 +94,20 @@ class SOPController(http.Controller):
                     'rows': rows,
                     'pagination': {
                         'total_items': total_count,
-                        'total_pages': total_pages,
+                        'total_pages': math.ceil(total_count / limit) if total_count > 0 else 1,
                         'current_page': page,
                         'items_per_page': limit
+                    },
+                    'filters': {
+                        'departments': [
+                            {'value': 'service', 'label': 'Service'},
+                            {'value': 'sparepart', 'label': 'Spare Part'},
+                            {'value': 'cs', 'label': 'Customer Service'}
+                        ]
                     }
                 }
             }
+
         except Exception as e:
             _logger.error(f"Error in get_sop_list: {str(e)}")
             return {'status': 'error', 'message': str(e)}
@@ -104,29 +116,31 @@ class SOPController(http.Controller):
     def get_available_orders(self, **kw):
         """Get list of available sale orders for sampling"""
         try:
-            params = self._get_request_data()
-            
-            # Extract parameters
-            page = int(params.get('page', 1))
-            limit = int(params.get('limit', 25))
-            search = params.get('search', '').strip()
-            is_sa = params.get('is_sa')
+            # Get parameters from request
+            page = max(1, int(kw.get('page', 1)))
+            limit = max(1, min(100, int(kw.get('limit', 25))))
+            search = (kw.get('search') or '').strip()
+            is_sa = kw.get('is_sa')
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+
+            # Debug log
+            _logger.info(f"Received parameters: {kw}")
 
             # Base domain untuk sale orders yang aktif
             domain = [('state', 'in', ['sale', 'done'])]
-            
-            # Search filter
+
+            # Search dengan multiple terms
             if search:
-                # Buat domain search terpisah
-                domain.extend([
-                    '|',
-                        ('name', 'ilike', search),
-                    '|',
-                        ('partner_car_id.number_plate', 'ilike', search),
-                    '|',
-                        ('car_mechanic_id_new.name', 'ilike', search),
-                        ('service_advisor_id.name', 'ilike', search)
-                ])
+                search_terms = search.split()
+                for term in search_terms:
+                    domain.extend(['|', '|', '|', '|',
+                        ('name', 'ilike', term),
+                        ('partner_car_id.number_plate', 'ilike', term),
+                        ('car_mechanic_id_new.name', 'ilike', term),
+                        ('service_advisor_id.name', 'ilike', term),
+                        ('partner_id.name', 'ilike', term)
+                    ])
 
             # Filter berdasarkan tipe SOP (SA/Mekanik)
             if isinstance(is_sa, bool):
@@ -140,20 +154,52 @@ class SOPController(http.Controller):
                 elif is_sa.lower() == 'false':
                     domain.append(('car_mechanic_id_new', '!=', False))
 
-            _logger.info(f"Search Domain: {domain}")  # Log domain untuk debugging
+            # Date range filter
+            if date_from:
+                try:
+                    domain.append(('create_date', '>=', date_from))
+                except Exception as e:
+                    _logger.warning(f"Invalid date_from format: {date_from}")
 
-            # Hitung total dan pagination
-            SaleOrder = request.env['sale.order']
-            total_count = SaleOrder.search_count(domain)
-            total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
-            offset = (page - 1) * limit
+            if date_to:
+                try:
+                    domain.append(('create_date', '<=', date_to))
+                except Exception as e:
+                    _logger.warning(f"Invalid date_to format: {date_to}")
 
-            # Get records dengan ordering
-            orders = SaleOrder.search(domain, limit=limit, offset=offset, order='create_date desc')
+            # Debug domain
+            _logger.info(f"Search domain: {domain}")
+
+            # Use sudo() for consistent access
+            SaleOrder = request.env['sale.order'].sudo()
             
-            # Format response
+            # Get total before pagination
+            total_count = SaleOrder.search_count(domain)
+            
+            # Get records with pagination
+            offset = (page - 1) * limit
+            orders = SaleOrder.search(domain, limit=limit, offset=offset, order='create_date desc')
+
             rows = []
             for order in orders:
+                # Format mechanic data
+                mechanic_data = [{
+                    'id': mech.id,
+                    'name': mech.name,
+                    'sampling_count': len(order.sop_sampling_ids.filtered(
+                        lambda s: not s.sop_id.is_sa and mech.id in s.mechanic_id.ids
+                    ))
+                } for mech in order.car_mechanic_id_new] if order.car_mechanic_id_new else []
+
+                # Format SA data
+                sa_data = [{
+                    'id': sa.id,
+                    'name': sa.name,
+                    'sampling_count': len(order.sop_sampling_ids.filtered(
+                        lambda s: s.sop_id.is_sa and sa.id in s.sa_id.ids
+                    ))
+                } for sa in order.service_advisor_id] if order.service_advisor_id else []
+
                 row = {
                     'id': order.id,
                     'name': order.name,
@@ -163,21 +209,13 @@ class SOPController(http.Controller):
                         'brand': order.partner_car_brand.name if order.partner_car_brand else None,
                         'type': order.partner_car_brand_type.name if order.partner_car_brand_type else None
                     },
+                    'customer': {
+                        'id': order.partner_id.id,
+                        'name': order.partner_id.name
+                    } if order.partner_id else None,
                     'employee_info': {
-                        'mechanic': [{
-                            'id': mech.id,
-                            'name': mech.name,
-                            'sampling_count': len(order.sop_sampling_ids.filtered(
-                                lambda s: not s.sop_id.is_sa and mech.id in s.mechanic_id.ids
-                            ))
-                        } for mech in order.car_mechanic_id_new] if order.car_mechanic_id_new else [],
-                        'service_advisor': [{
-                            'id': sa.id,
-                            'name': sa.name,
-                            'sampling_count': len(order.sop_sampling_ids.filtered(
-                                lambda s: s.sop_id.is_sa and sa.id in s.sa_id.ids
-                            ))
-                        } for sa in order.service_advisor_id] if order.service_advisor_id else []
+                        'mechanic': mechanic_data,
+                        'service_advisor': sa_data
                     },
                     'sampling_count': len(order.sop_sampling_ids)
                 }
@@ -189,7 +227,7 @@ class SOPController(http.Controller):
                     'rows': rows,
                     'pagination': {
                         'total_items': total_count,
-                        'total_pages': total_pages,
+                        'total_pages': math.ceil(total_count / limit) if total_count > 0 else 1,
                         'current_page': page,
                         'items_per_page': limit
                     }

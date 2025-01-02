@@ -601,166 +601,6 @@ class AttendanceAPI(http.Controller):
             _logger.error(f"Location verification error: {str(e)}")
             return False
 
-    @http.route('/web/v2/attendance/dashboard', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
-    def get_attendance_dashboard(self, **kw):
-        """Get attendance dashboard data with metrics"""
-        try:
-            # Get date range parameters
-            date_range = kw.get('date_range', 'today')
-            start_date = kw.get('start_date')
-            end_date = kw.get('end_date')
-            
-            # Set timezone
-            tz = pytz.timezone('Asia/Jakarta')
-            now = datetime.now(tz)
-            
-            # Calculate date range similar to service advisor
-            if start_date and end_date:
-                try:
-                    start = datetime.strptime(start_date, '%Y-%m-%d')
-                    end = datetime.strptime(end_date, '%Y-%m-%d')
-                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
-                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
-                except (ValueError, TypeError):
-                    return {'status': 'error', 'message': 'Invalid date format'}
-            else:
-                # Date range logic similar to service advisor
-                if date_range == 'today':
-                    start = now.replace(hour=0, minute=0, second=0)
-                    end = now
-                elif date_range == 'yesterday':
-                    yesterday = now - timedelta(days=1)
-                    start = yesterday.replace(hour=0, minute=0, second=0)
-                    end = yesterday.replace(hour=23, minute=59, second=59)
-                elif date_range == 'this_week':
-                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
-                    end = now
-                elif date_range == 'this_month':
-                    start = now.replace(day=1, hour=0, minute=0, second=0)
-                    end = now
-                else:
-                    start = now.replace(hour=0, minute=0, second=0)
-                    end = now
-
-            # Convert to UTC for database queries
-            start_utc = start.astimezone(pytz.UTC)
-            end_utc = end.astimezone(pytz.UTC)
-
-            # Get all mechanics
-            mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
-            mechanic_dict = {m.employee_id.id: m for m in mechanics}
-
-            # Get all attendance records
-            domain = [
-                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
-            ]
-            
-            all_attendances = request.env['hr.attendance'].sudo().search(domain)
-
-            # Calculate metrics
-            mechanic_data = {}
-            total_hours = 0
-            total_attendance = 0
-            total_late = 0
-            on_time_attendance = 0
-
-            for attendance in all_attendances:
-                employee = attendance.employee_id
-                mechanic = mechanic_dict.get(employee.id)
-                
-                if not mechanic:
-                    continue
-
-                if mechanic.id not in mechanic_data:
-                    mechanic_data[mechanic.id] = {
-                        'id': mechanic.id,
-                        'name': mechanic.name,
-                        'position': mechanic.position_id.name,
-                        'leader': mechanic.leader_id.name if mechanic.leader_id else None,
-                        'total_hours': 0,
-                        'attendance_count': 0,
-                        'late_count': 0,
-                        'on_time_count': 0,
-                        'work_hours_target': mechanic.work_hours_target
-                    }
-
-                data = mechanic_data[mechanic.id]
-                
-                # Calculate working hours
-                worked_hours = attendance.worked_hours or 0
-                data['total_hours'] += worked_hours
-                data['attendance_count'] += 1
-
-                # Calculate late/on-time (example: late if check-in after 8 AM)
-                check_in_time = pytz.utc.localize(attendance.check_in).astimezone(tz)
-                target_time = check_in_time.replace(hour=8, minute=0, second=0)
-                
-                if check_in_time > target_time:
-                    data['late_count'] += 1
-                    total_late += 1
-                else:
-                    data['on_time_count'] += 1
-                    on_time_attendance += 1
-
-                total_hours += worked_hours
-                total_attendance += 1
-
-            # Format response similar to service advisor
-            active_mechanics = []
-            for data in mechanic_data.values():
-                metrics = {
-                    'attendance': {
-                        'total_hours': data['total_hours'],
-                        'target_hours': data['work_hours_target'] * data['attendance_count'],
-                        'achievement': (data['total_hours'] / (data['work_hours_target'] * data['attendance_count']) * 100) 
-                                    if data['attendance_count'] else 0
-                    },
-                    'punctuality': {
-                        'total_attendance': data['attendance_count'],
-                        'on_time': data['on_time_count'],
-                        'late': data['late_count'],
-                        'on_time_rate': (data['on_time_count'] / data['attendance_count'] * 100) 
-                                    if data['attendance_count'] else 0
-                    }
-                }
-
-                active_mechanics.append({
-                    'id': data['id'],
-                    'name': data['name'],
-                    'position': data['position'],
-                    'leader': data['leader'],
-                    'metrics': metrics
-                })
-
-            # Calculate overview metrics
-            overview = {
-                'total_hours': total_hours,
-                'total_attendance': total_attendance,
-                'punctuality': {
-                    'on_time': on_time_attendance,
-                    'late': total_late,
-                    'on_time_rate': (on_time_attendance / total_attendance * 100) if total_attendance else 0
-                }
-            }
-
-            return {
-                'status': 'success',
-                'data': {
-                    'date_range': {
-                        'type': date_range,
-                        'start': start.strftime('%Y-%m-%d'),
-                        'end': end.strftime('%Y-%m-%d')
-                    },
-                    'overview': overview,
-                    'mechanics': active_mechanics
-                }
-            }
-
-        except Exception as e:
-            _logger.error(f"Error in get_attendance_dashboard: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-
     def _verify_location(self, mechanic, location, device_info):
         """Helper method to verify location"""
         try:
@@ -1566,4 +1406,926 @@ class AttendanceAPI(http.Controller):
 
         except Exception as e:
             _logger.error(f"Error in update_mechanic_password: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    # HR Attendance API Admin
+    @http.route('/web/v2/hr/attendance/overview', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_hr_attendance_overview(self, **kw):
+        """Get attendance overview/summary"""
+        try:
+            # Get date range parameters
+            date_range = kw.get('date_range', 'today')
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+
+            # Get all active employees
+            employees = request.env['hr.employee'].sudo().search([('active', '=', True)])
+            total_employees = len(employees)
+
+            # Get attendance records
+            domain = [
+                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ]
+            
+            attendances = request.env['hr.attendance'].sudo().search(domain)
+
+            # Calculate metrics
+            present_employees = len(set(att.employee_id.id for att in attendances))
+            late_attendances = len([att for att in attendances if att.is_late])
+            total_late_minutes = sum(att.late_duration for att in attendances if att.is_late)
+            total_work_hours = sum(att.worked_hours for att in attendances if att.check_out)
+
+            return {
+                'status': 'success',
+                'data': {
+                    'date_range': {
+                        'type': date_range if not (start_date and end_date) else 'custom',
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
+                    },
+                    'overview': {
+                        'total_employees': total_employees,
+                        'present': present_employees,
+                        'absent': total_employees - present_employees,
+                        'late': late_attendances,
+                        'total_late_hours': round(total_late_minutes / 60, 1),
+                        'total_work_hours': round(total_work_hours, 1),
+                        'attendance_rate': round((present_employees / total_employees * 100), 1) if total_employees > 0 else 0
+                    }
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_hr_attendance_overview: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/hr/attendance/records', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_hr_attendance_records(self, **kw):
+        """Get detailed attendance records with filtering"""
+        try:
+            # Extract params from kw directly like dashboard endpoint
+            params = kw.get('params', kw)
+            
+            # Get date range parameters
+            date_range = params.get('date_range', 'today')
+            start_date = params.get('start_date')
+            end_date = params.get('end_date')
+            employee_id = params.get('employee_id')
+            is_late = params.get('is_late')
+            
+            # Get pagination parameters
+            limit = int(params.get('limit', 50))
+            offset = int(params.get('offset', 0))
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range similar to dashboard endpoint
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+
+            # Build domain with proper date formatting
+            domain = [
+                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ]
+
+            # Add filters if provided
+            if employee_id:
+                if isinstance(employee_id, list):
+                    domain.append(('employee_id', 'in', employee_id))
+                else:
+                    domain.append(('employee_id', '=', employee_id))
+
+            if is_late is not None:
+                domain.append(('is_late', '=', is_late))
+
+            # Get records with pagination
+            attendances = request.env['hr.attendance'].sudo().search(
+                domain,
+                limit=limit,
+                offset=offset,
+                order='check_in desc'
+            )
+            
+            # Get total count for pagination
+            total_count = request.env['hr.attendance'].sudo().search_count(domain)
+
+            # Calculate metrics for filtered data
+            total_work_hours = 0
+            total_late = 0
+            on_time_attendance = 0
+
+            records = []
+            for attendance in attendances:
+                # Convert times to local timezone
+                check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
+                check_out = attendance.check_out and pytz.utc.localize(attendance.check_out).astimezone(tz)
+                
+                # Calculate worked hours
+                worked_hours = attendance.worked_hours if attendance.check_out else 0
+                total_work_hours += worked_hours
+
+                # Track late/on-time
+                if attendance.is_late:
+                    total_late += 1
+                else:
+                    on_time_attendance += 1
+
+                # Format record
+                records.append({
+                    'id': attendance.id,
+                    'employee': {
+                        'id': attendance.employee_id.id,
+                        'name': attendance.employee_id.name,
+                        'department': attendance.employee_id.department_id.name if attendance.employee_id.department_id else None,
+                        'job_title': attendance.employee_id.job_title
+                    },
+                    'attendance': {
+                        'check_in': check_in.strftime('%Y-%m-%d %H:%M:%S'),
+                        'check_out': check_out.strftime('%Y-%m-%d %H:%M:%S') if check_out else None,
+                        'worked_hours': round(worked_hours, 2),
+                        'is_late': attendance.is_late,
+                        'late_duration': round(attendance.late_duration, 0) if attendance.is_late else 0
+                    },
+                    'face_image': attendance.face_image if attendance.face_image else None
+                })
+
+            # Calculate summary metrics
+            total_attendance = len(records)
+            
+            summary = {
+                'total_attendance': total_attendance,
+                'total_work_hours': round(total_work_hours, 1),
+                'average_work_hours': round(total_work_hours / total_attendance, 1) if total_attendance > 0 else 0,
+                'punctuality': {
+                    'on_time': on_time_attendance,
+                    'late': total_late,
+                    'on_time_rate': round((on_time_attendance / total_attendance * 100), 1) if total_attendance > 0 else 0
+                }
+            }
+
+            return {
+                'status': 'success',
+                'data': {
+                    'date_range': {
+                        'type': date_range if not (start_date and end_date) else 'custom',
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
+                    },
+                    'summary': summary,
+                    'records': records,
+                    'pagination': {
+                        'total': total_count,
+                        'offset': offset,
+                        'limit': limit,
+                        'page_count': math.ceil(total_count / limit) if limit > 0 else 0
+                    }
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_hr_attendance_records: {str(e)}", exc_info=True)
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/hr/attendance/employee/<int:employee_id>', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_employee_attendance(self, employee_id, **kw):
+        """Get specific employee attendance details with period filtering"""
+        try:
+            # Extract params from request
+            params = kw.get('params', kw)
+            
+            # Get period parameters
+            date_range = params.get('date_range', 'today')
+            start_date = params.get('start_date')
+            end_date = params.get('end_date')
+            include_records = params.get('include_records', True)  # Option to include detailed records
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Get employee
+            employee = request.env['hr.employee'].sudo().browse(employee_id)
+            if not employee.exists():
+                return {'status': 'error', 'message': 'Employee not found'}
+
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+
+            # Build domain
+            domain = [
+                ('employee_id', '=', employee_id),
+                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ]
+
+            # Get attendance records
+            attendances = request.env['hr.attendance'].sudo().search(domain, order='check_in asc')
+
+            # Calculate metrics
+            total_work_hours = 0
+            total_late = 0
+            total_late_minutes = 0
+            on_time_count = 0
+            attendance_dates = set()  # For tracking unique dates
+
+            attendance_records = []
+            for attendance in attendances:
+                # Convert times to local timezone
+                check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
+                check_out = attendance.check_out and pytz.utc.localize(attendance.check_out).astimezone(tz)
+                
+                # Track unique dates
+                attendance_dates.add(check_in.date())
+                
+                # Calculate worked hours
+                worked_hours = attendance.worked_hours if attendance.check_out else 0
+                total_work_hours += worked_hours
+
+                # Track late/on-time and late duration
+                if attendance.is_late:
+                    total_late += 1
+                    total_late_minutes += attendance.late_duration
+                else:
+                    on_time_count += 1
+
+                if include_records:
+                    attendance_records.append({
+                        'date': check_in.strftime('%Y-%m-%d'),
+                        'check_in': check_in.strftime('%H:%M:%S'),
+                        'check_out': check_out.strftime('%H:%M:%S') if check_out else None,
+                        'worked_hours': round(worked_hours, 2),
+                        'is_late': attendance.is_late,
+                        'late_duration': round(attendance.late_duration, 0) if attendance.is_late else 0,
+                        'face_image': attendance.face_image if attendance.face_image else None
+                    })
+
+            # Calculate summary metrics
+            total_attendance = len(attendance_dates)  # Using unique dates
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'employee': {
+                        'id': employee.id,
+                        'name': employee.name,
+                        'department': employee.department_id.name if employee.department_id else None,
+                        'job_title': employee.job_title,
+                        'work_phone': employee.work_phone,
+                        'work_email': employee.work_email,
+                        'image': employee.image_1920.decode() if employee.image_1920 else None
+                    },
+                    'date_range': {
+                        'type': date_range if not (start_date and end_date) else 'custom',
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
+                    },
+                    'summary': {
+                        'attendance': {
+                            'total_days': total_attendance,
+                            'total_records': len(attendances),
+                            'late_count': total_late,
+                            'on_time_count': on_time_count,
+                            'punctuality_rate': round((on_time_count / len(attendances) * 100), 1) if attendances else 0
+                        },
+                        'work_hours': {
+                            'total': round(total_work_hours, 1),
+                            'average_per_day': round(total_work_hours / total_attendance, 1) if total_attendance > 0 else 0
+                        },
+                        'late_summary': {
+                            'total_late_hours': round(total_late_minutes / 60, 1),
+                            'average_late_duration': round(total_late_minutes / total_late, 0) if total_late > 0 else 0
+                        }
+                    },
+                    'attendance_records': attendance_records if include_records else []
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_employee_attendance: {str(e)}", exc_info=True)
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/hr/attendance/report', type='json', auth='user', methods=['POST'], csrf=False)
+    def generate_attendance_report(self, **kw):
+        """Generate comprehensive attendance report with department and employee breakdowns"""
+        try:
+            # Extract params
+            params = kw.get('params', kw)
+            
+            # Get parameters with defaults
+            date_range = params.get('date_range', 'this_month')
+            start_date = params.get('start_date')
+            end_date = params.get('end_date')
+            department_id = params.get('department_id')  # Optional department filter
+            include_inactive = params.get('include_inactive', False)
+            group_by = params.get('group_by', 'department')  # 'department' or 'employee'
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'last_month':
+                    last_month = now - timedelta(days=now.day)
+                    start = last_month.replace(day=1, hour=0, minute=0, second=0)
+                    end = now.replace(day=1, hour=0, minute=0, second=0) - timedelta(seconds=1)
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+
+            # Build employee domain
+            employee_domain = []
+            if not include_inactive:
+                employee_domain.append(('active', '=', True))
+            if department_id:
+                if isinstance(department_id, list):
+                    employee_domain.append(('department_id', 'in', department_id))
+                else:
+                    employee_domain.append(('department_id', '=', department_id))
+
+            # Get employees
+            employees = request.env['hr.employee'].sudo().search(employee_domain)
+            employee_ids = employees.mapped('id')
+
+            # Build attendance domain
+            attendance_domain = [
+                ('employee_id', 'in', employee_ids),
+                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ]
+
+            # Get attendance records
+            attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+
+            # Initialize data structures for analysis
+            department_stats = {}
+            employee_stats = {}
+            attendance_dates = {}  # Track unique dates per employee
+
+            # Process attendance records
+            for attendance in attendances:
+                emp = attendance.employee_id
+                dept_id = emp.department_id.id if emp.department_id else 'no_dept'
+                emp_id = emp.id
+                
+                # Initialize department stats if needed
+                if dept_id not in department_stats:
+                    department_stats[dept_id] = {
+                        'id': dept_id,
+                        'name': emp.department_id.name if emp.department_id else 'No Department',
+                        'employee_count': 0,
+                        'total_attendance': 0,
+                        'late_count': 0,
+                        'total_work_hours': 0,
+                        'total_late_minutes': 0,
+                        'present_employees': set()
+                    }
+
+                # Initialize employee stats if needed
+                if emp_id not in employee_stats:
+                    employee_stats[emp_id] = {
+                        'id': emp_id,
+                        'name': emp.name,
+                        'department_id': dept_id,
+                        'department_name': emp.department_id.name if emp.department_id else 'No Department',
+                        'total_attendance': 0,
+                        'late_count': 0,
+                        'total_work_hours': 0,
+                        'total_late_minutes': 0,
+                        'attendance_dates': set()
+                    }
+
+                # Convert check-in time to local timezone for date tracking
+                check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
+                date_str = check_in.date()
+
+                # Update employee statistics
+                employee_stats[emp_id]['attendance_dates'].add(date_str)
+                employee_stats[emp_id]['total_attendance'] += 1
+                
+                if attendance.is_late:
+                    employee_stats[emp_id]['late_count'] += 1
+                    employee_stats[emp_id]['total_late_minutes'] += attendance.late_duration
+                
+                if attendance.check_out:
+                    employee_stats[emp_id]['total_work_hours'] += attendance.worked_hours
+
+                # Update department statistics
+                department_stats[dept_id]['present_employees'].add(emp_id)
+                department_stats[dept_id]['total_attendance'] += 1
+                
+                if attendance.is_late:
+                    department_stats[dept_id]['late_count'] += 1
+                    department_stats[dept_id]['total_late_minutes'] += attendance.late_duration
+                
+                if attendance.check_out:
+                    department_stats[dept_id]['total_work_hours'] += attendance.worked_hours
+
+            # Calculate employee counts per department
+            for emp in employees:
+                dept_id = emp.department_id.id if emp.department_id else 'no_dept'
+                if dept_id in department_stats:
+                    department_stats[dept_id]['employee_count'] += 1
+
+            # Format department statistics
+            formatted_departments = []
+            total_employees = len(employees)
+            total_present = 0
+            total_work_hours = 0
+            total_late_count = 0
+            total_late_minutes = 0
+
+            for dept_id, stats in department_stats.items():
+                present_count = len(stats['present_employees'])
+                total_present += present_count
+                total_work_hours += stats['total_work_hours']
+                total_late_count += stats['late_count']
+                total_late_minutes += stats['total_late_minutes']
+
+                formatted_departments.append({
+                    'department': {
+                        'id': stats['id'],
+                        'name': stats['name']
+                    },
+                    'metrics': {
+                        'employees': {
+                            'total': stats['employee_count'],
+                            'present': present_count,
+                            'attendance_rate': round((present_count / stats['employee_count'] * 100), 1) if stats['employee_count'] > 0 else 0
+                        },
+                        'attendance': {
+                            'total': stats['total_attendance'],
+                            'late_count': stats['late_count'],
+                            'on_time_count': stats['total_attendance'] - stats['late_count'],
+                            'punctuality_rate': round(((stats['total_attendance'] - stats['late_count']) / stats['total_attendance'] * 100), 1) if stats['total_attendance'] > 0 else 0
+                        },
+                        'work_hours': {
+                            'total': round(stats['total_work_hours'], 1),
+                            'average_per_employee': round(stats['total_work_hours'] / present_count, 1) if present_count > 0 else 0
+                        },
+                        'late_summary': {
+                            'total_hours': round(stats['total_late_minutes'] / 60, 1),
+                            'average_per_incident': round(stats['total_late_minutes'] / stats['late_count'], 0) if stats['late_count'] > 0 else 0
+                        }
+                    }
+                })
+
+            # Format employee statistics
+            formatted_employees = []
+            for emp_id, stats in employee_stats.items():
+                total_attendance = stats['total_attendance']
+                formatted_employees.append({
+                    'employee': {
+                        'id': stats['id'],
+                        'name': stats['name'],
+                        'department': {
+                            'id': stats['department_id'],
+                            'name': stats['department_name']
+                        }
+                    },
+                    'metrics': {
+                        'attendance': {
+                            'days_present': len(stats['attendance_dates']),
+                            'total_records': total_attendance,
+                            'late_count': stats['late_count'],
+                            'on_time_count': total_attendance - stats['late_count'],
+                            'punctuality_rate': round(((total_attendance - stats['late_count']) / total_attendance * 100), 1) if total_attendance > 0 else 0
+                        },
+                        'work_hours': {
+                            'total': round(stats['total_work_hours'], 1),
+                            'average_per_day': round(stats['total_work_hours'] / len(stats['attendance_dates']), 1) if stats['attendance_dates'] else 0
+                        },
+                        'late_summary': {
+                            'total_hours': round(stats['total_late_minutes'] / 60, 1),
+                            'average_duration': round(stats['total_late_minutes'] / stats['late_count'], 0) if stats['late_count'] > 0 else 0
+                        }
+                    }
+                })
+
+            # Calculate overall summary
+            overall_summary = {
+                'employees': {
+                    'total': total_employees,
+                    'present': total_present,
+                    'attendance_rate': round((total_present / total_employees * 100), 1) if total_employees > 0 else 0
+                },
+                'attendance': {
+                    'total_records': sum(dept['metrics']['attendance']['total'] for dept in formatted_departments),
+                    'late_count': total_late_count,
+                    'punctuality_rate': round(((sum(dept['metrics']['attendance']['total'] for dept in formatted_departments) - total_late_count) / 
+                                            sum(dept['metrics']['attendance']['total'] for dept in formatted_departments) * 100), 1) 
+                                        if sum(dept['metrics']['attendance']['total'] for dept in formatted_departments) > 0 else 0
+                },
+                'work_hours': {
+                    'total': round(total_work_hours, 1),
+                    'average_per_employee': round(total_work_hours / total_present, 1) if total_present > 0 else 0
+                },
+                'late_summary': {
+                    'total_hours': round(total_late_minutes / 60, 1),
+                    'average_per_incident': round(total_late_minutes / total_late_count, 0) if total_late_count > 0 else 0
+                }
+            }
+
+            return {
+                'status': 'success',
+                'data': {
+                    'date_range': {
+                        'type': date_range if not (start_date and end_date) else 'custom',
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
+                    },
+                    'summary': overall_summary,
+                    'departments': formatted_departments,
+                    'employees': formatted_employees if group_by == 'employee' else []
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in generate_attendance_report: {str(e)}", exc_info=True)
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/hr/attendance/monthly-summary', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_monthly_attendance_summary(self, **kw):
+        """Get monthly attendance summary with detailed statistics"""
+        try:
+            # Extract params
+            params = kw.get('params', kw)
+            
+            # Get parameters
+            month = int(params.get('month', datetime.now().month))
+            year = int(params.get('year', datetime.now().year))
+            department_id = params.get('department_id')
+            include_details = params.get('include_details', True)
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            
+            # Calculate first and last day of the month
+            start = datetime(year, month, 1)
+            if month == 12:
+                end = datetime(year + 1, 1, 1) - timedelta(seconds=1)
+            else:
+                end = datetime(year, month + 1, 1) - timedelta(seconds=1)
+
+            # Localize dates
+            start = tz.localize(start)
+            end = tz.localize(end)
+            
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+
+            # Calculate working days (excluding weekends)
+            working_days = 0
+            current = start.date()
+            weekend_days = set()
+            while current <= end.date():
+                if current.weekday() < 5:  # Monday = 0, Sunday = 6
+                    working_days += 1
+                else:
+                    weekend_days.add(current)
+                current += timedelta(days=1)
+            
+            # Cap working days at 26 as per standard
+            working_days = min(working_days, 26)
+
+            # Build employee domain
+            employee_domain = [('active', '=', True)]
+            if department_id:
+                if isinstance(department_id, list):
+                    employee_domain.append(('department_id', 'in', department_id))
+                else:
+                    employee_domain.append(('department_id', '=', department_id))
+
+            # Get employees
+            employees = request.env['hr.employee'].sudo().search(employee_domain)
+
+            # Get attendance records
+            attendance_domain = [
+                ('employee_id', 'in', employees.ids),
+                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_in', '<', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+            ]
+
+            attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+
+            # Track metrics
+            employee_stats = {}
+            department_stats = {}
+            
+            # Initialize stats for all employees
+            for employee in employees:
+                emp_id = employee.id
+                dept_id = employee.department_id.id if employee.department_id else 'no_dept'
+                dept_name = employee.department_id.name if employee.department_id else 'No Department'
+                
+                employee_stats[emp_id] = {
+                    'id': emp_id,
+                    'name': employee.name,
+                    'department_id': dept_id,
+                    'department_name': dept_name,
+                    'attendance_dates': set(),
+                    'total_work_hours': 0,
+                    'late_count': 0,
+                    'total_late_minutes': 0,
+                    'early_leaves': 0,
+                    'overtime_hours': 0
+                }
+                
+                if dept_id not in department_stats:
+                    department_stats[dept_id] = {
+                        'name': dept_name,
+                        'employee_count': 0,
+                        'present_employees': set(),
+                        'total_work_hours': 0,
+                        'late_count': 0,
+                        'total_late_minutes': 0,
+                        'early_leaves': 0,
+                        'overtime_hours': 0
+                    }
+                department_stats[dept_id]['employee_count'] += 1
+
+            # Standard work hours
+            work_start_time = time(8, 0)  # 8 AM
+            work_end_time = time(17, 0)   # 5 PM
+            standard_work_hours = 8.0
+
+            # Process attendance records
+            for attendance in attendances:
+                emp_id = attendance.employee_id.id
+                dept_id = attendance.employee_id.department_id.id if attendance.employee_id.department_id else 'no_dept'
+                
+                # Convert times to local timezone
+                check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
+                check_out = attendance.check_out and pytz.utc.localize(attendance.check_out).astimezone(tz)
+                
+                # Skip weekends if needed
+                if check_in.date() in weekend_days:
+                    continue
+                
+                # Track attendance date
+                employee_stats[emp_id]['attendance_dates'].add(check_in.date())
+                department_stats[dept_id]['present_employees'].add(emp_id)
+                
+                # Calculate late arrival
+                if check_in.time() > work_start_time:
+                    employee_stats[emp_id]['late_count'] += 1
+                    department_stats[dept_id]['late_count'] += 1
+                    
+                    scheduled_start = tz.localize(datetime.combine(check_in.date(), work_start_time))
+                    late_minutes = (check_in - scheduled_start).total_seconds() / 60
+                    
+                    employee_stats[emp_id]['total_late_minutes'] += late_minutes
+                    department_stats[dept_id]['total_late_minutes'] += late_minutes
+                
+                # Calculate work hours and overtime
+                if check_out:
+                    worked_hours = (check_out - check_in).total_seconds() / 3600
+                    employee_stats[emp_id]['total_work_hours'] += worked_hours
+                    department_stats[dept_id]['total_work_hours'] += worked_hours
+                    
+                    # Check for early leave
+                    if check_out.time() < work_end_time:
+                        employee_stats[emp_id]['early_leaves'] += 1
+                        department_stats[dept_id]['early_leaves'] += 1
+                    
+                    # Calculate overtime
+                    scheduled_end = tz.localize(datetime.combine(check_out.date(), work_end_time))
+                    if check_out > scheduled_end:
+                        overtime_hours = (check_out - scheduled_end).total_seconds() / 3600
+                        employee_stats[emp_id]['overtime_hours'] += overtime_hours
+                        department_stats[dept_id]['overtime_hours'] += overtime_hours
+
+            # Format employee details
+            employee_details = []
+            if include_details:
+                for emp_id, stats in employee_stats.items():
+                    attendance_days = len(stats['attendance_dates'])
+                    employee_details.append({
+                        'employee': {
+                            'id': stats['id'],
+                            'name': stats['name'],
+                            'department': {
+                                'id': stats['department_id'],
+                                'name': stats['department_name']
+                            }
+                        },
+                        'attendance': {
+                            'working_days': working_days,
+                            'present_days': attendance_days,
+                            'absent_days': working_days - attendance_days,
+                            'attendance_rate': round((attendance_days / working_days * 100), 1),
+                            'late_count': stats['late_count'],
+                            'early_leaves': stats['early_leaves']
+                        },
+                        'work_hours': {
+                            'total': round(stats['total_work_hours'], 1),
+                            'target': working_days * standard_work_hours,
+                            'average_per_day': round(stats['total_work_hours'] / attendance_days, 1) if attendance_days > 0 else 0,
+                            'overtime': round(stats['overtime_hours'], 1)
+                        },
+                        'late_summary': {
+                            'total_hours': round(stats['total_late_minutes'] / 60, 1),
+                            'average_minutes': round(stats['total_late_minutes'] / stats['late_count'], 0) if stats['late_count'] > 0 else 0
+                        }
+                    })
+
+            # Format department summary
+            department_summary = []
+            for dept_id, stats in department_stats.items():
+                present_count = len(stats['present_employees'])
+                department_summary.append({
+                    'department': {
+                        'id': dept_id,
+                        'name': stats['name']
+                    },
+                    'metrics': {
+                        'employees': {
+                            'total': stats['employee_count'],
+                            'active': present_count,
+                            'participation_rate': round((present_count / stats['employee_count'] * 100), 1)
+                        },
+                        'attendance': {
+                            'late_count': stats['late_count'],
+                            'early_leaves': stats['early_leaves']
+                        },
+                        'work_hours': {
+                            'total': round(stats['total_work_hours'], 1),
+                            'average_per_employee': round(stats['total_work_hours'] / present_count, 1) if present_count > 0 else 0,
+                            'overtime': round(stats['overtime_hours'], 1)
+                        },
+                        'late_summary': {
+                            'total_hours': round(stats['total_late_minutes'] / 60, 1),
+                            'average_per_incident': round(stats['total_late_minutes'] / stats['late_count'], 0) if stats['late_count'] > 0 else 0
+                        }
+                    }
+                })
+
+            # Calculate overall metrics
+            total_employees = len(employees)
+            total_present = len(set().union(*[stats['attendance_dates'] for stats in employee_stats.values()]))
+            total_work_hours = sum(stats['total_work_hours'] for stats in employee_stats.values())
+            total_late_count = sum(stats['late_count'] for stats in employee_stats.values())
+            total_late_minutes = sum(stats['total_late_minutes'] for stats in employee_stats.values())
+            total_early_leaves = sum(stats['early_leaves'] for stats in employee_stats.values())
+            total_overtime = sum(stats['overtime_hours'] for stats in employee_stats.values())
+
+            overall_summary = {
+                'period': {
+                    'month': month,
+                    'year': year,
+                    'working_days': working_days
+                },
+                'employees': {
+                    'total': total_employees,
+                    'present': len([emp for emp in employee_stats.values() if emp['attendance_dates']]),
+                    'attendance_rate': round((total_present / (total_employees * working_days) * 100), 1) if total_employees > 0 else 0
+                },
+                'attendance': {
+                    'late_count': total_late_count,
+                    'early_leaves': total_early_leaves,
+                    'punctuality_rate': round(((total_present - total_late_count) / total_present * 100), 1) if total_present > 0 else 0
+                },
+                'work_hours': {
+                    'total': round(total_work_hours, 1),
+                    'target': total_employees * working_days * standard_work_hours,
+                    'average_per_employee': round(total_work_hours / total_employees, 1) if total_employees > 0 else 0,
+                    'overtime': round(total_overtime, 1)
+                },
+                'late_summary': {
+                    'total_hours': round(total_late_minutes / 60, 1),
+                    'average_minutes': round(total_late_minutes / total_late_count, 0) if total_late_count > 0 else 0
+                }
+            }
+
+            return {
+                'status': 'success',
+                'data': {
+                    'summary': overall_summary,
+                    'departments': department_summary,
+                    'employees': employee_details if include_details else []
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_monthly_attendance_summary: {str(e)}", exc_info=True)
             return {'status': 'error', 'message': str(e)}

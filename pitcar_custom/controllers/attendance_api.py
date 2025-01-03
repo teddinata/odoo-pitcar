@@ -1595,35 +1595,32 @@ class AttendanceAPI(http.Controller):
                 [], ['id', 'name', 'department_id'], order='name'
             )
 
-            # Calculate summary from all matching records
+            # Get ALL records for summary calculation
             all_attendances = AttendanceModel.search(domain)
             
-            # Initialize summary counters
+            # Initialize counters for summary
+            total_attendance = 0
             total_work_hours = 0
             total_late = 0
             on_time_attendance = 0
-            attendance_dates = set()
-
-            # Process all records for summary
+            
+            # Group attendance by employee for summary calculation
             for attendance in all_attendances:
-                check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
-                attendance_dates.add(check_in.date())
+                # Count total attendance
+                total_attendance += 1
                 
-                # Calculate work hours
+                # Calculate work hours if checked out
                 if attendance.check_out:
                     worked_hours = attendance.worked_hours
                     total_work_hours += worked_hours
 
-                # Count late/on-time
+                # Count late/on-time attendance
                 if attendance.is_late:
                     total_late += 1
                 else:
                     on_time_attendance += 1
 
-            total_attendance = len(attendance_dates)
-            total_records = on_time_attendance + total_late
-
-            # Build summary object
+            # Build summary with accurate calculations
             summary = {
                 'total_attendance': total_attendance,
                 'total_work_hours': round(total_work_hours, 1),
@@ -1631,7 +1628,7 @@ class AttendanceAPI(http.Controller):
                 'punctuality': {
                     'on_time': on_time_attendance,
                     'late': total_late,
-                    'on_time_rate': round((on_time_attendance / total_records * 100), 1) if total_records > 0 else 0
+                    'on_time_rate': round((on_time_attendance / total_attendance * 100), 1) if total_attendance > 0 else 0
                 }
             }
 

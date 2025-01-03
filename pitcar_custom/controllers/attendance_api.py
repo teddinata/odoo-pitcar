@@ -7,6 +7,8 @@ import pytz
 import logging
 import json
 import math
+import io
+import csv
 
 _logger = logging.getLogger(__name__)
 
@@ -2095,18 +2097,19 @@ class AttendanceAPI(http.Controller):
             end_utc = end.astimezone(pytz.UTC)
 
             # Calculate working days (excluding weekends)
-            working_days = 0
-            current = start.date()
-            weekend_days = set()
-            while current <= end.date():
-                if current.weekday() < 5:  # Monday = 0, Sunday = 6
-                    working_days += 1
-                else:
-                    weekend_days.add(current)
-                current += timedelta(days=1)
+            # working_days = 0
+            # current = start.date()
+            # weekend_days = set()
+            # while current <= end.date():
+            #     if current.weekday() < 5:  # Monday = 0, Sunday = 6
+            #         working_days += 1
+            #     else:
+            #         weekend_days.add(current)
+            #     current += timedelta(days=1)
             
             # Cap working days at 26 as per standard
-            working_days = min(working_days, 26)
+            # working_days = min(working_days, 26)
+            working_days = 26
 
             # Build employee domain
             employee_domain = [('active', '=', True)]
@@ -2179,8 +2182,8 @@ class AttendanceAPI(http.Controller):
                 check_out = attendance.check_out and pytz.utc.localize(attendance.check_out).astimezone(tz)
                 
                 # Skip weekends if needed
-                if check_in.date() in weekend_days:
-                    continue
+                # if check_in.date() in weekend_days:
+                #     continue
                 
                 # Track attendance date
                 employee_stats[emp_id]['attendance_dates'].add(check_in.date())
@@ -2329,3 +2332,106 @@ class AttendanceAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_monthly_attendance_summary: {str(e)}", exc_info=True)
             return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/hr/attendance/export', type='http', auth='user', methods=['GET'], csrf=False)
+    def export_attendance(self, **kw):
+        try:
+            # Extract params
+            month = int(kw.get('month', datetime.now().month))
+            year = int(kw.get('year', datetime.now().year))
+            department_id = kw.get('department_id')
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            
+            # Calculate first and last day of month
+            start = datetime(year, month, 1)
+            if month == 12:
+                end = datetime(year + 1, 1, 1) - timedelta(seconds=1)
+            else:
+                end = datetime(year, month + 1, 1) - timedelta(seconds=1)
+                
+            # Localize dates
+            start = tz.localize(start)
+            end = tz.localize(end)
+            
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+
+            # Get all dates in month
+            dates = []
+            current = start
+            while current <= end:
+                dates.append(current.date())
+                current += timedelta(days=1)
+
+            # Get employees
+            domain = [('active', '=', True)]
+            if department_id:
+                domain.append(('department_id', '=', int(department_id)))
+            employees = request.env['hr.employee'].sudo().search(domain)
+
+            # Create CSV in memory
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # Write headers
+            headers = ['Nama']
+            for date in dates:
+                headers.append(date.strftime('%d/%m/%Y'))
+            writer.writerow(headers)
+            
+            # Write employee data
+            for employee in employees:
+                row = [employee.name]
+                
+                # Get attendance records for this employee
+                attendances = request.env['hr.attendance'].sudo().search([
+                    ('employee_id', '=', employee.id),
+                    ('check_in', '>=', start_utc),
+                    ('check_in', '<=', end_utc)
+                ])
+
+                # Create attendance dict by date
+                attendance_by_date = {}
+                for att in attendances:
+                    check_in = pytz.utc.localize(att.check_in).astimezone(tz)
+                    check_out = att.check_out and pytz.utc.localize(att.check_out).astimezone(tz)
+                    date = check_in.date()
+                    
+                    attendance_by_date[date] = {
+                        'check_in': check_in.strftime('%H:%M'),
+                        'check_out': check_out.strftime('%H:%M') if check_out else '-'
+                    }
+
+                # Add attendance data for each date
+                for date in dates:
+                    if date in attendance_by_date:
+                        att = attendance_by_date[date]
+                        row.append(f"{att['check_in']} - {att['check_out']}")
+                    else:
+                        row.append('-')
+                        
+                writer.writerow(row)
+
+            # Prepare response
+            output_str = output.getvalue()
+            output.close()
+            
+            filename = f'attendance_report_{year}_{month:02d}.csv'
+            
+            return request.make_response(
+                output_str.encode('utf-8-sig'),  # Use UTF-8 with BOM for Excel compatibility
+                headers=[
+                    ('Content-Type', 'text/csv;charset=utf-8'),
+                    ('Content-Disposition', f'attachment; filename={filename}'),
+                    ('Cache-Control', 'no-cache')
+                ]
+            )
+
+        except Exception as e:
+            return request.make_response(
+                json.dumps({'error': str(e)}),
+                headers=[('Content-Type', 'application/json')]
+            )

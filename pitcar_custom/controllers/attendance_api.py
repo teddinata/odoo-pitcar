@@ -1500,9 +1500,10 @@ class AttendanceAPI(http.Controller):
     @http.route('/web/v2/hr/attendance/records', type='json', auth='user', methods=['POST'], csrf=False)
     def get_hr_attendance_records(self, **kw):
         try:
+            # Extract parameters
             params = kw.get('params', kw)
             
-            # Extract search parameters
+            # Basic parameters
             search_query = params.get('search', '')
             department_id = params.get('department_id')
             date_range = params.get('date_range', 'today')
@@ -1511,7 +1512,7 @@ class AttendanceAPI(http.Controller):
             employee_ids = params.get('employee_ids', [])
             is_late = params.get('is_late')
             
-            # Pagination & Sorting
+            # Pagination parameters
             limit = int(params.get('limit', 50))
             offset = int(params.get('offset', 0))
             sort_by = params.get('sort_by', 'check_in')
@@ -1552,7 +1553,7 @@ class AttendanceAPI(http.Controller):
             start_utc = start.astimezone(pytz.UTC)
             end_utc = end.astimezone(pytz.UTC)
 
-            # Build domain
+            # Build domain for filtering
             domain = [
                 ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
                 ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
@@ -1568,33 +1569,25 @@ class AttendanceAPI(http.Controller):
                     ('employee_id.work_email', 'ilike', search_query)
                 ]
 
+            # Employee filter
             if employee_ids:
                 if isinstance(employee_ids, list):
                     domain.append(('employee_id', 'in', employee_ids))
                 else:
                     domain.append(('employee_id', '=', employee_ids))
 
+            # Department filter
             if department_id:
                 domain.append(('employee_id.department_id', '=', department_id))
 
+            # Late status filter
             if is_late is not None:
                 domain.append(('is_late', '=', is_late))
 
-            # Build sort order
-            order = f"{sort_by} {sort_order}"
-
-            # Get records with pagination
+            # Get Attendance Model
             AttendanceModel = request.env['hr.attendance'].sudo()
-            attendances = AttendanceModel.search(
-                domain,
-                limit=limit,
-                offset=offset,
-                order=order
-            )
-            
-            total_count = AttendanceModel.search_count(domain)
 
-            # Get all unique departments & employees for filter options
+            # Get filter options data
             departments = request.env['hr.department'].sudo().search_read(
                 [], ['id', 'name'], order='name'
             )
@@ -1602,23 +1595,62 @@ class AttendanceAPI(http.Controller):
                 [], ['id', 'name', 'department_id'], order='name'
             )
 
-            # Process attendance records
-            records = []
+            # Calculate summary from all matching records
+            all_attendances = AttendanceModel.search(domain)
+            
+            # Initialize summary counters
             total_work_hours = 0
             total_late = 0
             on_time_attendance = 0
+            attendance_dates = set()
 
-            for attendance in attendances:
+            # Process all records for summary
+            for attendance in all_attendances:
                 check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
-                check_out = attendance.check_out and pytz.utc.localize(attendance.check_out).astimezone(tz)
+                attendance_dates.add(check_in.date())
                 
-                worked_hours = attendance.worked_hours if attendance.check_out else 0
-                total_work_hours += worked_hours
+                # Calculate work hours
+                if attendance.check_out:
+                    worked_hours = attendance.worked_hours
+                    total_work_hours += worked_hours
 
+                # Count late/on-time
                 if attendance.is_late:
                     total_late += 1
                 else:
                     on_time_attendance += 1
+
+            total_attendance = len(attendance_dates)
+            total_records = on_time_attendance + total_late
+
+            # Build summary object
+            summary = {
+                'total_attendance': total_attendance,
+                'total_work_hours': round(total_work_hours, 1),
+                'average_work_hours': round(total_work_hours / total_attendance, 1) if total_attendance > 0 else 0,
+                'punctuality': {
+                    'on_time': on_time_attendance,
+                    'late': total_late,
+                    'on_time_rate': round((on_time_attendance / total_records * 100), 1) if total_records > 0 else 0
+                }
+            }
+
+            # Get paginated records for display
+            paginated_attendances = AttendanceModel.search(
+                domain,
+                limit=limit,
+                offset=offset,
+                order=f"{sort_by} {sort_order}"
+            )
+            
+            # Count total records for pagination
+            total_count = AttendanceModel.search_count(domain)
+
+            # Process paginated records
+            records = []
+            for attendance in paginated_attendances:
+                check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
+                check_out = attendance.check_out and pytz.utc.localize(attendance.check_out).astimezone(tz)
 
                 records.append({
                     'id': attendance.id,
@@ -1634,15 +1666,14 @@ class AttendanceAPI(http.Controller):
                     'attendance': {
                         'check_in': check_in.strftime('%Y-%m-%d %H:%M:%S'),
                         'check_out': check_out.strftime('%Y-%m-%d %H:%M:%S') if check_out else None,
-                        'worked_hours': round(worked_hours, 2),
+                        'worked_hours': round(attendance.worked_hours, 2) if attendance.check_out else 0,
                         'is_late': attendance.is_late,
                         'late_duration': round(attendance.late_duration, 0) if attendance.is_late else 0
                     },
                     'face_image': attendance.face_image if attendance.face_image else None
                 })
 
-            total_attendance = len(records)
-            
+            # Return complete response
             return {
                 'status': 'success',
                 'data': {
@@ -1655,16 +1686,7 @@ class AttendanceAPI(http.Controller):
                         'departments': departments,
                         'employees': employees
                     },
-                    'summary': {
-                        'total_attendance': total_attendance,
-                        'total_work_hours': round(total_work_hours, 1),
-                        'average_work_hours': round(total_work_hours / total_attendance, 1) if total_attendance > 0 else 0,
-                        'punctuality': {
-                            'on_time': on_time_attendance,
-                            'late': total_late,
-                            'on_time_rate': round((on_time_attendance / total_attendance * 100), 1) if total_attendance > 0 else 0
-                        }
-                    },
+                    'summary': summary,
                     'records': records,
                     'pagination': {
                         'total': total_count,

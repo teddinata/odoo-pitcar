@@ -128,7 +128,8 @@ class SOPController(http.Controller):
             _logger.info(f"Received parameters: {kw}")
 
             # Base domain untuk sale orders yang aktif
-            domain = [('state', 'in', ['sale', 'done'])]
+            # domain = [('state', 'in', ['sale', 'done'])]
+            domain = [('state', 'in', ['draft', 'sent', 'sale', 'done'])]
 
             # Search dengan multiple terms
             if search:

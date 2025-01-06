@@ -2420,15 +2420,23 @@ class AttendanceAPI(http.Controller):
             output = io.StringIO()
             writer = csv.writer(output)
             
-            # Write headers
-            headers = ['Nama']
+            # Write main header
+            month_name = start.strftime('%B %Y')
+            writer.writerow([f'Attendance Report - {month_name}'])
+            writer.writerow([])  # Empty row for spacing
+            
+            # Create date headers
+            headers = ['Nama', 'Departemen']  # First columns
             for date in dates:
-                headers.append(date.strftime('%d/%m/%Y'))
+                headers.append(date.strftime('%d/%m'))  # Add date headers
             writer.writerow(headers)
             
-            # Write employee data
+            # Standard work time
+            work_start_time = time(8, 0)  # 8 AM
+
+            # Process each employee
             for employee in employees:
-                row = [employee.name]
+                department_name = employee.department_id.name if employee.department_id else 'No Department'
                 
                 # Get attendance records for this employee
                 attendances = request.env['hr.attendance'].sudo().search([
@@ -2444,20 +2452,30 @@ class AttendanceAPI(http.Controller):
                     check_out = att.check_out and pytz.utc.localize(att.check_out).astimezone(tz)
                     date = check_in.date()
                     
-                    attendance_by_date[date] = {
-                        'check_in': check_in.strftime('%H:%M'),
-                        'check_out': check_out.strftime('%H:%M') if check_out else '-'
-                    }
+                    # Format the attendance string
+                    check_in_str = check_in.strftime('%H:%M')
+                    check_out_str = check_out.strftime('%H:%M') if check_out else '--:--'
+                    
+                    # Add status indicator if late
+                    if check_in.time() > work_start_time:
+                        check_in_str = f"{check_in_str}*"  # Add asterisk for late attendance
+                    
+                    attendance_by_date[date] = f"{check_in_str}-{check_out_str}"
 
+                # Create row for employee
+                row = [employee.name, department_name]
+                
                 # Add attendance data for each date
                 for date in dates:
-                    if date in attendance_by_date:
-                        att = attendance_by_date[date]
-                        row.append(f"{att['check_in']} - {att['check_out']}")
-                    else:
-                        row.append('-')
-                        
+                    row.append(attendance_by_date.get(date, '--:----:--'))
+                
                 writer.writerow(row)
+
+            # Add legend at the bottom
+            writer.writerow([])  # Empty row
+            writer.writerow(['Keterangan:'])
+            writer.writerow(['* = Terlambat'])
+            writer.writerow(['--:----:-- = Tidak Hadir'])
 
             # Prepare response
             output_str = output.getvalue()
@@ -2465,16 +2483,19 @@ class AttendanceAPI(http.Controller):
             
             filename = f'attendance_report_{year}_{month:02d}.csv'
             
+            headers = [
+                ('Content-Type', 'text/csv;charset=utf-8'),
+                ('Content-Disposition', f'attachment; filename={filename}'),
+                ('Cache-Control', 'no-cache')
+            ]
+
             return request.make_response(
                 output_str.encode('utf-8-sig'),  # Use UTF-8 with BOM for Excel compatibility
-                headers=[
-                    ('Content-Type', 'text/csv;charset=utf-8'),
-                    ('Content-Disposition', f'attachment; filename={filename}'),
-                    ('Cache-Control', 'no-cache')
-                ]
+                headers=headers
             )
 
         except Exception as e:
+            _logger.error(f"Error in export_attendance: {str(e)}")
             return request.make_response(
                 json.dumps({'error': str(e)}),
                 headers=[('Content-Type', 'application/json')]

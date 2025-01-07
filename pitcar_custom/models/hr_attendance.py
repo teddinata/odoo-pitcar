@@ -95,18 +95,15 @@ class HrAttendance(models.Model):
                     check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
                     check_out = attendance.check_out and pytz.utc.localize(attendance.check_out).astimezone(tz)
                     
-                    # Format waktu tanpa spasi
+                    # Format simpel: 'HH:MMHH:MM
                     check_in_str = check_in.strftime('%H:%M')
                     check_out_str = check_out.strftime('%H:%M') if check_out else '00:00'
                     
-                    # Tambah tanda * jika terlambat
-                    if attendance.is_late:
-                        check_in_str = f"{check_in_str}*"
-                    
-                    time_str = f"{check_in_str}{check_out_str}"
+                    # Gabung dengan tanda kutip di depan untuk mencegah konversi Excel
+                    time_str = f"'{check_in_str}{check_out_str}"
                     row.append(time_str)
                 else:
-                    row.append('-')
+                    row.append("'-")  # Konsisten menggunakan tanda kutip
                     
             writer.writerow(row)
             

@@ -6,6 +6,12 @@
         <field name="model">hr.attendance</field>
         <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
         <field name="arch" type="xml">
+            <form position="inside">
+                <button name="action_custom_export" 
+                        string="Export Custom" 
+                        type="object" 
+                        class="btn btn-primary"/>
+            </form>
             <field name="employee_id" position="after">
                 <field name="face_image" widget="image" class="oe_avatar"/>
             </field>
@@ -18,6 +24,10 @@
         <field name="model">hr.attendance</field>
         <field name="arch" type="xml">
             <tree string="Attendances">
+                <button name="action_custom_export" 
+                        string="Export" 
+                        type="object" 
+                        icon="fa-download"/>
                 <field name="face_image" widget="image" options="{'size': [50, 50]}"/>
                 <field name="employee_id"/>
                 <field name="check_in"/>
@@ -25,6 +35,15 @@
                 <field name="worked_hours" sum="Total" widget="float_time"/>
             </tree>
         </field>
+    </record>
+
+    <!-- Server Action for Export -->
+    <record id="action_custom_attendance_export" model="ir.actions.server">
+        <field name="name">Export Custom</field>
+        <field name="model_id" ref="model_hr_attendance"/>
+        <field name="binding_model_id" ref="model_hr_attendance"/>
+        <field name="state">code</field>
+        <field name="code">action = records.action_custom_export()</field>
     </record>
 
     <!-- Action -->

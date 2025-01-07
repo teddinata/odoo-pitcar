@@ -1,5 +1,6 @@
 # models/hr_attendance.py
 from odoo import models, fields, api
+from odoo.http import request
 import pytz
 import io
 import csv
@@ -48,21 +49,31 @@ class HrAttendance(models.Model):
         ])
         return old_records.write({'face_image': False})
     
-    def action_custom_export(self):
-        """Custom Export Attendance Action"""
-        # Create buffer untuk CSV
-        output = io.StringIO()
-        writer = csv.writer(output, delimiter=';')
-        
-        # Ambil data filter dari context
-        context = dict(self._context or {})
-        date_from = context.get('date_from', fields.Date.today().replace(day=1))
-        date_to = context.get('date_to', fields.Date.today())
+    def action_custom_export(self, date_from=None, date_to=None, department_id=None):
+        """Custom Export Attendance dengan filter"""
+        if not (date_from and date_to):
+            # Jika dipanggil langsung dari button, tampilkan wizard
+            action = {
+                'type': 'ir.actions.act_window',
+                'name': 'Export Attendance',
+                'res_model': 'attendance.export.wizard',
+                'view_mode': 'form',
+                'target': 'new',
+                'context': {
+                    'default_date_from': fields.Date.today(),
+                    'default_date_to': fields.Date.today(),
+                }
+            }
+            return action
+
+        # Buat file temporary untuk menyimpan CSV
+        data = io.StringIO()
+        writer = csv.writer(data, delimiter=';')
         
         # Set timezone
         tz = pytz.timezone('Asia/Jakarta')
         
-        # Generate tanggal
+        # Generate dates range
         start_date = fields.Date.from_string(date_from)
         end_date = fields.Date.from_string(date_to)
         dates = []
@@ -70,20 +81,22 @@ class HrAttendance(models.Model):
         while curr_date <= end_date:
             dates.append(curr_date)
             curr_date += timedelta(days=1)
-            
-        # Write header
+
+        # Write headers
         headers = ['Nama Karyawan', 'Departemen']
         for date in dates:
             headers.append(date.strftime('%d/%m'))
         writer.writerow(headers)
-        
-        # Group attendance by employee
-        employees = self.env['hr.employee'].search([('active', '=', True)])
-        
+
+        # Get employees dengan filter department
+        domain = [('active', '=', True)]
+        if department_id:
+            domain.append(('department_id', '=', department_id))
+        employees = self.env['hr.employee'].search(domain)
+
         for employee in employees:
             row = [employee.name, employee.department_id.name or '-']
             
-            # Get attendance untuk setiap tanggal
             for date in dates:
                 attendance = self.search([
                     ('employee_id', '=', employee.id),
@@ -95,35 +108,31 @@ class HrAttendance(models.Model):
                     check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
                     check_out = attendance.check_out and pytz.utc.localize(attendance.check_out).astimezone(tz)
                     
-                    # Format simpel: 'HH:MMHH:MM
                     check_in_str = check_in.strftime('%H:%M')
                     check_out_str = check_out.strftime('%H:%M') if check_out else '00:00'
                     
-                    # Gabung dengan tanda kutip di depan untuk mencegah konversi Excel
                     time_str = f"'{check_in_str}{check_out_str}"
                     row.append(time_str)
                 else:
-                    row.append("'-")  # Konsisten menggunakan tanda kutip
+                    row.append("'-")
                     
             writer.writerow(row)
-            
-        # Add legend
-        writer.writerow([])
-        writer.writerow(['KETERANGAN:'])
-        writer.writerow(['* = Terlambat (>08:00)'])
-        writer.writerow(['- = Tidak Hadir'])
-        writer.writerow(['Format Waktu = Check-inCheck-out (tanpa spasi)'])
-        writer.writerow(['Contoh: 08:0017:00 = Masuk 08:00 Pulang 17:00'])
-        
-        # Create attachment
+
+        # Generate attachment
         filename = f'absensi_{date_from}_{date_to}.csv'
+        csv_data = data.getvalue().encode('utf-8-sig')
+        data.close()
+
+        # Create attachment
         attachment = self.env['ir.attachment'].create({
             'name': filename,
-            'datas': base64.b64encode(output.getvalue().encode('utf-8-sig')),
-            'store_fname': filename,
-            'type': 'binary'
+            'type': 'binary',
+            'datas': base64.b64encode(csv_data),
+            'mimetype': 'text/csv',
+            'res_model': self._name,
+            'res_id': self.id,
         })
-        
+
         # Return download action
         return {
             'type': 'ir.actions.act_url',

@@ -63,6 +63,7 @@
         'security/ir.model.access.csv',
 
         'wizard/mechanic_credential_views.xml',
+        'wizard/attendance_export_wizard_view.xml',
         
         'views/account_move.xml',
         'views/pitcar_mechanic_views.xml',
@@ -98,5 +99,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.60'
+    'version':'16.0.61'
 }

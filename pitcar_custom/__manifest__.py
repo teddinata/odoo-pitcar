@@ -53,10 +53,12 @@
         'data/res_partner_car_data.xml',
         'data/lead_time_data.xml',
         'data/pitcar_position_data.xml',
+        'data/sequence.xml',
 
         'report/ir_actions_report_templates.xml',
         'report/ir_actions_report.xml',
         'report/report_invoice.xml',
+        'report/booking_quotation_template.xml',  # Tambahkan ini
 
         'security/mechanic_security.xml',
         'security/lead_time_security.xml',
@@ -64,6 +66,7 @@
 
         'wizard/mechanic_credential_views.xml',
         'wizard/attendance_export_wizard_view.xml',
+        'wizard/booking_link_sale_order_views.xml',
         
         'views/account_move.xml',
         'views/pitcar_mechanic_views.xml',
@@ -75,6 +78,7 @@
         'views/res_partner.xml',
         'views/sale_order.xml',
         'views/sale_order_template.xml',
+        'views/service_booking_views.xml',
         'views/stock_picking.xml',
         'views/product_views.xml',
         'views/product_tag_views.xml',
@@ -99,5 +103,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.61'
+    'version':'16.0.62'
 }

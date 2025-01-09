@@ -393,13 +393,18 @@
                             <tree editable="bottom">
                                 <field name="product_id"/>
                                 <field name="name"/>
+                                <field name="quantity"/>
                                 <field name="estimated_date"/>
                                 <field name="service_duration" widget="float_time"/>
                                 <field name="formatted_duration"/>
                                 <field name="price_unit" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                <field name="total_amount" widget="monetary"/>
                                 <field name="currency_id" invisible="1"/>
                             </tree>
                         </field>
+                        <group class="oe_subtotal_footer oe_right">
+                            <field name="total_recommendation_amount" widget="monetary"/>
+                        </group>
                     </page>
                 </xpath>
                 

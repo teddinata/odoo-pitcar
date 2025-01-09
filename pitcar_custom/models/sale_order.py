@@ -199,6 +199,8 @@ class SaleOrder(models.Model):
         compute='_compute_formatted_duration',
         store=False
     )
+    booking_id = fields.Many2one('pitcar.service.booking', string='Booking Reference', readonly=True)
+    is_booking = fields.Boolean('Is From Booking', default=False, readonly=True)
 
     # Fields untuk recommendation
     recommendation_ids = fields.One2many(
@@ -206,6 +208,18 @@ class SaleOrder(models.Model):
         'order_id',
         string='Service Recommendations'
     )
+
+    total_recommendation_amount = fields.Monetary(
+        string='Total Recommended Services',
+        compute='_compute_total_recommendation_amount',
+        currency_field='currency_id',
+        store=True
+    )
+
+    @api.depends('recommendation_ids.total_amount')
+    def _compute_total_recommendation_amount(self):
+        for order in self:
+            order.total_recommendation_amount = sum(order.recommendation_ids.mapped('total_amount'))
 
     @api.onchange('sale_order_template_id')
     def _onchange_sale_order_template_id(self):

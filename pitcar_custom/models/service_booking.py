@@ -110,22 +110,31 @@ class ServiceBooking(models.Model):
                 record.date_stop = record.booking_date
 
     def action_link_to_sale_order(self):
-      """Link booking with existing sale order"""
-      self.ensure_one()
-      if self.state != 'confirmed':
-          raise ValidationError(_('Only confirmed bookings can be linked to sale orders'))
-          
-      if self.sale_order_id:
-          raise ValidationError(_('This booking is already linked to a sale order'))
-          
-      return {
-          'name': _('Link to Sale Order'),
-          'type': 'ir.actions.act_window',
-          'res_model': 'booking.link.sale.order.wizard',
-          'view_mode': 'form',
-          'target': 'new',
-          'context': {'default_booking_id': self.id}
-      }
+        """Link booking with existing sale order"""
+        self.ensure_one()
+        if self.state != 'confirmed':
+            raise ValidationError(_('Only confirmed bookings can be linked to sale orders'))
+            
+        if self.sale_order_id:
+            raise ValidationError(_('This booking is already linked to a sale order'))
+
+        # Return wizard action
+        return {
+            'name': _('Link to Sale Order'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'booking.link.sale.order.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_booking_id': self.id,
+                # Filter untuk SO hari ini
+                'default_domain': [
+                    ('create_date', '>=', fields.Date.today()),
+                    ('create_date', '<', fields.Date.today() + timedelta(days=1)),
+                    ('state', '!=', 'cancel')
+                ]
+            }
+        }
 
     def action_convert_to_sale_order(self):
       self.ensure_one()
@@ -312,6 +321,97 @@ class ServiceBooking(models.Model):
                 'amount_total': amount_untaxed + amount_tax,
             })
 
+     # Gunakan sale.order.template yang sudah ada
+    sale_order_template_id = fields.Many2one(
+        'sale.order.template',
+        string='Quotation Template',
+        domain="['|', ('company_id', '=', False), ('company_id', '=', company_id)]"
+    )
+
+    @api.onchange('sale_order_template_id')
+    def _onchange_sale_order_template_id(self):
+        """Handle perubahan template"""
+        if not self.sale_order_template_id:
+            self.booking_line_ids = [(5, 0, 0)]  # Clear existing lines
+            return
+        
+        lines_data = []
+        
+        # Get template lines
+        for line in self.sale_order_template_id.sale_order_template_line_ids:
+            if line.display_type:
+                # Untuk section dan note
+                lines_data.append((0, 0, {
+                    'name': line.name,
+                    'display_type': line.display_type,
+                    'sequence': line.sequence,
+                }))
+                continue
+
+            if not line.product_id:
+                continue
+            
+            # Untuk product lines
+            line_values = {
+                'name': line.name,
+                'product_id': line.product_id.id,
+                'quantity': line.product_uom_qty,
+                'sequence': line.sequence,
+                'display_type': line.display_type,
+            }
+
+            # Add service duration if it's a service product
+            if line.product_id.type == 'service':
+                line_values['service_duration'] = line.service_duration
+
+            # Get price dan taxes
+            if line.product_id:
+                line_values.update({
+                    'price_unit': line.product_id.list_price,
+                    'tax_ids': [(6, 0, line.product_id.taxes_id.filtered(
+                        lambda t: t.company_id == self.company_id
+                    ).ids)],
+                })
+
+            lines_data.append((0, 0, line_values))
+        
+        # Clear existing lines and set new ones
+        self.booking_line_ids = [(5, 0, 0)]
+        self.booking_line_ids = lines_data
+
+        if self.sale_order_template_id.note:
+            self.notes = self.sale_order_template_id.note
+
+    def _compute_template_line_values(self, line):
+        """Inherit untuk menambahkan service duration dari template"""
+        vals = super()._compute_template_line_values(line)
+        if line.product_id.type == 'service':
+            vals['service_duration'] = line.service_duration
+        return vals
+    
+    create_date = fields.Datetime(
+        'Created on',
+        readonly=True,
+        index=True,
+        copy=False
+    )
+    
+    formatted_create_date = fields.Char(
+        'Created Date',
+        compute='_compute_formatted_create_date',
+        store=True
+    )
+
+    @api.depends('create_date')
+    def _compute_formatted_create_date(self):
+        """Compute formatted create date in user's timezone"""
+        for record in self:
+            if record.create_date:
+                # Convert to user timezone
+                user_tz = self.env.user.tz or 'UTC'
+                local_dt = pytz.UTC.localize(record.create_date).astimezone(pytz.timezone(user_tz))
+                record.formatted_create_date = local_dt.strftime('%d/%m/%Y %H:%M:%S')
+
 # pitcar_custom/models/service_booking.py
 class ServiceBookingLine(models.Model):
     _name = 'pitcar.service.booking.line'
@@ -321,20 +421,29 @@ class ServiceBookingLine(models.Model):
     booking_id = fields.Many2one('pitcar.service.booking', string='Booking Reference', required=True, ondelete='cascade')
     sequence = fields.Integer(string='Sequence', default=10)
     
+    display_type = fields.Selection([
+        ('line_section', "Section"),
+        ('line_note', "Note")
+    ], default=False, help="Technical field for UX purpose.")
+    
     product_id = fields.Many2one(
         'product.product', 
         string='Product/Service', 
-        required=True,
-        domain=[('type', 'in', ['service', 'product'])]  # Perbaikan di sini
+        domain=[('type', 'in', ['service', 'product'])],
+        required=False  # Ubah jadi False, kita akan gunakan @api.constrains
     )
-    name = fields.Text(string='Description')
-    quantity = fields.Float(string='Quantity', default=1.0)
+    name = fields.Text(string='Description', required=True)
+    quantity = fields.Float(
+        string='Quantity',
+        default=1.0,
+        digits='Product Unit of Measure',
+        required=False  # Ubah jadi False, kita akan gunakan @api.constrains
+    )
     service_duration = fields.Float(string='Service Duration')
 
-      # Fields untuk perhitungan harga
+    # Fields untuk perhitungan harga
     price_unit = fields.Float(
         'Unit Price',
-        required=True,
         digits='Product Price',
         default=0.0
     )
@@ -378,10 +487,36 @@ class ServiceBookingLine(models.Model):
         string='Currency'
     )
 
-    @api.depends('quantity', 'price_unit', 'tax_ids', 'discount')
+    @api.constrains('display_type', 'product_id', 'quantity')
+    def _check_product_required(self):
+        for line in self:
+            if not line.display_type:  # Jika bukan section atau note
+                if not line.product_id:
+                    raise ValidationError(_('Please select a product for normal lines.'))
+                if not line.quantity or line.quantity <= 0:
+                    raise ValidationError(_('Quantity must be positive for normal lines.'))
+
+    @api.onchange('display_type')
+    def _onchange_display_type(self):
+        if self.display_type:
+            self.product_id = False
+            self.quantity = 0
+            self.price_unit = 0
+            self.service_duration = 0
+            self.tax_ids = [(5, 0, 0)]  # Clear taxes
+
+    @api.depends('quantity', 'price_unit', 'tax_ids', 'discount', 'display_type')
     def _compute_amount(self):
         """Compute the amounts of the booking line."""
         for line in self:
+            if line.display_type:
+                line.update({
+                    'price_subtotal': 0.0,
+                    'price_total': 0.0,
+                    'price_tax': 0.0,
+                })
+                continue
+                
             price = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
             taxes = line.tax_ids.compute_all(
                 price,
@@ -398,7 +533,7 @@ class ServiceBookingLine(models.Model):
 
     @api.onchange('product_id')
     def _onchange_product_id(self):
-        if not self.product_id:
+        if not self.product_id or self.display_type:
             return
             
         # Lazy loading
@@ -414,3 +549,11 @@ class ServiceBookingLine(models.Model):
             ).ids)]
             
         self.update(values)
+
+    def _get_computed_name(self):
+        self.ensure_one()
+        if self.product_id and not self.display_type:
+            if self.product_id.description_sale:
+                return self.product_id.description_sale
+            return self.product_id.name
+        return self.name

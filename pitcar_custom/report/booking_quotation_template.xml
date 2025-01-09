@@ -15,6 +15,13 @@
                             <div id="informations" class="mt-4 mb-4">
                                 <div class="row">
                                     <div class="col-6">
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Created Date</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.formatted_create_date"/>
+                                            </div>
+                                        </div>
                                         <!-- Booking Date -->
                                         <div class="row mb-2">
                                             <div class="col-5 text-start"><strong>Booking Date</strong></div>

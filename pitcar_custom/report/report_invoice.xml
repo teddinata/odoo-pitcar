@@ -232,20 +232,29 @@
                                     <table class="table table-sm table-borderless">
                                         <thead>
                                             <tr>
-                                                <th class="text-start">Description</th>
-                                                <th class="text-end">Estimated Date</th>
-                                                <th class="text-end">Estimated Price</th>
+                                                <th class="text-start">Product/Service</th>
+                                                <th class="text-center">Estimated Date</th>
+                                                <th class="text-end">Quantity</th>
+                                                <th class="text-end">Unit Price</th>
+                                                <th class="text-end">Total Amount</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <t t-foreach="o.recommendation_ids" t-as="rec">
                                                 <tr>
                                                     <td><span t-field="rec.name"/></td>
+                                                    <td class="text-center">
+                                                        <span t-field="rec.estimated_date"/>
+                                                    </td>
                                                     <td class="text-end">
-                                                        <span t-field="rec.estimated_date" />
+                                                        <span t-field="rec.quantity"/>
                                                     </td>
                                                     <td class="text-end">
                                                         <span t-field="rec.price_unit" 
+                                                            t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                                                    </td>
+                                                    <td class="text-end">
+                                                        <span t-field="rec.total_amount"
                                                             t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
                                                     </td>
                                                 </tr>

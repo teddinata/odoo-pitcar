@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <template id="report_service_booking">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="web.external_layout">
+                    <div class="page position-relative">
+                        <div class="oe_structure"/>
+                        <h2 class="mt-4">
+                            <span>Booking Quotation # </span>
+                            <span t-field="doc.name"/>
+                        </h2>
+
+                        <div class="main-content">
+                            <div id="informations" class="mt-4 mb-4">
+                                <div class="row">
+                                    <div class="col-6">
+                                        <!-- Booking Date -->
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Booking Date</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.booking_date"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Booking Time -->
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Booking Time</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.formatted_time"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Customer -->
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Customer</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.partner_id"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Service Advisors -->
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Service Advisors</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.service_advisor_id"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Duration Estimation -->
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Estimated Duration</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.estimated_duration" t-options='{"widget": "float_time"}'/>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-6">
+                                        <!-- Car Details -->
+                                        <!-- Plate Number -->
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Plate Number</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.partner_car_id.number_plate"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Odometer -->
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Odometer</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.partner_car_odometer"/> KM
+                                            </div>
+                                        </div>
+
+                                        <!-- Brand -->
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Brand</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.partner_car_id.brand"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Type and Year -->
+                                        <div class="row mb-2">
+                                            <div class="col-5 text-start"><strong>Type / Year</strong></div>
+                                            <div class="col-7 text-start">
+                                                <span>:</span>
+                                                <span t-field="doc.partner_car_id.brand_type"/> / 
+                                                <span t-field="doc.partner_car_id.year"/>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Service Lines -->
+                            <table class="table table-sm o_main_table table-borderless mt-4">
+                              <thead style="display: table-row-group">
+                                  <tr>
+                                      <th name="th_description" class="text-start">Description</th>
+                                      <th name="th_quantity" class="text-end">Quantity</th>
+                                      <th name="th_duration" class="text-end">Duration</th>
+                                      <th name="th_price" class="text-end">Unit Price</th>
+                                      <th name="th_discount" t-if="any(l.discount for l in doc.booking_line_ids)" class="text-end">
+                                          <span>Disc.%</span>
+                                      </th>
+                                      <th name="th_taxes" class="text-end">Taxes</th>
+                                      <th name="th_subtotal" class="text-end">Amount</th>
+                                  </tr>
+                              </thead>
+                              <tbody class="sale_tbody">
+                                  <t t-foreach="doc.booking_line_ids" t-as="line">
+                                      <tr>
+                                          <td name="td_name">
+                                              <span t-field="line.name"/>
+                                          </td>
+                                          <td name="td_quantity" class="text-end">
+                                              <span t-field="line.quantity"/>
+                                          </td>
+                                          <td name="td_duration" class="text-end">
+                                              <span t-field="line.service_duration" t-options='{"widget": "float_time"}'/>
+                                          </td>
+                                          <td name="td_price" class="text-end">
+                                              <span t-field="line.price_unit"/>
+                                          </td>
+                                          <td t-if="any(l.discount for l in doc.booking_line_ids)" class="text-end">
+                                              <span t-field="line.discount"/>%
+                                          </td>
+                                          <td name="td_taxes" class="text-end">
+                                              <span t-esc="', '.join(map(lambda x: x.name, line.tax_ids))"/>
+                                          </td>
+                                          <td name="td_subtotal" class="text-end">
+                                              <span t-field="line.price_subtotal"/>
+                                          </td>
+                                      </tr>
+                                  </t>
+                              </tbody>
+                          </table>
+
+                          <!-- Tambahkan total amount di bagian bawah -->
+                          <div id="total" class="row" name="total">
+                              <div class="col-6 ms-auto">
+                                  <table class="table table-sm table-borderless">
+                                      <tr class="border-black">
+                                          <td><strong>Subtotal</strong></td>
+                                          <td class="text-end">
+                                              <span t-field="doc.amount_untaxed"/>
+                                          </td>
+                                      </tr>
+                                      <tr>
+                                          <td>Taxes</td>
+                                          <td class="text-end">
+                                              <span t-field="doc.amount_tax"/>
+                                          </td>
+                                      </tr>
+                                      <tr class="border-black o_total">
+                                          <td><strong>Total</strong></td>
+                                          <td class="text-end">
+                                              <span t-field="doc.amount_total"/>
+                                          </td>
+                                      </tr>
+                                  </table>
+                              </div>
+                          </div>
+
+                            <!-- Notes -->
+                            <div class="row mt-4">
+                                <div class="col-12">
+                                    <strong>Notes:</strong>
+                                    <p t-field="doc.notes"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+    <!-- Modifikasi action report untuk custom filename -->
+    <record id="action_report_service_booking" model="ir.actions.report">
+        <field name="name">Booking Quotation</field>
+        <field name="model">pitcar.service.booking</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">pitcar_custom.report_service_booking</field>
+        <field name="report_file">pitcar_custom.report_service_booking</field>
+        <field name="print_report_name">'Booking Quotation - %s - %s' % (object.partner_id.name or '', object.name)</field>
+        <field name="binding_model_id" ref="model_pitcar_service_booking"/>
+        <field name="binding_type">report</field>
+    </record>
+</odoo>

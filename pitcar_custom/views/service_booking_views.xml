@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_pitcar_service_booking_tree" model="ir.ui.view">
+        <field name="name">pitcar.service.booking.tree</field>
+        <field name="model">pitcar.service.booking</field>
+        <field name="arch" type="xml">
+            <tree decoration-info="state == 'draft'" 
+                  decoration-success="state == 'confirmed'" 
+                  decoration-muted="state in ('converted', 'cancelled')">
+                <field name="name"/>
+                <field name="booking_date"/>
+                <field name="formatted_time"/>
+                <field name="partner_id"/>
+                <field name="partner_car_id"/>
+                <field name="service_category"/>
+                <field name="service_subcategory"/>
+                <field name="service_advisor_id" widget="many2many_tags"/>
+                <field name="amount_total" sum="Total" widget="monetary"/>
+                <field name="currency_id" invisible="1"/>
+                <field name="state"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_pitcar_service_booking_form" model="ir.ui.view">
+        <field name="name">pitcar.service.booking.form</field>
+        <field name="model">pitcar.service.booking</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                     <button name="%(pitcar_custom.action_report_service_booking)d"
+                              string="Print Quotation" 
+                              type="action" 
+                              class="oe_highlight"
+                              attrs="{'invisible': [('state', 'in', ['converted','cancelled'])]}"/>
+                      <button name="action_confirm" 
+                              string="Confirm" 
+                              type="object" 
+                              class="oe_highlight" 
+                              states="draft"/>
+                      <button name="action_link_to_sale_order" 
+                              string="Link to Sale Order" 
+                              type="object"
+                              class="oe_highlight" 
+                              states="confirmed"/>
+                      <button name="action_cancel" 
+                              string="Cancel" 
+                              type="object"
+                              states="draft,confirmed"/>
+                      <field name="state" widget="statusbar" 
+                            statusbar_visible="draft,confirmed,converted"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="partner_car_id"/>
+                            <field name="partner_car_odometer"/>
+                            <field name="service_advisor_id" widget="many2many_tags"/>
+                        </group>
+                        <group>
+                            <field name="booking_date"/>
+                            <field name="booking_time" widget="float_time"/>
+                            <field name="service_category"/>
+                            <field name="service_subcategory"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Services" name="service_lines">
+                            <field name="booking_line_ids">
+                                <tree editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="product_id"/>
+                                    <field name="name"/>
+                                    <field name="quantity"/>
+                                    <field name="service_duration" widget="float_time"/>
+                                    <field name="price_unit" widget="monetary"/>
+                                    <field name="discount" groups="base.group_discount_per_so_line"/>
+                                    <field name="tax_ids" widget="many2many_tags" domain="[('type_tax_use','=','sale')]"/>
+                                    <field name="price_subtotal" widget="monetary"/>
+                                    <field name="currency_id" invisible="1"/>
+                                </tree>
+                            </field>
+                            <group class="oe_subtotal_footer oe_right" colspan="2" name="booking_total">
+                                <field name="amount_untaxed" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                <field name="amount_tax" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                <div class="oe_subtotal_footer_separator oe_inline o_td_label">
+                                    <label for="amount_total"/>
+                                </div>
+                                <field name="amount_total" nolabel="1" class="oe_subtotal_footer_separator" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                            </group>
+                        </page>
+                        <page string="Notes" name="notes">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_pitcar_service_booking_calendar" model="ir.ui.view">
+        <field name="name">pitcar.service.booking.calendar</field>
+        <field name="model">pitcar.service.booking</field>
+        <field name="arch" type="xml">
+            <calendar string="Service Bookings" 
+                    date_start="booking_date"
+                    color="service_category">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="service_category"/>
+            </calendar>
+        </field>
+    </record>
+
+    <record id="view_booking_link_sale_order_wizard_form" model="ir.ui.view">
+        <field name="name">booking.link.sale.order.wizard.form</field>
+        <field name="model">booking.link.sale.order.wizard</field>
+        <field name="arch" type="xml">
+            <form>
+                <group>
+                    <field name="booking_id" readonly="1"/>
+                    <field name="sale_order_id" options="{'no_create': True}"/>
+                </group>
+                <footer>
+                    <button name="action_link_sale_order" 
+                            string="Link to Sale Order" 
+                            type="object" 
+                            class="btn-primary"/>
+                    <button special="cancel" string="Cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Actions -->
+     <!-- Search View -->
+    <record id="view_pitcar_service_booking_search" model="ir.ui.view">
+        <field name="name">pitcar.service.booking.search</field>
+        <field name="model">pitcar.service.booking</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="partner_car_id"/>
+                <field name="service_advisor_id"/>
+                <filter string="Draft" name="draft" domain="[('state','=','draft')]"/>
+                <filter string="Confirmed" name="confirmed" domain="[('state','=','confirmed')]"/>
+                <filter string="Arrived" name="arrived" domain="[('state','=','arrived')]"/>
+                <filter string="Today" name="today" domain="[('booking_date','=',context_today())]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Status" name="status" context="{'group_by':'state'}"/>
+                    <filter string="Booking Date" name="booking_date" context="{'group_by':'booking_date'}"/>
+                    <filter string="Customer" name="customer" context="{'group_by':'partner_id'}"/>
+                    <filter string="Service Category" name="category" context="{'group_by':'service_category'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Perbaiki Action Window -->
+    <record id="action_pitcar_service_booking" model="ir.actions.act_window">
+        <field name="name">Service Bookings</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">pitcar.service.booking</field>
+        <field name="view_mode">tree,form,calendar</field>
+        <field name="search_view_id" ref="view_pitcar_service_booking_search"/>
+        <field name="context">{'search_default_today': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first service booking!
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu -->
+    <menuitem id="menu_pitcar_service_booking"
+              name="Service Bookings"
+              parent="sale.sale_menu_root"
+              action="action_pitcar_service_booking"
+              sequence="15"/>
+</odoo>

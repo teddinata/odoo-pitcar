@@ -63,16 +63,36 @@ class SaleOrderRecommendation(models.Model):
     order_id = fields.Many2one('sale.order', string='Order Reference')
     product_id = fields.Many2one('product.product', string='Product')
     name = fields.Text(string='Description')
+    quantity = fields.Float(string='Quantity', default=1.0)  # Field baru
     estimated_date = fields.Date(string='Estimated Service Date')
     service_duration = fields.Float(string='Durasi (Jam)', digits=(16, 2))
     formatted_duration = fields.Char(string='Durasi', compute='_compute_formatted_duration')
     price_unit = fields.Float(string='Unit Price', digits='Product Price')  # Perhatikan nama field ini
     currency_id = fields.Many2one('res.currency', related='order_id.currency_id')
 
+    total_amount = fields.Float(  # Field baru
+        'Total Amount',
+        compute='_compute_total_amount',
+        store=True
+    )
+
+    @api.depends('quantity', 'price_unit')
+    def _compute_total_amount(self):
+        for rec in self:
+            # Handle zero division
+            if not rec.quantity or not rec.price_unit:
+                rec.total_amount = 0.0
+            else:
+                rec.total_amount = rec.quantity * rec.price_unit
+
     @api.depends('service_duration')
     def _compute_formatted_duration(self):
+        cache = {}  # Cache untuk durasi yang sama
         for rec in self:
-            rec.formatted_duration = format_duration(rec.service_duration)
+            duration = rec.service_duration
+            if duration not in cache:
+                cache[duration] = format_duration(duration)
+            rec.formatted_duration = cache[duration]
             
     @api.onchange('product_id')
     def onchange_product_id(self):

@@ -157,12 +157,127 @@
         <field name="model">pitcar.service.booking</field>
         <field name="arch" type="xml">
             <calendar string="Service Bookings" 
-                    date_start="booking_date"
-                    color="service_category">
+                     date_start="booking_date" 
+                     color="service_category">
                 <field name="name"/>
                 <field name="partner_id"/>
+                <field name="formatted_time"/>
                 <field name="service_category"/>
             </calendar>
+        </field>
+    </record>
+
+
+      <record id="view_pitcar_service_booking_kanban" model="ir.ui.view">
+        <field name="name">pitcar.service.booking.kanban</field>
+        <field name="model">pitcar.service.booking</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" 
+                    class="o_kanban_small_column" 
+                    records_draggable="0">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="partner_car_id"/>
+                <field name="booking_date"/>
+                <field name="formatted_time"/>
+                <field name="service_category"/>
+                <field name="service_subcategory"/>
+                <field name="service_advisor_id"/>
+                <field name="amount_total"/>
+                <field name="currency_id"/>
+                <field name="state"/>
+                <field name="formatted_create_date"/>
+                
+                <templates>
+                    <t t-name="kanban-box">
+                        <div t-attf-class="oe_kanban_card oe_kanban_global_click p-0">
+                            <!-- Header with booking reference and status -->
+                            <div class="o_kanban_card_header p-3" style="background-color: #f8f9fa; border-bottom: 1px solid #dee2e6;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <strong class="h5 mb-0"><field name="name"/></strong>
+                                    <span t-attf-class="badge badge-pill px-3 py-2 {{ 
+                                        record.state.raw_value == 'draft' and 'badge-info' or
+                                        record.state.raw_value == 'confirmed' and 'badge-success' or
+                                        record.state.raw_value == 'converted' and 'badge-secondary' or
+                                        record.state.raw_value == 'cancelled' and 'badge-danger' }}">
+                                        <field name="state"/>
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <!-- Customer and Car Info -->
+                            <div class="p-3">
+                                <div class="d-flex align-items-center mb-3 pb-2" style="border-bottom: 1px solid #eee;">
+                                    <div class="mr-2">
+                                        <span class="fa fa-user-circle-o fa-lg text-primary"/>
+                                    </div>
+                                    <div>
+                                        <div class="font-weight-bold text-primary">Customer</div>
+                                        <div><field name="partner_id"/></div>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex align-items-center mb-3 pb-2" style="border-bottom: 1px solid #eee;">
+                                    <div class="mr-2">
+                                        <span class="fa fa-car fa-lg text-success"/>
+                                    </div>
+                                    <div>
+                                        <div class="font-weight-bold text-success">Vehicle</div>
+                                        <div><field name="partner_car_id"/></div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Service Details -->
+                                <div class="d-flex align-items-center mb-3 pb-2" style="border-bottom: 1px solid #eee;">
+                                    <div class="mr-2">
+                                        <span class="fa fa-wrench fa-lg text-warning"/>
+                                    </div>
+                                    <div>
+                                        <div class="font-weight-bold text-warning">Service Type</div>
+                                        <div>
+                                            <field name="service_category"/> - 
+                                            <field name="service_subcategory"/>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Schedule Info -->
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="mr-3">
+                                        <span class="fa fa-calendar fa-lg text-info mr-2"/>
+                                        <field name="booking_date"/>
+                                    </div>
+                                    <div>
+                                        <span class="fa fa-clock-o fa-lg text-info mr-2"/>
+                                        <field name="formatted_time"/>
+                                    </div>
+                                </div>
+
+                                <!-- Service Advisor -->
+                                <div class="mb-3">
+                                    <div class="font-weight-bold mb-2">
+                                        <span class="fa fa-user-md mr-2"/>Service Advisor
+                                    </div>
+                                    <field name="service_advisor_id" widget="many2many_tags"/>
+                                </div>
+                            </div>
+                            
+                            <!-- Footer with Amount and Created Date -->
+                            <div class="p-3" style="background-color: #f8f9fa; border-top: 1px solid #dee2e6;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">
+                                        <i class="fa fa-clock-o"/> Created: <field name="formatted_create_date"/>
+                                    </small>
+                                    <div class="font-weight-bold">
+                                        <field name="amount_total" widget="monetary"/>
+                                        <field name="currency_id" invisible="1"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
         </field>
     </record>
 
@@ -212,12 +327,49 @@
         </field>
     </record>
 
+      <!-- Update action window to set default grouping -->
+    <record id="action_pitcar_service_booking" model="ir.actions.act_window">
+        <field name="name">Service Bookings</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">pitcar.service.booking</field>
+        <field name="view_mode">kanban,tree,form,calendar</field>
+        <field name="context">{
+            'search_default_group_booking_date': 1,
+            'group_by': 'booking_date'
+        }</field>
+    </record>
+
+    <!-- Update search view untuk mendukung grouping -->
+    <record id="view_pitcar_service_booking_search" model="ir.ui.view">
+        <field name="name">pitcar.service.booking.search</field>
+        <field name="model">pitcar.service.booking</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="partner_car_id"/>
+                <field name="service_advisor_id"/>
+                <filter string="Today" name="today" domain="[('booking_date','=',context_today())]"/>
+                <filter string="This Week" name="this_week" domain="[('booking_date','&gt;=', (context_today() + relativedelta(weeks=-1, days=1, weekday=0)).strftime('%Y-%m-%d')),
+                                                                   ('booking_date','&lt;=', (context_today() + relativedelta(weekday=6)).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter string="Draft" name="draft" domain="[('state','=','draft')]"/>
+                <filter string="Confirmed" name="confirmed" domain="[('state','=','confirmed')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Booking Date" name="group_booking_date" context="{'group_by': 'booking_date'}"/>
+                    <filter string="Status" name="status" context="{'group_by': 'state'}"/>
+                    <filter string="Customer" name="customer" context="{'group_by': 'partner_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <!-- Perbaiki Action Window -->
     <record id="action_pitcar_service_booking" model="ir.actions.act_window">
         <field name="name">Service Bookings</field>
         <field name="type">ir.actions.act_window</field>
         <field name="res_model">pitcar.service.booking</field>
-        <field name="view_mode">tree,form,calendar</field>
+        <field name="view_mode">tree,kanban,form,calendar</field>
         <field name="search_view_id" ref="view_pitcar_service_booking_search"/>
         <field name="context">{'search_default_today': 1}</field>
         <field name="help" type="html">

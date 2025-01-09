@@ -412,6 +412,34 @@ class ServiceBooking(models.Model):
                 local_dt = pytz.UTC.localize(record.create_date).astimezone(pytz.timezone(user_tz))
                 record.formatted_create_date = local_dt.strftime('%d/%m/%Y %H:%M:%S')
 
+    def _get_date_display_name(self):
+        """Format tanggal untuk display di group header"""
+        self.ensure_one()
+        if self.booking_date:
+            # Format: "15 Jan" atau sesuai kebutuhan
+            return self.booking_date.strftime('%d %b')
+        return ''
+
+    @api.model
+    def _read_group_booking_date(self, booking_dates, domain, order):
+        """Custom group by function untuk booking_date"""
+        # Get dates from current search domain
+        dates = self.search([('booking_date', '!=', False)] + domain).mapped('booking_date')
+        
+        if not dates:
+            return [], {}
+
+        # Sort tanggal
+        dates = sorted(set(dates))
+        
+        # Return list of dates and their folded state
+        date_groups = [
+            (date.strftime('%Y-%m-%d'), date.strftime('%d %b')) 
+            for date in dates
+        ]
+        
+        return date_groups, {}
+
 # pitcar_custom/models/service_booking.py
 class ServiceBookingLine(models.Model):
     _name = 'pitcar.service.booking.line'

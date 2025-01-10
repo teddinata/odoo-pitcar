@@ -439,6 +439,28 @@ class ServiceBooking(models.Model):
         ]
         
         return date_groups, {}
+    
+    stall_position = fields.Selection([
+        ('stall1', 'STALL 1'),
+        ('stall2', 'STALL 2'),
+        ('stall3', 'STALL 3'),
+        ('stall4', 'STALL 4'),
+        ('stall5', 'STALL 5'),
+        ('stall6', 'STALL 6'),
+        ('unassigned', 'Unassigned'),
+    ], string='Stall Position', default='unassigned')
+
+    def write(self, vals):
+        """Override write untuk menangani perubahan stall via drag & drop"""
+        if 'stall_position' in vals:
+            # Log perubahan stall di chatter
+            for record in self:
+                old_stall = dict(self._fields['stall_position'].selection).get(record.stall_position, 'Unassigned')
+                new_stall = dict(self._fields['stall_position'].selection).get(vals['stall_position'], 'Unassigned')
+                msg = _(f"Booking dipindahkan dari {old_stall} ke {new_stall} oleh {self.env.user.name}")
+                record.message_post(body=msg)
+        
+        return super().write(vals)
 
 # pitcar_custom/models/service_booking.py
 class ServiceBookingLine(models.Model):

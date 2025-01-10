@@ -386,7 +386,7 @@
         <field name="name">Service Bookings</field>
         <field name="type">ir.actions.act_window</field>
         <field name="res_model">pitcar.service.booking</field>
-        <field name="view_mode">tree,kanban,form,calendar</field>
+        <field name="view_mode">kanban,tree,form,calendar</field>
         <field name="search_view_id" ref="view_pitcar_service_booking_search"/>
         <field name="context">{'search_default_today': 1}</field>
         <field name="help" type="html">

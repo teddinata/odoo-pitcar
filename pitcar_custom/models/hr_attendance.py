@@ -22,7 +22,7 @@ class HrAttendance(models.Model):
             if attendance.check_in:
                 tz = pytz.timezone('Asia/Jakarta')
                 check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
-                target_time = check_in.replace(hour=8, minute=0, second=0)
+                target_time = check_in.replace(hour=8, minute=1, second=0)
                 attendance.is_late = check_in > target_time
             else:
                 attendance.is_late = False
@@ -33,7 +33,7 @@ class HrAttendance(models.Model):
             if attendance.is_late and attendance.check_in:
                 tz = pytz.timezone('Asia/Jakarta')
                 check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
-                target_time = check_in.replace(hour=8, minute=0, second=0)
+                target_time = check_in.replace(hour=8, minute=1, second=0)
                 duration = (check_in - target_time).total_seconds() / 60
                 attendance.late_duration = duration
             else:

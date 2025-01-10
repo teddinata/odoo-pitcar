@@ -13,6 +13,13 @@ import csv
 _logger = logging.getLogger(__name__)
 
 class AttendanceAPI(http.Controller):
+    def _get_working_days(self, month, year):
+        """Helper method to get working days configuration"""
+        config = request.env['hr.working.days.config'].sudo().search([
+            ('month', '=', month),
+            ('year', '=', year)
+        ], limit=1)
+        return config.working_days if config else 26
     def _euclidean_distance(self, descriptor1, descriptor2):
         """Calculate Euclidean distance between two face descriptors"""
         try:
@@ -318,7 +325,7 @@ class AttendanceAPI(http.Controller):
             total_working_days = 26  # Standard working days per month
             
             # Standard work start time in Jakarta (8 AM)
-            work_start_time = time(8, 0)
+            work_start_time = time(8, 1) # 8:01 AM
             
             # Count late attendances (check-in after 8 AM Jakarta time)
             late_attendances = []
@@ -512,9 +519,9 @@ class AttendanceAPI(http.Controller):
                 data['total_hours'] += worked_hours
                 data['attendance_count'] += 1
 
-                # Calculate late/on-time (example: late if check-in after 8 AM)
+                # Calculate late/on-time (example: late if check-in after 8:01 AM)
                 check_in_time = pytz.utc.localize(attendance.check_in).astimezone(tz)
-                target_time = check_in_time.replace(hour=8, minute=0, second=0)
+                target_time = check_in_time.replace(hour=8, minute=1, second=0)
                 
                 if check_in_time > target_time:
                     data['late_count'] += 1
@@ -836,7 +843,7 @@ class AttendanceAPI(http.Controller):
             return None
             
         # Standard work time (8 AM)
-        work_start_time = time(8, 0)
+        work_start_time = time(8, 1) # 8:01 AM
         
         # Convert times to local timezone
         check_in_local = pytz.UTC.localize(attendance.check_in).astimezone(tz)
@@ -980,7 +987,7 @@ class AttendanceAPI(http.Controller):
             total_late = 0
             total_ontime = 0
             
-            work_start_time = time(8, 0)  # 8 AM
+            work_start_time = time(8, 1)  # 8:01 AM
             
             for attendance in attendances:
                 check_in_utc = attendance.check_in
@@ -1152,7 +1159,7 @@ class AttendanceAPI(http.Controller):
             total_hours = 0
             on_time_count = 0
             daily_hours = {}
-            work_start_time = time(8, 0)
+            work_start_time = time(8, 1) # 8:01 AM
 
             for attendance in attendances:
                 check_in_utc = attendance.check_in
@@ -2153,7 +2160,9 @@ class AttendanceAPI(http.Controller):
             
             # Cap working days at 26 as per standard
             # working_days = min(working_days, 26)
-            working_days = 26
+            # working_days = 26
+            # Dapatkan working days dari konfigurasi
+            working_days = self._get_working_days(month, year)
 
             # Build employee domain
             employee_domain = [('active', '=', True)]
@@ -2212,7 +2221,7 @@ class AttendanceAPI(http.Controller):
                 department_stats[dept_id]['employee_count'] += 1
 
             # Standard work hours
-            work_start_time = time(8, 0)  # 8 AM
+            work_start_time = time(8, 1)  # 8:01 AM
             work_end_time = time(17, 0)   # 5 PM
             standard_work_hours = 8.0
 
@@ -2432,7 +2441,7 @@ class AttendanceAPI(http.Controller):
             writer.writerow(headers)
             
             # Standard work time
-            work_start_time = time(8, 0)  # 8 AM
+            work_start_time = time(8, 1)  # 8:01 AM
 
             # Process each employee
             for employee in employees:
@@ -2500,3 +2509,85 @@ class AttendanceAPI(http.Controller):
                 json.dumps({'error': str(e)}),
                 headers=[('Content-Type', 'application/json')]
             )
+        
+
+    # 3. Tambahkan endpoint untuk manajemen hari kerja
+    @http.route('/web/v2/hr/working-days', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_working_days(self, **kw):
+        """Get working days configuration"""
+        try:
+            params = kw.get('params', kw)
+            month = params.get('month')
+            year = params.get('year')
+            
+            if not month or not year:
+                return {'status': 'error', 'message': 'Month and year are required'}
+            
+            working_days = self._get_working_days(month, year)
+            
+            # Get configuration if exists
+            config = request.env['hr.working.days.config'].sudo().search([
+                ('month', '=', month),
+                ('year', '=', year)
+            ], limit=1)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'working_days': working_days,
+                    'is_default': not bool(config),  # Indicate if using default value
+                    'name': config.name if config else None,
+                    'notes': config.notes if config else None
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_working_days: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/hr/working-days/update', type='json', auth='user', methods=['POST'], csrf=False)
+    def update_working_days(self, **kw):
+        """Update working days configuration"""
+        try:
+            params = kw.get('params', kw)
+            
+            required_fields = ['month', 'year', 'working_days']
+            for field in required_fields:
+                if field not in params:
+                    return {'status': 'error', 'message': f'{field} is required'}
+                    
+            # Validate working days
+            if not (1 <= params['working_days'] <= 31):
+                return {'status': 'error', 'message': 'Working days must be between 1 and 31'}
+                
+            config = request.env['hr.working.days.config'].sudo().search([
+                ('month', '=', params['month']),
+                ('year', '=', params['year'])
+            ], limit=1)
+            
+            values = {
+                'name': params.get('name', f'Config {params["month"]}/{params["year"]}'),
+                'month': params['month'],
+                'year': params['year'],
+                'working_days': params['working_days'],
+                'notes': params.get('notes')
+            }
+            
+            if config:
+                config.write(values)
+            else:
+                config = request.env['hr.working.days.config'].sudo().create(values)
+                
+            return {
+                'status': 'success',
+                'data': {
+                    'id': config.id,
+                    'name': config.name,
+                    'month': config.month,
+                    'year': config.year,
+                    'working_days': config.working_days,
+                    'notes': config.notes
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in update_working_days: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

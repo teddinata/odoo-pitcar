@@ -1,6 +1,7 @@
 # models/sale_order_line.py
 
-from odoo import models, fields, api
+from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 
 def format_duration(duration_in_hours):
     """
@@ -53,6 +54,51 @@ class SaleOrderLine(models.Model):
     def _compute_formatted_duration(self):
         for line in self:
             line.formatted_duration = format_duration(line.service_duration)
+
+    def action_move_to_recommendation(self):
+        """Move selected order line to recommendations"""
+        self.ensure_one()
+
+        # Skip section and note lines
+        if self.display_type:
+            raise UserError(_("Tidak dapat memindahkan section atau note ke rekomendasi."))
+            
+        # Create new recommendation
+        recommendation_vals = {
+            'order_id': self.order_id.id,
+            'product_id': self.product_id.id,
+            'name': self.name,
+            'quantity': self.product_uom_qty,
+            'service_duration': self.service_duration,
+            'price_unit': self.price_unit,
+            'estimated_date': fields.Date.context_today(self),
+            'source_order_line': f"[{self.order_id.name}] {self.product_id.name}"
+        }
+        
+        # Create recommendation
+        recommendation = self.env['sale.order.recommendation'].create(recommendation_vals)
+        
+        # Post message di chatter
+        msg = f"""
+            <p><strong>Item dipindahkan ke rekomendasi servis:</strong></p>
+            <ul>
+                <li>Produk: {self.product_id.name}</li>
+                <li>Kuantitas: {self.product_uom_qty}</li>
+                <li>Harga: {self.price_unit}</li>
+                <li>Status Order: {dict(self.order_id._fields['state'].selection).get(self.order_id.state)}</li>
+            </ul>
+        """
+        self.order_id.message_post(body=msg)
+
+        # Jika order masih draft/sent, hapus line. Jika tidak, biarkan
+        if self.order_id.state in ['draft', 'sent']:
+            self.unlink()
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+
 
     # models/sale_order_line.py
 class SaleOrderRecommendation(models.Model):
@@ -155,4 +201,26 @@ class SaleOrderRecommendation(models.Model):
             """
             rec.order_id.message_post(body=message, message_type='notification')
         return super().unlink()
+    
+    state = fields.Selection([
+        ('pending', 'Menunggu'),
+        ('scheduled', 'Terjadwal'),
+        ('overdue', 'Terlambat')
+    ], string='Status', compute='_compute_state', store=True)
 
+    source_order_line = fields.Char(string='Sumber Order Line', readonly=True,
+                                  help='Reference to the original order line')
+
+    @api.depends('estimated_date')
+    def _compute_state(self):
+        today = fields.Date.today()
+        for rec in self:
+            if not rec.estimated_date:
+                rec.state = 'pending'
+            elif rec.estimated_date < today:
+                rec.state = 'overdue'
+            else:
+                rec.state = 'scheduled'
+
+    
+    

@@ -168,13 +168,14 @@
     </record>
 
 
-      <record id="view_pitcar_service_booking_kanban" model="ir.ui.view">
-        <field name="name">pitcar.service.booking.kanban</field>
+    <!-- Kanban View dengan Stall -->
+    <record id="view_pitcar_service_booking_kanban_stall" model="ir.ui.view">
+        <field name="name">pitcar.service.booking.kanban.stall</field>
         <field name="model">pitcar.service.booking</field>
         <field name="arch" type="xml">
-            <kanban default_group_by="state" 
+            <kanban default_group_by="stall_position" 
                     class="o_kanban_small_column" 
-                    records_draggable="0">
+                    records_draggable="1">
                 <field name="name"/>
                 <field name="partner_id"/>
                 <field name="partner_car_id"/>
@@ -186,13 +187,21 @@
                 <field name="amount_total"/>
                 <field name="currency_id"/>
                 <field name="state"/>
+                <field name="stall_position"/>
                 <field name="formatted_create_date"/>
+                
+                <progressbar field="state" 
+                    colors='{"draft": "info", "confirmed": "success", "converted": "secondary", "cancelled": "danger"}'/>
                 
                 <templates>
                     <t t-name="kanban-box">
-                        <div t-attf-class="oe_kanban_card oe_kanban_global_click p-0">
-                            <!-- Header with booking reference and status -->
-                            <div class="o_kanban_card_header p-3" style="background-color: #f8f9fa; border-bottom: 1px solid #dee2e6;">
+                        <div t-attf-class="oe_kanban_card oe_kanban_global_click p-0
+                            {{ record.state.raw_value == 'cancelled' ? 'o_kanban_record_muted' : '' }}">
+                            <!-- Header -->
+                            <div class="o_kanban_card_header p-3" 
+                                t-attf-style="background-color: {{ record.state.raw_value == 'cancelled' ? '#f8f9fa' : 
+                                    (record.state.raw_value == 'converted' ? '#e9ecef' : '#fff') }}; 
+                                    border-bottom: 1px solid #dee2e6;">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <strong class="h5 mb-0"><field name="name"/></strong>
                                     <span t-attf-class="badge badge-pill px-3 py-2 {{ 
@@ -205,73 +214,55 @@
                                 </div>
                             </div>
                             
-                            <!-- Customer and Car Info -->
+                            <!-- Body -->
                             <div class="p-3">
-                                <div class="d-flex align-items-center mb-3 pb-2" style="border-bottom: 1px solid #eee;">
-                                    <div class="mr-2">
-                                        <span class="fa fa-user-circle-o fa-lg text-primary"/>
-                                    </div>
-                                    <div>
-                                        <div class="font-weight-bold text-primary">Customer</div>
-                                        <div><field name="partner_id"/></div>
-                                    </div>
+                                <!-- Customer Info -->
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="fa fa-user-circle-o me-2 text-muted"></i>
+                                    <field name="partner_id"/>
                                 </div>
-
-                                <div class="d-flex align-items-center mb-3 pb-2" style="border-bottom: 1px solid #eee;">
-                                    <div class="mr-2">
-                                        <span class="fa fa-car fa-lg text-success"/>
-                                    </div>
+                                
+                                <!-- Car Info -->
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="fa fa-car me-2 text-muted"></i>
+                                    <field name="partner_car_id"/>
+                                </div>
+                                
+                                <!-- Service Type -->
+                                <div class="d-flex align-items-center mb-2">
+                                    <i class="fa fa-wrench me-2 text-muted"></i>
                                     <div>
-                                        <div class="font-weight-bold text-success">Vehicle</div>
-                                        <div><field name="partner_car_id"/></div>
+                                        <field name="service_category"/> - 
+                                        <field name="service_subcategory"/>
                                     </div>
                                 </div>
                                 
-                                <!-- Service Details -->
-                                <div class="d-flex align-items-center mb-3 pb-2" style="border-bottom: 1px solid #eee;">
-                                    <div class="mr-2">
-                                        <span class="fa fa-wrench fa-lg text-warning"/>
-                                    </div>
+                                <!-- Time Info -->
+                                <div class="d-flex justify-content-between align-items-center mb-2">
                                     <div>
-                                        <div class="font-weight-bold text-warning">Service Type</div>
-                                        <div>
-                                            <field name="service_category"/> - 
-                                            <field name="service_subcategory"/>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Schedule Info -->
-                                <div class="d-flex align-items-center mb-3">
-                                    <div class="mr-3">
-                                        <span class="fa fa-calendar fa-lg text-info mr-2"/>
+                                        <i class="fa fa-calendar me-2 text-muted"></i>
                                         <field name="booking_date"/>
                                     </div>
                                     <div>
-                                        <span class="fa fa-clock-o fa-lg text-info mr-2"/>
+                                        <i class="fa fa-clock-o me-2 text-muted"></i>
                                         <field name="formatted_time"/>
                                     </div>
                                 </div>
-
+                                
                                 <!-- Service Advisor -->
-                                <div class="mb-3">
-                                    <div class="font-weight-bold mb-2">
-                                        <span class="fa fa-user-md mr-2"/>Service Advisor
-                                    </div>
+                                <div class="mt-2">
                                     <field name="service_advisor_id" widget="many2many_tags"/>
                                 </div>
                             </div>
                             
-                            <!-- Footer with Amount and Created Date -->
-                            <div class="p-3" style="background-color: #f8f9fa; border-top: 1px solid #dee2e6;">
+                            <!-- Footer -->
+                            <div class="p-3 bg-light border-top">
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <small class="text-muted">
-                                        <i class="fa fa-clock-o"/> Created: <field name="formatted_create_date"/>
-                                    </small>
-                                    <div class="font-weight-bold">
+                                    <small class="text-muted">Created: <field name="formatted_create_date"/></small>
+                                    <strong>
                                         <field name="amount_total" widget="monetary"/>
                                         <field name="currency_id" invisible="1"/>
-                                    </div>
+                                    </strong>
                                 </div>
                             </div>
                         </div>
@@ -322,6 +313,13 @@
                     <filter string="Booking Date" name="booking_date" context="{'group_by':'booking_date'}"/>
                     <filter string="Customer" name="customer" context="{'group_by':'partner_id'}"/>
                     <filter string="Service Category" name="category" context="{'group_by':'service_category'}"/>
+                    <filter name="status" position="after">
+                    <filter string="Stall" name="group_stall" context="{'group_by': 'stall_position'}"/>
+                    </filter>
+                    <filter name="draft" position="before">
+                        <filter string="Unassigned Stall" name="unassigned_stall" 
+                                domain="[('stall_position', '=', 'unassigned')]"/>
+                    </filter>
                 </group>
             </search>
         </field>
@@ -337,6 +335,14 @@
             'search_default_group_booking_date': 1,
             'group_by': 'booking_date'
         }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Belum ada booking di stall
+            </p>
+            <p>
+                Drag and drop booking ke stall yang tersedia
+            </p>
+        </field>
     </record>
 
     <!-- Update search view untuk mendukung grouping -->
@@ -361,6 +367,17 @@
                     <filter string="Customer" name="customer" context="{'group_by': 'partner_id'}"/>
                 </group>
             </search>
+        </field>
+    </record>
+
+     <record id="view_service_booking_form_inherit" model="ir.ui.view">
+        <field name="name">service.booking.form.inherit.stall</field>
+        <field name="model">pitcar.service.booking</field>
+        <field name="inherit_id" ref="view_pitcar_service_booking_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='service_advisor_id']" position="after">
+                <field name="stall_position"/>
+            </xpath>
         </field>
     </record>
 

@@ -244,7 +244,7 @@
                                                 <tr>
                                                     <td><span t-field="rec.name"/></td>
                                                     <td class="text-center">
-                                                        <span t-field="rec.estimated_date"/>
+                                                        <span t-field="rec.formatted_estimated_date"/>
                                                     </td>
                                                     <td class="text-end">
                                                         <span t-field="rec.quantity"/>

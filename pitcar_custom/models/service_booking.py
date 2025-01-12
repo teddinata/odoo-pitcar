@@ -66,7 +66,36 @@ class ServiceBooking(models.Model):
         ('oil_change', 'Ganti Oli'),
     ], string="Jenis Servis", required=True, tracking=True)
 
-    booking_date = fields.Date('Booking Date', required=True, tracking=True, index=True)
+    # Convert booking_date to Char field with computed inverse
+    booking_date_display = fields.Char(
+        string='Fix Booking Date',
+        compute='_compute_booking_date_display',
+        inverse='_inverse_booking_date_display',
+        store=True,
+        readonly=True,
+    )
+    booking_date = fields.Date(string='Booking Date', tracking=True)
+
+    @api.depends('booking_date')
+    def _compute_booking_date_display(self):
+        for record in self:
+            if record.booking_date:
+                record.booking_date_display = record.booking_date.strftime('%d/%m/%Y')
+            else:
+                record.booking_date_display = False
+
+    def _inverse_booking_date_display(self):
+        for record in self:
+            if record.booking_date_display:
+                try:
+                    # Parse the date from dd/mm/yyyy format
+                    record.booking_date = datetime.strptime(record.booking_date_display, '%d/%m/%Y').date()
+                except ValueError:
+                    record.booking_date = False
+            else:
+                record.booking_date = False
+
+
     booking_time = fields.Float('Booking Time', required=True, tracking=True)
     formatted_time = fields.Char('Formatted Time', compute='_compute_formatted_time', store=True)
     
@@ -448,7 +477,7 @@ class ServiceBooking(models.Model):
         ('stall5', 'STALL 5'),
         ('stall6', 'STALL 6'),
         ('unassigned', 'Unassigned'),
-    ], string='Stall Position', default='unassigned')
+    ], string='Pilih Stall', default='stall1', required=True, tracking=True)
 
     def write(self, vals):
         """Override write untuk menangani perubahan stall via drag & drop"""

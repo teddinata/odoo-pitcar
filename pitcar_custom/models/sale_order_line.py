@@ -2,6 +2,8 @@
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
+import pytz
+from datetime import datetime
 
 def format_duration(duration_in_hours):
     """
@@ -210,6 +212,30 @@ class SaleOrderRecommendation(models.Model):
 
     source_order_line = fields.Char(string='Sumber Order Line', readonly=True,
                                   help='Reference to the original order line')
+    
+    formatted_estimated_date = fields.Char(
+        'Formatted Estimated Date',
+        compute='_compute_formatted_estimated_date',
+        store=True
+    )
+
+    @api.depends('estimated_date')
+    def _compute_formatted_estimated_date(self):
+        """Compute formatted estimated date in user's timezone"""
+        for record in self:
+            if record.estimated_date:
+                # Convert date to datetime at midnight
+                dt = datetime.combine(record.estimated_date, datetime.min.time())
+                # Localize to UTC first
+                utc = pytz.UTC.localize(dt)
+                # Convert to user timezone
+                user_tz = self.env.user.tz or 'UTC'
+                local_dt = utc.astimezone(pytz.timezone(user_tz))
+                # Format the date
+                record.formatted_estimated_date = local_dt.strftime('%d/%m/%Y')
+            else:
+                record.formatted_estimated_date = False
+
 
     @api.depends('estimated_date')
     def _compute_state(self):

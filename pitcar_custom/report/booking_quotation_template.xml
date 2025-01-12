@@ -27,7 +27,7 @@
                                             <div class="col-5 text-start"><strong>Booking Date</strong></div>
                                             <div class="col-7 text-start">
                                                 <span>:</span>
-                                                <span t-field="doc.booking_date"/>
+                                                <span t-field="doc.booking_date_display"/>
                                             </div>
                                         </div>
 

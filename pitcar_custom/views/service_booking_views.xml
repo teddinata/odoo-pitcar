@@ -8,7 +8,7 @@
                   decoration-success="state == 'confirmed'" 
                   decoration-muted="state in ('converted', 'cancelled')">
                 <field name="name"/>
-                <field name="booking_date"/>
+                <field name="booking_date_display"/>
                 <field name="formatted_time"/>
                 <field name="partner_id"/>
                 <field name="partner_car_id"/>
@@ -68,7 +68,8 @@
                         </group>
                         <group>
                             <field name="formatted_create_date" string="Booking Created"/>
-                            <field name="booking_date"/>
+                            <field name="booking_date_display" attrs="{'invisible': [('booking_date_display', '=', False)]}"/>
+                            <field name="booking_date" widget="date" />
                             <field name="booking_time" widget="float_time"/>
                             <field name="service_category"/>
                             <field name="service_subcategory"/>
@@ -179,7 +180,7 @@
                 <field name="name"/>
                 <field name="partner_id"/>
                 <field name="partner_car_id"/>
-                <field name="booking_date"/>
+                <field name="booking_date_display"/>
                 <field name="formatted_time"/>
                 <field name="service_category"/>
                 <field name="service_subcategory"/>
@@ -241,7 +242,7 @@
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <div>
                                         <i class="fa fa-calendar me-2 text-muted"></i>
-                                        <field name="booking_date"/>
+                                        <field name="booking_date_display"/>
                                     </div>
                                     <div>
                                         <i class="fa fa-clock-o me-2 text-muted"></i>

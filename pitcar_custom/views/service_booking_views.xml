@@ -87,16 +87,16 @@
                                             <field name="quantity"/>
                                             <field name="service_duration" widget="float_time"/>
                                             <field name="price_unit" widget="monetary"/>
+                                            <field name="discount" widget="percentage"/>
                                         </group>
                                         <group>
                                             <field name="tax_ids" widget="many2many_tags"/>
-                                            <field name="discount" groups="base.group_discount_per_so_line"/>
                                             <field name="price_subtotal" widget="monetary"/>
                                             <field name="currency_id" invisible="1"/>
                                         </group>
                                     </group>
                                     <field name="name" widget="section_and_note_text" 
-                                           attrs="{'invisible': [('display_type', '=', False)], 'required': [('display_type', '!=', False)]}"/>
+                                        attrs="{'invisible': [('display_type', '=', False)], 'required': [('display_type', '!=', False)]}"/>
                                 </form>
                                 <tree editable="bottom" string="Services">
                                     <control>
@@ -106,25 +106,24 @@
                                     </control>
                                     <field name="sequence" widget="handle"/>
                                     <field name="display_type" invisible="1"/>
-                                    <!-- Product fields -->
                                     <field name="product_id" 
-                                           attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))],
-                                                  'required': [('display_type', '=', False)]}"/>
+                                        attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))],
+                                                'required': [('display_type', '=', False)]}"/>
                                     <field name="name" widget="section_and_note_text"/>
                                     <field name="quantity" 
-                                           attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))],
-                                                  'required': [('display_type', '=', False)]}"/>
+                                        attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))],
+                                                'required': [('display_type', '=', False)]}"/>
                                     <field name="service_duration" widget="float_time"
-                                           attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
+                                        attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
                                     <field name="price_unit" widget="monetary" 
-                                           attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
-                                    <field name="discount" groups="base.group_discount_per_so_line"
-                                           attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
+                                        attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
+                                    <field name="discount" widget="percentage"
+                                        attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
                                     <field name="tax_ids" widget="many2many_tags" 
-                                           domain="[('type_tax_use','=','sale')]"
-                                           attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
+                                        domain="[('type_tax_use','=','sale')]"
+                                        attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
                                     <field name="price_subtotal" widget="monetary" sum="Total"
-                                           attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
+                                        attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
                                     <field name="currency_id" invisible="1"/>
                                 </tree>
                             </field>

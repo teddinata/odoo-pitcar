@@ -166,56 +166,70 @@ class ServiceBooking(models.Model):
         }
 
     def action_convert_to_sale_order(self):
-      self.ensure_one()
-      if self.state not in ['confirmed', 'arrived']:
-          raise ValidationError(_('Only confirmed or arrived bookings can be converted to sale orders'))
-          
-      if self.sale_order_id:
-          raise ValidationError(_('This booking has already been converted to a sale order'))
+        self.ensure_one()
+        if self.state not in ['confirmed', 'arrived']:
+            raise ValidationError(_('Only confirmed or arrived bookings can be converted to sale orders'))
+            
+        if self.sale_order_id:
+            raise ValidationError(_('This booking has already been converted to a sale order'))
 
-      try:
-          sale_order = self.env['sale.order'].create({
-              'partner_id': self.partner_id.id,
-              'partner_car_id': self.partner_car_id.id,
-              'service_advisor_id': [(6, 0, self.service_advisor_id.ids)],
-              'partner_car_odometer': self.partner_car_odometer,
-              'service_category': self.service_category,
-              'service_subcategory': self.service_subcategory,
-              'is_booking': True,
-              'booking_id': self.id,
-              'origin': self.name,
-          })
+        try:
+            sale_order = self.env['sale.order'].create({
+                'partner_id': self.partner_id.id,
+                'partner_car_id': self.partner_car_id.id,
+                'service_advisor_id': [(6, 0, self.service_advisor_id.ids)],
+                'partner_car_odometer': self.partner_car_odometer,
+                'service_category': self.service_category,
+                'service_subcategory': self.service_subcategory,
+                'is_booking': True,
+                'booking_id': self.id,
+                'origin': self.name,
+            })
 
-          # Convert booking lines dengan harga
-          for line in self.booking_line_ids:
-              self.env['sale.order.line'].create({
-                  'order_id': sale_order.id,
-                  'product_id': line.product_id.id,
-                  'product_uom_qty': line.quantity,
-                  'service_duration': line.service_duration,
-                  'name': line.name,
-                  'price_unit': line.price_unit,
-                  'discount': line.discount,
-                  'tax_id': [(6, 0, line.tax_ids.ids)],
-              })
+            # Convert booking lines dengan harga
+            for line in self.booking_line_ids:
+                if line.display_type:
+                    # Handle section dan note
+                    self.env['sale.order.line'].create({
+                        'order_id': sale_order.id,
+                        'display_type': line.display_type,
+                        'name': line.name,
+                        'sequence': line.sequence,
+                    })
+                    continue
 
-          # Update booking status
-          self.write({
-              'state': 'converted',
-              'sale_order_id': sale_order.id
-          })
+                # Handle product lines
+                line_values = {
+                    'order_id': sale_order.id,
+                    'product_id': line.product_id.id,
+                    'product_uom_qty': line.quantity,
+                    'service_duration': line.service_duration,
+                    'name': line.name,
+                    'price_unit': line.price_unit,
+                    'discount': line.discount,  # Pastikan discount terbawa
+                    'tax_id': [(6, 0, line.tax_ids.ids)],
+                    'sequence': line.sequence,
+                }
+                self.env['sale.order.line'].create(line_values)
 
-          return {
-              'type': 'ir.actions.act_window',
-              'name': 'Sale Order',
-              'res_model': 'sale.order',
-              'res_id': sale_order.id,
-              'view_mode': 'form',
-              'target': 'current',
-          }
+            # Update booking status
+            self.write({
+                'state': 'converted',
+                'sale_order_id': sale_order.id
+            })
 
-      except Exception as e:
-          raise ValidationError(_('Error converting booking to sale order: %s') % str(e))
+            return {
+                'type': 'ir.actions.act_window',
+                'name': 'Sale Order',
+                'res_model': 'sale.order',
+                'res_id': sale_order.id,
+                'view_mode': 'form',
+                'target': 'current',
+            }
+
+        except Exception as e:
+            raise ValidationError(_('Error converting booking to sale order: %s') % str(e))
+
         
     def action_confirm(self):
         """Confirm booking"""
@@ -595,19 +609,25 @@ class ServiceBookingLine(models.Model):
                     'price_tax': 0.0,
                 })
                 continue
-                
-            price = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
+
+            # Hitung price setelah 
+            price = line.price_unit * (1 - line.discount)  # Hapus pembagian dengan 100
+            # Hitung subtotal sebelum pajak
+            subtotal = line.quantity * price
+
+            # Hitung pajak
             taxes = line.tax_ids.compute_all(
-                price,
+                price,  # Gunakan harga per unit yang sudah didiskon
                 line.booking_id.currency_id,
                 line.quantity,
                 product=line.product_id,
                 partner=line.booking_id.partner_id
             )
+
             line.update({
-                'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),
-                'price_total': taxes['total_included'],
                 'price_subtotal': taxes['total_excluded'],
+                'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),
+                'price_total': taxes['total_included']
             })
 
     @api.onchange('product_id')
@@ -619,13 +639,12 @@ class ServiceBookingLine(models.Model):
         values = {
             'name': self.product_id.get_product_multiline_description_sale(),
             'price_unit': self.product_id.list_price,
-            'service_duration': self.product_id.service_duration if self.product_id.type == 'service' else 0.0
-        }
-        
-        if self.product_id.type == 'service':
-            values['tax_ids'] = [(6, 0, self.product_id.taxes_id.filtered(
+            'discount': 0.0,  # Reset discount saat product berubah
+            'service_duration': self.product_id.service_duration if self.product_id.type == 'service' else 0.0,
+            'tax_ids': [(6, 0, self.product_id.taxes_id.filtered(
                 lambda t: t.company_id == self.booking_id.company_id
             ).ids)]
+        }
             
         self.update(values)
 

@@ -46,6 +46,54 @@ class KPIOverview(http.Controller):
           _logger.error(f"Error in get_employees: {str(e)}")
           return {'status': 'error', 'message': str(e)}
       
+  @http.route('/web/v2/kpi/update', type='json', auth='user', methods=['POST'], csrf=False)
+  def update_kpi_value(self, **kw):
+      """Update specific KPI value"""
+      try:
+          required_fields = ['employee_id', 'period_month', 'period_year', 
+                            'kpi_type', 'field_name', 'value']
+          if not all(kw.get(field) for field in required_fields):
+              return {'status': 'error', 'message': 'Missing required fields'}
+
+          employee_id = int(kw['employee_id'])
+          month = int(kw['period_month'])
+          year = int(kw['period_year'])
+          kpi_type = kw['kpi_type']
+          field_name = kw['field_name']  # 'weight', 'target', 'measurement', 'actual'
+          value = kw['value']
+
+          # Find or create KPI detail record
+          kpi_detail = request.env['cs.kpi.detail'].sudo().search([
+              ('employee_id', '=', employee_id),
+              ('period_month', '=', month),
+              ('period_year', '=', year),
+              ('kpi_type', '=', kpi_type)
+          ], limit=1)
+
+          if not kpi_detail:
+              kpi_detail = request.env['cs.kpi.detail'].sudo().create({
+                  'employee_id': employee_id,
+                  'period_month': month,
+                  'period_year': year,
+                  'kpi_type': kpi_type,
+                  field_name: value
+              })
+          else:
+              kpi_detail.write({field_name: value})
+
+          return {
+              'status': 'success',
+              'data': {
+                  'id': kpi_detail.id,
+                  'kpi_type': kpi_type,
+                  field_name: value
+              }
+          }
+
+      except Exception as e:
+          _logger.error(f"Error in update_kpi_value: {str(e)}")
+          return {'status': 'error', 'message': str(e)}
+      
   @http.route('/web/v2/kpi/customer-support', type='json', auth='user', methods=['POST'], csrf=False)
   def get_customer_support_kpi(self, **kw):
     """Get KPI data for Customer Support Department"""
@@ -77,9 +125,31 @@ class KPIOverview(http.Controller):
         # Set period range
         start_date = datetime(year, month, 1)
         end_date = (start_date + relativedelta(months=1)) - timedelta(days=1)
+
+         # Get stored KPI details
+        kpi_details = request.env['cs.kpi.detail'].sudo().search([
+            ('employee_id', '=', employee_id),
+            ('period_month', '=', month),
+            ('period_year', '=', year)
+        ])
+        
+        # Create map of stored values
+        kpi_values = {
+            detail.kpi_type: {
+                'weight': detail.weight,
+                'target': detail.target,
+                'measurement': detail.measurement,
+                'actual': detail.actual,
+                'description': detail.description
+            }
+            for detail in kpi_details
+        }
         
         # Get job position
         job_title = employee.job_id.name
+
+         # Inisialisasi kpi_scores
+        kpi_scores = []
 
         # Handle CS Lead KPI
         if 'Lead Customer Support' in job_title:
@@ -142,89 +212,67 @@ class KPIOverview(http.Controller):
             late_count = sum(1 for att in team_attendances if att.is_late)
 
             kpi_scores = [
-                {
-                    'name': 'Bertanggung Jawab Mengontrol Kinerja Tim',
-                    'weight': 30,
-                    'target': 90,
-                    'achievement': ((32 - total_non_compliant) / 32 * 100) if total_non_compliant <= 32 else 0,
-                    'details': {
-                        'total_orders': len(all_orders),
-                        'non_compliant': total_non_compliant,
-                        'target': 32
-                    }
-                },
-                {
-                    'name': 'Menganalisis dan Menyelesaikan Complain',
-                    'weight': 20,
-                    'target': 90,
-                    'achievement': (resolved_complaints / total_complaints * 100) if total_complaints else 100,
-                    'details': {
-                        'total_complaints': total_complaints,
-                        'resolved': resolved_complaints,
-                        'target_resolution': 562
-                    }
-                },
-                {
-                    'name': 'Meningkatkan Omset Penjualan',
-                    'weight': 20,
-                    'target': 100,
-                    'achievement': (team_revenue / team_target * 100) if team_target else 0,
-                    'details': {
-                        'current_revenue': team_revenue,
-                        'target_revenue': team_target
-                    }
-                },
-                {
-                    'name': 'Memimpin dan Mengembangkan Kualitas Tim',
-                    'weight': 10,
-                    'target': 95,
-                    'achievement': (completed_trainings / training_target * 100) if training_target else 0,
-                    'details': {
-                        'completed_trainings': completed_trainings,
-                        'target_trainings': training_target
-                    }
-                },
-                {
-                    'name': 'Menjalankan Kegiatan Operasional',
-                    'weight': 20,
-                    'target': 90,
-                    'achievement': ((26 - late_count) / 26 * 100) if late_count <= 26 else 0,
-                    'details': {
-                        'total_late': late_count,
-                        'target_attendance': 26
-                    }
-                }
-            ]
-
-            # Calculate total score
-            total_score = sum(
-                kpi['achievement'] * (kpi['weight']/100)
-                for kpi in kpi_scores
-            )
-
-            return {
-                'status': 'success',
-                'data': {
-                    'employee': {
-                        'id': employee.id,
-                        'name': employee.name,
-                        'position': 'CS Lead',
-                        'department': employee.department_id.name
-                    },
-                    'period': {
-                        'month': month,
-                        'year': year
-                    },
-                    'kpi_scores': kpi_scores,
-                    'total_score': total_score,
-                    'team_overview': {
-                        'total_members': len(team_members),
-                        'total_orders': len(all_orders),
-                        'total_revenue': team_revenue,
-                        'complaint_rate': (total_complaints / len(all_orders) * 100) if all_orders else 0
-                    }
-                }
+            {
+                'name': 'Bertanggung Jawab Mengontrol Kinerja Tim',
+                'type': 'team_control',
+                'weight': kpi_values.get('team_control', {}).get('weight', 30),
+                'target': kpi_values.get('team_control', {}).get('target', 90),
+                'measurement': kpi_values.get('team_control', {}).get('measurement', 
+                    'Dari total temuan SA, terdapat temuan yang tidak sesuai'),
+                'actual': kpi_values.get('team_control', {}).get('actual', 0),
+                'description': kpi_values.get('team_control', {}).get('description', 
+                    'Mengontrol kinerja tim sesuai dengan SOP'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Penyelesaian Komplain',
+                'type': 'complaint_handling',
+                'weight': kpi_values.get('complaint_handling', {}).get('weight', 20),
+                'target': kpi_values.get('complaint_handling', {}).get('target', 90),
+                'measurement': kpi_values.get('complaint_handling', {}).get('measurement',
+                    'Jumlah komplain yang diselesaikan'),
+                'actual': kpi_values.get('complaint_handling', {}).get('actual', 0),
+                'description': kpi_values.get('complaint_handling', {}).get('description',
+                    'Menyelesaikan komplain customer dengan baik'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Meningkatkan Omset Penjualan',
+                'type': 'revenue_target',
+                'weight': kpi_values.get('revenue_target', {}).get('weight', 20),
+                'target': kpi_values.get('revenue_target', {}).get('target', 100),
+                'measurement': kpi_values.get('revenue_target', {}).get('measurement',
+                    'Target revenue tim yang tercapai'),
+                'actual': kpi_values.get('revenue_target', {}).get('actual', 0),
+                'description': kpi_values.get('revenue_target', {}).get('description',
+                    'Pencapaian target revenue tim'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Memimpin dan Mengembangkan Kualitas Tim',
+                'type': 'team_development',
+                'weight': kpi_values.get('team_development', {}).get('weight', 10),
+                'target': kpi_values.get('team_development', {}).get('target', 95),
+                'measurement': kpi_values.get('team_development', {}).get('measurement',
+                    'Jumlah pelatihan tim yang terlaksana'),
+                'actual': kpi_values.get('team_development', {}).get('actual', 0),
+                'description': kpi_values.get('team_development', {}).get('description',
+                    'Pengembangan kualitas tim melalui pelatihan'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Menjalankan Kegiatan Operasional',
+                'type': 'operational',
+                'weight': kpi_values.get('operational', {}).get('weight', 20),
+                'target': kpi_values.get('operational', {}).get('target', 90),
+                'measurement': kpi_values.get('operational', {}).get('measurement',
+                    'Jumlah keterlambatan tim'),
+                'actual': kpi_values.get('operational', {}).get('actual', 0),
+                'description': kpi_values.get('operational', {}).get('description',
+                    'Kedisiplinan dan kepatuhan operasional tim'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
             }
+        ]
             
         # ... lanjutkan dengan logic untuk SA dan CS seperti sebelumnya
         # Handle Service Advisor KPI
@@ -285,91 +333,79 @@ class KPIOverview(http.Controller):
             late_count = sum(1 for att in attendances if att.is_late)
 
             kpi_scores = [
-                {
-                    'name': 'Melayani Kebutuhan Customer Secara Offline',
-                    'weight': 10,
-                    'target': 90,
-                    'achievement': (resolved_complaints / total_complaints * 100) if total_complaints else 100,
-                    'details': {
-                        'total_complaints': total_complaints,
-                        'resolved_complaints': resolved_complaints
-                    }
-                },
-                {
-                    'name': 'Tidak ada kesalahan analisa jasa',
-                    'weight': 15,
-                    'target': 90,
-                    'achievement': ((total_services - incorrect_analysis) / total_services * 100) if total_services else 100,
-                    'details': {
-                        'total_services': total_services,
-                        'incorrect_analysis': incorrect_analysis
-                    }
-                },
-                {
-                    'name': 'Efisiensi Pelayanan Customer',
-                    'weight': 15,
-                    'target': 90,
-                    'achievement': (on_time_services / len(completed_orders) * 100) if completed_orders else 0,
-                    'details': {
-                        'total_services': len(completed_orders),
-                        'on_time_services': on_time_services
-                    }
-                },
-                {
-                    'name': 'Target Revenue',
-                    'weight': 15,
-                    'target': service_advisor.monthly_target,
-                    'achievement': (current_revenue / service_advisor.monthly_target * 100) if service_advisor.monthly_target else 0,
-                    'details': {
-                        'current_revenue': current_revenue,
-                        'target_revenue': service_advisor.monthly_target
-                    }
-                },
-                {
-                    'name': 'SOP Compliance',
-                    'weight': 25,
-                    'target': 90,
-                    'achievement': (passed_sop / total_sop * 100) if total_sop else 100,
-                    'details': {
-                        'total_sop': total_sop,
-                        'passed_sop': passed_sop
-                    }
-                },
-                {
-                    'name': 'Kedisiplinan',
-                    'weight': 20,
-                    'target': 90,
-                    'achievement': ((26 - late_count) / 26 * 100) if late_count <= 26 else 0,
-                    'details': {
-                        'late_count': late_count,
-                        'target_attendance': 26
-                    }
-                }
-            ]
-
-            # Calculate total score
-            total_score = sum(
-                kpi['achievement'] * (kpi['weight']/100)
-                for kpi in kpi_scores
-            )
-
-            return {
-                'status': 'success',
-                'data': {
-                    'employee': {
-                        'id': employee.id,
-                        'name': employee.name,
-                        'position': job_title,
-                        'department': employee.department_id.name
-                    },
-                    'period': {
-                        'month': month,
-                        'year': year
-                    },
-                    'kpi_scores': kpi_scores,
-                    'total_score': total_score
-                }
+            {
+                'name': 'Melayani Kebutuhan Customer Secara Offline',
+                'type': 'customer_service',
+                'weight': kpi_values.get('customer_service', {}).get('weight', 10),
+                'target': kpi_values.get('customer_service', {}).get('target', 90),
+                'measurement': kpi_values.get('customer_service', {}).get('measurement',
+                    'Jumlah komplain yang diselesaikan'),
+                'actual': kpi_values.get('customer_service', {}).get('actual', 0),
+                'description': kpi_values.get('customer_service', {}).get('description',
+                    'Pelayanan customer offline dan penanganan komplain'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Tidak ada kesalahan analisa jasa',
+                'type': 'service_analysis',
+                'weight': kpi_values.get('service_analysis', {}).get('weight', 15),
+                'target': kpi_values.get('service_analysis', {}).get('target', 90),
+                'measurement': kpi_values.get('service_analysis', {}).get('measurement',
+                    'Jumlah kesalahan analisa'),
+                'actual': kpi_values.get('service_analysis', {}).get('actual', 0),
+                'description': kpi_values.get('service_analysis', {}).get('description',
+                    'Ketepatan analisa jasa service'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Efisiensi Pelayanan Customer',
+                'type': 'service_efficiency',
+                'weight': kpi_values.get('service_efficiency', {}).get('weight', 15),
+                'target': kpi_values.get('service_efficiency', {}).get('target', 90),
+                'measurement': kpi_values.get('service_efficiency', {}).get('measurement',
+                    'Jumlah pelayanan tepat waktu'),
+                'actual': kpi_values.get('service_efficiency', {}).get('actual', 0),
+                'description': kpi_values.get('service_efficiency', {}).get('description',
+                    'Kecepatan dan ketepatan pelayanan'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Target Revenue',
+                'type': 'sa_revenue',
+                'weight': kpi_values.get('sa_revenue', {}).get('weight', 15),
+                'target': kpi_values.get('sa_revenue', {}).get('target', 0),
+                'measurement': kpi_values.get('sa_revenue', {}).get('measurement',
+                    'Target revenue individu'),
+                'actual': kpi_values.get('sa_revenue', {}).get('actual', 0),
+                'description': kpi_values.get('sa_revenue', {}).get('description',
+                    'Pencapaian target revenue individu'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'SOP Compliance',
+                'type': 'sop_compliance',
+                'weight': kpi_values.get('sop_compliance', {}).get('weight', 25),
+                'target': kpi_values.get('sop_compliance', {}).get('target', 90),
+                'measurement': kpi_values.get('sop_compliance', {}).get('measurement',
+                    'Jumlah kepatuhan SOP'),
+                'actual': kpi_values.get('sop_compliance', {}).get('actual', 0),
+                'description': kpi_values.get('sop_compliance', {}).get('description',
+                    'Kepatuhan terhadap SOP'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Kedisiplinan',
+                'type': 'discipline',
+                'weight': kpi_values.get('discipline', {}).get('weight', 20),
+                'target': kpi_values.get('discipline', {}).get('target', 90),
+                'measurement': kpi_values.get('discipline', {}).get('measurement',
+                    'Jumlah keterlambatan'),
+                'actual': kpi_values.get('discipline', {}).get('actual', 0),
+                'description': kpi_values.get('discipline', {}).get('description',
+                    'Kedisiplinan kehadiran'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
             }
+        ]
 
         # Handle Customer Service KPI
         elif 'Customer Service' in job_title:
@@ -425,68 +461,94 @@ class KPIOverview(http.Controller):
             late_count = sum(1 for att in attendances if att.is_late)
 
             kpi_scores = [
-                {
-                    'name': 'Response Time Online Customer',
-                    'weight': 20,
-                    'target': 100,
-                    'achievement': (on_time_responses / total_responses * 100) if total_responses else 100,
-                    'details': {
-                        'total_responses': total_responses,
-                        'on_time_responses': on_time_responses
-                    }
-                },
-                {
-                    'name': 'Leads Report',
-                    'weight': 15,
-                    'target': 100,
-                    'achievement': (converted_leads / total_leads * 100) if total_leads else 0,
-                    'details': {
-                        'total_leads': total_leads,
-                        'converted_leads': converted_leads
-                    }
-                },
-                {
-                    'name': 'Customer Contact Management',
-                    'weight': 10,
-                    'target': 100,
-                    'achievement': (total_broadcasts / target_broadcasts * 100) if target_broadcasts else 0,
-                    'details': {
-                        'total_broadcasts': total_broadcasts,
-                        'target_broadcasts': target_broadcasts
-                    }
-                },
-                {
-                    'name': 'Service Reminder',
-                    'weight': 10,
-                    'target': 100,
-                    'achievement': (completed_reminders / total_reminders * 100) if total_reminders else 100,
-                    'details': {
-                        'total_reminders': total_reminders,
-                        'completed_reminders': completed_reminders
-                    }
-                },
-                {
-                    'name': 'Documentation',
-                    'weight': 25,
-                    'target': 100,
-                    'achievement': 100 if reports_complete else 0,
-                    'details': {
-                        'reports_complete': reports_complete
-                    }
-                },
-                {
-                    'name': 'Kedisiplinan',
-                    'weight': 20,
-                    'target': 90,
-                    'achievement': ((26 - late_count) / 26 * 100) if late_count <= 26 else 0,
-                    'details': {
-                        'late_count': late_count,
-                        'target_attendance': 26
-                    }
-                }
-            ]
+            {
+                'name': 'Response Time Online Customer',
+                'type': 'online_response',
+                'weight': kpi_values.get('online_response', {}).get('weight', 20),
+                'target': kpi_values.get('online_response', {}).get('target', 100),
+                'measurement': kpi_values.get('online_response', {}).get('measurement',
+                    'Jumlah respon tepat waktu'),
+                'actual': kpi_values.get('online_response', {}).get('actual', 0),
+                'description': kpi_values.get('online_response', {}).get('description',
+                    'Kecepatan respon customer online'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Leads Report',
+                'type': 'leads_report',
+                'weight': kpi_values.get('leads_report', {}).get('weight', 15),
+                'target': kpi_values.get('leads_report', {}).get('target', 100),
+                'measurement': kpi_values.get('leads_report', {}).get('measurement',
+                    'Jumlah leads yang dikonversi'),
+                'actual': kpi_values.get('leads_report', {}).get('actual', 0),
+                'description': kpi_values.get('leads_report', {}).get('description',
+                    'Konversi dan pelaporan leads'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Customer Contact Management',
+                'type': 'customer_contact',
+                'weight': kpi_values.get('customer_contact', {}).get('weight', 10),
+                'target': kpi_values.get('customer_contact', {}).get('target', 100),
+                'measurement': kpi_values.get('customer_contact', {}).get('measurement',
+                    'Jumlah broadcast yang dilakukan'),
+                'actual': kpi_values.get('customer_contact', {}).get('actual', 0),
+                'description': kpi_values.get('customer_contact', {}).get('description',
+                    'Pengelolaan komunikasi customer'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Service Reminder',
+                'type': 'service_reminder',
+                'weight': kpi_values.get('service_reminder', {}).get('weight', 10),
+                'target': kpi_values.get('service_reminder', {}).get('target', 100),
+                'measurement': kpi_values.get('service_reminder', {}).get('measurement',
+                    'Jumlah reminder yang selesai'),
+                'actual': kpi_values.get('service_reminder', {}).get('actual', 0),
+                'description': kpi_values.get('service_reminder', {}).get('description',
+                    'Pelaksanaan reminder service'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Documentation',
+                'type': 'documentation',
+                'weight': kpi_values.get('documentation', {}).get('weight', 25),
+                'target': kpi_values.get('documentation', {}).get('target', 100),
+                'measurement': kpi_values.get('documentation', {}).get('measurement',
+                    'Kelengkapan dokumentasi'),
+                'actual': kpi_values.get('documentation', {}).get('actual', 0),
+                'description': kpi_values.get('documentation', {}).get('description',
+                    'Kelengkapan dokumentasi dan laporan'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            },
+            {
+                'name': 'Kedisiplinan',
+                'type': 'discipline',
+                'weight': kpi_values.get('discipline', {}).get('weight', 20),
+                'target': kpi_values.get('discipline', {}).get('target', 90),
+                'measurement': kpi_values.get('discipline', {}).get('measurement',
+                    'Jumlah keterlambatan'),
+                'actual': kpi_values.get('discipline', {}).get('actual', 0),
+                'description': kpi_values.get('discipline', {}).get('description',
+                    'Kedisiplinan kehadiran'),
+                'editable': ['weight', 'target', 'measurement', 'actual']
+            }
+        ]
 
-         # Calculate total score
+        else:
+          return {'status': 'error', 'message': f'Invalid position: {job_title}'}
+
+        # Hanya lanjutkan kalkulasi jika ada KPI scores
+        if not kpi_scores:
+            return {'status': 'error', 'message': 'No KPI configuration found for this position'}
+
+        # Calculate achievement and total score
+        for kpi in kpi_scores:
+            if kpi['actual'] and kpi['target']:
+                kpi['achievement'] = (kpi['actual'] / kpi['target']) * 100
+            else:
+                kpi['achievement'] = 0
+
         total_score = sum(
             kpi['achievement'] * (kpi['weight']/100)
             for kpi in kpi_scores
@@ -509,9 +571,6 @@ class KPIOverview(http.Controller):
                 'total_score': total_score
             }
         }
-    
-    # Jika tidak masuk kondisi manapun        
-        # return {'status': 'error', 'message': 'Invalid employee position'}
 
     except Exception as e:
         _logger.error(f"Error in get_customer_support_kpi: {str(e)}")

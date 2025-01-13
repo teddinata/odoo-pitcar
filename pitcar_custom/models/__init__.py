@@ -28,3 +28,4 @@ from . import sop
 from . import hr_employee_public
 from . import service_booking
 from . import hr_working_days_config
+from . import kpi_detail

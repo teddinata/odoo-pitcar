@@ -828,54 +828,57 @@ class KPIOverview(http.Controller):
 
             # Handle Lead Mechanic KPI
             elif 'Team Leader' in job_title:
+                # Get team members
                 team_members = request.env['pitcar.mechanic.new'].sudo().search([
                     ('leader_id', '=', mechanic.id)
                 ])
+                
+                # Get all orders for the team including leader's orders
+                team_orders = request.env['sale.order'].sudo().search([
+                    *base_domain,
+                    ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])  # Include leader
+                ])
 
+                # Unit handling efficiency
+                total_units = len(team_orders)
+                
+                # Service quality
+                satisfied_customers = len(team_orders.filtered(lambda o: o.customer_rating not in ['1', '2']))
+                
+                # Customer complaints
+                complaints = len(team_orders.filtered(lambda o: o.customer_rating in ['1', '2']))
+                resolved_complaints = len(team_orders.filtered(lambda o: 
+                    o.customer_rating in ['1', '2'] and o.complaint_status == 'solved'
+                ))
+
+                # Team productivity
+                team_revenue = sum(team_orders.mapped('amount_total'))
+                team_target = (len(team_members) + 1) * 64000000  # +1 untuk leader
+                
+                # SOP compliance
+                sop_violations = len(team_orders.filtered(lambda o: 
+                    o.sop_sampling_ids.filtered(lambda s: s.result == 'fail')
+                ))
+                
                 # Attendance metrics for team
                 attendance_domain = [
                     ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
                     ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
                     ('employee_id', 'in', team_members.mapped('employee_id').ids + [employee.id])
                 ]
-                
-                team_orders = request.env['sale.order'].sudo().search([
-                    *base_domain,
-                    ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])
-                ])
+                team_attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+                late_count = sum(1 for att in team_attendances if att.is_late)
 
-                # Calculate team metrics
-                total_units = len(team_orders)
-                team_revenue = sum(team_orders.mapped('amount_total'))
-                satisfied_customers = len(team_orders.filtered(lambda o: o.customer_rating not in ['1', '2']))
-                complaints = len(team_orders.filtered(lambda o: o.customer_rating in ['1', '2']))
-                resolved_complaints = len(team_orders.filtered(lambda o: 
-                    o.customer_rating in ['1', '2'] and o.complaint_status == 'solved'
-                ))
-                sop_violations = len(team_orders.filtered(lambda o: 
-                    o.sop_sampling_ids.filtered(lambda s: s.result == 'fail')
-                ))
-
-                # Get team attendance
-                team_attendances = request.env['hr.attendance'].sudo().search([
-                    *attendance_domain,
-                    ('employee_id', 'in', team_members.mapped('employee_id').ids + [employee.id])
-                ])
-                team_late_count = sum(1 for att in team_attendances if att.is_late)
-                
-
-                # Calculate KPI scores for leader
                 kpi_scores = []
                 for kpi in leader_kpi_template:
                     actual = 0
                     if kpi['type'] == 'work_distribution':
                         target_units = 145  # Sesuai target yang ditetapkan
                         actual = (total_units / target_units * 100) if target_units else 0
-                        kpi['measurement'] = f"Berhasil handle {total_units} unit dari target {target_units} unit"
+                        kpi['measurement'] = f"Berhasil handle {total_units} unit dari target {target_units} unit/bulan"
                         
                     elif kpi['type'] == 'service_quality':
                         actual = (satisfied_customers / total_units * 100) if total_units else 0
-                        complaints = len(orders.filtered(lambda o: o.customer_rating in ['1', '2']))
                         kpi['measurement'] = f"Total order: {total_units}, Customer puas: {satisfied_customers}, Komplain: {complaints}"
                         
                     elif kpi['type'] == 'complaint_handling':
@@ -883,29 +886,26 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Total komplain: {complaints}, Berhasil diselesaikan: {resolved_complaints}"
                         
                     elif kpi['type'] == 'team_productivity':
-                        team_target = (len(team_members) + 1) * 64000000
                         if team_target == 0:
                             actual = 0
                             achievement = 0
                         else:
-                            actual = (team_revenue / team_target * 100)  # Actual jadi persentase
-                            achievement = actual  # Achievement sama dengan actual
-
+                            actual = (team_revenue / team_target * 100)  # Actual sebagai persentase
+                            achievement = actual
+                        
                         formatted_revenue = "{:,.0f}".format(team_revenue)
                         formatted_target = "{:,.0f}".format(team_target)
                         kpi['measurement'] = f"Revenue tim: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
-
                         
                     elif kpi['type'] == 'sop_compliance':
                         actual = ((total_units - sop_violations) / total_units * 100) if total_units else 0
                         kpi['measurement'] = f"Total order: {total_units}, Sesuai SOP: {total_units - sop_violations}, Pelanggaran: {sop_violations}"
                         
                     elif kpi['type'] == 'team_discipline':
-                        actual = ((len(team_attendances) - team_late_count) / len(team_attendances) * 100) if team_attendances else 0
-                        kpi['measurement'] = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {team_late_count}, Tepat waktu: {len(team_attendances) - team_late_count}"
+                        actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
+                        kpi['measurement'] = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
 
                     achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    
                     
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -916,7 +916,8 @@ class KPIOverview(http.Controller):
                         'measurement': kpi['measurement'],
                         'actual': actual,
                         'achievement': achievement,
-                        'weighted_score': achievement * (kpi['weight'] / 100)
+                        'weighted_score': achievement * (kpi['weight'] / 100),
+                        'editable': ['weight', 'target']
                     })
 
 

@@ -442,12 +442,12 @@ class KPIOverview(http.Controller):
                             actual = 0
                             achievement = 0
                         else:
-                            actual = team_revenue
-                            achievement = (team_revenue / team_target * 100)
+                            actual = (team_revenue / team_target * 100)  # Konversi ke persentase
+                            achievement = actual  # Achievement sama dengan actual karena sudah persentase
                         
                         formatted_revenue = "{:,.0f}".format(team_revenue)
                         formatted_target = "{:,.0f}".format(team_target)
-                        kpi['measurement'] = f"Revenue tim: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
+                        kpi['measurement'] = f"Revenue tim: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan, {len(team_members)} anggota tim"
 
                     else:
                         actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
@@ -464,7 +464,7 @@ class KPIOverview(http.Controller):
                         'weight': kpi['weight'],
                         'target': kpi['target'],
                         'measurement': kpi['measurement'],
-                        'actual': actual,
+                        'actual': actual,  # Sekarang menampilkan persentase
                         'achievement': achievement,
                         'weighted_score': achievement * (kpi['weight'] / 100),
                         'editable': ['weight', 'target']
@@ -853,7 +853,7 @@ class KPIOverview(http.Controller):
 
                 # Team productivity
                 team_revenue = sum(team_orders.mapped('amount_total'))
-                team_target = (len(team_members) + 1) * 64000000  # +1 untuk leader
+                team_target = (len(team_members)) * 64000000  # +1 untuk leader
                 
                 # SOP compliance
                 sop_violations = len(team_orders.filtered(lambda o: 

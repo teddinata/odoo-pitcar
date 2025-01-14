@@ -508,8 +508,8 @@ class KPIOverview(http.Controller):
                             actual = 0
                             achievement = 0
                         else:
-                            actual = current_revenue
-                            achievement = (current_revenue / monthly_target * 100)
+                            actual = (current_revenue / monthly_target * 100)  # Actual jadi persentase
+                            achievement = actual  # Achievement sama dengan actual
                         
                         formatted_revenue = "{:,.0f}".format(current_revenue)
                         formatted_target = "{:,.0f}".format(monthly_target)
@@ -791,12 +791,14 @@ class KPIOverview(http.Controller):
                             actual = 0
                             achievement = 0
                         else:
-                            actual = total_revenue
-                            achievement = (total_revenue / monthly_target * 100)
+                            revenue = total_revenue
+                            actual = (revenue / monthly_target * 100)  # Actual jadi persentase
+                            achievement = actual  # Achievement sama dengan actual
                         
                         formatted_revenue = "{:,.0f}".format(total_revenue)
                         formatted_target = "{:,.0f}".format(monthly_target)
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
+
 
 
                         
@@ -881,19 +883,18 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Total komplain: {complaints}, Berhasil diselesaikan: {resolved_complaints}"
                         
                     elif kpi['type'] == 'team_productivity':
-                        # Hitung target tim (termasuk leader)
-                        team_target = (len(team_members) + 1) * 64000000  # +1 untuk leader
-                        
+                        team_target = (len(team_members) + 1) * 64000000
                         if team_target == 0:
                             actual = 0
                             achievement = 0
                         else:
-                            actual = team_revenue
-                            achievement = (team_revenue / team_target * 100)
-                        
+                            actual = (team_revenue / team_target * 100)  # Actual jadi persentase
+                            achievement = actual  # Achievement sama dengan actual
+
                         formatted_revenue = "{:,.0f}".format(team_revenue)
                         formatted_target = "{:,.0f}".format(team_target)
-                        kpi['measurement'] = f"Revenue tim: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan, {len(team_members) + 1} anggota tim"
+                        kpi['measurement'] = f"Revenue tim: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
+
                         
                     elif kpi['type'] == 'sop_compliance':
                         actual = ((total_units - sop_violations) / total_units * 100) if total_units else 0

@@ -28,6 +28,15 @@ class KPIDetail(models.Model):
         ('customer_contact', 'Manajemen Kontak Customer'),
         ('service_reminder', 'Reminder Service'),
         ('documentation', 'Dokumentasi'),
+        # Add Mechanic KPI types
+        ('service_quality', 'Service Quality'),
+        ('productivity', 'Productivity'),
+        ('sop_compliance', 'SOP Compliance'),
+        ('discipline', 'Discipline'),
+        ('work_distribution', 'Work Distribution'),
+        ('complaint_handling', 'Complaint Handling'),
+        ('team_productivity', 'Team Productivity'),
+        ('team_discipline', 'Team Discipline')
     ], string='KPI Type')
     
     weight = fields.Float('Bobot')

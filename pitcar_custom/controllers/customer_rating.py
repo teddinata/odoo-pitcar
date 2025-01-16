@@ -1384,8 +1384,7 @@ Mobil sudah tampil hebat,
 Yuk beri rating sekarang ya! 
 
 Hai, *{order.partner_id.name}*!
-
-Saya dari Pitcar. Terima kasih telah mempercayakan perbaikan mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} kepada Pitcar Body Repair.
+Saya Valen dari Pitcar. Terima kasih telah mempercayakan perbaikan mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} kepada Pitcar Body Repair.
 
 Yuk, berikan penilaian Anda melalui link berikut:
 {feedback_url}
@@ -1405,20 +1404,20 @@ Tim Pitcar Body Repair"""
 Ganti oli mesin rutin selalu,
 Ban mobil dirotasi dengan teliti.
 Servis di Pitcar sudah berlalu,
-Bagaimana rasanya, yuk nilai di sini! ⭐
+Bagaimana rasanya, yuk nilai di sini! 
 
-Hai, *{order.partner_id.name}* 👋!
+Hai, *{order.partner_id.name}*!
 Saya {sa_names} dari Pitcar. Bagaimana performa mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah servis? 
 
 Mohon luangkan waktu sebentar untuk memberikan penilaian melalui link berikut ya:
 {feedback_url}
 
-📝 *Info Garansi*
-✅ Servis: 2 minggu
-✅ Sparepart: 3 bulan*
+*Info Garansi*
+- Servis: 2 minggu
+- Sparepart: 3 bulan*
    *kecuali part dari luar
    
-Terima kasih atas kepercayaan Anda kepada Pitcar! 🙏
+Terima kasih atas kepercayaan Anda kepada Pitcar! 
 
 Best regards,
 Tim Pitcar"""

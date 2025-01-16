@@ -1346,7 +1346,16 @@ class CustomerRatingAPI(Controller):
         """Get WhatsApp message template based on database"""
         base_url = "https://pitscore.pitcar.co.id"
         encoded_id = self._encode_id(order.id)
-        feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
+        
+        # Standardize database name handling
+        db_mapping = {
+            'pitcar1': 'Pitcar1',
+            'pitcar.bodyrepair': 'pitcar.bodyrepair'
+        }
+        
+        # Map standardized database name for URL
+        url_db = db_mapping.get(database.lower(), database)
+        feedback_url = f"{base_url}/feedback/{encoded_id}?db={url_db}"
         
         # Get SA names
         sa_names = ""
@@ -1356,7 +1365,7 @@ class CustomerRatingAPI(Controller):
                 _logger.warning(f"No SA names found for order {order.id}")
 
         templates = {
-            'Pitcar1': f"""Ganti oli mesin rutin selalu,
+            'pitcar1': f"""Ganti oli mesin rutin selalu,
 Ban mobil dirotasi dengan teliti.
 Servis di Pitcar sudah berlalu,
 Bagaimana rasanya, yuk nilai di sini! 
@@ -1370,15 +1379,14 @@ Mohon luangkan waktu sebentar untuk memberikan penilaian melalui link berikut ya
 *Info Garansi*
 - Servis: 2 minggu
 - Sparepart: 3 bulan*
-   *kecuali part dari luar
-   
+*kecuali part dari luar
+
 Terima kasih atas kepercayaan Anda kepada Pitcar! 
 
 Best regards,
 Tim Pitcar""",
 
-        'pitcar.bodyrepair': f"""
-Poles body sampai mengkilat,
+            'pitcar.bodyrepair': f"""Poles body sampai mengkilat,
 Dempul halus tanpa celah.
 Mobil sudah tampil hebat,
 Yuk beri rating sekarang ya! 
@@ -1397,9 +1405,9 @@ Terima kasih atas kepercayaan Anda kepada Pitcar!
 
 Best regards,
 Tim Pitcar Body Repair"""
-    }
+        }
 
-    # Default template jika database tidak dikenali
+        # Default template jika database tidak dikenali
         default_template = f"""
 Ganti oli mesin rutin selalu,
 Ban mobil dirotasi dengan teliti.
@@ -1422,7 +1430,15 @@ Terima kasih atas kepercayaan Anda kepada Pitcar!
 Best regards,
 Tim Pitcar"""
 
-        return templates.get(database.lower(), default_template)
+        # Get template using lowercase key
+        template = templates.get(database.lower(), default_template)
+        
+        # Log untuk debugging
+        _logger.info(f"Database name: {database}")
+        _logger.info(f"Mapped DB name: {url_db}")
+        _logger.info(f"Generated URL: {feedback_url}")
+        
+        return template
 
     def _generate_whatsapp_link(self, order):
         """Generate WhatsApp link with dynamic message based on database"""
@@ -1440,7 +1456,10 @@ Tim Pitcar"""
                 clean_phone = '62' + clean_phone
 
             # Get current database name
-            database = request.env.cr.dbname
+            database = request.env.cr.dbname.strip()  # Remove any whitespace
+            
+            # Log untuk debugging
+            _logger.info(f"Current database: {database}")
 
             # Get message template based on database
             message = self._get_whatsapp_template(database, order)

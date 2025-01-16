@@ -1245,8 +1245,116 @@ class CustomerRatingAPI(Controller):
             _logger.error(f"Decoding error: {str(e)}")
             return None
 
+#     def _generate_whatsapp_link(self, order):
+#         """Helper function to generate WhatsApp link"""
+#         try:
+#             # Check for either mobile or phone number
+#             phone = order.partner_id.mobile or order.partner_id.phone
+#             if not phone:
+#                 return None
+                
+#             # Clean phone number
+#             clean_phone = ''.join(filter(str.isdigit, phone))
+#             if clean_phone.startswith('0'):
+#                 clean_phone = '62' + clean_phone[1:]
+#             elif not clean_phone.startswith('62'):
+#                 clean_phone = '62' + clean_phone
+
+#             # Generate encoded order ID
+#             encoded_id = self._encode_id(order.id)
+#             if not encoded_id:
+#                 return None
+
+#             # Get current database
+#             database = request.env.cr.dbname
+
+#             # Generate message with encoded ID
+#             base_url = "https://pitscore.pitcar.co.id"
+#             feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
+
+#             # Get SA names
+#             sa_names = ""
+#             if order.service_advisor_id:
+#                 sa_names = ", ".join([sa.user_id.name for sa in order.service_advisor_id if sa.user_id])
+#                 if not sa_names:
+#                     _logger.warning(f"No SA names found for order {order.id}")
+            
+#             message = f"""Halo, *{order.partner_id.name}*.
+# Saya {sa_names} dari Pitcar,
+
+# Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar.
+
+# Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
+# {feedback_url}
+
+# Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
+# - Garansi servis: 2 minggu
+# - Garansi sparepart: 3 bulan (kecuali part dari luar ya)
+
+# Terima kasih atas kepercayaan Anda kepada Pitcar!"""
+
+#             return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
+            
+#         except Exception as e:
+#             _logger.error(f"Error generating WhatsApp link: {str(e)}")
+#             return None
+
+    def _get_whatsapp_template(self, database, order):
+        """Get WhatsApp message template based on database"""
+        base_url = "https://pitscore.pitcar.co.id"
+        encoded_id = self._encode_id(order.id)
+        feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
+        
+        # Get SA names
+        sa_names = ""
+        if order.service_advisor_id:
+            sa_names = ", ".join([sa.user_id.name for sa in order.service_advisor_id if sa.user_id])
+            if not sa_names:
+                _logger.warning(f"No SA names found for order {order.id}")
+
+        templates = {
+            'Pitcar1': f"""Halo, *{order.partner_id.name}*.
+    Saya {sa_names} dari Pitcar,
+
+    Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar.
+
+    Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
+    {feedback_url}
+
+    Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
+    - Garansi servis: 2 minggu
+    - Garansi sparepart: 3 bulan (kecuali part dari luar ya)
+
+    Terima kasih atas kepercayaan Anda kepada Pitcar!""",
+
+            'pitcar.bodyrepair': f"""Halo, *{order.partner_id.name}*.
+    Saya dari Pitcar,
+
+    Terima kasih telah mempercayakan perbaikan mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar.
+
+    Bagaimana kondisi kendaraan Anda setelah diperbaiki? Mohon berikan penilaian dan masukan melalui link berikut ya:
+    {feedback_url}
+
+    Oh iya, sekalian Mincar mau mengingatkan untuk garansi cat 3 bulan.
+    Silahkan bisa langsung menghubungi kami apabila ada keluhan di kemudian hari.
+
+    Terima kasih atas kepercayaan Anda kepada Pitcar!"""
+        }
+
+        # Default template jika database tidak dikenali
+        default_template = f"""Halo, *{order.partner_id.name}*,
+
+    Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di bengkel kami.
+
+    Mohon berikan penilaian Anda melalui link berikut:
+    {feedback_url}
+
+    Terima kasih."""
+
+        return templates.get(database.lower(), default_template)
+
     def _generate_whatsapp_link(self, order):
-        """Helper function to generate WhatsApp link"""
+        """Generate WhatsApp link with dynamic message based on database"""
         try:
             # Check for either mobile or phone number
             phone = order.partner_id.mobile or order.partner_id.phone
@@ -1260,44 +1368,18 @@ class CustomerRatingAPI(Controller):
             elif not clean_phone.startswith('62'):
                 clean_phone = '62' + clean_phone
 
-            # Generate encoded order ID
-            encoded_id = self._encode_id(order.id)
-            if not encoded_id:
-                return None
-
-            # Get current database
+            # Get current database name
             database = request.env.cr.dbname
 
-            # Generate message with encoded ID
-            base_url = "https://pitscore.pitcar.co.id"
-            feedback_url = f"{base_url}/feedback/{encoded_id}?db={database}"
-
-            # Get SA names
-            sa_names = ""
-            if order.service_advisor_id:
-                sa_names = ", ".join([sa.user_id.name for sa in order.service_advisor_id if sa.user_id])
-                if not sa_names:
-                    _logger.warning(f"No SA names found for order {order.id}")
-            
-            message = f"""Halo, *{order.partner_id.name}*.
-Saya {sa_names} dari Pitcar,
-
-Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar.
-
-Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
-{feedback_url}
-
-Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
-- Garansi servis: 2 minggu
-- Garansi sparepart: 3 bulan (kecuali part dari luar ya)
-
-Terima kasih atas kepercayaan Anda kepada Pitcar!"""
+            # Get message template based on database
+            message = self._get_whatsapp_template(database, order)
 
             return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
             
         except Exception as e:
             _logger.error(f"Error generating WhatsApp link: {str(e)}")
             return None
+
         
     @route('/web/reminder/mark-sent', type='json', auth='public', methods=['POST'])
     def mark_reminders_sent(self, **kwargs):

@@ -1356,13 +1356,12 @@ class CustomerRatingAPI(Controller):
                 _logger.warning(f"No SA names found for order {order.id}")
 
         templates = {
-            'Pitcar1': f"""Hai *{order.partner_id.name}* 
-
-Ganti oli mesin rutin selalu,
+            'Pitcar1': f"""Ganti oli mesin rutin selalu,
 Ban mobil dirotasi dengan teliti.
 Servis di Pitcar sudah berlalu,
 Bagaimana rasanya, yuk nilai di sini! 
 
+Hai, *{order.partner_id.name}*!
 Saya {sa_names} dari Pitcar. Bagaimana performa mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah servis? 
 
 Mohon luangkan waktu sebentar untuk memberikan penilaian melalui link berikut ya:
@@ -1378,12 +1377,13 @@ Terima kasih atas kepercayaan Anda kepada Pitcar!
 Best regards,
 Tim Pitcar""",
 
-        'pitcar.bodyrepair': f"""Hai *{order.partner_id.name}* 
-
+        'pitcar.bodyrepair': f"""
 Poles body sampai mengkilat,
 Dempul halus tanpa celah.
 Mobil sudah tampil hebat,
 Yuk beri rating sekarang ya! 
+
+Hai, *{order.partner_id.name}*!
 
 Saya dari Pitcar. Terima kasih telah mempercayakan perbaikan mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} kepada Pitcar Body Repair.
 

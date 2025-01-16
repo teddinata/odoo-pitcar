@@ -1401,17 +1401,24 @@ Tim Pitcar Body Repair"""
     }
 
     # Default template jika database tidak dikenali
-        default_template = f"""Hai *{order.partner_id.name}* 
+        default_template = f"""
+Ganti oli mesin rutin selalu,
+Ban mobil dirotasi dengan teliti.
+Servis di Pitcar sudah berlalu,
+Bagaimana rasanya, yuk nilai di sini! ⭐
 
-Cek mesin tiap pagi hari,
-Pastikan semua berjalan baik.
-Setelah servis dari bengkel ini,
-Yuk beri rating yang cantik! 
+Hai, *{order.partner_id.name}* 👋!
+Saya {sa_names} dari Pitcar. Bagaimana performa mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah servis? 
 
-Yuk, berikan penilaian melalui link berikut:
+Mohon luangkan waktu sebentar untuk memberikan penilaian melalui link berikut ya:
 {feedback_url}
 
-Terima kasih! 
+📝 *Info Garansi*
+✅ Servis: 2 minggu
+✅ Sparepart: 3 bulan*
+   *kecuali part dari luar
+   
+Terima kasih atas kepercayaan Anda kepada Pitcar! 🙏
 
 Best regards,
 Tim Pitcar"""

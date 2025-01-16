@@ -12,6 +12,12 @@ class WorkingDaysConfig(models.Model):
     year = fields.Integer('Year', required=True)
     working_days = fields.Integer('Working Days', required=True)
     notes = fields.Text('Notes')
+
+     # Tracking fields
+    create_uid = fields.Many2one('res.users', string='Created by', readonly=True)
+    create_date = fields.Datetime(string='Created on', readonly=True)
+    write_uid = fields.Many2one('res.users', string='Last Updated by', readonly=True)
+    write_date = fields.Datetime(string='Last Updated on', readonly=True)
     
     @api.constrains('working_days')
     def _check_working_days(self):

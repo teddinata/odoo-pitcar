@@ -2591,3 +2591,51 @@ class AttendanceAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in update_working_days: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/hr/working-days/history', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_working_days_history(self, **kw):
+        """Get working days configuration history"""
+        try:
+            params = kw.get('params', kw)
+            year = params.get('year', datetime.now().year)
+            
+            # Get all configurations for the year
+            configs = request.env['hr.working.days.config'].sudo().search([
+                ('year', '=', year)
+            ], order='month asc')
+            
+            # Format response
+            history = []
+            for month in range(1, 13):
+                config = configs.filtered(lambda c: c.month == month)
+                
+                history.append({
+                    'month': month,
+                    'month_name': datetime(year, month, 1).strftime('%B'),
+                    'working_days': config.working_days if config else 26,  # Default value
+                    'is_configured': bool(config),
+                    'config': {
+                        'id': config.id if config else None,
+                        'name': config.name if config else None,
+                        'notes': config.notes if config else None,
+                        'created_at': config.create_date if config else None,
+                        'created_by': config.create_uid.name if config and config.create_uid else None,
+                        'last_modified': config.write_date if config else None,
+                        'modified_by': config.write_uid.name if config and config.write_uid else None
+                    } if config else None
+                })
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'year': year,
+                    'history': history,
+                    'summary': {
+                        'total_configured': len(configs),
+                        'average_working_days': sum(h['working_days'] for h in history) / len(history)
+                    }
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_working_days_history: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

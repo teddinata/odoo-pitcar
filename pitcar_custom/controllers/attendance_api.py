@@ -322,7 +322,7 @@ class AttendanceAPI(http.Controller):
             # Calculate monthly statistics
             # Use set to count unique dates in Jakarta timezone
             present_days = len(set(att.check_in.astimezone(jakarta_tz).date() for att in month_attendances))
-            total_working_days = 26  # Standard working days per month
+            total_working_days = self._get_working_days(month=now.month, year=now.year)
             
             # Standard work start time in Jakarta (8 AM)
             work_start_time = time(8, 1) # 8:01 AM

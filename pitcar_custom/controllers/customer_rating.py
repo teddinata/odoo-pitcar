@@ -1186,64 +1186,107 @@ class CustomerRatingAPI(Controller):
         return num
 
     def _encode_id(self, order_id):
-        """Encode order ID dengan timestamp dan signature yang lebih pendek"""
+        """Encode order ID dengan signature pendek"""
         try:
             # Convert order_id to base62
             base62_id = self._encode_base62(order_id)
             
-            # Add timestamp (dalam menit, bukan detik, untuk mempersingkat)
-            timestamp = int(time.time() / 60)  # Convert ke menit
-            base62_ts = self._encode_base62(timestamp)
-            
-            # Combine data
-            combined = f"{base62_id}.{base62_ts}"
-            
-            # Generate signature (menggunakan 8 karakter pertama saja)
+            # Generate signature (4 karakter)
             signature = hmac.new(
                 self._get_secret_key().encode(),
-                combined.encode(),
+                base62_id.encode(),
                 hashlib.sha256
-            ).hexdigest()[:8]  # Ambil 8 karakter pertama saja
+            ).hexdigest()[:4]  # Ambil 4 karakter pertama
             
             # Return combined string
-            return f"{combined}.{signature}"
+            return f"{base62_id}.{signature}"
         except Exception as e:
             _logger.error(f"Encoding error: {str(e)}")
             return None
 
     def _decode_id(self, encoded_str):
-        """Decode dan validasi encoded ID yang lebih pendek"""
+        """Decode dan validasi encoded ID"""
         try:
-            # Split components
-            components = encoded_str.split('.')
-            if len(components) != 3:
-                raise ValueError("Invalid format")
-                
-            base62_id, base62_ts, signature = components
+            # Split encoded data dan signature
+            base62_id, signature = encoded_str.split('.')
             
             # Verify signature
-            combined = f"{base62_id}.{base62_ts}"
             expected_sig = hmac.new(
                 self._get_secret_key().encode(),
-                combined.encode(),
+                base62_id.encode(),
                 hashlib.sha256
-            ).hexdigest()[:8]  # Bandingkan 8 karakter pertama
+            ).hexdigest()[:4]
             
             if not hmac.compare_digest(signature, expected_sig):
                 _logger.warning("Invalid signature detected")
                 return None
-            
-            # Decode timestamp dan cek expired
-            timestamp = self._decode_base62(base62_ts) * 60  # Convert kembali ke detik
-            if time.time() - timestamp > 7 * 24 * 3600:  # 7 hari
-                _logger.warning("Expired token detected")
-                return None
-            
+                
             # Decode dan return order ID
             return self._decode_base62(base62_id)
         except Exception as e:
             _logger.error(f"Decoding error: {str(e)}")
             return None
+
+
+    # def _encode_id(self, order_id):
+    #     """Encode order ID dengan timestamp dan signature yang lebih pendek"""
+    #     try:
+    #         # Convert order_id to base62
+    #         base62_id = self._encode_base62(order_id)
+            
+    #         # Add timestamp (dalam menit, bukan detik, untuk mempersingkat)
+    #         timestamp = int(time.time() / 60)  # Convert ke menit
+    #         base62_ts = self._encode_base62(timestamp)
+            
+    #         # Combine data
+    #         combined = f"{base62_id}.{base62_ts}"
+            
+    #         # Generate signature (menggunakan 8 karakter pertama saja)
+    #         signature = hmac.new(
+    #             self._get_secret_key().encode(),
+    #             combined.encode(),
+    #             hashlib.sha256
+    #         ).hexdigest()[:8]  # Ambil 8 karakter pertama saja
+            
+    #         # Return combined string
+    #         return f"{combined}.{signature}"
+    #     except Exception as e:
+    #         _logger.error(f"Encoding error: {str(e)}")
+    #         return None
+
+    # def _decode_id(self, encoded_str):
+    #     """Decode dan validasi encoded ID yang lebih pendek"""
+    #     try:
+    #         # Split components
+    #         components = encoded_str.split('.')
+    #         if len(components) != 3:
+    #             raise ValueError("Invalid format")
+                
+    #         base62_id, base62_ts, signature = components
+            
+    #         # Verify signature
+    #         combined = f"{base62_id}.{base62_ts}"
+    #         expected_sig = hmac.new(
+    #             self._get_secret_key().encode(),
+    #             combined.encode(),
+    #             hashlib.sha256
+    #         ).hexdigest()[:8]  # Bandingkan 8 karakter pertama
+            
+    #         if not hmac.compare_digest(signature, expected_sig):
+    #             _logger.warning("Invalid signature detected")
+    #             return None
+            
+    #         # Decode timestamp dan cek expired
+    #         timestamp = self._decode_base62(base62_ts) * 60  # Convert kembali ke detik
+    #         if time.time() - timestamp > 7 * 24 * 3600:  # 7 hari
+    #             _logger.warning("Expired token detected")
+    #             return None
+            
+    #         # Decode dan return order ID
+    #         return self._decode_base62(base62_id)
+    #     except Exception as e:
+    #         _logger.error(f"Decoding error: {str(e)}")
+    #         return None
 
 #     def _generate_whatsapp_link(self, order):
 #         """Helper function to generate WhatsApp link"""
@@ -1313,43 +1356,65 @@ class CustomerRatingAPI(Controller):
                 _logger.warning(f"No SA names found for order {order.id}")
 
         templates = {
-            'Pitcar1': f"""Halo, *{order.partner_id.name}*.
-    Saya {sa_names} dari Pitcar,
+            'Pitcar1': f"""Hai *{order.partner_id.name}* 
 
-    Terima kasih telah mempercayakan servis mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar.
+Ganti oli mesin rutin selalu,
+Ban mobil dirotasi dengan teliti.
+Servis di Pitcar sudah berlalu,
+Bagaimana rasanya, yuk nilai di sini! 
 
-    Bagaimana kondisi kendaraan Anda setelah servis? Mohon berikan penilaian dan masukan melalui link berikut ya:
-    {feedback_url}
+Saya {sa_names} dari Pitcar. Bagaimana performa mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah servis? 
 
-    Oh iya, sekalian Mincar mau mengingatkan untuk garansi servisnya:
-    - Garansi servis: 2 minggu
-    - Garansi sparepart: 3 bulan (kecuali part dari luar ya)
+Mohon luangkan waktu sebentar untuk memberikan penilaian melalui link berikut ya:
+{feedback_url}
 
-    Terima kasih atas kepercayaan Anda kepada Pitcar!""",
+*Info Garansi*
+- Servis: 2 minggu
+- Sparepart: 3 bulan*
+   *kecuali part dari luar
+   
+Terima kasih atas kepercayaan Anda kepada Pitcar! 
 
-            'pitcar.bodyrepair': f"""Halo, *{order.partner_id.name}*.
-    Saya dari Pitcar,
+Best regards,
+Tim Pitcar""",
 
-    Terima kasih telah mempercayakan perbaikan mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} di Pitcar.
+        'pitcar.bodyrepair': f"""Hai *{order.partner_id.name}* 
 
-    Bagaimana kondisi kendaraan Anda setelah diperbaiki? Mohon berikan penilaian dan masukan melalui link berikut ya:
-    {feedback_url}
+Poles body sampai mengkilat,
+Dempul halus tanpa celah.
+Mobil sudah tampil hebat,
+Yuk beri rating sekarang ya! 
 
-    Oh iya, sekalian Mincar mau mengingatkan untuk garansi cat 3 bulan.
-    Silahkan bisa langsung menghubungi kami apabila ada keluhan di kemudian hari.
+Saya dari Pitcar. Terima kasih telah mempercayakan perbaikan mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} kepada Pitcar Body Repair.
 
-    Terima kasih atas kepercayaan Anda kepada Pitcar!"""
-        }
+Yuk, berikan penilaian Anda melalui link berikut:
+{feedback_url}
 
-        # Default template jika database tidak dikenali
-        default_template = f"""Halo, *{order.partner_id.name}*,
+*Info Garansi*
+- Garansi Pengecatan: 3 bulan
+- Hubungi kami kapan saja jika ada keluhan
 
-    Terima kasih telah mempercayakan servis kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} di bengkel kami.
+Terima kasih atas kepercayaan Anda kepada Pitcar! 
 
-    Mohon berikan penilaian Anda melalui link berikut:
-    {feedback_url}
+Best regards,
+Tim Pitcar Body Repair"""
+    }
 
-    Terima kasih."""
+    # Default template jika database tidak dikenali
+        default_template = f"""Hai *{order.partner_id.name}* 
+
+Cek mesin tiap pagi hari,
+Pastikan semua berjalan baik.
+Setelah servis dari bengkel ini,
+Yuk beri rating yang cantik! 
+
+Yuk, berikan penilaian melalui link berikut:
+{feedback_url}
+
+Terima kasih! 
+
+Best regards,
+Tim Pitcar"""
 
         return templates.get(database.lower(), default_template)
 

@@ -320,14 +320,13 @@ class AttendanceAPI(http.Controller):
             ])
 
             # Calculate monthly statistics
-            # Use set to count unique dates in Jakarta timezone
             present_days = len(set(att.check_in.astimezone(jakarta_tz).date() for att in month_attendances))
             total_working_days = self._get_working_days(month=now.month, year=now.year)
             
             # Standard work start time in Jakarta (8 AM)
             work_start_time = time(8, 1) # 8:01 AM
             
-            # Count late attendances (check-in after 8 AM Jakarta time)
+            # Count late attendances
             late_attendances = []
             total_late_minutes = 0
             
@@ -335,7 +334,6 @@ class AttendanceAPI(http.Controller):
                 check_in_jkt = att.check_in.astimezone(jakarta_tz)
                 if check_in_jkt.time() > work_start_time:
                     late_attendances.append(att)
-                    # Calculate late duration
                     scheduled_start = jakarta_tz.localize(
                         datetime.combine(check_in_jkt.date(), work_start_time)
                     )
@@ -370,7 +368,22 @@ class AttendanceAPI(http.Controller):
                 working_hours = 0
                 if attendance.check_out:
                     check_out_jkt = attendance.check_out.astimezone(jakarta_tz)
-                    working_hours = (check_out_jkt - check_in_jkt).total_seconds() / 3600
+                    
+                    # Calculate total duration
+                    total_duration = (check_out_jkt - check_in_jkt).total_seconds() / 3600
+                    
+                    # Define break time (12:00-13:00)
+                    break_start = jakarta_tz.localize(datetime.combine(check_in_jkt.date(), time(12, 0)))
+                    break_end = jakarta_tz.localize(datetime.combine(check_in_jkt.date(), time(13, 0)))
+                    
+                    # Calculate break duration if work hours overlap with break time
+                    break_duration = 0
+                    if check_in_jkt < break_end and check_out_jkt > break_start:
+                        overlap_start = max(check_in_jkt, break_start)
+                        overlap_end = min(check_out_jkt, break_end)
+                        break_duration = (overlap_end - overlap_start).total_seconds() / 3600
+                        
+                    working_hours = max(0, total_duration - break_duration)
 
                 return {
                     'id': attendance.id,
@@ -383,11 +396,29 @@ class AttendanceAPI(http.Controller):
                     'working_hours': round(working_hours, 2)
                 }
 
-            # Calculate total and average working hours
-            total_hours = sum(
-                (att.check_out - att.check_in).total_seconds() / 3600 
-                for att in month_attendances if att.check_out
-            )
+            # Calculate total and average working hours with break time adjustment
+            total_hours = 0
+            for att in month_attendances:
+                if att.check_out:
+                    check_in_jkt = att.check_in.astimezone(jakarta_tz)
+                    check_out_jkt = att.check_out.astimezone(jakarta_tz)
+                    
+                    # Calculate total duration
+                    total_duration = (check_out_jkt - check_in_jkt).total_seconds() / 3600
+                    
+                    # Define break time (12:00-13:00)
+                    break_start = jakarta_tz.localize(datetime.combine(check_in_jkt.date(), time(12, 0)))
+                    break_end = jakarta_tz.localize(datetime.combine(check_in_jkt.date(), time(13, 0)))
+                    
+                    # Calculate break duration if work hours overlap with break time
+                    break_duration = 0
+                    if check_in_jkt < break_end and check_out_jkt > break_start:
+                        overlap_start = max(check_in_jkt, break_start)
+                        overlap_end = min(check_out_jkt, break_end)
+                        break_duration = (overlap_end - overlap_start).total_seconds() / 3600
+                        
+                    total_hours += max(0, total_duration - break_duration)
+                    
             avg_hours = round(total_hours / present_days, 2) if present_days > 0 else 0
 
             return {
@@ -405,7 +436,7 @@ class AttendanceAPI(http.Controller):
                         'attendance_summary': {
                             'present': present_days,
                             'absent': total_working_days - present_days,
-                            'leave': 0  # Optional: bisa ditambahkan jika ada sistem cuti
+                            'leave': 0
                         },
                         'late_summary': {
                             'total_late_days': len(late_attendances),
@@ -1012,7 +1043,21 @@ class AttendanceAPI(http.Controller):
                 # Calculate working hours
                 working_hours = 0
                 if check_out_local:
-                    working_hours = round((check_out_local - check_in_local).total_seconds() / 3600, 2)
+                    # Calculate total duration
+                    total_duration = (check_out_local - check_in_local).total_seconds() / 3600
+                    
+                    # Define break time (12:00-13:00)
+                    break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
+                    break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
+                    
+                    # Calculate break duration if work hours overlap with break time
+                    break_duration = 0
+                    if check_in_local < break_end and check_out_local > break_start:
+                        overlap_start = max(check_in_local, break_start)
+                        overlap_end = min(check_out_local, break_end)
+                        break_duration = (overlap_end - overlap_start).total_seconds() / 3600
+                        
+                    working_hours = max(0, total_duration - break_duration)
                     total_hours += working_hours
                 
                 record = {
@@ -1185,7 +1230,21 @@ class AttendanceAPI(http.Controller):
                 
                 # Calculate working hours
                 if check_out_local:
-                    working_hours = round((check_out_local - check_in_local).total_seconds() / 3600, 2)
+                    # Calculate total duration
+                    total_duration = (check_out_local - check_in_local).total_seconds() / 3600
+                    
+                    # Define break time (12:00-13:00)
+                    break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
+                    break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
+                    
+                    # Calculate break duration if work hours overlap with break time
+                    break_duration = 0
+                    if check_in_local < break_end and check_out_local > break_start:
+                        overlap_start = max(check_in_local, break_start)
+                        overlap_end = min(check_out_local, break_end)
+                        break_duration = (overlap_end - overlap_start).total_seconds() / 3600
+                        
+                    working_hours = max(0, total_duration - break_duration)
                     total_hours += working_hours
                     
                     # Aggregate daily hours for chart
@@ -1656,6 +1715,25 @@ class AttendanceAPI(http.Controller):
                 check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
                 check_out = attendance.check_out and pytz.utc.localize(attendance.check_out).astimezone(tz)
 
+                # Calculate working hours with break time adjustment
+                worked_hours = 0
+                if check_out:
+                    # Calculate total duration
+                    total_duration = (check_out - check_in).total_seconds() / 3600
+                    
+                    # Define break time (12:00-13:00)
+                    break_start = tz.localize(datetime.combine(check_in.date(), time(12, 0)))
+                    break_end = tz.localize(datetime.combine(check_in.date(), time(13, 0)))
+                    
+                    # Calculate break duration if work hours overlap with break time
+                    break_duration = 0
+                    if check_in < break_end and check_out > break_start:
+                        overlap_start = max(check_in, break_start)
+                        overlap_end = min(check_out, break_end)
+                        break_duration = (overlap_end - overlap_start).total_seconds() / 3600
+                        
+                    worked_hours = max(0, total_duration - break_duration)
+
                 records.append({
                     'id': attendance.id,
                     'employee': {
@@ -1670,7 +1748,7 @@ class AttendanceAPI(http.Controller):
                     'attendance': {
                         'check_in': check_in.strftime('%Y-%m-%d %H:%M:%S'),
                         'check_out': check_out.strftime('%Y-%m-%d %H:%M:%S') if check_out else None,
-                        'worked_hours': round(attendance.worked_hours, 2) if attendance.check_out else 0,
+                        'worked_hours': round(worked_hours, 2),
                         'is_late': attendance.is_late,
                         'late_duration': round(attendance.late_duration, 0) if attendance.is_late else 0
                     },
@@ -2254,8 +2332,24 @@ class AttendanceAPI(http.Controller):
                     department_stats[dept_id]['total_late_minutes'] += late_minutes
                 
                 # Calculate work hours and overtime
+                # Calculate work hours with break time
                 if check_out:
-                    worked_hours = (check_out - check_in).total_seconds() / 3600
+                    # Calculate total duration
+                    total_duration = (check_out - check_in).total_seconds() / 3600
+                    
+                    # Define break time (12:00-13:00)
+                    break_start = tz.localize(datetime.combine(check_in.date(), time(12, 0)))
+                    break_end = tz.localize(datetime.combine(check_in.date(), time(13, 0)))
+                    
+                    # Calculate break duration if work hours overlap with break time
+                    break_duration = 0
+                    if check_in < break_end and check_out > break_start:
+                        overlap_start = max(check_in, break_start)
+                        overlap_end = min(check_out, break_end)
+                        break_duration = (overlap_end - overlap_start).total_seconds() / 3600
+                        
+                    worked_hours = max(0, total_duration - break_duration)
+                    
                     employee_stats[emp_id]['total_work_hours'] += worked_hours
                     department_stats[dept_id]['total_work_hours'] += worked_hours
                     
@@ -2264,10 +2358,13 @@ class AttendanceAPI(http.Controller):
                         employee_stats[emp_id]['early_leaves'] += 1
                         department_stats[dept_id]['early_leaves'] += 1
                     
-                    # Calculate overtime
+                    # Calculate overtime (after adjusting for break time)
                     scheduled_end = tz.localize(datetime.combine(check_out.date(), work_end_time))
                     if check_out > scheduled_end:
                         overtime_hours = (check_out - scheduled_end).total_seconds() / 3600
+                        if check_out > break_end and scheduled_end < break_start:
+                            overtime_hours -= 1  # Subtract break hour from overtime if applicable
+                        overtime_hours = max(0, overtime_hours)
                         employee_stats[emp_id]['overtime_hours'] += overtime_hours
                         department_stats[dept_id]['overtime_hours'] += overtime_hours
 

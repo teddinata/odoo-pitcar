@@ -1,7 +1,7 @@
 from odoo import http, fields
 from odoo.http import request
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import pytz
 import logging
 
@@ -675,6 +675,21 @@ class KPIController(http.Controller):
 
             # Di dalam method get_mechanic_kpi_dashboard, sebelum return
             # Ganti bagian ini di method get_mechanic_kpi_dashboard
+            # def calculate_productive_hours(start_servis, end_servis, check_in, check_out):
+            #     """Hitung jam produktif berdasarkan overlap antara waktu servis dan attendance"""
+            #     start_servis_dt = fields.Datetime.from_string(start_servis)
+            #     end_servis_dt = fields.Datetime.from_string(end_servis)
+            #     check_in_dt = fields.Datetime.from_string(check_in)
+            #     check_out_dt = fields.Datetime.from_string(check_out)
+                
+            #     # Ambil intersection dari waktu servis dan attendance
+            #     effective_start = max(start_servis_dt, check_in_dt)
+            #     effective_end = min(end_servis_dt, check_out_dt)
+                
+            #     if effective_end > effective_start:
+            #         return (effective_end - effective_start).total_seconds() / 3600
+            #     return 0
+
             def calculate_productive_hours(start_servis, end_servis, check_in, check_out):
                 """Hitung jam produktif berdasarkan overlap antara waktu servis dan attendance"""
                 start_servis_dt = fields.Datetime.from_string(start_servis)
@@ -686,9 +701,26 @@ class KPIController(http.Controller):
                 effective_start = max(start_servis_dt, check_in_dt)
                 effective_end = min(end_servis_dt, check_out_dt)
                 
-                if effective_end > effective_start:
-                    return (effective_end - effective_start).total_seconds() / 3600
-                return 0
+                if effective_end <= effective_start:
+                    return 0
+                    
+                # Convert to local time for break time calculation
+                effective_start_local = pytz.utc.localize(effective_start).astimezone(tz)
+                effective_end_local = pytz.utc.localize(effective_end).astimezone(tz)
+                
+                # Calculate total duration
+                duration = (effective_end - effective_start).total_seconds() / 3600
+                
+                # Check if overlap includes break time
+                break_start = tz.localize(datetime.combine(effective_start_local.date(), time(12, 0)))
+                break_end = tz.localize(datetime.combine(effective_start_local.date(), time(13, 0)))
+                
+                if effective_start_local < break_end and effective_end_local > break_start:
+                    break_duration = min(1.0, (min(effective_end_local, break_end) - 
+                                            max(effective_start_local, break_start)).total_seconds() / 3600)
+                    duration = max(0, duration - break_duration)
+                    
+                return duration
 
             # Di bagian perhitungan utilization untuk setiap mekanik
             for mechanic in active_mechanics:
@@ -699,6 +731,30 @@ class KPIController(http.Controller):
                     ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
                     ('check_out', '!=', False)  # Only get completed attendance
                 ])
+
+                # Calculate total attendance hours
+                # total_attendance_hours = sum(att.worked_hours for att in all_attendances)
+                total_attendance_hours = 0
+                for att in all_attendances:
+                    if att.check_out:
+                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                        
+                        # Calculate total duration
+                        total_duration = (check_out_local - check_in_local).total_seconds() / 3600
+                        
+                        # Reduce break time
+                        break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
+                        break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
+                        
+                        if check_in_local < break_end and check_out_local > break_start:
+                            break_duration = min(1.0, (min(check_out_local, break_end) - 
+                                                    max(check_in_local, break_start)).total_seconds() / 3600)
+                            total_duration = max(0, total_duration - break_duration)
+                        
+                        total_attendance_hours += total_duration
+
+
                 
                 # Group attendance by date
                 attendance_by_date = {}
@@ -708,8 +764,6 @@ class KPIController(http.Controller):
                         attendance_by_date[att_date] = []
                     attendance_by_date[att_date].append(att)
                 
-                # Calculate total attendance hours
-                total_attendance_hours = sum(att.worked_hours for att in all_attendances)
                 
                 # Calculate productive hours from orders dengan mempertimbangkan attendance
                 mechanic_orders = orders.filtered(lambda o: mechanic['id'] in o.car_mechanic_id_new.ids)
@@ -721,6 +775,7 @@ class KPIController(http.Controller):
                         day_attendances = attendance_by_date.get(order_date, [])
                         
                         if day_attendances:  # Only count if there's attendance that day
+                            attendance_hours = 0
                             for att in day_attendances:
                                 productive_duration = calculate_productive_hours(
                                     order.controller_mulai_servis,
@@ -751,7 +806,24 @@ class KPIController(http.Controller):
                     ('check_out', '!=', False)
                 ])
                 
-                attendance_hours = sum(att.worked_hours for att in day_attendances)
+                attendance_hours = 0
+                for att in day_attendances:
+                    if att.check_out:
+                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                        
+                        total_duration = (check_out_local - check_in_local).total_seconds() / 3600
+                        
+                        break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
+                        break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
+                        
+                        if check_in_local < break_end and check_out_local > break_start:
+                            break_duration = min(1.0, (min(check_out_local, break_end) - 
+                                                    max(check_in_local, break_start)).total_seconds() / 3600)
+                            total_duration = max(0, total_duration - break_duration)
+                        
+                        attendance_hours += total_duration
+
                 
                 # Get orders pada tanggal tersebut
                 day_orders = request.env['sale.order'].sudo().search([
@@ -1580,7 +1652,26 @@ class KPIController(http.Controller):
                 attendance_by_date[attendance_date].append(attendance)
 
             # 3. Calculate total attendance hours
-            total_attendance_hours = sum(att.worked_hours for att in all_attendances if att.check_out)
+            total_attendance_hours = 0
+            for att in all_attendances:
+                if att.check_out:
+                    check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                    check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                    
+                    # Calculate total duration
+                    total_duration = (check_out_local - check_in_local).total_seconds() / 3600
+                    
+                    # Reduce break time
+                    break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
+                    break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
+                    
+                    if check_in_local < break_end and check_out_local > break_start:
+                        break_duration = min(1.0, (min(check_out_local, break_end) - 
+                                                max(check_in_local, break_start)).total_seconds() / 3600)
+                        total_duration = max(0, total_duration - break_duration)
+                    
+                    total_attendance_hours += total_duration
+
 
             # 4. Helper function untuk calculate productive hours
             def calculate_productive_hours(start_servis, end_servis, attendance_records):
@@ -1598,10 +1689,26 @@ class KPIController(http.Controller):
                     overlap_end = min(end_dt, fields.Datetime.from_string(att.check_out))
                     
                     if overlap_end > overlap_start:
-                        overlap_hours = (overlap_end - overlap_start).total_seconds() / 3600
-                        productive_hours += overlap_hours
+                        # Convert to local time for break time calculation
+                        overlap_start_local = pytz.utc.localize(overlap_start).astimezone(tz)
+                        overlap_end_local = pytz.utc.localize(overlap_end).astimezone(tz)
+                        
+                        # Calculate initial overlap duration
+                        overlap_duration = (overlap_end - overlap_start).total_seconds() / 3600
+                        
+                        # Check if overlap includes break time
+                        break_start = tz.localize(datetime.combine(overlap_start_local.date(), time(12, 0)))
+                        break_end = tz.localize(datetime.combine(overlap_start_local.date(), time(13, 0)))
+                        
+                        if overlap_start_local < break_end and overlap_end_local > break_start:
+                            break_duration = min(1.0, (min(overlap_end_local, break_end) - 
+                                                    max(overlap_start_local, break_start)).total_seconds() / 3600)
+                            overlap_duration = max(0, overlap_duration - break_duration)
+                            
+                        productive_hours += overlap_duration
                         
                 return productive_hours
+
 
             # 5. Calculate total productive hours
             total_productive_hours = 0

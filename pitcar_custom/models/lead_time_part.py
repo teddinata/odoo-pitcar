@@ -27,9 +27,9 @@ class PartPurchaseLeadtime(models.Model):
     duration_display = fields.Char('Durasi', compute='_compute_duration_display')
 
     # Purchase details  
-    partman_id = fields.Many2one('hr.employee', string='Partman', 
-                                domain=[('job_id.name', 'ilike', 'Partman')],
-                                tracking=True)
+    partman_id = fields.Many2one('hr.employee.public', string='Partman', 
+                            domain=[('job_id.name', 'ilike', 'Partman')],
+                            tracking=True)
     review_type = fields.Selection([
         ('margin', 'Margin'),
         ('duration_estimated', 'Durasi Estimasi'),

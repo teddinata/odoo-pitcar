@@ -285,12 +285,14 @@ class LeadTimePartController(http.Controller):
 
             # Get paginated records
             offset = (page - 1) * limit
-            purchases = PartPurchase.search(domain, limit=limit, offset=offset, order=order)
+            # purchases = PartPurchase.search(domain, limit=limit, offset=offset, order=order)
+            purchases = PartPurchase.sudo().search(domain, limit=limit, offset=offset, order=order)
 
             # Format response data
             rows = []
             for purchase in purchases:
-                rows.append(self._get_purchase_details(purchase))
+                # rows.append(self._get_purchase_details(purchase))
+                rows.append(self._get_purchase_details(purchase.sudo()))
 
             # Get summary statistics
             summary = {

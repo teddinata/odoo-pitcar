@@ -105,7 +105,7 @@ class EmployeeAPI(http.Controller):
           _logger.error(f"Error formatting employee data: {str(e)}")
           return {}
         
-    @http.route('/api/employees/masters', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/web/employees/masters', type='json', auth='user', methods=['POST'], csrf=False)
     def get_employee_masters(self, **kw):
         """Get master data for employees (departments, positions, locations)"""
         try:
@@ -161,7 +161,7 @@ class EmployeeAPI(http.Controller):
                 'message': str(e)
             }
 
-    @http.route('/api/employees', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/web/employees', type='json', auth='user', methods=['POST'], csrf=False)
     def get_employees(self, **kw):
         try:
             # Extract parameters
@@ -255,7 +255,7 @@ class EmployeeAPI(http.Controller):
 
     # File: controllers/employee_api.py
 
-    @http.route('/api/employees/detail', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/web/employees/detail', type='json', auth='user', methods=['POST'], csrf=False)
     def get_employee_detail(self, **kw):
         try:
             # Get params from request
@@ -287,7 +287,7 @@ class EmployeeAPI(http.Controller):
                 'message': str(e)
             }
 
-    @http.route('/api/employees/create', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/web/employees/create', type='json', auth='user', methods=['POST'], csrf=False)
     def create_employee(self, **kw):
         try:
              # Get file data
@@ -343,7 +343,7 @@ class EmployeeAPI(http.Controller):
                 'message': str(e)
             }
 
-    @http.route('/api/employees/update', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/web/employees/update', type='json', auth='user', methods=['POST'], csrf=False)
     def update_employee(self, **kw):
         try:
             # Get params from request
@@ -411,7 +411,7 @@ class EmployeeAPI(http.Controller):
                 'message': str(e)
             }
 
-    @http.route('/api/employees/delete', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/web/employees/delete', type='json', auth='user', methods=['POST'], csrf=False)
     def delete_employee(self, **kw):
         try:
             # Get params from request

@@ -97,6 +97,7 @@ class LeadTimePartController(http.Controller):
             # Base domain - ambil order yang sudah ada PKB
             domain = [
                 ('sa_cetak_pkb', '!=', False),  # Harus sudah cetak PKB
+                ('controller_mulai_servis', '!=', False),  # Harus sudah mulai servis
                 ('controller_selesai', '=', False)  # Belum selesai servis
             ]
             
@@ -129,7 +130,7 @@ class LeadTimePartController(http.Controller):
             # Get paginated records
             offset = (page - 1) * limit
             orders = SaleOrder.search(domain, limit=limit, offset=offset, 
-                                    order='sa_jam_masuk desc')
+                                    order='create_date desc')
 
             # Format response
             result = []

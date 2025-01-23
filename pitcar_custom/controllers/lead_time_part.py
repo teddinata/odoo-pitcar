@@ -101,7 +101,7 @@ class LeadTimePartController(http.Controller):
             # Base domain - ambil order yang sudah ada PKB
             domain = [
                 ('sa_cetak_pkb', '!=', False),  # Harus sudah cetak PKB
-                # ('controller_mulai_servis', '!=', False),  # Harus sudah mulai servis
+                ('controller_mulai_servis', '!=', False),  # Harus sudah mulai servis
                 ('controller_selesai', '=', False)  # Belum selesai servis
             ]
             

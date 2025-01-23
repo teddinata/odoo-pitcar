@@ -97,7 +97,7 @@ class LeadTimePartController(http.Controller):
             # Base domain - ambil order yang sudah ada PKB
             domain = [
                 ('sa_cetak_pkb', '!=', False),  # Harus sudah cetak PKB
-                ('controller_mulai_servis', '!=', False),  # Harus sudah mulai servis
+                # ('controller_mulai_servis', '!=', False),  # Harus sudah mulai servis
                 ('controller_selesai', '=', False)  # Belum selesai servis
             ]
             
@@ -327,23 +327,47 @@ class LeadTimePartController(http.Controller):
                 'message': str(e)
             }
 
-    @http.route('/web/part-purchase/<int:purchase_id>/detail', type='json', auth='user', methods=['GET'])
-    def get_purchase_detail(self, purchase_id):
+    # Ubah method ini di class LeadTimePartController
+    # Di LeadTimePartController
+    @http.route('/web/part-purchase/detail', type='json', auth='user', methods=['POST'])
+    def get_purchase_detail(self, **kw):
         """Get detailed part purchase information"""
         try:
-            purchase = request.env['part.purchase.leadtime'].browse(purchase_id)
+            _logger.info(f"Received kw: {kw}")  # Debug log untuk melihat isi kw
+            
+            # Cek langsung dari kw
+            purchase_id = kw.get('purchase_id')
+            
+            # Jika tidak ada di kw langsung, cek di params
+            if not purchase_id:
+                params = kw.get('params', {})
+                purchase_id = params.get('purchase_id')
+                
+            _logger.info(f"Found purchase_id: {purchase_id}")  # Debug log purchase_id
+
+            if not purchase_id:
+                return {
+                    'status': 'error',
+                    'message': 'Purchase ID is required'
+                }
+
+            purchase = request.env['part.purchase.leadtime'].browse(int(purchase_id))
             if not purchase.exists():
                 return {
                     'status': 'error',
                     'message': 'Purchase record not found'
                 }
 
+            details = self._get_purchase_details(purchase)
+            _logger.info(f"Purchase details: {details}")  # Debug log hasil
+
             return {
                 'status': 'success',
-                'data': self._get_purchase_details(purchase)
+                'data': details
             }
 
         except Exception as e:
+            _logger.error(f"Error in get_purchase_detail: {str(e)}")
             return {
                 'status': 'error',
                 'message': str(e)

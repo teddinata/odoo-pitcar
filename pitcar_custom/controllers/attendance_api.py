@@ -546,7 +546,7 @@ class AttendanceAPI(http.Controller):
                 data = mechanic_data[mechanic.id]
                 
                 # Calculate working hours
-                worked_hours = attendance.worked_hours or 0
+                worked_hours = attendance.actual_worked_hours or 0
                 data['total_hours'] += worked_hours
                 data['attendance_count'] += 1
 
@@ -1537,7 +1537,7 @@ class AttendanceAPI(http.Controller):
             present_employees = len(set(att.employee_id.id for att in attendances))
             late_attendances = len([att for att in attendances if att.is_late])
             total_late_minutes = sum(att.late_duration for att in attendances if att.is_late)
-            total_work_hours = sum(att.worked_hours for att in attendances if att.check_out)
+            total_work_hours = sum(att.actual_worked_hours for att in attendances if att.check_out)
 
             return {
                 'status': 'success',
@@ -1677,7 +1677,7 @@ class AttendanceAPI(http.Controller):
                 
                 # Calculate work hours if checked out
                 if attendance.check_out:
-                    worked_hours = attendance.worked_hours
+                    worked_hours = attendance.actual_worked_hours
                     total_work_hours += worked_hours
 
                 # Count late/on-time attendance
@@ -1863,7 +1863,7 @@ class AttendanceAPI(http.Controller):
                 attendance_dates.add(check_in.date())
                 
                 # Calculate worked hours
-                worked_hours = attendance.worked_hours if attendance.check_out else 0
+                worked_hours = attendance.actual_worked_hours if attendance.check_out else 0
                 total_work_hours += worked_hours
 
                 # Track late/on-time and late duration
@@ -2058,7 +2058,7 @@ class AttendanceAPI(http.Controller):
                     employee_stats[emp_id]['total_late_minutes'] += attendance.late_duration
                 
                 if attendance.check_out:
-                    employee_stats[emp_id]['total_work_hours'] += attendance.worked_hours
+                    employee_stats[emp_id]['total_work_hours'] += attendance.actual_worked_hours
 
                 # Update department statistics
                 department_stats[dept_id]['present_employees'].add(emp_id)
@@ -2069,7 +2069,7 @@ class AttendanceAPI(http.Controller):
                     department_stats[dept_id]['total_late_minutes'] += attendance.late_duration
                 
                 if attendance.check_out:
-                    department_stats[dept_id]['total_work_hours'] += attendance.worked_hours
+                    department_stats[dept_id]['total_work_hours'] += attendance.actual_worked_hours
 
             # Calculate employee counts per department
             for emp in employees:

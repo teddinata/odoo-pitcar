@@ -5,17 +5,8 @@ from odoo import models, fields, api
 class HrEmployeePublic(models.Model):
     _inherit = 'hr.employee.public'
     
-    mechanic_id = fields.Many2one('pitcar.mechanic.new', string='Mechanic Reference', readonly=True)
-    is_mechanic = fields.Boolean(string='Is Mechanic', readonly=True)
-
-    # Jangan pakai compute di public model
-    # Gunakan stored related field jika perlu
-    is_mechanic = fields.Boolean(
-        string='Is Mechanic',
-        related='mechanic_id.exists',
-        store=True,
-        readonly=True
-    )
+    mechanic_id = fields.One2many('pitcar.mechanic.new', 'employee_id', string='Mechanic Reference', readonly=True)
+    is_mechanic = fields.Boolean(string='Is Mechanic', readonly=True)  # Ubah jadi readonly=True
     # mechanic_id = fields.One2many('pitcar.mechanic.new', 'employee_id', string='Mechanic Reference', readonly=True)
     # is_mechanic = fields.Boolean(string='Is Mechanic', compute='_compute_is_mechanic', store=True)
     

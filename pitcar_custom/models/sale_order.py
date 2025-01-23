@@ -2270,3 +2270,108 @@ class SaleOrder(models.Model):
             'view_mode': 'tree,form',
             'domain': [('sale_order_id', '=', self.id)]
         }
+    
+    part_purchase_ids = fields.One2many('part.purchase.leadtime', 'sale_order_id',
+                                       string='Part Purchases')
+    part_purchase_count = fields.Integer(string='Part Purchases',
+                                       compute='_compute_part_purchase_count')
+    
+    need_part_purchase = fields.Selection([
+        ('yes', 'Ya'),
+        ('no', 'Tidak')
+    ], string='Perlu Beli Part?', default='no', tracking=True)
+    
+    part_purchase_status = fields.Selection([
+        ('not_needed', 'Tidak Perlu'),
+        ('pending', 'Menunggu'),
+        ('in_progress', 'Dalam Proses'),
+        ('completed', 'Selesai')
+    ], string='Status Beli Part', compute='_compute_part_purchase_status', store=True)
+
+    @api.depends('need_part_purchase', 'part_purchase_ids', 'part_purchase_ids.state')
+    def _compute_part_purchase_status(self):
+        for order in self:
+            if order.need_part_purchase == 'no':
+                order.part_purchase_status = 'not_needed'
+            else:
+                if not order.part_purchase_ids:
+                    order.part_purchase_status = 'pending'
+                else:
+                    # Check latest part purchase
+                    latest_purchase = order.part_purchase_ids.sorted('create_date', reverse=True)[0]
+                    if latest_purchase.state == 'returned':
+                        order.part_purchase_status = 'completed'
+                    elif latest_purchase.state in ['draft', 'departed']:
+                        order.part_purchase_status = 'in_progress'
+                    else:
+                        order.part_purchase_status = 'pending'
+
+    def action_need_part_purchase(self):
+        self.write({'need_part_purchase': 'yes'})
+        
+    def action_no_part_purchase(self):
+        self.write({'need_part_purchase': 'no'})
+
+    def action_view_part_purchases(self):
+        self.ensure_one()
+        return {
+            'name': _('Part Purchases'),
+            'type': 'ir.actions.act_window',
+            'view_mode': 'tree,form',
+            'res_model': 'part.purchase.leadtime',
+            'domain': [('sale_order_id', '=', self.id)],
+            'context': {'default_sale_order_id': self.id}
+        }
+    
+     # Field baru untuk tracking efisiensi waktu servis
+    service_time_efficiency = fields.Float(
+        string='Efisiensi Waktu Servis (%)', 
+        compute='_compute_service_time_efficiency',
+        store=True
+    )
+
+    @api.depends('total_estimated_duration', 'controller_mulai_servis', 'controller_selesai')
+    def _compute_service_time_efficiency(self):
+        for order in self:
+            if order.total_estimated_duration and order.controller_mulai_servis and order.controller_selesai:
+                actual_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                # Hitung efisiensi (100% jika sesuai/lebih cepat, kurang jika lebih lama)
+                order.service_time_efficiency = min(100, (order.total_estimated_duration / actual_duration) * 100) if actual_duration else 0
+            else:
+                order.service_time_efficiency = 0
+
+     # Tambahkan fields baru untuk tracking realisasi rekomendasi
+    recommendation_realization_rate = fields.Float(
+        string='Realisasi Rekomendasi (%)',
+        compute='_compute_kpi_metrics',
+        store=True
+    )
+    total_recommendations = fields.Integer(
+        string='Total Rekomendasi',
+        compute='_compute_kpi_metrics',
+        store=True
+    )
+    realized_recommendations = fields.Integer(
+        string='Rekomendasi Terealisasi',
+        compute='_compute_kpi_metrics',
+        store=True
+    )
+
+    @api.depends('recommendation_ids', 'recommendation_ids.state')
+    def _compute_kpi_metrics(self):
+        for order in self:
+            if order.recommendation_ids:
+                total_recs = len(order.recommendation_ids)
+                # Hitung rekomendasi yang sudah direalisasikan
+                realized_recs = len(order.recommendation_ids.filtered(lambda r: 
+                    r.state in ['scheduled']  # atau status lain yang menandakan realisasi
+                ))
+                realization_rate = (realized_recs / total_recs * 100) if total_recs else 0
+                
+                order.total_recommendations = total_recs
+                order.realized_recommendations = realized_recs
+                order.recommendation_realization_rate = realization_rate
+            else:
+                order.total_recommendations = 0
+                order.realized_recommendations = 0
+                order.recommendation_realization_rate = 0

@@ -176,103 +176,150 @@ class KPIOverview(http.Controller):
             cs_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Sigap Melayani Customer Secara Online',
+                    'name': 'Pelayanan customer online',
                     'type': 'online_response',
-                    'weight': 20,
-                    'target': 100,
-                    'measurement': 'Response time untuk chat/komentar/telfon customer'
+                    'weight': 25,
+                    'target': 90,
+                    'measurement': 'Diukur dari jumlah temuan interaksi customer yang tidak direspon sesuai target waktu setup harinya',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 2,
-                    'name': 'Membuat Laporan Rekap Leads Harian',
+                    'name': 'Laporan rekap leads harian',
                     'type': 'leads_report',
                     'weight': 15,
                     'target': 100,
-                    'measurement': 'Akurasi laporan leads harian'
+                    'measurement': 'Diukur dari jumlah Leads di Rekap Leads Sesuai Dengan Aktual',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 3,
-                    'name': 'Menambahkan Kontak Semua Customer',
+                    'name': 'Kontak semua customer & calon customer di grup',
                     'type': 'customer_contact',
                     'weight': 10,
                     'target': 100,
-                    'measurement': 'Penambahan customer ke grup'
+                    'measurement': 'Diukur dari temuan kontak customer tidak ditambahkan grup harian & tidak melakukan story serta siaran WA setiap harinya',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 4,
-                    'name': 'Melakukan Reminder Service 3 Bulan',
+                    'name': 'Reminder service 3 bulan untuk customer loyal',
                     'type': 'service_reminder',
                     'weight': 10,
                     'target': 100,
-                    'measurement': 'Reminder service untuk customer'
+                    'measurement': 'Diukur dari jumlah reminder customer loyal sesuai target',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 5,
-                    'name': 'Membuat Laporan Keuangan Harian Kasir',
+                    'name': 'Laporan keuangan harian kasir bengkel (dokumentasi)',
                     'type': 'documentation',
                     'weight': 10,
                     'target': 100,
-                    'measurement': 'Akurasi laporan keuangan'
+                    'measurement': 'Diukur dari jumlah uang masuk dan keluar sesuai, jumlah revenue di rekap leads sesuai',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 6,
-                    'name': 'Melakukan Pekerjaan CS Sesuai Alur',
-                    'type': 'operational',
+                    'name': 'Kepuasan customer',
+                    'type': 'customer_satisfaction',
                     'weight': 15,
-                    'target': 100,
-                    'measurement': 'Kepatuhan terhadap alur kerja'
+                    'target': 95,
+                    'measurement': 'Diukur dari survey rating kepuasan customer',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 7,
-                    'name': 'Menjalankan kegiatan operasional secara disiplin',
+                    'name': 'CS bekerja sesuai alur dan SOP',
+                    'type': 'sop_compliance',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari temuan pekerjaan tidak sesuai alur',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 8,  # Tambahkan sebagai KPI terakhir
+                    'name': 'Kedisiplinan (Informasi)',
                     'type': 'discipline',
-                    'weight': 20,
+                    'weight': 0,  # Weight 0 karena tidak dihitung
                     'target': 90,
-                    'measurement': 'Ketepatan waktu kehadiran'
+                    'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran',
+                    'include_in_calculation': False  # Set False untuk tidak masuk perhitungan
                 }
             ]
 
-            # Template untuk Lead CS
             lead_cs_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Bertanggung Jawab Mengontrol Kinerja Tim',
-                    'type': 'team_control',
-                    'weight': 30,
-                    'target': 90,
-                    'measurement': 'Kontrol kinerja tim sesuai SOP'
+                    'name': 'Produktivitas bengkel',
+                    'type': 'productivity',
+                    'weight': 20,
+                    'target': 100,
+                    'measurement': 'Diukur dari jumlah omzet yang dihasilkan dari PKB yang ditangani',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 2,
-                    'name': 'Penyelesaian Komplain',
-                    'type': 'complaint_handling',
-                    'weight': 20,
-                    'target': 90,
-                    'measurement': 'Penyelesaian komplain customer'
+                    'name': 'Efisiensi waktu penanganan customer',
+                    'type': 'service_efficiency',
+                    'weight': 15,
+                    'target': 80,
+                    'measurement': 'Diukur dari kesesuaian waktu penanganan customer berdasarkan target waktu',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 3,
-                    'name': 'Pencapaian Target Revenue Tim',
-                    'type': 'revenue_target',
-                    'weight': 20,
-                    'target': 100,
-                    'measurement': 'Pencapaian target revenue tim'
+                    'name': 'Distribusi pekerjaan servis secara optimal',
+                    'type': 'customer_satisfaction',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari rata-rata waktu pengerjaan per PKB setiap mekanik',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 4,
-                    'name': 'Pengembangan Tim',
-                    'type': 'team_development',
+                    'name': 'Kepuasan customer',
+                    'type': 'customer_satisfaction',
                     'weight': 15,
-                    'target': 90,
-                    'measurement': 'Program pengembangan tim'
+                    'target': 95,
+                    'measurement': 'Diukur dari survey rating kepuasan customer',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 5,
-                    'name': 'Kegiatan Operasional',
-                    'type': 'operational',
+                    'name': 'Analisis dan penyelesaian komplain dari customer',
+                    'type': 'complaint_handling',
                     'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari customer merasa puas terhadap pelayanan & solusi yang diberikan dalam kurun waktu 3 hari setelah complaint',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 6,
+                    'name': 'Pengelolaan Stok Part',
+                    'type': 'stock_management',
+                    'weight': 10,
                     'target': 90,
-                    'measurement': 'Kedisiplinan operasional tim'
+                    'measurement': 'Diukur dari temuan stok part habis/tidak tersedia untuk pengerjaan',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 7,
+                    'name': 'Kontrol kinerja tim support',
+                    'type': 'team_control',
+                    'weight': 10,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan tim support yang dilakukan tidak sesuai dengan alur/SOP',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 8,  # Tambahkan sebagai KPI terakhir
+                    'name': 'Kedisiplinan Tim (Informasi)',  
+                    'type': 'team_discipline',
+                    'weight': 0,
+                    'target': 90,
+                    'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran tim',
+                    'include_in_calculation': False
                 }
             ]
 
@@ -280,51 +327,64 @@ class KPIOverview(http.Controller):
             sa_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Melayani Customer',
-                    'type': 'customer_service',
+                    'name': 'Produktivitas bengkel',
+                    'type': 'productivity',
                     'weight': 20,
-                    'target': 90,
-                    'measurement': 'Persentase kepuasan customer dan minimnya komplain'
+                    'target': 100,
+                    'measurement': 'Diukur dari jumlah omzet yang dihasilkan dari PKB yang ditangani',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 2,
-                    'name': 'Analisa Jasa',
-                    'type': 'service_analysis',
-                    'weight': 15,
-                    'target': 90,
-                    'measurement': 'Persentase ketepatan analisa kebutuhan service'
+                    'name': 'Efisiensi waktu penanganan customer',
+                    'type': 'service_efficiency',
+                    'weight': 20,
+                    'target': 80,
+                    'measurement': 'Diukur dari kesesuaian waktu penanganan customer berdasarkan target waktu',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 3,
-                    'name': 'Efisiensi Pelayanan',
-                    'type': 'service_efficiency',
-                    'weight': 15,
-                    'target': 90,
-                    'measurement': 'Persentase pelayanan yang selesai tepat waktu'
+                    'name': 'Kepuasan customer',
+                    'type': 'customer_satisfaction',
+                    'weight': 20,
+                    'target': 95,
+                    'measurement': 'Diukur dari survey rating kepuasan customer',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 4,
-                    'name': 'Target Revenue SA',
+                    'name': 'Analisis dan penyelesaian komplain dari customer',
+                    'type': 'complaint_handling',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari customer merasa puas terhadap pelayanan & solusi yang diberikan dalam kurun waktu 3 hari setelah complaint',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 5,
+                    'name': 'Follow up H+3 untuk setiap customer setelah servis',
                     'type': 'sa_revenue',
-                    'weight': 20,
+                    'weight': 10,
                     'target': 100,
                     'measurement': 'Persentase pencapaian target revenue individu'
                 },
                 {
-                    'no': 5,
-                    'name': 'Kepatuhan SOP',
+                    'no': 6,
+                    'name': 'Pekerjaan operasional dilakukan sesuai alur dan SOP yang ditetapkan',
                     'type': 'sop_compliance',
                     'weight': 15,
                     'target': 90,
                     'measurement': 'Persentase kepatuhan terhadap SOP'
                 },
                 {
-                    'no': 6,
-                    'name': 'Kedisiplinan',
+                    'no': 7,  # Tambahkan sebagai KPI terakhir
+                    'name': 'Kedisiplinan (Informasi)',  
                     'type': 'discipline',
-                    'weight': 15,
+                    'weight': 0,
                     'target': 90,
-                    'measurement': 'Persentase kehadiran tepat waktu'
+                    'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran tim',
+                    'include_in_calculation': False
                 }
             ]
 
@@ -366,24 +426,65 @@ class KPIOverview(http.Controller):
                 for kpi in cs_kpi_template:
                     actual = 0
                     if kpi['type'] == 'online_response':
-                        actual = (on_time_responses / total_responses * 100) if total_responses else 0
-                        kpi['measurement'] = f"Respon tepat waktu: {on_time_responses} dari {total_responses} leads"
+                        # Manual input dulu karena belum ada sistem tracking response time
+                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
+                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah interaksi yang direspon tepat waktu"
 
                     elif kpi['type'] == 'leads_report':
-                        actual = (converted_leads / total_responses * 100) if total_responses else 0
-                        kpi['measurement'] = f"Leads terkonversi: {converted_leads} dari {total_responses} leads"
+                        # Manual input dari cs.kpi.detail
+                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
+                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah leads sesuai rekap vs aktual"
+
+                    elif kpi['type'] == 'customer_contact':
+                        # Manual input dari cs.kpi.detail
+                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
+                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah customer yang ditambahkan ke grup"
+
+                    elif kpi['type'] == 'service_reminder':
+                        # Gunakan data dari sale.order
+                        reminder_domain = [
+                            ('next_follow_up_3_months', '>=', start_date),
+                            ('next_follow_up_3_months', '<=', end_date)
+                        ]
+                        due_reminders = request.env['sale.order'].sudo().search(reminder_domain)
+                        completed_reminders = due_reminders.filtered(lambda o: o.reminder_3_months == 'yes')
+                        actual = (len(completed_reminders) / len(due_reminders) * 100) if due_reminders else 0
+                        kpi['measurement'] = f"Reminder terkirim: {len(completed_reminders)} dari {len(due_reminders)} yang jatuh tempo"
+
+                    elif kpi['type'] == 'documentation':
+                        # Manual input dari cs.kpi.detail
+                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
+                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian laporan keuangan kasir"
+
+                    elif kpi['type'] == 'customer_satisfaction':
+                        # Data dari customer rating di sale.order
+                        rated_orders = all_orders.filtered(lambda o: o.customer_rating)
+                        satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
+                        actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
+                        kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
+
+                    elif kpi['type'] == 'sop_compliance':
+                        # Manual input dari cs.kpi.detail
+                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
+                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah temuan ketidaksesuaian SOP"
 
                     elif kpi['type'] == 'discipline':
+                        attendances = request.env['hr.attendance'].sudo().search([
+                            ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('employee_id', '=', employee.id)
+                        ])
+                        late_count = sum(1 for att in attendances if att.is_late)
                         actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
                         kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
 
-                    else:
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        if stored_measurement:
-                            kpi['measurement'] = stored_measurement
-
                     achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
 
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -394,7 +495,7 @@ class KPIOverview(http.Controller):
                         'measurement': kpi['measurement'],
                         'actual': actual,
                         'achievement': achievement,
-                        'weighted_score': achievement * (kpi['weight'] / 100),
+                        'weighted_score': weighted_score,
                         'editable': ['weight', 'target', 'actual', 'measurement']
                     })
 
@@ -426,36 +527,56 @@ class KPIOverview(http.Controller):
                 kpi_scores = []
                 for kpi in lead_cs_kpi_template:
                     actual = 0
-                    if kpi['type'] == 'team_control':
-                        total_orders = len(all_orders)
-                        non_compliant = len(non_compliant_orders)
-                        actual = 100 - ((non_compliant / total_orders * 100) if total_orders else 0)
-                        kpi['measurement'] = f"Order sesuai SOP: {total_orders - non_compliant} dari {total_orders} order"
-
-                    elif kpi['type'] == 'complaint_handling':
-                        total_complaints = len(complaints)
-                        actual = (len(resolved_complaints) / total_complaints * 100) if total_complaints else 100
-                        kpi['measurement'] = f"Komplain terselesaikan: {len(resolved_complaints)} dari {total_complaints}"
-
-                    elif kpi['type'] == 'revenue_target':
-                        if team_target == 0:
-                            actual = 0
-                            achievement = 0
-                        else:
-                            actual = (team_revenue / team_target * 100)  # Konversi ke persentase
-                            achievement = actual  # Achievement sama dengan actual karena sudah persentase
-                        
-                        formatted_revenue = "{:,.0f}".format(team_revenue)
-                        formatted_target = "{:,.0f}".format(team_target)
-                        kpi['measurement'] = f"Revenue tim: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan, {len(team_members)} anggota tim"
-
-                    else:
+                    if kpi['type'] == 'productivity':
+                        # Manual input untuk produktivitas bengkel
                         actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
                         stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        if stored_measurement:
-                            kpi['measurement'] = stored_measurement
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah omzet dari PKB"
+
+                    elif kpi['type'] == 'service_efficiency':
+                        # Manual input untuk efisiensi waktu
+                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
+                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian waktu penanganan customer"
+
+                    elif kpi['type'] == 'customer_satisfaction':
+                        # Data dari customer rating di system
+                        rated_orders = all_orders.filtered(lambda o: o.customer_rating)
+                        satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
+                        actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
+                        kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
+
+                    elif kpi['type'] == 'complaint_handling':
+                        # Data dari complaint di system
+                        complaints = all_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                        resolved_complaints = complaints.filtered(lambda o: o.complaint_status == 'solved')
+                        actual = (len(resolved_complaints) / len(complaints) * 100) if complaints else 100
+                        kpi['measurement'] = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
+
+                    elif kpi['type'] == 'stock_management':
+                        # Manual input untuk stok management
+                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
+                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah temuan stok part habis"
+
+                    elif kpi['type'] == 'team_control':
+                        # Manual input untuk kontrol tim
+                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
+                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah temuan ketidaksesuaian SOP tim"
+
+                    elif kpi['type'] == 'team_discipline':
+                        team_attendances = request.env['hr.attendance'].sudo().search([
+                            ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('employee_id', 'in', team_members.ids + [employee.id])
+                        ])
+                        late_count = sum(1 for att in team_attendances if att.is_late)
+                        actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
+                        kpi['measurement'] = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
 
                     achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
 
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -464,11 +585,12 @@ class KPIOverview(http.Controller):
                         'weight': kpi['weight'],
                         'target': kpi['target'],
                         'measurement': kpi['measurement'],
-                        'actual': actual,  # Sekarang menampilkan persentase
+                        'actual': actual,
                         'achievement': achievement,
-                        'weighted_score': achievement * (kpi['weight'] / 100),
+                        'weighted_score': weighted_score,
                         'editable': ['weight', 'target']
                     })
+
 
             # Handle Service Advisor
             elif 'Service Advisor' in job_title:
@@ -492,49 +614,80 @@ class KPIOverview(http.Controller):
                 kpi_scores = []
                 for kpi in sa_kpi_template:
                     actual = 0
-                    if kpi['type'] == 'customer_service':
-                        actual = 100 - ((complaints / total_orders * 100) if total_orders else 0)
-                        kpi['measurement'] = f"Total order: {total_orders}, Komplain: {complaints}"
-
-                    elif kpi['type'] == 'service_efficiency':
-                        on_time = sum(1 for order in completed_orders 
-                            if (order.sa_cetak_pkb - order.sa_mulai_penerimaan).total_seconds() / 60 <= 15)
-                        actual = (on_time / len(completed_orders) * 100) if completed_orders else 0
-                        kpi['measurement'] = f"Pengerjaan tepat waktu: {on_time} dari {len(completed_orders)}"
-
-                    elif kpi['type'] == 'sa_revenue':
+                    if kpi['type'] == 'productivity':
                         monthly_target = service_advisor.monthly_target or 64000000
+                        current_revenue = sum(orders.mapped('amount_total'))
+                        
                         if monthly_target == 0:
                             actual = 0
-                            achievement = 0
                         else:
-                            actual = (current_revenue / monthly_target * 100)  # Actual jadi persentase
-                            achievement = actual  # Achievement sama dengan actual
-                        
+                            actual = (current_revenue / monthly_target * 100)
+                            
                         formatted_revenue = "{:,.0f}".format(current_revenue)
                         formatted_target = "{:,.0f}".format(monthly_target)
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
 
-                    else:
+                    elif kpi['type'] == 'service_efficiency':
+                        # Manual input untuk efisiensi waktu
                         actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
                         stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        if stored_measurement:
-                            kpi['measurement'] = stored_measurement
+                        kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian waktu penanganan customer"
+
+                    elif kpi['type'] == 'customer_satisfaction':
+                        # Data dari rating customer
+                        rated_orders = orders.filtered(lambda o: o.customer_rating)
+                        satisfied_orders = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
+                        actual = (len(satisfied_orders) / len(rated_orders) * 100) if rated_orders else 0
+                        kpi['measurement'] = f"Customer puas: {len(satisfied_orders)} dari {len(rated_orders)} order"
+
+                    elif kpi['type'] == 'complaint_handling':
+                        # Data komplain
+                        complaints = orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                        resolved_complaints = complaints.filtered(lambda o: o.complaint_status == 'solved')
+                        actual = (len(resolved_complaints) / len(complaints) * 100) if complaints else 100
+                        kpi['measurement'] = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
+
+                    elif kpi['type'] == 'follow_up_h3':
+                        # Dari data follow up H+3
+                        due_follow_ups = orders.filtered(lambda o: o.next_follow_up_3_days)
+                        completed_follow_ups = due_follow_ups.filtered(lambda o: o.is_follow_up == 'yes')
+                        actual = (len(completed_follow_ups) / len(due_follow_ups) * 100) if due_follow_ups else 0
+                        kpi['measurement'] = f"Follow up H+3: {len(completed_follow_ups)} dari {len(due_follow_ups)} order"
+
+                    elif kpi['type'] == 'sop_compliance':
+                        # Data pelanggaran SOP
+                        total_samplings = len(orders.mapped('sop_sampling_ids'))
+                        failed_samplings = len(orders.mapped('sop_sampling_ids').filtered(lambda s: s.result == 'fail'))
+                        actual = ((total_samplings - failed_samplings) / total_samplings * 100) if total_samplings else 0
+                        kpi['measurement'] = f"Sampling sesuai SOP: {total_samplings - failed_samplings} dari {total_samplings} sampling"
+
+                    elif kpi['type'] == 'discipline':
+                        # Data kedisiplinan
+                        attendances = request.env['hr.attendance'].sudo().search([
+                            ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('employee_id', '=', employee.id)
+                        ])
+                        late_count = sum(1 for att in attendances if att.is_late)
+                        actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
+                        kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
 
                     achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
 
                     kpi_scores.append({
-                    'no': kpi['no'],
-                    'name': kpi['name'],
-                    'type': kpi['type'],
-                    'weight': kpi['weight'],
-                    'target': kpi['target'],
-                    'measurement': kpi['measurement'],
-                    'actual': actual,
-                    'achievement': achievement,
-                    'weighted_score': achievement * (kpi['weight'] / 100),
-                    'editable': ['weight', 'target']
-                })
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': kpi['measurement'],
+                        'actual': actual,
+                        'achievement': achievement,
+                        'weighted_score': weighted_score,
+                        'editable': ['weight', 'target']
+                    })
+
 
             else:
                 return {'status': 'error', 'message': f'Invalid position: {job_title}'}
@@ -669,86 +822,130 @@ class KPIOverview(http.Controller):
             mechanic_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Menjamin hasil pekerjaan servis terlaksana dengan baik',
+                    'name': 'Produktivitas Mekanik Optimal',
+                    'type': 'productivity',
+                    'weight': 25,
+                    'target': 100,
+                    'measurement': 'Diukur dari jumlah omset yang dihasilkan dari PKB yang ditangani'
+                },
+                {
+                    'no': 2,
+                    'name': 'Efisiensi waktu servis',
+                    'type': 'service_efficiency',
+                    'weight': 15,
+                    'target': 80,
+                    'measurement': 'Diukur dari kesesuaian waktu pengerjaan',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 3,
+                    'name': 'Rekomendasi setelah servis',
+                    'type': 'service_recommendation',
+                    'weight': 15,
+                    'target': 80,
+                    'measurement': 'Diukur dari persentase rekomendasi yang diberikan',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 4,
+                    'name': 'Hasil pekerjaan servis terlaksana dengan baik',
                     'type': 'service_quality',
                     'weight': 25,
                     'target': 90,
                     'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)'
                 },
                 {
-                    'no': 2,
-                    'name': 'Produktivitas Mekanik Optimal',
-                    'type': 'productivity',
-                    'weight': 25,
-                    'target': 90,
-                    'measurement': 'Diukur dari jumlah omset yang dihasilkan dari PKB yang ditangani'
-                },
-                {
-                    'no': 3,
-                    'name': 'Melakukan Pekerjaan Operasional Sesuai Alur dan SOP yang ditetapkan',
+                    'no': 5,
+                    'name': 'Pekerjaan operasional sesuai alur dan SOP',
                     'type': 'sop_compliance',
-                    'weight': 30,
+                    'weight': 20,
                     'target': 95,
-                    'measurement': 'Diukur dari jumlah temuan pekerjaan yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan'
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
+                    'include_in_calculation': True
                 },
                 {
-                    'no': 4,
-                    'name': 'Menjalankan kegiatan operasional secara disiplin',
+                    'no': 6,  # Tambahkan sebagai KPI terakhir
+                    'name': 'Kedisiplinan (Informasi)',
                     'type': 'discipline',
-                    'weight': 20,
-                    'target': 90,
-                    'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran'
+                    'weight': 0,  # Weight 0 karena tidak dihitung
+                    'target': 0,
+                    'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran',
+                    'include_in_calculation': False  # Set False untuk tidak masuk perhitungan
                 }
             ]
 
             leader_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Melakukan distribusi pekerjaan secara efisien',
-                    'type': 'work_distribution',
+                    'name': 'Produktivitas mekanik optimal',
+                    'type': 'productivity',
                     'weight': 15,
                     'target': 100,
-                    'measurement': 'Diukur dari jumlah unit yang dapat terhandle selama satu bulan'
+                    'measurement': 'Diukur dari jumlah PKB yang berhasil dikerjakan',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 2,
-                    'name': 'Menjamin analisa dan hasil pekerjaan servis terlaksana dengan baik',
-                    'type': 'service_quality',
-                    'weight': 20,
-                    'target': 90,
-                    'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan'
+                    'name': 'Efisiensi waktu servis',
+                    'type': 'service_efficiency',
+                    'weight': 15,
+                    'target': 80,
+                    'measurement': 'Diukur dari kesesuaian waktu pengerjaan berdasarkan target waktu',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 3,
-                    'name': 'Menganalisis dan Menyelesaikan Komplain Dari Customer',
-                    'type': 'complaint_handling',
+                    'name': 'Distribusi pekerjaan servis secara optimal',
+                    'type': 'work_distribution',
                     'weight': 15,
-                    'target': 100,
-                    'measurement': 'Customer Puas Terhadap Pengerjaan & Solusi yang Diberikan'
+                    'target': 80,
+                    'measurement': 'Diukur dari rata-rata waktu pengerjaan per PKB setiap mekanik',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 4,
-                    'name': 'Produktivitas Mekanik Optimal',
-                    'type': 'team_productivity',
-                    'weight': 15,
-                    'target': 100,
-                    'measurement': 'Diukur dari jumlah omset yang dihasilkan dari PKB yang ditangani'
+                    'name': 'Rekomendasi setelah servis',
+                    'type': 'service_recommendation',
+                    'weight': 10,
+                    'target': 80,
+                    'measurement': 'Diukur dari jumlah persentase PKB yang diberikan rekomendasi servis',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 5,
-                    'name': 'Melakukan Pekerjaan Operasional Sesuai Alur dan SOP yang ditetapkan',
-                    'type': 'sop_compliance',
+                    'name': 'Analisa dan hasil pekerjaan servis',
+                    'type': 'service_quality',
                     'weight': 15,
-                    'target': 95,
-                    'measurement': 'Diukur dari jumlah temuan pekerjaan yang dilakukan tidak sesuai dengan alur / SOP'
+                    'target': 90,
+                    'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
+                    'include_in_calculation': True
                 },
                 {
                     'no': 6,
+                    'name': 'Analisis dan penyelesaian komplain dari customer',
+                    'type': 'complaint_handling',
+                    'weight': 15,
+                    'target': 100,
+                    'measurement': 'Diukur dari customer merasa puas terhadap pelayanan & solusi yang diberikan dalam kurun waktu 3 hari setelah complaint dilayangkan',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 7,
+                    'name': 'Kontrol kinerja tim mekanik',
+                    'type': 'sop_compliance',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 8,
                     'name': 'Menjalankan kegiatan operasional secara disiplin',
                     'type': 'team_discipline',
-                    'weight': 20,
-                    'target': 90,
-                    'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran'
+                    'weight': 0,
+                    'target': 0,
+                    'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran',
+                    'include_in_calculation': False
                 }
             ]
             
@@ -798,18 +995,37 @@ class KPIOverview(http.Controller):
                         formatted_revenue = "{:,.0f}".format(total_revenue)
                         formatted_target = "{:,.0f}".format(monthly_target)
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
-
-
-
+                        
+                    elif kpi['type'] == 'service_recommendation':
+                        if orders:
+                            total_orders = len(orders)
+                            orders_with_recs = len(orders.filtered(lambda o: o.total_recommendations > 0))
+                            avg_realization = sum(orders.mapped('recommendation_realization_rate')) / total_orders if total_orders else 0
+                            
+                            kpi['measurement'] = (
+                                f"Orders dengan rekomendasi: {orders_with_recs}/{total_orders}, "
+                                f"Rata-rata realisasi: {avg_realization:.1f}%"
+                            )
+                            actual = avg_realization
                         
                     elif kpi['type'] == 'sop_compliance':
                         actual = ((total_orders - sop_violations) / total_orders * 100) if total_orders else 0
                         kpi['measurement'] = f"Total order: {total_orders}, Sesuai SOP: {total_orders - sop_violations}, Pelanggaran: {sop_violations}"
                         
-                    elif kpi['type'] == 'discipline':
+                    # elif kpi['type'] == 'discipline':
+                    #     actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
+                    #     kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
+
+                    # Tetap hitung kedisiplinan tapi tidak masuk total
+                    if kpi['type'] == 'discipline':
+                        attendances = request.env['hr.attendance'].sudo().search([
+                            ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('employee_id', '=', employee.id)
+                        ])
+                        late_count = sum(1 for att in attendances if att.is_late)
                         actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
                         kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
-
                     achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
                     
                     kpi_scores.append({
@@ -872,18 +1088,69 @@ class KPIOverview(http.Controller):
                 kpi_scores = []
                 for kpi in leader_kpi_template:
                     actual = 0
-                    if kpi['type'] == 'work_distribution':
-                        target_units = 145  # Sesuai target yang ditetapkan
+
+                    if kpi['type'] == 'productivity':
+                        total_units = len(team_orders)
+                        target_units = 145  # Target PKB per bulan
                         actual = (total_units / target_units * 100) if target_units else 0
-                        kpi['measurement'] = f"Berhasil handle {total_units} unit dari target {target_units} unit/bulan"
+                        kpi['measurement'] = f"Berhasil handle {total_units} PKB dari target {target_units} PKB/bulan"
                         
+                    elif kpi['type'] == 'service_efficiency':
+                        # Hitung rata-rata deviasi waktu servis tim
+                        orders_with_duration = team_orders.filtered(lambda o: o.duration_deviation is not False)
+                        if orders_with_duration:
+                            avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
+                            actual = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
+                            kpi['measurement'] = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
+                    # elif kpi['type'] == 'work_distribution':
+                    #     target_units = 145  # Sesuai target yang ditetapkan
+                    #     actual = (total_units / target_units * 100) if target_units else 0
+                    #     kpi['measurement'] = f"Berhasil handle {total_units} unit dari target {target_units} unit/bulan"
+                    elif kpi['type'] == 'work_distribution':
+                        # Hitung distribusi pekerjaan berdasarkan waktu per PKB
+                        mechanic_workloads = {}
+                        for order in team_orders:
+                            for mech in order.car_mechanic_id_new:
+                                if mech not in mechanic_workloads:
+                                    mechanic_workloads[mech] = []
+                                if order.lead_time_servis:
+                                    mechanic_workloads[mech].append(order.lead_time_servis)
+                        
+                        # Hitung rata-rata waktu per mekanik
+                        avg_times = []
+                        for workload in mechanic_workloads.values():
+                            if workload:
+                                avg_times.append(sum(workload) / len(workload))
+                        
+                        if avg_times:
+                            variance = max(avg_times) - min(avg_times)  # Variance antar mekanik
+                            actual = max(0, 100 - (variance * 10))  # Convert variance to score
+                            kpi['measurement'] = f"Variance waktu antar mekanik: {variance:.1f} jam"
+    
                     elif kpi['type'] == 'service_quality':
                         actual = (satisfied_customers / total_units * 100) if total_units else 0
                         kpi['measurement'] = f"Total order: {total_units}, Customer puas: {satisfied_customers}, Komplain: {complaints}"
                         
                     elif kpi['type'] == 'complaint_handling':
-                        actual = (resolved_complaints / complaints * 100) if complaints else 100
-                        kpi['measurement'] = f"Total komplain: {complaints}, Berhasil diselesaikan: {resolved_complaints}"
+                        complaints = team_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                        total_complaints = len(complaints)
+                        resolved_complaints = len(complaints.filtered(lambda o: o.complaint_status == 'solved'))
+                        actual = (resolved_complaints / total_complaints * 100) if total_complaints else 100
+                        kpi['measurement'] = f"Komplain terselesaikan: {resolved_complaints} dari {total_complaints} komplain"
+
+                    
+                    elif kpi['type'] == 'service_recommendation':
+                        total_orders = len(team_orders)
+                        orders_with_recs = len(team_orders.filtered(lambda o: o.recommendation_ids))
+                        actual = (orders_with_recs / total_orders * 100) if total_orders else 0
+                        kpi['measurement'] = f"PKB dengan rekomendasi: {orders_with_recs} dari {total_orders} PKB"
+
+                    elif kpi['type'] == 'team_recommendation':
+                        team_orders = orders.filtered(lambda o: o.car_mechanic_id_new in team_members)
+                        total_team_orders = len(team_orders)
+                        team_orders_with_recs = len(team_orders.filtered(lambda o: o.recommendation_ids))
+                        actual = (team_orders_with_recs / total_team_orders * 100) if total_team_orders else 0
+                        kpi['measurement'] = f"Orders tim dengan rekomendasi: {team_orders_with_recs} dari {total_team_orders}"
                         
                     elif kpi['type'] == 'team_productivity':
                         if team_target == 0:
@@ -898,14 +1165,18 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Revenue tim: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
                         
                     elif kpi['type'] == 'sop_compliance':
-                        actual = ((total_units - sop_violations) / total_units * 100) if total_units else 0
-                        kpi['measurement'] = f"Total order: {total_units}, Sesuai SOP: {total_units - sop_violations}, Pelanggaran: {sop_violations}"
+                        total_samplings = len(team_orders.mapped('sop_sampling_ids'))
+                        failed_samplings = len(team_orders.mapped('sop_sampling_ids').filtered(lambda s: s.result == 'fail'))
+                        actual = ((total_samplings - failed_samplings) / total_samplings * 100) if total_samplings else 0
+                        kpi['measurement'] = f"Sampling sesuai SOP: {total_samplings - failed_samplings} dari {total_samplings} sampling"
+
                         
                     elif kpi['type'] == 'team_discipline':
                         actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
                         kpi['measurement'] = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
 
                     achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    weighted_score = achievement * (kpi['weight'] / 100)
                     
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -916,17 +1187,20 @@ class KPIOverview(http.Controller):
                         'measurement': kpi['measurement'],
                         'actual': actual,
                         'achievement': achievement,
-                        'weighted_score': achievement * (kpi['weight'] / 100),
-                        'editable': ['weight', 'target']
+                        'weighted_score': weighted_score
                     })
 
 
             # Calculate total score
-            total_weight = sum(kpi['weight'] for kpi in kpi_scores)
-            total_score = sum(kpi['weighted_score'] for kpi in kpi_scores)
-            if total_weight != 100:
-                _logger.warning(f"Total weight ({total_weight}) is not 100%")
-            avg_target = sum(kpi['target'] * kpi['weight'] for kpi in kpi_scores) / total_weight if total_weight else 0
+            # total_weight = sum(kpi['weight'] for kpi in kpi_scores)
+            # total_score = sum(kpi['weighted_score'] for kpi in kpi_scores)
+            # if total_weight != 100:
+            #     _logger.warning(f"Total weight ({total_weight}) is not 100%")
+            # avg_target = sum(kpi['target'] * kpi['weight'] for kpi in kpi_scores) / total_weight if total_weight else 0
+            # Di bagian perhitungan total score untuk Team Leader
+            total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
+            total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
+            avg_target = sum(kpi['target'] * kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True)) / total_weight if total_weight else 0
 
             return {
                 'status': 'success',

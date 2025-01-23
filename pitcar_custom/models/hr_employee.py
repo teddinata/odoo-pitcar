@@ -38,10 +38,18 @@ class HrEmployee(models.Model):
     )
     face_image = fields.Binary('Face Image', attachment=True, help='Compressed face image for verification')
     
+    # def _get_public_fields(self):
+    #     """ Extend public fields """
+    #     public_fields = super()._get_public_fields()
+    #     return public_fields + ['is_mechanic', 'mechanic_id']
+    
     def _get_public_fields(self):
         """ Extend public fields """
         public_fields = super()._get_public_fields()
-        return public_fields + ['is_mechanic', 'mechanic_id']
+        return public_fields + [
+            'mechanic_id',
+            'is_mechanic'
+        ]
     
     def _euclidean_distance(self, arr1, arr2):
         """Calculate Euclidean distance between two arrays"""

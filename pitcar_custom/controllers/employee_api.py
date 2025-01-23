@@ -205,7 +205,7 @@ class EmployeeAPI(http.Controller):
             order = f'{sort_field} {sort_order}'
             
             # Get total count
-            Employee = request.env['hr.employee']
+            Employee = request.env['hr.employee'].sudo()
             total_count = Employee.search_count(domain)
             total_pages = math.ceil(total_count / limit)
             

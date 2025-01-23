@@ -31,10 +31,10 @@ class PartPurchaseLeadtime(models.Model):
                                 domain=[('job_id.name', 'ilike', 'Partman')],
                                 tracking=True)
     review_type = fields.Selection([
-        ('nofal', 'Nofal'),
-        ('full', 'Full'),
-        ('adi', 'Adi')
-    ], string='Jenis Review', tracking=True)
+        ('margin', 'Margin'),
+        ('duration_estimated', 'Durasi Estimasi'),
+        ('partman_condition', 'Kondisi Partman'),
+    ], string='Jenis Review', tracking=True, required=False)
     notes = fields.Text('Keterangan', tracking=True)
     
     state = fields.Selection([

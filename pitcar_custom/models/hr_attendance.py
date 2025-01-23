@@ -16,6 +16,29 @@ class HrAttendance(models.Model):
     is_late = fields.Boolean('Is Late', compute='_compute_is_late', store=True)
     late_duration = fields.Float('Late Duration (Minutes)', compute='_compute_late_duration', store=True)
 
+    actual_worked_hours = fields.Float('Actual Worked Hours', compute='_compute_actual_worked_hours', store=True)
+
+    @api.depends('check_in', 'check_out')
+    def _compute_actual_worked_hours(self):
+        for attendance in self:
+            if not attendance.check_out:
+                attendance.actual_worked_hours = 0
+                continue
+                
+            # Convert to local timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            check_in = pytz.utc.localize(attendance.check_in).astimezone(tz)
+            check_out = pytz.utc.localize(attendance.check_out).astimezone(tz)
+            
+            # Calculate total duration
+            total_duration = (check_out - check_in).total_seconds() / 3600
+            
+            # Kurangi 1 jam untuk istirahat jika durasi > 6 jam
+            if total_duration > 6:
+                total_duration -= 1
+                
+            attendance.actual_worked_hours = total_duration
+
     @api.depends('check_in')
     def _compute_is_late(self):
         for attendance in self:

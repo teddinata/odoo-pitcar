@@ -44,6 +44,10 @@ class PartPurchaseLeadtime(models.Model):
         ('cancel', 'Dibatalkan')
     ], string='Status', default='draft', tracking=True)
 
+    estimated_departure = fields.Datetime('Estimated Departure')
+    estimated_return = fields.Datetime('Estimated Return')
+    estimated_duration = fields.Float('Estimated Duration', digits=(12, 2))
+
     @api.model
     def get_orders_need_part(self):
         """Get sale orders that need part purchase"""

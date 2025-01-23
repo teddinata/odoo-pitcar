@@ -46,43 +46,47 @@ class LeadTimePartController(http.Controller):
             raise ValidationError("Invalid time format. Please use HH:MM format")
 
     def _get_purchase_details(self, purchase):
-        """Get formatted purchase details"""
-        if not purchase:
-            return {}
+      """Get formatted purchase details"""
+      if not purchase:
+          return {}
 
-        return {
-            'id': purchase.id,
-            'name': purchase.name,
-            'sale_order': {
-                'id': purchase.sale_order_id.id,
-                'name': purchase.sale_order_id.name
-            },
-            'customer': {
-                'id': purchase.partner_id.id,
-                'name': purchase.partner_id.name
-            },
-            'car': {
-                'id': purchase.partner_car_id.id,
-                'brand': purchase.partner_car_id.brand.name if purchase.partner_car_id.brand else None,
-                'type': purchase.partner_car_id.brand_type.name if purchase.partner_car_id.brand_type else None,
-                'plate': purchase.partner_car_id.number_plate
-            },
-            'timestamps': {
-                'departure': self._format_datetime(purchase.departure_time),
-                'return': self._format_datetime(purchase.return_time)
-            },
-            'duration': {
-                'hours': purchase.duration,
-                'display': purchase.duration_display
-            },
-            'partman': {
-                'id': purchase.partman_id.id,
-                'name': purchase.partman_id.name
-            } if purchase.partman_id else None,
-            'review_type': purchase.review_type,
-            'notes': purchase.notes,
-            'state': purchase.state
-        }
+      return {
+          'id': purchase.id,
+          'name': f'PP{str(purchase.id).zfill(5)}',
+          'sale_order': {
+              'id': purchase.sale_order_id.id,
+              'name': purchase.sale_order_id.name
+          },
+          'customer': {
+              'id': purchase.partner_id.id,
+              'name': purchase.partner_id.name
+          },
+          'car': {
+              'id': purchase.partner_car_id.id,
+              'brand': purchase.partner_car_id.brand.name if purchase.partner_car_id.brand else None,
+              'type': purchase.partner_car_id.brand_type.name if purchase.partner_car_id.brand_type else None,
+              'plate': purchase.partner_car_id.number_plate
+          },
+          'timestamps': {
+              'departure': self._format_datetime(purchase.departure_time),
+              'return': self._format_datetime(purchase.return_time),
+              'estimated_departure': self._format_datetime(purchase.estimated_departure),
+              'estimated_return': self._format_datetime(purchase.estimated_return)
+          },
+          'duration': {
+              'hours': purchase.duration,
+              'display': purchase.duration_display,
+              'estimated_hours': purchase.estimated_duration,
+              'estimated_display': self._format_duration(purchase.estimated_duration)
+          },
+          'partman': {
+              'id': purchase.partman_id.id,
+              'name': purchase.partman_id.name
+          } if purchase.partman_id else None,
+          'review_type': purchase.review_type,
+          'notes': purchase.notes,
+          'state': purchase.state
+      }
     
     @http.route('/web/part-purchase/available-orders', type='json', auth='user', methods=['POST'])
     def get_available_orders(self, **kw):
@@ -377,19 +381,53 @@ class LeadTimePartController(http.Controller):
     def create_purchase(self, **kw):
         """Create new part purchase record"""
         try:
-            required_fields = ['sale_order_id', 'partman_id']
-            for field in required_fields:
-                if field not in kw:
-                    return {
-                        'status': 'error',
-                        'message': f'Missing required field: {field}'
-                    }
+            # Ambil params langsung dari kw karena kita pakai type='json'
+            sale_order_id = kw.get('sale_order_id')
+            partman_id = kw.get('partman_id')
+            
+            # Validasi required fields
+            if not sale_order_id or not partman_id:
+                return {
+                    'status': 'error',
+                    'message': 'sale_order_id and partman_id are required'
+                }
 
+            # Parse time inputs
+            est_departure_str = kw.get('estimated_departure')
+            est_return_str = kw.get('estimated_return')
+            
+            if not est_departure_str or not est_return_str:
+                return {
+                    'status': 'error',
+                    'message': 'Estimated departure and return times are required'
+                }
+
+            try:
+                est_departure = self._parse_time(est_departure_str)
+                est_return = self._parse_time(est_return_str)
+            except ValueError as e:
+                return {
+                    'status': 'error',
+                    'message': f'Invalid time format: {str(e)}. Please use HH:mm format.'
+                }
+            
+            # Calculate estimated duration
+            estimated_duration = 0
+            if est_departure and est_return:
+                if est_return < est_departure:
+                    est_return += timedelta(days=1)  # Asumsi kembali di hari berikutnya
+                time_diff = est_return - est_departure
+                estimated_duration = time_diff.total_seconds() / 3600  # Convert to hours
+
+            # Prepare values for creation
             values = {
-                'sale_order_id': kw.get('sale_order_id'),
-                'partman_id': kw.get('partman_id'),
+                'sale_order_id': int(sale_order_id),
+                'partman_id': int(partman_id),
                 'review_type': kw.get('review_type'),
-                'notes': kw.get('notes')
+                'notes': kw.get('notes'),
+                'estimated_departure': est_departure,
+                'estimated_return': est_return,
+                'estimated_duration': estimated_duration
             }
 
             purchase = request.env['part.purchase.leadtime'].create(values)
@@ -401,10 +439,47 @@ class LeadTimePartController(http.Controller):
             }
 
         except Exception as e:
+            _logger.error(f"Error in create_purchase: {str(e)}")
             return {
                 'status': 'error',
                 'message': str(e)
             }
+
+    def _parse_time(self, time_str):
+      """Parse time string to datetime with correct timezone
+      Args:
+          time_str (str): Time string in HH:mm format
+      Returns:
+          datetime: Datetime object in UTC
+      """
+      if not time_str:
+          raise ValueError("Time string cannot be empty")
+          
+      try:
+          # Parse input time
+          hours, minutes = map(int, time_str.split(':'))
+          if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+              raise ValueError("Hours must be 0-23 and minutes must be 0-59")
+              
+          # Get current date in Asia/Jakarta timezone
+          tz = pytz.timezone('Asia/Jakarta')
+          local_now = fields.Datetime.now().astimezone(tz)
+          
+          # Create local datetime
+          local_dt = local_now.replace(
+              hour=hours,
+              minute=minutes,
+              second=0,
+              microsecond=0
+          )
+          
+          # Convert to UTC for storage
+          utc_dt = local_dt.astimezone(pytz.UTC)
+          
+          return utc_dt.replace(tzinfo=None)  # Remove tzinfo for Odoo compatibility
+          
+      except ValueError:
+          raise ValueError("Invalid time format. Please use HH:mm format")
 
     @http.route('/web/part-purchase/<int:purchase_id>/depart', type='json', auth='user', methods=['POST'])
     def record_departure(self, purchase_id, **kw):

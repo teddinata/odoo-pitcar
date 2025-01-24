@@ -125,12 +125,16 @@ class EmployeeAPI(http.Controller):
             position_list = [{
                 'id': job.id,
                 'name': job.name,
-                'department': job.department_id.name if job.department_id else False,
+                'department_id': job.department_id.id if job.department_id else None,  # Tambahkan department_id
+                'department': {  # Ubah menjadi object
+                    'id': job.department_id.id,
+                    'name': job.department_id.name
+                } if job.department_id else None,
                 'total_employees': job.no_of_employee,
                 'description': job.description
             } for job in positions]
 
-            # Get Work Locations - removed address field
+            # Get Work Locations
             locations = request.env['pitcar.work.location'].search([])
             location_list = [{
                 'id': loc.id,

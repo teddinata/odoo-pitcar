@@ -83,6 +83,7 @@ class EmployeeAPI(http.Controller):
               'mobile_phone': employee.mobile_phone or False,
               'company': employee.company_id.name if employee.company_id else False,
               'manager': employee.parent_id.name if employee.parent_id else False,
+              'parent_id': employee.parent_id.id if employee.parent_id else False,
               'coach': employee.coach_id.name if employee.coach_id else False,
               'address_home': employee.address_id.name_get()[0][1] if employee.address_id else False,
               'active': employee.active,
@@ -305,6 +306,14 @@ class EmployeeAPI(http.Controller):
                     'status': 'error',
                     'message': f"Missing required fields: {', '.join(missing_fields)}"
                 }
+
+             # Handle parent_id/manager
+            if 'parent_id' in params:
+                parent_id = params.get('parent_id')
+                if parent_id:
+                    params['parent_id'] = int(parent_id)
+                else:
+                    params['parent_id'] = False
             
             # Handle avatar file
             if avatar_file:
@@ -394,6 +403,15 @@ class EmployeeAPI(http.Controller):
                         'status': 'error',
                         'message': "Invalid birthday format. Use YYYY-MM-DD"
                     }
+                
+             # Handle parent_id/manager
+            if 'parent_id' in update_vals:
+                # Konversi parent_id ke integer jika tidak None
+                parent_id = update_vals.get('parent_id')
+                if parent_id:
+                    update_vals['parent_id'] = int(parent_id)
+                else:
+                    update_vals['parent_id'] = False
             
             # Update employee
             employee.write(update_vals)

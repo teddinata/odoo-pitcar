@@ -12,6 +12,8 @@ class ResUsers(models.Model):
        ('user', 'User')
    ], string='PitCar Role', default='user', tracking=True)
 
+   karma = fields.Integer(string='Karma', default=0)  # Tambahkan field ini saja
+
    @api.model
    def create(self, vals):
        user = super(ResUsers, self).create(vals)

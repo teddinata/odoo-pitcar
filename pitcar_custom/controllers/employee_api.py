@@ -110,40 +110,51 @@ class EmployeeAPI(http.Controller):
     def get_employee_masters(self, **kw):
         """Get master data for employees (departments, positions, locations)"""
         try:
-            # Get Departments
-            departments = request.env['hr.department'].search([])
+            # Get Departments dengan prefetch
+            Department = request.env['hr.department']
+            departments = Department.search([])
             department_list = [{
                 'id': dept.id,
                 'name': dept.name,
-                'manager': dept.manager_id.name if dept.manager_id else False,
-                'parent_dept': dept.parent_id.name if dept.parent_id else False,
+                'manager': dept.manager_id.name if dept.manager_id else None,
+                'parent_dept': dept.parent_id.name if dept.parent_id else None,
                 'total_employees': len(dept.member_ids)
             } for dept in departments]
 
-            # Get Job Positions
-            positions = request.env['hr.job'].search([])
-            position_list = [{
-                'id': job.id,
-                'name': job.name,
-                'department_id': job.department_id.id if job.department_id else None,  # Tambahkan department_id
-                'department': {  # Ubah menjadi object
-                    'id': job.department_id.id,
-                    'name': job.department_id.name
-                } if job.department_id else None,
-                'total_employees': job.no_of_employee,
-                'description': job.description
-            } for job in positions]
+            # Get Job Positions dengan domain yang memastikan relasi department terload
+            Job = request.env['hr.job']
+            jobs = Job.search([])
+            position_list = []
+            
+            for job in jobs:
+                dept = job.department_id
+                position_data = {
+                    'id': job.id,
+                    'name': job.name,
+                    'department_id': dept.id if dept else None,
+                    'department': {
+                        'id': dept.id,
+                        'name': dept.name,
+                        'manager_id': dept.manager_id.id if dept.manager_id else None,
+                        'manager_name': dept.manager_id.name if dept.manager_id else None
+                    } if dept else None,
+                    'total_employees': job.no_of_employee,
+                    'description': job.description or None
+                }
+                position_list.append(position_data)
 
             # Get Work Locations
-            locations = request.env['pitcar.work.location'].search([])
+            Location = request.env['pitcar.work.location']
+            locations = Location.search([])
             location_list = [{
                 'id': loc.id,
                 'name': loc.name
             } for loc in locations]
 
-            # Get additional data if needed
+            # Get additional data
             employee_count = request.env['hr.employee'].search_count([('active', '=', True)])
 
+            # Return data dengan format yang konsisten
             return {
                 'status': 'success',
                 'data': {
@@ -152,7 +163,7 @@ class EmployeeAPI(http.Controller):
                     'locations': location_list,
                     'summary': {
                         'total_departments': len(departments),
-                        'total_positions': len(positions),
+                        'total_positions': len(jobs),
                         'total_locations': len(locations),
                         'total_employees': employee_count
                     }

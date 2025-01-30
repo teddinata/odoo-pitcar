@@ -460,12 +460,44 @@ class KPIOverview(http.Controller):
                         stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
                         kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian laporan keuangan kasir"
 
+                    # elif kpi['type'] == 'customer_satisfaction':
+                    #     # Data dari customer rating di sale.order
+                    #     rated_orders = all_orders.filtered(lambda o: o.customer_rating)
+                    #     satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
+                    #     actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
+                    #     kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
+
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Data dari customer rating di sale.order
+                        # Ambil semua order yang memiliki rating
                         rated_orders = all_orders.filtered(lambda o: o.customer_rating)
-                        satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
-                        actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
-                        kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
+                        total_rated_orders = len(rated_orders)
+                        
+                        if total_rated_orders > 0:
+                            # Hitung rata-rata rating
+                            total_rating = sum(float(order.customer_rating) for order in rated_orders)
+                            avg_rating = total_rating / total_rated_orders
+                            
+                            # Implementasi formula khusus yang benar:
+                            # > 4.8 = 120%
+                            # 4.8 = 100%
+                            # 4.6 s.d 4.7 = 50%
+                            # < 4.6 = 0%
+                            if avg_rating > 4.8:
+                                actual = 120
+                            elif avg_rating == 4.8:
+                                actual = 100
+                            elif 4.6 <= avg_rating <= 4.7:
+                                actual = 50
+                            else:  # < 4.6
+                                actual = 0
+                                
+                            kpi['measurement'] = (
+                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
+                                f"Total rating: {total_rating:.1f}"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Belum ada rating customer"
 
                     elif kpi['type'] == 'sop_compliance':
                         # Manual input dari cs.kpi.detail
@@ -546,11 +578,36 @@ class KPIOverview(http.Controller):
                         measurement = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
 
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Otomatis ambil data kepuasan customer dari sistem
+                        # Ambil semua order yang memiliki rating
                         rated_orders = all_orders.filtered(lambda o: o.customer_rating)
-                        satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
-                        actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
-                        measurement = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
+                        total_rated_orders = len(rated_orders)
+                        
+                        if total_rated_orders > 0:
+                            # Hitung rata-rata rating
+                            total_rating = sum(float(order.customer_rating) for order in rated_orders)
+                            avg_rating = total_rating / total_rated_orders
+                            
+                            # Implementasi formula khusus yang benar:
+                            # > 4.8 = 120%
+                            # 4.8 = 100%
+                            # 4.6 s.d 4.7 = 50%
+                            # < 4.6 = 0%
+                            if avg_rating > 4.8:
+                                actual = 120
+                            elif avg_rating == 4.8:
+                                actual = 100
+                            elif 4.6 <= avg_rating <= 4.7:
+                                actual = 50
+                            else:  # < 4.6
+                                actual = 0
+                                
+                            kpi['measurement'] = (
+                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
+                                f"Total rating: {total_rating:.1f}"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Belum ada rating customer"
 
                     elif kpi['type'] == 'complaint_handling':
                         # Otomatis ambil data penanganan komplain dari sistem
@@ -563,18 +620,21 @@ class KPIOverview(http.Controller):
                         measurement = kpi_values.get(kpi['type'], {}).get('measurement', '') or "Menunggu input: Jumlah temuan stok part habis"
 
                     elif kpi['type'] == 'team_control':
-                        # Otomatis ambil data kontrol kinerja tim dari sistem
-                        # Hanya ambil sampling SOP untuk Service Advisor
-                        sop_violations = len(all_orders.filtered(
-                            lambda o: o.sop_sampling_ids.filtered(
-                                lambda s: s.result == 'fail' and s.sop_id.is_sa  # Hanya sampling untuk SA
-                            )
-                        ))
-                        total_samplings = len(all_orders.mapped('sop_sampling_ids').filtered(
-                            lambda s: s.sop_id.is_sa  # Hanya sampling untuk SA
-                        ))
+                        # Get all SOP samplings for the team's orders that are related to Service Advisors
+                        sa_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('sale_order_id', 'in', all_orders.ids),
+                            ('sop_id.is_sa', '=', True),  # Only SA-related SOPs
+                            ('sa_id', 'in', team_members.mapped('user_id').ids),  # Only for team's SAs
+                            ('state', '=', 'done')  # Only count completed samplings
+                        ])
+                        
+                        # Count total SA samplings and violations
+                        total_samplings = len(sa_samplings)
+                        sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
+                        
+                        # Calculate actual score
                         actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
-                        measurement = f"Sampling sesuai SOP: {total_samplings - sop_violations} dari {total_samplings} sampling"
+                        measurement = f"Sampling SA sesuai SOP: {total_samplings - sop_violations} dari {total_samplings} sampling"
 
                     elif kpi['type'] == 'team_discipline':
                         # Otomatis ambil data kedisiplinan tim dari sistem
@@ -646,11 +706,36 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian waktu penanganan customer"
 
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Data dari rating customer
-                        rated_orders = orders.filtered(lambda o: o.customer_rating)
-                        satisfied_orders = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
-                        actual = (len(satisfied_orders) / len(rated_orders) * 100) if rated_orders else 0
-                        kpi['measurement'] = f"Customer puas: {len(satisfied_orders)} dari {len(rated_orders)} order"
+                        # Ambil semua order yang memiliki rating
+                        rated_orders = all_orders.filtered(lambda o: o.customer_rating)
+                        total_rated_orders = len(rated_orders)
+                        
+                        if total_rated_orders > 0:
+                            # Hitung rata-rata rating
+                            total_rating = sum(float(order.customer_rating) for order in rated_orders)
+                            avg_rating = total_rating / total_rated_orders
+                            
+                            # Implementasi formula khusus yang benar:
+                            # > 4.8 = 120%
+                            # 4.8 = 100%
+                            # 4.6 s.d 4.7 = 50%
+                            # < 4.6 = 0%
+                            if avg_rating > 4.8:
+                                actual = 120
+                            elif avg_rating == 4.8:
+                                actual = 100
+                            elif 4.6 <= avg_rating <= 4.7:
+                                actual = 50
+                            else:  # < 4.6
+                                actual = 0
+                                
+                            kpi['measurement'] = (
+                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
+                                f"Total rating: {total_rating:.1f}"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Belum ada rating customer"
 
                     elif kpi['type'] == 'complaint_handling':
                         # Data komplain

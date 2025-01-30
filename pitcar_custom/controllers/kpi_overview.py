@@ -447,15 +447,23 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah customer yang ditambahkan ke grup"
 
                     elif kpi['type'] == 'service_reminder':
-                        # Gunakan data dari sale.order
+                        # Gunakan data dari sale.order dengan filter periode
                         reminder_domain = [
-                            ('next_follow_up_3_months', '>=', start_date),
-                            ('next_follow_up_3_months', '<=', end_date)
+                            ('next_follow_up_3_months', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('next_follow_up_3_months', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('state', 'in', ['sale', 'done'])
                         ]
                         due_reminders = request.env['sale.order'].sudo().search(reminder_domain)
                         completed_reminders = due_reminders.filtered(lambda o: o.reminder_3_months == 'yes')
-                        actual = (len(completed_reminders) / len(due_reminders) * 100) if due_reminders else 0
-                        kpi['measurement'] = f"Reminder terkirim: {len(completed_reminders)} dari {len(due_reminders)} yang jatuh tempo"
+                        
+                        total_due = len(due_reminders)
+                        total_completed = len(completed_reminders)
+                        
+                        actual = (total_completed / total_due * 100) if total_due else 0
+                        kpi['measurement'] = (
+                            f"Reminder terkirim: {total_completed} dari {total_due} yang jatuh tempo "
+                            f"pada periode {month}/{year}"
+                        )
 
                     elif kpi['type'] == 'documentation':
                         # Manual input dari cs.kpi.detail
@@ -463,12 +471,47 @@ class KPIOverview(http.Controller):
                         stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
                         kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian laporan keuangan kasir"
 
+                    # elif kpi['type'] == 'customer_satisfaction':
+                    #     # Data dari customer rating di sale.order
+                    #     rated_orders = online_orders.filtered(lambda o: o.customer_rating)
+                    #     satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
+                    #     actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
+                    #     kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
+
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Data dari customer rating di sale.order
-                        rated_orders = online_orders.filtered(lambda o: o.customer_rating)
-                        satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
-                        actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
-                        kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
+                        # Filter orders berdasarkan periode yang dipilih
+                        period_orders = request.env['sale.order'].sudo().search([
+                            ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('state', 'in', ['sale', 'done'])
+                        ])
+                        
+                        # Ambil order yang memiliki rating dari periode yang dipilih
+                        rated_orders = period_orders.filtered(lambda o: o.customer_rating)
+                        total_rated_orders = len(rated_orders)
+                        
+                        if total_rated_orders > 0:
+                            # Hitung rata-rata rating
+                            total_rating = sum(float(order.customer_rating) for order in rated_orders)
+                            avg_rating = total_rating / total_rated_orders
+                            
+                            # Implementasi formula khusus
+                            if avg_rating > 4.8:
+                                actual = 120
+                            elif avg_rating == 4.8:
+                                actual = 100
+                            elif 4.6 <= avg_rating <= 4.7:
+                                actual = 50
+                            else:  # < 4.6
+                                actual = 0
+                                
+                            kpi['measurement'] = (
+                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
+                                f"pada periode {month}/{year}. Total rating: {total_rating:.1f}"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada rating customer pada periode {month}/{year}"
 
                     # elif kpi['type'] == 'customer_satisfaction':
                     #     # Ambil semua order yang memiliki rating
@@ -717,10 +760,15 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
 
                     elif kpi['type'] == 'service_efficiency':
-                        # Manual input untuk efisiensi waktu
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian waktu penanganan customer"
+                        # Ambil data efisiensi waktu dari sistem
+                        orders_with_duration = orders.filtered(lambda o: o.duration_deviation is not False)
+                        if orders_with_duration:
+                            avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
+                            actual = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
+                            kpi['measurement'] = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Belum ada data deviasi waktu pengerjaan"
 
                     elif kpi['type'] == 'customer_satisfaction':
                         # Filter orders berdasarkan periode yang dipilih

@@ -773,11 +773,27 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Follow up H+3: {len(completed_follow_ups)} dari {len(due_follow_ups)} order"
 
                     elif kpi['type'] == 'sop_compliance':
-                        # Data pelanggaran SOP
-                        total_samplings = len(orders.mapped('sop_sampling_ids'))
-                        failed_samplings = len(orders.mapped('sop_sampling_ids').filtered(lambda s: s.result == 'fail'))
-                        actual = ((total_samplings - failed_samplings) / total_samplings * 100) if total_samplings else 0
-                        kpi['measurement'] = f"Sampling sesuai SOP: {total_samplings - failed_samplings} dari {total_samplings} sampling"
+                        # Ambil samplings untuk SA dari periode yang dipilih
+                        sa_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date.strftime('%Y-%m-%d')),
+                            ('sop_id.is_sa', '=', True),  # Hanya SOP untuk SA
+                            ('sa_id', 'in', [service_advisor.id]),  # Hanya untuk SA yang bersangkutan
+                            ('state', '=', 'done')  # Hanya sampling yang sudah selesai
+                        ])
+                        
+                        # Hitung total sampling dan pelanggaran
+                        total_samplings = len(sa_samplings)
+                        sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
+                        
+                        # Hitung actual score
+                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
+                        
+                        # Format measurement message
+                        if total_samplings > 0:
+                            kpi['measurement'] = f"Sampling sesuai SOP: {total_samplings - sop_violations} dari {total_samplings} sampling ({actual:.1f}%)"
+                        else:
+                            kpi['measurement'] = f"Belum ada sampling SOP pada periode {month}/{year}"
 
                     elif kpi['type'] == 'discipline':
                         # Data kedisiplinan

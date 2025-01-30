@@ -465,7 +465,7 @@ class KPIOverview(http.Controller):
 
                     elif kpi['type'] == 'customer_satisfaction':
                         # Data dari customer rating di sale.order
-                        rated_orders = all_orders.filtered(lambda o: o.customer_rating)
+                        rated_orders = online_orders.filtered(lambda o: o.customer_rating)
                         satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
                         actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
                         kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
@@ -728,7 +728,7 @@ class KPIOverview(http.Controller):
                             ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
                             ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
                             ('state', 'in', ['sale', 'done']),
-                            ('service_advisor_id', 'in', team_sa.ids)  # Untuk memastikan hanya order dari tim SA yang dihitung
+                            ('service_advisor_id', '=', service_advisor.id)  # Hanya order dari SA yang bersangkutan
                         ])
                         
                         # Ambil order yang memiliki rating dari periode yang dipilih
@@ -750,13 +750,13 @@ class KPIOverview(http.Controller):
                             else:  # < 4.6
                                 actual = 0
                                 
-                            measurement = (
+                            kpi['measurement'] = (
                                 f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
                                 f"pada periode {month}/{year}. Total rating: {total_rating:.1f}"
                             )
                         else:
                             actual = 0
-                            measurement = f"Belum ada rating customer pada periode {month}/{year}"
+                            kpi['measurement'] = f"Belum ada rating customer pada periode {month}/{year}"
 
                     elif kpi['type'] == 'complaint_handling':
                         # Data komplain

@@ -527,45 +527,50 @@ class KPIOverview(http.Controller):
                 kpi_scores = []
                 for kpi in lead_cs_kpi_template:
                     actual = 0
+                    measurement = ""
+                    
                     if kpi['type'] == 'productivity':
-                        # Manual input untuk produktivitas bengkel
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah omzet dari PKB"
+                        # Otomatis ambil data produktivitas dari sistem
+                        if team_target == 0:
+                            actual = 0
+                        else:
+                            actual = (team_revenue / team_target * 100)  # Persentase pencapaian target revenue
+                        measurement = f"Revenue tim: Rp {team_revenue:,.0f} dari target Rp {team_target:,.0f}/bulan"
 
                     elif kpi['type'] == 'service_efficiency':
-                        # Manual input untuk efisiensi waktu
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian waktu penanganan customer"
+                        # Otomatis ambil data efisiensi waktu dari sistem
+                        orders_with_duration = all_orders.filtered(lambda o: o.duration_deviation is not False)
+                        if orders_with_duration:
+                            avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
+                            actual = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
+                        measurement = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
 
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Data dari customer rating di system
+                        # Otomatis ambil data kepuasan customer dari sistem
                         rated_orders = all_orders.filtered(lambda o: o.customer_rating)
                         satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
                         actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
-                        kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
+                        measurement = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
 
                     elif kpi['type'] == 'complaint_handling':
-                        # Data dari complaint di system
-                        complaints = all_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
-                        resolved_complaints = complaints.filtered(lambda o: o.complaint_status == 'solved')
+                        # Otomatis ambil data penanganan komplain dari sistem
                         actual = (len(resolved_complaints) / len(complaints) * 100) if complaints else 100
-                        kpi['measurement'] = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
+                        measurement = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
 
                     elif kpi['type'] == 'stock_management':
-                        # Manual input untuk stok management
+                        # Manual input untuk stok management (bisa diotomatisasi jika ada data stok)
                         actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah temuan stok part habis"
+                        measurement = kpi_values.get(kpi['type'], {}).get('measurement', '') or "Menunggu input: Jumlah temuan stok part habis"
 
                     elif kpi['type'] == 'team_control':
-                        # Manual input untuk kontrol tim
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah temuan ketidaksesuaian SOP tim"
+                        # Otomatis ambil data kontrol kinerja tim dari sistem
+                        sop_violations = len(all_orders.filtered(lambda o: o.sop_sampling_ids.filtered(lambda s: s.result == 'fail')))
+                        total_samplings = len(all_orders.mapped('sop_sampling_ids'))
+                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
+                        measurement = f"Sampling sesuai SOP: {total_samplings - sop_violations} dari {total_samplings} sampling"
 
                     elif kpi['type'] == 'team_discipline':
+                        # Otomatis ambil data kedisiplinan tim dari sistem
                         team_attendances = request.env['hr.attendance'].sudo().search([
                             ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
                             ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
@@ -573,7 +578,7 @@ class KPIOverview(http.Controller):
                         ])
                         late_count = sum(1 for att in team_attendances if att.is_late)
                         actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
-                        kpi['measurement'] = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
+                        measurement = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
 
                     achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
                     weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
@@ -584,11 +589,11 @@ class KPIOverview(http.Controller):
                         'type': kpi['type'],
                         'weight': kpi['weight'],
                         'target': kpi['target'],
-                        'measurement': kpi['measurement'],
+                        'measurement': measurement,
                         'actual': actual,
                         'achievement': achievement,
                         'weighted_score': weighted_score,
-                        'editable': ['weight', 'target']
+                        'editable': ['weight', 'target'] if kpi.get('include_in_calculation', True) else []
                     })
 
 

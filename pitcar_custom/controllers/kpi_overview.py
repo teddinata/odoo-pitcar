@@ -460,44 +460,44 @@ class KPIOverview(http.Controller):
                         stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
                         kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian laporan keuangan kasir"
 
-                    # elif kpi['type'] == 'customer_satisfaction':
-                    #     # Data dari customer rating di sale.order
-                    #     rated_orders = all_orders.filtered(lambda o: o.customer_rating)
-                    #     satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
-                    #     actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
-                    #     kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
-
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Ambil semua order yang memiliki rating
+                        # Data dari customer rating di sale.order
                         rated_orders = all_orders.filtered(lambda o: o.customer_rating)
-                        total_rated_orders = len(rated_orders)
+                        satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
+                        actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
+                        kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
+
+                    # elif kpi['type'] == 'customer_satisfaction':
+                    #     # Ambil semua order yang memiliki rating
+                    #     rated_orders = all_orders.filtered(lambda o: o.customer_rating)
+                    #     total_rated_orders = len(rated_orders)
                         
-                        if total_rated_orders > 0:
-                            # Hitung rata-rata rating
-                            total_rating = sum(float(order.customer_rating) for order in rated_orders)
-                            avg_rating = total_rating / total_rated_orders
+                    #     if total_rated_orders > 0:
+                    #         # Hitung rata-rata rating
+                    #         total_rating = sum(float(order.customer_rating) for order in rated_orders)
+                    #         avg_rating = total_rating / total_rated_orders
                             
-                            # Implementasi formula khusus yang benar:
-                            # > 4.8 = 120%
-                            # 4.8 = 100%
-                            # 4.6 s.d 4.7 = 50%
-                            # < 4.6 = 0%
-                            if avg_rating > 4.8:
-                                actual = 120
-                            elif avg_rating == 4.8:
-                                actual = 100
-                            elif 4.6 <= avg_rating <= 4.7:
-                                actual = 50
-                            else:  # < 4.6
-                                actual = 0
+                    #         # Implementasi formula khusus yang benar:
+                    #         # > 4.8 = 120%
+                    #         # 4.8 = 100%
+                    #         # 4.6 s.d 4.7 = 50%
+                    #         # < 4.6 = 0%
+                    #         if avg_rating > 4.8:
+                    #             actual = 120
+                    #         elif avg_rating == 4.8:
+                    #             actual = 100
+                    #         elif 4.6 <= avg_rating <= 4.7:
+                    #             actual = 50
+                    #         else:  # < 4.6
+                    #             actual = 0
                                 
-                            kpi['measurement'] = (
-                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
-                                f"Total rating: {total_rating:.1f}"
-                            )
-                        else:
-                            actual = 0
-                            kpi['measurement'] = "Belum ada rating customer"
+                    #         kpi['measurement'] = (
+                    #             f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
+                    #             f"Total rating: {total_rating:.1f}"
+                    #         )
+                    #     else:
+                    #         actual = 0
+                    #         kpi['measurement'] = "Belum ada rating customer"
 
                     elif kpi['type'] == 'sop_compliance':
                         # Manual input dari cs.kpi.detail
@@ -587,11 +587,6 @@ class KPIOverview(http.Controller):
                             total_rating = sum(float(order.customer_rating) for order in rated_orders)
                             avg_rating = total_rating / total_rated_orders
                             
-                            # Implementasi formula khusus yang benar:
-                            # > 4.8 = 120%
-                            # 4.8 = 100%
-                            # 4.6 s.d 4.7 = 50%
-                            # < 4.6 = 0%
                             if avg_rating > 4.8:
                                 actual = 120
                             elif avg_rating == 4.8:
@@ -601,13 +596,13 @@ class KPIOverview(http.Controller):
                             else:  # < 4.6
                                 actual = 0
                                 
-                            kpi['measurement'] = (
+                            measurement = (  # Changed kpi['measurement'] to measurement
                                 f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
                                 f"Total rating: {total_rating:.1f}"
                             )
                         else:
                             actual = 0
-                            kpi['measurement'] = "Belum ada rating customer"
+                            measurement = "Belum ada rating customer"  # Changed kpi['measurement'] to measurement
 
                     elif kpi['type'] == 'complaint_handling':
                         # Otomatis ambil data penanganan komplain dari sistem
@@ -707,7 +702,7 @@ class KPIOverview(http.Controller):
 
                     elif kpi['type'] == 'customer_satisfaction':
                         # Ambil semua order yang memiliki rating
-                        rated_orders = all_orders.filtered(lambda o: o.customer_rating)
+                        rated_orders = orders.filtered(lambda o: o.customer_rating)
                         total_rated_orders = len(rated_orders)
                         
                         if total_rated_orders > 0:

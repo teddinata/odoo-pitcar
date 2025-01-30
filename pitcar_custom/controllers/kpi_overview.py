@@ -564,8 +564,15 @@ class KPIOverview(http.Controller):
 
                     elif kpi['type'] == 'team_control':
                         # Otomatis ambil data kontrol kinerja tim dari sistem
-                        sop_violations = len(all_orders.filtered(lambda o: o.sop_sampling_ids.filtered(lambda s: s.result == 'fail')))
-                        total_samplings = len(all_orders.mapped('sop_sampling_ids'))
+                        # Hanya ambil sampling SOP untuk Service Advisor
+                        sop_violations = len(all_orders.filtered(
+                            lambda o: o.sop_sampling_ids.filtered(
+                                lambda s: s.result == 'fail' and s.sop_id.is_sa  # Hanya sampling untuk SA
+                            )
+                        ))
+                        total_samplings = len(all_orders.mapped('sop_sampling_ids').filtered(
+                            lambda s: s.sop_id.is_sa  # Hanya sampling untuk SA
+                        ))
                         actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
                         measurement = f"Sampling sesuai SOP: {total_samplings - sop_violations} dari {total_samplings} sampling"
 
@@ -593,7 +600,7 @@ class KPIOverview(http.Controller):
                         'actual': actual,
                         'achievement': achievement,
                         'weighted_score': weighted_score,
-                        'editable': ['weight', 'target'] if kpi.get('include_in_calculation', True) else []
+                        'editable': ['weight', 'target']
                     })
 
 

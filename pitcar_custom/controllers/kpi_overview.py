@@ -242,7 +242,7 @@ class KPIOverview(http.Controller):
                     'name': 'Kedisiplinan (Informasi)',
                     'type': 'discipline',
                     'weight': 0,  # Weight 0 karena tidak dihitung
-                    'target': 90,
+                    'target': 0,
                     'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran',
                     'include_in_calculation': False  # Set False untuk tidak masuk perhitungan
                 }
@@ -267,35 +267,35 @@ class KPIOverview(http.Controller):
                     'measurement': 'Diukur dari kesesuaian waktu penanganan customer berdasarkan target waktu',
                     'include_in_calculation': True
                 },
+                # {
+                #     'no': 3,
+                #     'name': 'Distribusi pekerjaan servis secara optimal',
+                #     'type': 'customer_satisfaction',
+                #     'weight': 15,
+                #     'target': 95,
+                #     'measurement': 'Diukur dari rata-rata waktu pengerjaan per PKB setiap mekanik',
+                #     'include_in_calculation': True
+                # },
                 {
                     'no': 3,
-                    'name': 'Distribusi pekerjaan servis secara optimal',
-                    'type': 'customer_satisfaction',
-                    'weight': 15,
-                    'target': 95,
-                    'measurement': 'Diukur dari rata-rata waktu pengerjaan per PKB setiap mekanik',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 4,
                     'name': 'Kepuasan customer',
                     'type': 'customer_satisfaction',
-                    'weight': 15,
+                    'weight': 20,
                     'target': 95,
                     'measurement': 'Diukur dari survey rating kepuasan customer',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 5,
+                    'no': 4,
                     'name': 'Analisis dan penyelesaian komplain dari customer',
                     'type': 'complaint_handling',
-                    'weight': 15,
+                    'weight': 20,
                     'target': 95,
                     'measurement': 'Diukur dari customer merasa puas terhadap pelayanan & solusi yang diberikan dalam kurun waktu 3 hari setelah complaint',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 6,
+                    'no': 5,
                     'name': 'Pengelolaan Stok Part',
                     'type': 'stock_management',
                     'weight': 10,
@@ -304,20 +304,20 @@ class KPIOverview(http.Controller):
                     'include_in_calculation': True
                 },
                 {
-                    'no': 7,
+                    'no': 6,
                     'name': 'Kontrol kinerja tim support',
                     'type': 'team_control',
-                    'weight': 10,
+                    'weight': 15,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan tim support yang dilakukan tidak sesuai dengan alur/SOP',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 8,  # Tambahkan sebagai KPI terakhir
+                    'no': 7,  # Tambahkan sebagai KPI terakhir
                     'name': 'Kedisiplinan Tim (Informasi)',  
                     'type': 'team_discipline',
                     'weight': 0,
-                    'target': 90,
+                    'target': 0,
                     'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran tim',
                     'include_in_calculation': False
                 }
@@ -382,7 +382,7 @@ class KPIOverview(http.Controller):
                     'name': 'Kedisiplinan (Informasi)',  
                     'type': 'discipline',
                     'weight': 0,
-                    'target': 90,
+                    'target': 0,
                     'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran tim',
                     'include_in_calculation': False
                 }
@@ -400,6 +400,9 @@ class KPIOverview(http.Controller):
             # === HANDLE DIFFERENT ROLES ===
             # Handle Customer Service
             if 'Customer Service' in job_title:
+                team_members = request.env['hr.employee'].sudo().search([
+                    ('parent_id', '=', employee.id)
+                ])
                 online_orders = request.env['sale.order'].sudo().search([
                     *base_domain,
                     ('campaign', '!=', False)
@@ -578,8 +581,16 @@ class KPIOverview(http.Controller):
                         measurement = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
 
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Ambil semua order yang memiliki rating
-                        rated_orders = all_orders.filtered(lambda o: o.customer_rating)
+                        # Filter orders berdasarkan periode yang dipilih
+                        period_orders = request.env['sale.order'].sudo().search([
+                            ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('state', 'in', ['sale', 'done']),
+                            ('service_advisor_id', 'in', team_sa.ids)  # Untuk memastikan hanya order dari tim SA yang dihitung
+                        ])
+                        
+                        # Ambil order yang memiliki rating dari periode yang dipilih
+                        rated_orders = period_orders.filtered(lambda o: o.customer_rating)
                         total_rated_orders = len(rated_orders)
                         
                         if total_rated_orders > 0:
@@ -587,6 +598,7 @@ class KPIOverview(http.Controller):
                             total_rating = sum(float(order.customer_rating) for order in rated_orders)
                             avg_rating = total_rating / total_rated_orders
                             
+                            # Implementasi formula khusus
                             if avg_rating > 4.8:
                                 actual = 120
                             elif avg_rating == 4.8:
@@ -596,13 +608,13 @@ class KPIOverview(http.Controller):
                             else:  # < 4.6
                                 actual = 0
                                 
-                            measurement = (  # Changed kpi['measurement'] to measurement
-                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
-                                f"Total rating: {total_rating:.1f}"
+                            measurement = (
+                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
+                                f"pada periode {month}/{year}. Total rating: {total_rating:.1f}"
                             )
                         else:
                             actual = 0
-                            measurement = "Belum ada rating customer"  # Changed kpi['measurement'] to measurement
+                            measurement = f"Belum ada rating customer pada periode {month}/{year}"
 
                     elif kpi['type'] == 'complaint_handling':
                         # Otomatis ambil data penanganan komplain dari sistem
@@ -615,11 +627,16 @@ class KPIOverview(http.Controller):
                         measurement = kpi_values.get(kpi['type'], {}).get('measurement', '') or "Menunggu input: Jumlah temuan stok part habis"
 
                     elif kpi['type'] == 'team_control':
-                        # Get all SOP samplings for the team's orders that are related to Service Advisors
+                        # Get service advisors for team members
+                        team_sa = request.env['pitcar.service.advisor'].sudo().search([
+                            ('user_id', 'in', team_members.mapped('user_id').ids)
+                        ])
+                        
+                        # Get all SOP samplings for the team's service advisors
                         sa_samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('sale_order_id', 'in', all_orders.ids),
                             ('sop_id.is_sa', '=', True),  # Only SA-related SOPs
-                            ('sa_id', 'in', team_members.mapped('user_id').ids),  # Only for team's SAs
+                            ('sa_id', 'in', team_sa.ids),  # Using service advisor IDs instead of user IDs
                             ('state', '=', 'done')  # Only count completed samplings
                         ])
                         
@@ -629,7 +646,12 @@ class KPIOverview(http.Controller):
                         
                         # Calculate actual score
                         actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
-                        measurement = f"Sampling SA sesuai SOP: {total_samplings - sop_violations} dari {total_samplings} sampling"
+                        
+                        # Format measurement message
+                        if total_samplings > 0:
+                            measurement = f"Sampling SA sesuai SOP: {total_samplings - sop_violations} dari {total_samplings} sampling ({actual:.1f}%)"
+                        else:
+                            measurement = "Belum ada sampling SOP untuk tim SA pada periode ini"
 
                     elif kpi['type'] == 'team_discipline':
                         # Otomatis ambil data kedisiplinan tim dari sistem
@@ -701,8 +723,16 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian waktu penanganan customer"
 
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Ambil semua order yang memiliki rating
-                        rated_orders = orders.filtered(lambda o: o.customer_rating)
+                        # Filter orders berdasarkan periode yang dipilih
+                        period_orders = request.env['sale.order'].sudo().search([
+                            ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('state', 'in', ['sale', 'done']),
+                            ('service_advisor_id', 'in', team_sa.ids)  # Untuk memastikan hanya order dari tim SA yang dihitung
+                        ])
+                        
+                        # Ambil order yang memiliki rating dari periode yang dipilih
+                        rated_orders = period_orders.filtered(lambda o: o.customer_rating)
                         total_rated_orders = len(rated_orders)
                         
                         if total_rated_orders > 0:
@@ -710,11 +740,7 @@ class KPIOverview(http.Controller):
                             total_rating = sum(float(order.customer_rating) for order in rated_orders)
                             avg_rating = total_rating / total_rated_orders
                             
-                            # Implementasi formula khusus yang benar:
-                            # > 4.8 = 120%
-                            # 4.8 = 100%
-                            # 4.6 s.d 4.7 = 50%
-                            # < 4.6 = 0%
+                            # Implementasi formula khusus
                             if avg_rating > 4.8:
                                 actual = 120
                             elif avg_rating == 4.8:
@@ -724,13 +750,13 @@ class KPIOverview(http.Controller):
                             else:  # < 4.6
                                 actual = 0
                                 
-                            kpi['measurement'] = (
-                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
-                                f"Total rating: {total_rating:.1f}"
+                            measurement = (
+                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
+                                f"pada periode {month}/{year}. Total rating: {total_rating:.1f}"
                             )
                         else:
                             actual = 0
-                            kpi['measurement'] = "Belum ada rating customer"
+                            measurement = f"Belum ada rating customer pada periode {month}/{year}"
 
                     elif kpi['type'] == 'complaint_handling':
                         # Data komplain

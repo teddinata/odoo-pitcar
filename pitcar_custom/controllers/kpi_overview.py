@@ -507,7 +507,7 @@ class KPIOverview(http.Controller):
                                 
                             kpi['measurement'] = (
                                 f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
-                                f"pada periode {month}/{year}. Total rating: {total_rating:.1f}"
+                                f"pada periode {month}/{year}."
                             )
                         else:
                             actual = 0
@@ -539,7 +539,7 @@ class KPIOverview(http.Controller):
                                 
                     #         kpi['measurement'] = (
                     #             f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
-                    #             f"Total rating: {total_rating:.1f}"
+                    #             f"
                     #         )
                     #     else:
                     #         actual = 0
@@ -653,7 +653,7 @@ class KPIOverview(http.Controller):
                                 
                             measurement = (
                                 f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
-                                f"pada periode {month}/{year}. Total rating: {total_rating:.1f}"
+                                f"pada periode {month}/{year}."
                             )
                         else:
                             actual = 0
@@ -800,7 +800,7 @@ class KPIOverview(http.Controller):
                                 
                             kpi['measurement'] = (
                                 f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
-                                f"pada periode {month}/{year}. Total rating: {total_rating:.1f}"
+                                f"pada periode {month}/{year}."
                             )
                         else:
                             actual = 0

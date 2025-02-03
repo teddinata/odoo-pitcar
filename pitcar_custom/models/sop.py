@@ -7,20 +7,68 @@ class PitcarSOP(models.Model):
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'sequence'
 
+    # Basic fields
     name = fields.Char('Nama SOP', required=True, tracking=True)
-    sequence = fields.Integer('Sequence', default=10)
     code = fields.Char('Kode SOP', required=True, tracking=True)
     description = fields.Text('Deskripsi', tracking=True)
+    sequence = fields.Integer('Sequence', default=10)
+    active = fields.Boolean('Active', default=True)
+
+    # Classification fields
     department = fields.Selection([
         ('service', 'Service'),
         ('sparepart', 'Spare Part'),
         ('cs', 'Customer Service')
     ], string='Department', required=True, tracking=True)
-    is_sa = fields.Boolean('Service Advisor SOP', help="Tandai jika SOP ini untuk Service Advisor")
-    active = fields.Boolean('Active', default=True)
+
+    role = fields.Selection([
+        ('sa', 'Service Advisor'),
+        ('mechanic', 'Mechanic'),
+        ('valet', 'Valet Parking'),
+        ('part_support', 'Part Support')
+    ], string='Role', required=True, tracking=True)
+
+    # Backward compatibility
+    is_sa = fields.Boolean(
+        'Is Service Advisor', 
+        compute='_compute_is_sa', 
+        store=True
+    )
+
+    @api.depends('role')
+    def _compute_is_sa(self):
+        """Compute is_sa based on role for backward compatibility"""
+        for record in self:
+            record.is_sa = record.role == 'sa'
+
+    @api.onchange('department')
+    def _onchange_department(self):
+        """Update available roles based on department"""
+        if self.department == 'service':
+            return {'domain': {'role': [('role', 'in', ['sa', 'mechanic'])]}}
+        elif self.department == 'cs':
+            return {'domain': {'role': [('role', 'in', ['valet', 'part_support'])]}}
+        elif self.department == 'sparepart':
+            return {'domain': {'role': [('role', 'in', ['part_support'])]}}
+
+    @api.constrains('department', 'role')
+    def _check_role_department_compatibility(self):
+        """Ensure role is compatible with department"""
+        valid_combinations = {
+            'service': ['sa', 'mechanic'],
+            'cs': ['valet', 'part_support'],
+            'sparepart': ['part_support']
+        }
+        for record in self:
+            if record.role not in valid_combinations.get(record.department, []):
+                raise ValidationError(
+                    f'Role {dict(record._fields["role"].selection).get(record.role)} '
+                    f'tidak valid untuk department {dict(record._fields["department"].selection).get(record.department)}'
+                )
 
     @api.constrains('code')
     def _check_unique_code(self):
+        """Ensure SOP code is unique"""
         for record in self:
             existing = self.search([
                 ('code', '=', record.code),
@@ -35,66 +83,107 @@ class PitcarSOPSampling(models.Model):
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'create_date desc'
 
+    # Basic fields
     name = fields.Char('Nama', compute='_compute_name', store=True)
     date = fields.Date('Tanggal', default=fields.Date.context_today, required=True, tracking=True)
     month = fields.Char('Bulan', compute='_compute_month', store=True)
-    
+    notes = fields.Text('Catatan')
+
     # Relations
     sale_order_id = fields.Many2one('sale.order', 'No. Invoice', required=True, tracking=True)
     sop_id = fields.Many2one('pitcar.sop', 'SOP', required=True, tracking=True)
-    
-    # Employee relations based on role
-    sa_id = fields.Many2many('pitcar.service.advisor', string='Service Advisor', tracking=True)
-    mechanic_id = fields.Many2many('pitcar.mechanic.new', string='Mechanic', tracking=True)
     controller_id = fields.Many2one('hr.employee', 'Controller', tracking=True)
-    
+
     # Status fields
     state = fields.Selection([
         ('draft', 'Draft'),
         ('in_progress', 'In Progress'),
         ('done', 'Done')
     ], default='draft', tracking=True)
-    
+
     result = fields.Selection([
         ('pass', 'Lulus'),
         ('fail', 'Tidak Lulus')
     ], tracking=True)
-    
-    notes = fields.Text('Catatan')
 
-    # Add timestamp fields
-    create_date = fields.Datetime('Created Date', readonly=True)  # This is automatically added by Odoo
-    write_date = fields.Datetime('Last Updated', readonly=True)   # This is automatically added by Odoo
+    # Role-based employee relations
+    sa_id = fields.Many2many('pitcar.service.advisor', string='Service Advisor', tracking=True)
+    mechanic_id = fields.Many2many('pitcar.mechanic.new', string='Mechanic', tracking=True)
+    valet_id = fields.Many2many(
+        'hr.employee', 
+        'sop_sampling_valet_rel',
+        'sampling_id',
+        'employee_id',
+        string='Valet Staff',
+        domain="[('job_id.name', 'ilike', 'valet')]",
+        tracking=True
+    )
+    part_support_id = fields.Many2many(
+        'hr.employee',
+        'sop_sampling_part_support_rel',
+        'sampling_id',
+        'employee_id',
+        string='Part Support',
+        domain="[('job_id.name', 'ilike', 'part')]",
+        tracking=True
+    )
+
+    # Timestamps
+    create_date = fields.Datetime('Created Date', readonly=True)
+    write_date = fields.Datetime('Last Updated', readonly=True)
     validation_date = fields.Datetime('Validation Date', readonly=True, tracking=True)
-    
+
     @api.depends('date')
     def _compute_month(self):
+        """Compute month from date for grouping"""
         for record in self:
             if record.date:
                 record.month = record.date.strftime('%Y-%m')
-    
+
     @api.depends('sop_id', 'sale_order_id', 'date')
     def _compute_name(self):
+        """Generate sampling name with role information"""
         for record in self:
             if record.sop_id and record.sale_order_id and record.date:
-                employee_type = "SA" if record.sop_id.is_sa else "Mekanik"
-                record.name = f"{record.sop_id.name} - {record.sale_order_id.name} ({employee_type}) - {record.date.strftime('%Y-%m-%d')}"
+                role_name = dict(record.sop_id._fields['role'].selection).get(
+                    record.sop_id.role, ''
+                )
+                record.name = (
+                    f"{record.sop_id.name} - {record.sale_order_id.name} "
+                    f"({role_name}) - {record.date.strftime('%Y-%m-%d')}"
+                )
 
     @api.onchange('sop_id', 'sale_order_id')
     def _onchange_sop_sale_order(self):
-        """Populate SA/Mechanic based on SOP type and sale order"""
-        if self.sop_id and self.sale_order_id:
-            if self.sop_id.is_sa:
-                self.sa_id = self.sale_order_id.service_advisor_id
-                self.mechanic_id = False
-            else:
-                self.mechanic_id = self.sale_order_id.car_mechanic_id_new
-                self.sa_id = False
+        """Handle employee assignment based on role"""
+        if not self.sop_id or not self.sale_order_id:
+            return
 
-    @api.constrains('sop_id', 'sa_id', 'mechanic_id')
-    def _check_employee_compatibility(self):
+        # Reset all employee fields
+        self.sa_id = False
+        self.mechanic_id = False
+        self.valet_id = False
+        self.part_support_id = False
+
+        # Auto-assign for SA and Mechanic
+        if self.sop_id.role == 'sa' and self.sale_order_id.service_advisor_id:
+            self.sa_id = self.sale_order_id.service_advisor_id
+        elif self.sop_id.role == 'mechanic' and self.sale_order_id.car_mechanic_id_new:
+            self.mechanic_id = self.sale_order_id.car_mechanic_id_new
+
+    @api.constrains('sop_id', 'sa_id', 'mechanic_id', 'valet_id', 'part_support_id')
+    def _check_employee_assignment(self):
+        """Validate employee assignment based on role"""
         for record in self:
-            if record.sop_id.is_sa and not record.sa_id:
+            if not record.sop_id:
+                continue
+
+            role = record.sop_id.role
+            if role == 'sa' and not record.sa_id:
                 raise ValidationError('Service Advisor harus diisi untuk SOP SA')
-            if not record.sop_id.is_sa and not record.mechanic_id:
+            elif role == 'mechanic' and not record.mechanic_id:
                 raise ValidationError('Mekanik harus diisi untuk SOP Mekanik')
+            elif role == 'valet' and not record.valet_id:
+                raise ValidationError('Valet staff harus diisi untuk SOP Valet')
+            elif role == 'part_support' and not record.part_support_id:
+                raise ValidationError('Part Support staff harus diisi untuk SOP Part Support')

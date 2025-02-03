@@ -20,73 +20,93 @@ class SOPController(http.Controller):
         except Exception as e:
             _logger.error(f"Error parsing request data: {str(e)}")
             return {}
+        
+    def _get_employee_domain(self, role):
+        """Get domain for employee based on role"""
+        domains = {
+            'sa': [],  # Using service.advisor model
+            'mechanic': [],  # Using mechanic.new model
+            'valet': [('job_id.name', 'ilike', 'valet')],
+            'part_support': [('job_id.name', 'ilike', 'part')]
+        }
+        return domains.get(role, [])
+
+    def _get_sop_domain(self, role=None, department=None, search=None):
+        """Build domain for SOP search"""
+        domain = [('active', '=', True)]
+        
+        if role:
+            domain.append(('role', '=', role))
+        if department:
+            domain.append(('department', '=', department))
+        if search:
+            for term in search.split():
+                domain.extend(['|', '|',
+                    ('name', 'ilike', term),
+                    ('code', 'ilike', term),
+                    ('description', 'ilike', term)
+                ])
+        
+        return domain
+
+    def _format_employee_info(self, sampling):
+        """Format employee info based on role"""
+        return {
+            'service_advisor': [{
+                'id': sa.id,
+                'name': sa.name
+            } for sa in sampling.sa_id] if sampling.sa_id else [],
+            
+            'mechanic': [{
+                'id': mech.id,
+                'name': mech.name
+            } for mech in sampling.mechanic_id] if sampling.mechanic_id else [],
+            
+            'valet': [{
+                'id': val.id,
+                'name': val.name
+            } for val in sampling.valet_id] if sampling.valet_id else [],
+            
+            'part_support': [{
+                'id': ps.id,
+                'name': ps.name
+            } for ps in sampling.part_support_id] if sampling.part_support_id else []
+        }
 
     @http.route('/web/sop/master/list', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_sop_list(self, **kw):
-        """Get list of SOPs"""
         try:
-            # Get parameters from request
+            # Parameters
             page = max(1, int(kw.get('page', 1)))
-            limit = max(1, min(100, int(kw.get('limit', 25))))  # Max 100 records
-            search = (kw.get('search') or '').strip()
+            limit = max(1, min(100, int(kw.get('limit', 25))))
+            role = kw.get('role')
             department = kw.get('department')
-            is_sa = kw.get('is_sa')
+            search = (kw.get('search') or '').strip()
 
-            # Debug log
-            _logger.info(f"Received parameters: {kw}")
-
-            domain = [('active', '=', True)]
-
-            # Search filter - lebih powerful dengan split terms
-            if search:
-                search_terms = search.split()
-                for term in search_terms:
-                    domain.extend(['|', '|',
-                        ('name', 'ilike', term),
-                        ('code', 'ilike', term),
-                        ('description', 'ilike', term)
-                    ])
+            # Build domain
+            domain = self._get_sop_domain(role, department, search)
             
-            # Department filter
-            if department and department not in ['all', 'false', 'null', '']:
-                if department in ['service', 'sparepart', 'cs']:
-                    domain.append(('department', '=', department))
-            
-            # IS SA filter
-            if isinstance(is_sa, bool):
-                domain.append(('is_sa', '=', is_sa))
-            elif isinstance(is_sa, str) and is_sa.lower() in ['true', 'false']:
-                domain.append(('is_sa', '=', is_sa.lower() == 'true'))
-
-            # Debug domain
-            _logger.info(f"Search domain: {domain}")
-
-            # Use sudo() untuk konsistensi akses
+            # Get data
             SOP = request.env['pitcar.sop'].sudo()
-            
-            # Get total before pagination
             total_count = SOP.search_count(domain)
-            
-            # Calculate pagination
             offset = (page - 1) * limit
-            
-            # Get records with ordering
             sops = SOP.search(domain, limit=limit, offset=offset, order='sequence, name')
 
+            # Format response
             rows = []
             for sop in sops:
-                row = {
+                rows.append({
                     'id': sop.id,
                     'code': sop.code,
                     'name': sop.name,
                     'description': sop.description,
                     'department': sop.department,
                     'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
-                    'is_sa': sop.is_sa,
+                    'role': sop.role,
+                    'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
                     'sequence': sop.sequence,
                     'active': sop.active
-                }
-                rows.append(row)
+                })
 
             return {
                 'status': 'success',
@@ -103,6 +123,12 @@ class SOPController(http.Controller):
                             {'value': 'service', 'label': 'Service'},
                             {'value': 'sparepart', 'label': 'Spare Part'},
                             {'value': 'cs', 'label': 'Customer Service'}
+                        ],
+                        'roles': [
+                            {'value': 'sa', 'label': 'Service Advisor'},
+                            {'value': 'mechanic', 'label': 'Mechanic'},
+                            {'value': 'valet', 'label': 'Valet Parking'},
+                            {'value': 'part_support', 'label': 'Part Support'}
                         ]
                     }
                 }
@@ -111,6 +137,96 @@ class SOPController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_sop_list: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    # def get_sop_list(self, **kw):
+    #     """Get list of SOPs"""
+    #     try:
+    #         # Get parameters from request
+    #         page = max(1, int(kw.get('page', 1)))
+    #         limit = max(1, min(100, int(kw.get('limit', 25))))  # Max 100 records
+    #         search = (kw.get('search') or '').strip()
+    #         department = kw.get('department')
+    #         is_sa = kw.get('is_sa')
+
+    #         # Debug log
+    #         _logger.info(f"Received parameters: {kw}")
+
+    #         domain = [('active', '=', True)]
+
+    #         # Search filter - lebih powerful dengan split terms
+    #         if search:
+    #             search_terms = search.split()
+    #             for term in search_terms:
+    #                 domain.extend(['|', '|',
+    #                     ('name', 'ilike', term),
+    #                     ('code', 'ilike', term),
+    #                     ('description', 'ilike', term)
+    #                 ])
+            
+    #         # Department filter
+    #         if department and department not in ['all', 'false', 'null', '']:
+    #             if department in ['service', 'sparepart', 'cs']:
+    #                 domain.append(('department', '=', department))
+            
+    #         # IS SA filter
+    #         if isinstance(is_sa, bool):
+    #             domain.append(('is_sa', '=', is_sa))
+    #         elif isinstance(is_sa, str) and is_sa.lower() in ['true', 'false']:
+    #             domain.append(('is_sa', '=', is_sa.lower() == 'true'))
+
+    #         # Debug domain
+    #         _logger.info(f"Search domain: {domain}")
+
+    #         # Use sudo() untuk konsistensi akses
+    #         SOP = request.env['pitcar.sop'].sudo()
+            
+    #         # Get total before pagination
+    #         total_count = SOP.search_count(domain)
+            
+    #         # Calculate pagination
+    #         offset = (page - 1) * limit
+            
+    #         # Get records with ordering
+    #         sops = SOP.search(domain, limit=limit, offset=offset, order='sequence, name')
+
+    #         rows = []
+    #         for sop in sops:
+    #             row = {
+    #                 'id': sop.id,
+    #                 'code': sop.code,
+    #                 'name': sop.name,
+    #                 'description': sop.description,
+    #                 'department': sop.department,
+    #                 'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
+    #                 'is_sa': sop.is_sa,
+    #                 'sequence': sop.sequence,
+    #                 'active': sop.active
+    #             }
+    #             rows.append(row)
+
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'rows': rows,
+    #                 'pagination': {
+    #                     'total_items': total_count,
+    #                     'total_pages': math.ceil(total_count / limit) if total_count > 0 else 1,
+    #                     'current_page': page,
+    #                     'items_per_page': limit
+    #                 },
+    #                 'filters': {
+    #                     'departments': [
+    #                         {'value': 'service', 'label': 'Service'},
+    #                         {'value': 'sparepart', 'label': 'Spare Part'},
+    #                         {'value': 'cs', 'label': 'Customer Service'}
+    #                     ]
+    #                 }
+    #             }
+    #         }
+
+    #     except Exception as e:
+    #         _logger.error(f"Error in get_sop_list: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/sop/sampling/available-orders', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_available_orders(self, **kw):
@@ -241,52 +357,57 @@ class SOPController(http.Controller):
 
     @http.route('/web/sop/sampling/create', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def create_sampling(self, **kw):
-        """Create new SOP sampling"""
         try:
-            # Extract parameters langsung dari kw
+            # Required parameters
             sale_order_id = kw.get('sale_order_id')
             sop_id = kw.get('sop_id')
+            employee_ids = kw.get('employee_ids', [])
             notes = kw.get('notes')
 
-            # Validate required fields
-            if not sale_order_id:
-                return {'status': 'error', 'message': 'Sale order ID is required'}
-            if not sop_id:
-                return {'status': 'error', 'message': 'SOP ID is required'}
+            if not sale_order_id or not sop_id:
+                return {
+                    'status': 'error',
+                    'message': 'Sale order and SOP are required'
+                }
 
-            # Get Sale Order dan SOP
-            sale_order = request.env['sale.order'].browse(sale_order_id)
+            # Get SOP and validate
             sop = request.env['pitcar.sop'].browse(sop_id)
-
-            if not sale_order.exists():
-                return {'status': 'error', 'message': 'Sale order not found'}
             if not sop.exists():
                 return {'status': 'error', 'message': 'SOP not found'}
 
-            # Get controller employee from current user
-            controller = request.env.user.employee_id
-            if not controller:
-                return {'status': 'error', 'message': 'Current user has no employee record'}
-
-            # Create sampling dengan values yang sudah termasuk SA/Mekanik
+            # Base values
             values = {
                 'sale_order_id': sale_order_id,
                 'sop_id': sop_id,
-                'controller_id': controller.id,
+                'controller_id': request.env.user.employee_id.id,
                 'notes': notes,
                 'state': 'draft'
             }
 
-            # Tambahkan SA/Mekanik sesuai tipe SOP
-            if sop.is_sa:
+            # Role-specific employee assignment
+            sale_order = request.env['sale.order'].browse(sale_order_id)
+            
+            if sop.role == 'sa':
                 if not sale_order.service_advisor_id:
-                    return {'status': 'error', 'message': 'Sale order has no Service Advisor assigned'}
+                    return {'status': 'error', 'message': 'No Service Advisor assigned'}
                 values['sa_id'] = [(6, 0, sale_order.service_advisor_id.ids)]
-            else:
+            
+            elif sop.role == 'mechanic':
                 if not sale_order.car_mechanic_id_new:
-                    return {'status': 'error', 'message': 'Sale order has no Mechanic assigned'}
+                    return {'status': 'error', 'message': 'No Mechanic assigned'}
                 values['mechanic_id'] = [(6, 0, sale_order.car_mechanic_id_new.ids)]
+            
+            elif sop.role == 'valet':
+                if not employee_ids:
+                    return {'status': 'error', 'message': 'Valet staff must be selected'}
+                values['valet_id'] = [(6, 0, employee_ids)]
+            
+            elif sop.role == 'part_support':
+                if not employee_ids:
+                    return {'status': 'error', 'message': 'Part support staff must be selected'}
+                values['part_support_id'] = [(6, 0, employee_ids)]
 
+            # Create sampling
             sampling = request.env['pitcar.sop.sampling'].create(values)
 
             return {
@@ -296,10 +417,7 @@ class SOPController(http.Controller):
                     'name': sampling.name,
                     'sale_order_id': sampling.sale_order_id.id,
                     'sop_id': sampling.sop_id.id,
-                    'employee_info': {
-                        'sa_id': sampling.sa_id.ids if sampling.sa_id else [],
-                        'mechanic_id': sampling.mechanic_id.ids if sampling.mechanic_id else []
-                    },
+                    'employee_info': self._format_employee_info(sampling),
                     'state': sampling.state
                 }
             }
@@ -307,6 +425,74 @@ class SOPController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in create_sampling: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    # def create_sampling(self, **kw):
+    #     """Create new SOP sampling"""
+    #     try:
+    #         # Extract parameters langsung dari kw
+    #         sale_order_id = kw.get('sale_order_id')
+    #         sop_id = kw.get('sop_id')
+    #         notes = kw.get('notes')
+
+    #         # Validate required fields
+    #         if not sale_order_id:
+    #             return {'status': 'error', 'message': 'Sale order ID is required'}
+    #         if not sop_id:
+    #             return {'status': 'error', 'message': 'SOP ID is required'}
+
+    #         # Get Sale Order dan SOP
+    #         sale_order = request.env['sale.order'].browse(sale_order_id)
+    #         sop = request.env['pitcar.sop'].browse(sop_id)
+
+    #         if not sale_order.exists():
+    #             return {'status': 'error', 'message': 'Sale order not found'}
+    #         if not sop.exists():
+    #             return {'status': 'error', 'message': 'SOP not found'}
+
+    #         # Get controller employee from current user
+    #         controller = request.env.user.employee_id
+    #         if not controller:
+    #             return {'status': 'error', 'message': 'Current user has no employee record'}
+
+    #         # Create sampling dengan values yang sudah termasuk SA/Mekanik
+    #         values = {
+    #             'sale_order_id': sale_order_id,
+    #             'sop_id': sop_id,
+    #             'controller_id': controller.id,
+    #             'notes': notes,
+    #             'state': 'draft'
+    #         }
+
+    #         # Tambahkan SA/Mekanik sesuai tipe SOP
+    #         if sop.is_sa:
+    #             if not sale_order.service_advisor_id:
+    #                 return {'status': 'error', 'message': 'Sale order has no Service Advisor assigned'}
+    #             values['sa_id'] = [(6, 0, sale_order.service_advisor_id.ids)]
+    #         else:
+    #             if not sale_order.car_mechanic_id_new:
+    #                 return {'status': 'error', 'message': 'Sale order has no Mechanic assigned'}
+    #             values['mechanic_id'] = [(6, 0, sale_order.car_mechanic_id_new.ids)]
+
+    #         sampling = request.env['pitcar.sop.sampling'].create(values)
+
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'id': sampling.id,
+    #                 'name': sampling.name,
+    #                 'sale_order_id': sampling.sale_order_id.id,
+    #                 'sop_id': sampling.sop_id.id,
+    #                 'employee_info': {
+    #                     'sa_id': sampling.sa_id.ids if sampling.sa_id else [],
+    #                     'mechanic_id': sampling.mechanic_id.ids if sampling.mechanic_id else []
+    #                 },
+    #                 'state': sampling.state
+    #             }
+    #         }
+
+    #     except Exception as e:
+    #         _logger.error(f"Error in create_sampling: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
       
     @http.route('/web/sop/sampling/bulk-create', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def create_bulk_sampling(self, **kw):
@@ -385,73 +571,56 @@ class SOPController(http.Controller):
 
     @http.route('/web/sop/sampling/list', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_sampling_list(self, **kw):
-        """Get list of sampling records"""
         try:
-            # Get parameters directly from kw
-            # In Odoo, when using type='json', the parameters are passed directly in kw
+            # Parameters
             page = max(1, int(kw.get('page', 1)))
-            limit = max(1, min(100, int(kw.get('limit', 25))))  # Max 100 records per page
+            limit = max(1, min(100, int(kw.get('limit', 25))))
             search = (kw.get('search') or '').strip()
             month = kw.get('month', '').strip()
-            is_sa = kw.get('is_sa')
+            role = kw.get('role')
             state = kw.get('state')
             result = kw.get('result')
-
-            # Debug log
-            _logger.info(f"Received parameters: {kw}")
 
             domain = []
 
             # Month filter
-            if month and re.match(r'^\d{4}-\d{2}$', month):
+            if month:
                 domain.append(('month', '=', month))
 
-            # Search filter
-            if search:
-                domain.append('|')
-                domain.append(('name', 'ilike', search))
-                domain.append('|')
-                domain.append(('sale_order_id.name', 'ilike', search))
-                domain.append('|')
-                domain.append(('sa_id.name', 'ilike', search))
-                domain.append('|')
-                domain.append(('mechanic_id.name', 'ilike', search))
-                domain.append('|')
-                domain.append(('sop_id.name', 'ilike', search))
-                domain.append(('sop_id.code', 'ilike', search))
-
-            # IS SA filter
-            if isinstance(is_sa, bool):
-                domain.append(('sop_id.is_sa', '=', is_sa))
+            # Role filter
+            if role:
+                domain.append(('sop_id.role', '=', role))
 
             # State filter
             if state and state != 'all':
-                if state in ['draft', 'in_progress', 'done']:
-                    domain.append(('state', '=', state))
+                domain.append(('state', '=', state))
 
             # Result filter
             if result and result != 'all':
-                if result in ['pass', 'fail']:
-                    domain.append(('result', '=', result))
+                domain.append(('result', '=', result))
 
-            # Debug domain
-            _logger.info(f"Search domain: {domain}")
+            # Search filter
+            if search:
+                domain.extend(['|', '|', '|', '|', '|', '|', '|',
+                    ('name', 'ilike', search),
+                    ('sale_order_id.name', 'ilike', search),
+                    ('sa_id.name', 'ilike', search),
+                    ('mechanic_id.name', 'ilike', search),
+                    ('valet_id.name', 'ilike', search),
+                    ('part_support_id.name', 'ilike', search),
+                    ('sop_id.name', 'ilike', search),
+                    ('sop_id.code', 'ilike', search)
+                ])
 
-            # Use sudo() for consistent access
+            # Get data
             Sampling = request.env['pitcar.sop.sampling'].sudo()
-            
-            # Get total before pagination
             total_count = Sampling.search_count(domain)
-            
-            # Calculate pagination
             offset = (page - 1) * limit
-            
-            # Get records
             samplings = Sampling.search(domain, limit=limit, offset=offset, order='create_date desc')
 
+            # Format data
             rows = []
             for sampling in samplings:
-                # Buat dictionary untuk controller dengan data minimal
                 controller_data = None
                 if sampling.controller_id:
                     controller_data = {
@@ -474,27 +643,19 @@ class SOPController(http.Controller):
                         'car_info': {
                             'plate': sampling.sale_order_id.partner_car_id.number_plate if sampling.sale_order_id.partner_car_id else None,
                             'brand': sampling.sale_order_id.partner_car_brand.name if sampling.sale_order_id.partner_car_brand else None,
-                            'type': sampling.sale_order_id.partner_car_brand_type.name if sampling.sale_order_id.partner_car_brand_type else None,
+                            'type': sampling.sale_order_id.partner_car_brand_type.name if sampling.sale_order_id.partner_car_brand_type else None
                         }
                     } if sampling.sale_order_id else None,
                     'sop': {
                         'id': sampling.sop_id.id,
                         'name': sampling.sop_id.name,
                         'code': sampling.sop_id.code,
-                        'is_sa': sampling.sop_id.is_sa,
+                        'role': sampling.sop_id.role,
+                        'role_label': dict(sampling.sop_id._fields['role'].selection).get(sampling.sop_id.role, ''),
                         'department': sampling.sop_id.department,
                         'department_label': dict(sampling.sop_id._fields['department'].selection).get(sampling.sop_id.department, '')
                     } if sampling.sop_id else None,
-                    'employee': {
-                        'service_advisor': [{
-                            'id': sa.id,
-                            'name': sa.name
-                        } for sa in sampling.sa_id] if sampling.sa_id else [],
-                        'mechanic': [{
-                            'id': mech.id,
-                            'name': mech.name
-                        } for mech in sampling.mechanic_id] if sampling.mechanic_id else []
-                    },
+                    'employee_info': self._format_employee_info(sampling),
                     'controller': controller_data,
                     'state': sampling.state,
                     'state_label': dict(sampling._fields['state'].selection).get(sampling.state, ''),
@@ -515,6 +676,12 @@ class SOPController(http.Controller):
                         'items_per_page': limit
                     },
                     'filters': {
+                        'roles': [
+                            {'value': 'sa', 'label': 'Service Advisor'},
+                            {'value': 'mechanic', 'label': 'Mechanic'},
+                            {'value': 'valet', 'label': 'Valet Parking'},
+                            {'value': 'part_support', 'label': 'Part Support'}
+                        ],
                         'states': [
                             {'value': 'draft', 'label': 'Draft'},
                             {'value': 'in_progress', 'label': 'In Progress'},
@@ -531,40 +698,178 @@ class SOPController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_sampling_list: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+    # def get_sampling_list(self, **kw):
+    #     """Get list of sampling records"""
+    #     try:
+    #         # Get parameters directly from kw
+    #         # In Odoo, when using type='json', the parameters are passed directly in kw
+    #         page = max(1, int(kw.get('page', 1)))
+    #         limit = max(1, min(100, int(kw.get('limit', 25))))  # Max 100 records per page
+    #         search = (kw.get('search') or '').strip()
+    #         month = kw.get('month', '').strip()
+    #         is_sa = kw.get('is_sa')
+    #         state = kw.get('state')
+    #         result = kw.get('result')
+
+    #         # Debug log
+    #         _logger.info(f"Received parameters: {kw}")
+
+    #         domain = []
+
+    #         # Month filter
+    #         if month and re.match(r'^\d{4}-\d{2}$', month):
+    #             domain.append(('month', '=', month))
+
+    #         # Search filter
+    #         if search:
+    #             domain.append('|')
+    #             domain.append(('name', 'ilike', search))
+    #             domain.append('|')
+    #             domain.append(('sale_order_id.name', 'ilike', search))
+    #             domain.append('|')
+    #             domain.append(('sa_id.name', 'ilike', search))
+    #             domain.append('|')
+    #             domain.append(('mechanic_id.name', 'ilike', search))
+    #             domain.append('|')
+    #             domain.append(('sop_id.name', 'ilike', search))
+    #             domain.append(('sop_id.code', 'ilike', search))
+
+    #         # IS SA filter
+    #         if isinstance(is_sa, bool):
+    #             domain.append(('sop_id.is_sa', '=', is_sa))
+
+    #         # State filter
+    #         if state and state != 'all':
+    #             if state in ['draft', 'in_progress', 'done']:
+    #                 domain.append(('state', '=', state))
+
+    #         # Result filter
+    #         if result and result != 'all':
+    #             if result in ['pass', 'fail']:
+    #                 domain.append(('result', '=', result))
+
+    #         # Debug domain
+    #         _logger.info(f"Search domain: {domain}")
+
+    #         # Use sudo() for consistent access
+    #         Sampling = request.env['pitcar.sop.sampling'].sudo()
+            
+    #         # Get total before pagination
+    #         total_count = Sampling.search_count(domain)
+            
+    #         # Calculate pagination
+    #         offset = (page - 1) * limit
+            
+    #         # Get records
+    #         samplings = Sampling.search(domain, limit=limit, offset=offset, order='create_date desc')
+
+    #         rows = []
+    #         for sampling in samplings:
+    #             # Buat dictionary untuk controller dengan data minimal
+    #             controller_data = None
+    #             if sampling.controller_id:
+    #                 controller_data = {
+    #                     'id': sampling.controller_id.id,
+    #                     'name': sampling.controller_id.name
+    #                 }
+
+    #             row = {
+    #                 'id': sampling.id,
+    #                 'name': sampling.name,
+    #                 'date': sampling.date.strftime('%Y-%m-%d') if sampling.date else None,
+    #                 'timestamps': {
+    #                     'created': sampling.create_date.strftime('%Y-%m-%d %H:%M:%S') if sampling.create_date else None,
+    #                     'updated': sampling.write_date.strftime('%Y-%m-%d %H:%M:%S') if sampling.write_date else None,
+    #                     'validated': sampling.validation_date.strftime('%Y-%m-%d %H:%M:%S') if sampling.validation_date else None
+    #                 },
+    #                 'sale_order': {
+    #                     'id': sampling.sale_order_id.id,
+    #                     'name': sampling.sale_order_id.name,
+    #                     'car_info': {
+    #                         'plate': sampling.sale_order_id.partner_car_id.number_plate if sampling.sale_order_id.partner_car_id else None,
+    #                         'brand': sampling.sale_order_id.partner_car_brand.name if sampling.sale_order_id.partner_car_brand else None,
+    #                         'type': sampling.sale_order_id.partner_car_brand_type.name if sampling.sale_order_id.partner_car_brand_type else None,
+    #                     }
+    #                 } if sampling.sale_order_id else None,
+    #                 'sop': {
+    #                     'id': sampling.sop_id.id,
+    #                     'name': sampling.sop_id.name,
+    #                     'code': sampling.sop_id.code,
+    #                     'is_sa': sampling.sop_id.is_sa,
+    #                     'department': sampling.sop_id.department,
+    #                     'department_label': dict(sampling.sop_id._fields['department'].selection).get(sampling.sop_id.department, '')
+    #                 } if sampling.sop_id else None,
+    #                 'employee': {
+    #                     'service_advisor': [{
+    #                         'id': sa.id,
+    #                         'name': sa.name
+    #                     } for sa in sampling.sa_id] if sampling.sa_id else [],
+    #                     'mechanic': [{
+    #                         'id': mech.id,
+    #                         'name': mech.name
+    #                     } for mech in sampling.mechanic_id] if sampling.mechanic_id else []
+    #                 },
+    #                 'controller': controller_data,
+    #                 'state': sampling.state,
+    #                 'state_label': dict(sampling._fields['state'].selection).get(sampling.state, ''),
+    #                 'result': sampling.result,
+    #                 'result_label': dict(sampling._fields['result'].selection).get(sampling.result, '') if sampling.result else '',
+    #                 'notes': sampling.notes
+    #             }
+    #             rows.append(row)
+
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'rows': rows,
+    #                 'pagination': {
+    #                     'total_items': total_count,
+    #                     'total_pages': math.ceil(total_count / limit) if total_count > 0 else 1,
+    #                     'current_page': page,
+    #                     'items_per_page': limit
+    #                 },
+    #                 'filters': {
+    #                     'states': [
+    #                         {'value': 'draft', 'label': 'Draft'},
+    #                         {'value': 'in_progress', 'label': 'In Progress'},
+    #                         {'value': 'done', 'label': 'Done'}
+    #                     ],
+    #                     'results': [
+    #                         {'value': 'pass', 'label': 'Lulus'},
+    #                         {'value': 'fail', 'label': 'Tidak Lulus'}
+    #                     ]
+    #                 }
+    #             }
+    #         }
+
+    #     except Exception as e:
+    #         _logger.error(f"Error in get_sampling_list: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
 
         
     @http.route('/web/sop/sampling/validate', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def validate_sampling(self, **kw):
-        """Validate sampling result"""
         try:
-            params = self._get_request_data()
+            sampling_id = kw.get('sampling_id')
+            result = kw.get('result')
+            notes = kw.get('notes')
             
-            # Get parameters from both kw and params
-            sampling_id = kw.get('sampling_id') or params.get('sampling_id')
-            result = kw.get('result') or params.get('result')
-            notes = kw.get('notes') or params.get('notes')
-            
-            # Validate required parameters
-            if not sampling_id:
-                return {'status': 'error', 'message': 'Sampling ID is required'}
-            if not result:
-                return {'status': 'error', 'message': 'Result is required'}
+            if not sampling_id or not result:
+                return {'status': 'error', 'message': 'Sampling ID and result are required'}
 
             sampling = request.env['pitcar.sop.sampling'].browse(sampling_id)
             if not sampling.exists():
                 return {'status': 'error', 'message': 'Sampling not found'}
 
-            # Update sampling
             values = {
                 'state': 'done',
                 'result': result,
                 'notes': notes,
-                'validation_date': fields.Datetime.now()  # Add validation timestamp
+                'validation_date': fields.Datetime.now()
             }
 
             sampling.write(values)
             
-            # Return updated data
             return {
                 'status': 'success',
                 'data': {
@@ -572,13 +877,59 @@ class SOPController(http.Controller):
                     'name': sampling.name,
                     'result': sampling.result,
                     'state': sampling.state,
-                    'notes': sampling.notes
+                    'notes': sampling.notes,
+                    'employee_info': self._format_employee_info(sampling)
                 }
             }
 
         except Exception as e:
             _logger.error(f"Error in validate_sampling: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+    # def validate_sampling(self, **kw):
+    #     """Validate sampling result"""
+    #     try:
+    #         params = self._get_request_data()
+            
+    #         # Get parameters from both kw and params
+    #         sampling_id = kw.get('sampling_id') or params.get('sampling_id')
+    #         result = kw.get('result') or params.get('result')
+    #         notes = kw.get('notes') or params.get('notes')
+            
+    #         # Validate required parameters
+    #         if not sampling_id:
+    #             return {'status': 'error', 'message': 'Sampling ID is required'}
+    #         if not result:
+    #             return {'status': 'error', 'message': 'Result is required'}
+
+    #         sampling = request.env['pitcar.sop.sampling'].browse(sampling_id)
+    #         if not sampling.exists():
+    #             return {'status': 'error', 'message': 'Sampling not found'}
+
+    #         # Update sampling
+    #         values = {
+    #             'state': 'done',
+    #             'result': result,
+    #             'notes': notes,
+    #             'validation_date': fields.Datetime.now()  # Add validation timestamp
+    #         }
+
+    #         sampling.write(values)
+            
+    #         # Return updated data
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'id': sampling.id,
+    #                 'name': sampling.name,
+    #                 'result': sampling.result,
+    #                 'state': sampling.state,
+    #                 'notes': sampling.notes
+    #             }
+    #         }
+
+    #     except Exception as e:
+    #         _logger.error(f"Error in validate_sampling: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/sop/sampling/summary', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_sampling_summary(self, **kw):
@@ -717,19 +1068,36 @@ class SOPController(http.Controller):
     def create_sop(self, **kw):
         """Create new SOP"""
         try:
-            # Extract parameters langsung dari kw
+            # Extract parameters
             name = kw.get('name')
             code = kw.get('code')
             department = kw.get('department')
             description = kw.get('description')
-            is_sa = kw.get('is_sa', False)
+            is_sa = kw.get('is_sa', False)  # Backward compatibility
             sequence = kw.get('sequence', 10)
+            role = kw.get('role')  # New field
+            
+            # Determine role dari is_sa jika role tidak diberikan
+            if not role and is_sa is not None:
+                role = 'sa' if is_sa else 'mechanic'
 
             # Validate required fields
-            if not name or not code or not department:
+            if not all([name, code, department, role]):  # Tambahkan role ke required fields
                 return {
                     'status': 'error',
-                    'message': 'Name, code, and department are required'
+                    'message': 'Name, code, department, and role are required'
+                }
+
+            # Validate role-department compatibility
+            valid_combinations = {
+                'service': ['sa', 'mechanic'],
+                'cs': ['valet', 'part_support'],
+                'sparepart': ['part_support']
+            }
+            if role not in valid_combinations.get(department, []):
+                return {
+                    'status': 'error',
+                    'message': f'Role {role} tidak valid untuk department {department}'
                 }
 
             # Create SOP
@@ -738,7 +1106,7 @@ class SOPController(http.Controller):
                 'code': code,
                 'department': department,
                 'description': description,
-                'is_sa': is_sa,
+                'role': role,
                 'sequence': sequence,
                 'active': True
             }
@@ -752,17 +1120,70 @@ class SOPController(http.Controller):
                     'name': sop.name,
                     'code': sop.code,
                     'department': sop.department,
-                    'is_sa': sop.is_sa,
-                    'description': sop.description
+                    'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
+                    'role': sop.role,
+                    'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
+                    'is_sa': sop.is_sa,  # Backward compatibility
+                    'description': sop.description,
+                    'sequence': sop.sequence,
+                    'active': sop.active
                 }
             }
 
         except Exception as e:
             _logger.error(f"Error in create_sop: {str(e)}")
-            return {
-                'status': 'error', 
-                'message': str(e)
-            }
+            return {'status': 'error', 'message': str(e)}
+
+    # @http.route('/web/sop/master/create', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    # def create_sop(self, **kw):
+    #     """Create new SOP"""
+    #     try:
+    #         # Extract parameters langsung dari kw
+    #         name = kw.get('name')
+    #         code = kw.get('code')
+    #         department = kw.get('department')
+    #         description = kw.get('description')
+    #         is_sa = kw.get('is_sa', False)
+    #         sequence = kw.get('sequence', 10)
+
+    #         # Validate required fields
+    #         if not name or not code or not department:
+    #             return {
+    #                 'status': 'error',
+    #                 'message': 'Name, code, and department are required'
+    #             }
+
+    #         # Create SOP
+    #         values = {
+    #             'name': name,
+    #             'code': code,
+    #             'department': department,
+    #             'description': description,
+    #             'is_sa': is_sa,
+    #             'sequence': sequence,
+    #             'active': True
+    #         }
+
+    #         sop = request.env['pitcar.sop'].create(values)
+
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'id': sop.id,
+    #                 'name': sop.name,
+    #                 'code': sop.code,
+    #                 'department': sop.department,
+    #                 'is_sa': sop.is_sa,
+    #                 'description': sop.description
+    #             }
+    #         }
+
+    #     except Exception as e:
+    #         _logger.error(f"Error in create_sop: {str(e)}")
+    #         return {
+    #             'status': 'error', 
+    #             'message': str(e)
+    #         }
 
     @http.route('/web/sop/master/<int:sop_id>', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_sop_detail(self, sop_id, **kw):
@@ -789,17 +1210,16 @@ class SOPController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_sop_detail: {str(e)}")
             return {'status': 'error', 'message': str(e)}
-
+        
     @http.route('/web/sop/master/update', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def update_sop(self, **kw):
         """Update existing SOP"""
         try:
-            # Extract parameters langsung dari kw
             sop_id = kw.get('id')
             values = {}
             
             # Fields yang bisa diupdate
-            update_fields = ['name', 'code', 'department', 'description', 'is_sa', 'sequence', 'active']
+            update_fields = ['name', 'code', 'department', 'description', 'role', 'sequence', 'active']
             for field in update_fields:
                 if field in kw:
                     values[field] = kw[field]
@@ -811,6 +1231,21 @@ class SOPController(http.Controller):
             if not sop.exists():
                 return {'status': 'error', 'message': 'SOP not found'}
 
+            # Validate role-department compatibility jika ada perubahan
+            if 'role' in values or 'department' in values:
+                department = values.get('department', sop.department)
+                role = values.get('role', sop.role)
+                valid_combinations = {
+                    'service': ['sa', 'mechanic'],
+                    'cs': ['valet', 'part_support'],
+                    'sparepart': ['part_support']
+                }
+                if role not in valid_combinations.get(department, []):
+                    return {
+                        'status': 'error',
+                        'message': f'Role {role} tidak valid untuk department {department}'
+                    }
+
             sop.write(values)
 
             return {
@@ -820,6 +1255,9 @@ class SOPController(http.Controller):
                     'name': sop.name,
                     'code': sop.code,
                     'department': sop.department,
+                    'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
+                    'role': sop.role,
+                    'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
                     'is_sa': sop.is_sa,
                     'description': sop.description,
                     'sequence': sop.sequence,
@@ -830,6 +1268,47 @@ class SOPController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in update_sop: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    # @http.route('/web/sop/master/update', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    # def update_sop(self, **kw):
+    #     """Update existing SOP"""
+    #     try:
+    #         # Extract parameters langsung dari kw
+    #         sop_id = kw.get('id')
+    #         values = {}
+            
+    #         # Fields yang bisa diupdate
+    #         update_fields = ['name', 'code', 'department', 'description', 'is_sa', 'sequence', 'active']
+    #         for field in update_fields:
+    #             if field in kw:
+    #                 values[field] = kw[field]
+
+    #         if not sop_id:
+    #             return {'status': 'error', 'message': 'SOP ID is required'}
+
+    #         sop = request.env['pitcar.sop'].browse(sop_id)
+    #         if not sop.exists():
+    #             return {'status': 'error', 'message': 'SOP not found'}
+
+    #         sop.write(values)
+
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'id': sop.id,
+    #                 'name': sop.name,
+    #                 'code': sop.code,
+    #                 'department': sop.department,
+    #                 'is_sa': sop.is_sa,
+    #                 'description': sop.description,
+    #                 'sequence': sop.sequence,
+    #                 'active': sop.active
+    #             }
+    #         }
+
+    #     except Exception as e:
+    #         _logger.error(f"Error in update_sop: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/sop/master/delete/<int:sop_id>', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def delete_sop(self, sop_id, **kw):

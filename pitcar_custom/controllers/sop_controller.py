@@ -931,9 +931,141 @@ class SOPController(http.Controller):
     #         _logger.error(f"Error in validate_sampling: {str(e)}")
     #         return {'status': 'error', 'message': str(e)}
 
+    # @http.route('/web/sop/sampling/summary', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    # def get_sampling_summary(self, **kw):
+    #     """Get sampling summary statistics"""
+    #     try:
+    #         params = self._get_request_data()
+    #         month = kw.get('month') or params.get('month')
+            
+    #         if not month:
+    #             return {'status': 'error', 'message': 'Month parameter is required'}
+
+    #         Sampling = request.env['pitcar.sop.sampling']
+    #         domain = [
+    #             ('month', '=', month),
+    #             ('state', '=', 'done')
+    #         ]
+            
+    #         samplings = Sampling.search(domain)
+            
+    #         # Basic summary statistics
+    #         summary = {
+    #             'total_sampling': len(samplings),
+    #             'total_pass': len(samplings.filtered(lambda s: s.result == 'pass')),
+    #             'total_fail': len(samplings.filtered(lambda s: s.result == 'fail')),
+    #             'sa_sampling': {
+    #                 'total': len(samplings.filtered(lambda s: s.sop_id.is_sa)),
+    #                 'pass': len(samplings.filtered(lambda s: s.sop_id.is_sa and s.result == 'pass')),
+    #                 'fail': len(samplings.filtered(lambda s: s.sop_id.is_sa and s.result == 'fail'))
+    #             },
+    #             'mechanic_sampling': {
+    #                 'total': len(samplings.filtered(lambda s: not s.sop_id.is_sa)),
+    #                 'pass': len(samplings.filtered(lambda s: not s.sop_id.is_sa and s.result == 'pass')),
+    #                 'fail': len(samplings.filtered(lambda s: not s.sop_id.is_sa and s.result == 'fail'))
+    #             }
+    #         }
+
+    #         # Calculate overall rates
+    #         if summary['total_sampling'] > 0:
+    #             summary['pass_rate'] = round((summary['total_pass'] / summary['total_sampling']) * 100, 2)
+    #             summary['fail_rate'] = round((summary['total_fail'] / summary['total_sampling']) * 100, 2)
+    #         else:
+    #             summary['pass_rate'] = summary['fail_rate'] = 0
+
+    #         # Calculate SA rates
+    #         if summary['sa_sampling']['total'] > 0:
+    #             summary['sa_sampling']['pass_rate'] = round((summary['sa_sampling']['pass'] / summary['sa_sampling']['total']) * 100, 2)
+    #             summary['sa_sampling']['fail_rate'] = round((summary['sa_sampling']['fail'] / summary['sa_sampling']['total']) * 100, 2)
+    #         else:
+    #             summary['sa_sampling']['pass_rate'] = summary['sa_sampling']['fail_rate'] = 0
+
+    #         # Calculate Mechanic rates
+    #         if summary['mechanic_sampling']['total'] > 0:
+    #             summary['mechanic_sampling']['pass_rate'] = round((summary['mechanic_sampling']['pass'] / summary['mechanic_sampling']['total']) * 100, 2)
+    #             summary['mechanic_sampling']['fail_rate'] = round((summary['mechanic_sampling']['fail'] / summary['mechanic_sampling']['total']) * 100, 2)
+    #         else:
+    #             summary['mechanic_sampling']['pass_rate'] = summary['mechanic_sampling']['fail_rate'] = 0
+
+    #         # Calculate per-mechanic statistics
+    #         mechanic_stats = {}
+    #         mechanic_samplings = samplings.filtered(lambda s: not s.sop_id.is_sa)
+            
+    #         for sampling in mechanic_samplings:
+    #             for mechanic in sampling.mechanic_id:
+    #                 if mechanic.id not in mechanic_stats:
+    #                     mechanic_stats[mechanic.id] = {
+    #                         'id': mechanic.id,
+    #                         'name': mechanic.name,
+    #                         'total': 0,
+    #                         'pass': 0,
+    #                         'fail': 0,
+    #                         'pass_rate': 0,
+    #                         'fail_rate': 0
+    #                     }
+                    
+    #                 mechanic_stats[mechanic.id]['total'] += 1
+    #                 if sampling.result == 'pass':
+    #                     mechanic_stats[mechanic.id]['pass'] += 1
+    #                 elif sampling.result == 'fail':
+    #                     mechanic_stats[mechanic.id]['fail'] += 1
+
+    #         # Calculate per-SA statistics
+    #         sa_stats = {}
+    #         sa_samplings = samplings.filtered(lambda s: s.sop_id.is_sa)
+            
+    #         for sampling in sa_samplings:
+    #             for sa in sampling.sa_id:
+    #                 if sa.id not in sa_stats:
+    #                     sa_stats[sa.id] = {
+    #                         'id': sa.id,
+    #                         'name': sa.name,
+    #                         'total': 0,
+    #                         'pass': 0,
+    #                         'fail': 0,
+    #                         'pass_rate': 0,
+    #                         'fail_rate': 0
+    #                     }
+                    
+    #                 sa_stats[sa.id]['total'] += 1
+    #                 if sampling.result == 'pass':
+    #                     sa_stats[sa.id]['pass'] += 1
+    #                 elif sampling.result == 'fail':
+    #                     sa_stats[sa.id]['fail'] += 1
+
+    #         # Calculate rates and sort by performance
+    #         def calculate_rates_and_sort(stats_dict):
+    #             stats_list = list(stats_dict.values())
+    #             for stat in stats_list:
+    #                 if stat['total'] > 0:
+    #                     stat['pass_rate'] = round((stat['pass'] / stat['total']) * 100, 2)
+    #                     stat['fail_rate'] = round((stat['fail'] / stat['total']) * 100, 2)
+                
+    #             # Sort by pass rate (descending)
+    #             stats_list.sort(key=lambda x: x['pass_rate'], reverse=True)
+                
+    #             # Add ranking
+    #             for i, stat in enumerate(stats_list, 1):
+    #                 stat['rank'] = i
+                
+    #             return stats_list
+
+    #         # Add detailed stats to summary
+    #         summary['mechanic_details'] = calculate_rates_and_sort(mechanic_stats)
+    #         summary['sa_details'] = calculate_rates_and_sort(sa_stats)
+
+    #         return {
+    #             'status': 'success',
+    #             'data': summary
+    #         }
+
+    #     except Exception as e:
+    #         _logger.error(f"Error in get_sampling_summary: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
+
     @http.route('/web/sop/sampling/summary', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_sampling_summary(self, **kw):
-        """Get sampling summary statistics"""
+        """Get comprehensive sampling summary statistics for all roles"""
         try:
             params = self._get_request_data()
             month = kw.get('month') or params.get('month')
@@ -941,7 +1073,7 @@ class SOPController(http.Controller):
             if not month:
                 return {'status': 'error', 'message': 'Month parameter is required'}
 
-            Sampling = request.env['pitcar.sop.sampling']
+            Sampling = request.env['pitcar.sop.sampling'].sudo()
             domain = [
                 ('month', '=', month),
                 ('state', '=', 'done')
@@ -949,110 +1081,138 @@ class SOPController(http.Controller):
             
             samplings = Sampling.search(domain)
             
-            # Basic summary statistics
+            # Initialize summary structure with all roles
             summary = {
-                'total_sampling': len(samplings),
-                'total_pass': len(samplings.filtered(lambda s: s.result == 'pass')),
-                'total_fail': len(samplings.filtered(lambda s: s.result == 'fail')),
-                'sa_sampling': {
-                    'total': len(samplings.filtered(lambda s: s.sop_id.is_sa)),
-                    'pass': len(samplings.filtered(lambda s: s.sop_id.is_sa and s.result == 'pass')),
-                    'fail': len(samplings.filtered(lambda s: s.sop_id.is_sa and s.result == 'fail'))
+                'total': {
+                    'total': 0,
+                    'pass': 0,
+                    'fail': 0,
+                    'pass_rate': 0,
+                    'fail_rate': 0
                 },
-                'mechanic_sampling': {
-                    'total': len(samplings.filtered(lambda s: not s.sop_id.is_sa)),
-                    'pass': len(samplings.filtered(lambda s: not s.sop_id.is_sa and s.result == 'pass')),
-                    'fail': len(samplings.filtered(lambda s: not s.sop_id.is_sa and s.result == 'fail'))
+                'roles': {
+                    'service_advisor': {
+                        'total': 0,
+                        'pass': 0,
+                        'fail': 0,
+                        'pass_rate': 0,
+                        'fail_rate': 0,
+                        'label': 'Service Advisor',
+                        'details': []
+                    },
+                    'mechanic': {
+                        'total': 0,
+                        'pass': 0,
+                        'fail': 0,
+                        'pass_rate': 0,
+                        'fail_rate': 0,
+                        'label': 'Mechanic',
+                        'details': []
+                    },
+                    'valet': {
+                        'total': 0,
+                        'pass': 0,
+                        'fail': 0,
+                        'pass_rate': 0,
+                        'fail_rate': 0,
+                        'label': 'Valet Parking',
+                        'details': []
+                    },
+                    'part_support': {
+                        'total': 0,
+                        'pass': 0,
+                        'fail': 0,
+                        'pass_rate': 0,
+                        'fail_rate': 0,
+                        'label': 'Part Support',
+                        'details': []
+                    }
                 }
             }
 
-            # Calculate overall rates
-            if summary['total_sampling'] > 0:
-                summary['pass_rate'] = round((summary['total_pass'] / summary['total_sampling']) * 100, 2)
-                summary['fail_rate'] = round((summary['total_fail'] / summary['total_sampling']) * 100, 2)
-            else:
-                summary['pass_rate'] = summary['fail_rate'] = 0
+            # Helper to update stats
+            def update_stats(stats_dict, result):
+                stats_dict['total'] += 1
+                stats_dict['pass'] += 1 if result == 'pass' else 0
+                stats_dict['fail'] += 1 if result == 'fail' else 0
 
-            # Calculate SA rates
-            if summary['sa_sampling']['total'] > 0:
-                summary['sa_sampling']['pass_rate'] = round((summary['sa_sampling']['pass'] / summary['sa_sampling']['total']) * 100, 2)
-                summary['sa_sampling']['fail_rate'] = round((summary['sa_sampling']['fail'] / summary['sa_sampling']['total']) * 100, 2)
-            else:
-                summary['sa_sampling']['pass_rate'] = summary['sa_sampling']['fail_rate'] = 0
+            # Helper to update employee stats
+            def update_employee_stats(employee_stats, employee, result):
+                if employee.id not in employee_stats:
+                    employee_stats[employee.id] = {
+                        'id': employee.id,
+                        'name': employee.name,
+                        'total': 0,
+                        'pass': 0,
+                        'fail': 0,
+                        'pass_rate': 0,
+                        'fail_rate': 0
+                    }
+                update_stats(employee_stats[employee.id], result)
 
-            # Calculate Mechanic rates
-            if summary['mechanic_sampling']['total'] > 0:
-                summary['mechanic_sampling']['pass_rate'] = round((summary['mechanic_sampling']['pass'] / summary['mechanic_sampling']['total']) * 100, 2)
-                summary['mechanic_sampling']['fail_rate'] = round((summary['mechanic_sampling']['fail'] / summary['mechanic_sampling']['total']) * 100, 2)
-            else:
-                summary['mechanic_sampling']['pass_rate'] = summary['mechanic_sampling']['fail_rate'] = 0
+            # Initialize employee stats dictionaries
+            employee_stats = {
+                'service_advisor': {},
+                'mechanic': {},
+                'valet': {},
+                'part_support': {}
+            }
 
-            # Calculate per-mechanic statistics
-            mechanic_stats = {}
-            mechanic_samplings = samplings.filtered(lambda s: not s.sop_id.is_sa)
-            
-            for sampling in mechanic_samplings:
-                for mechanic in sampling.mechanic_id:
-                    if mechanic.id not in mechanic_stats:
-                        mechanic_stats[mechanic.id] = {
-                            'id': mechanic.id,
-                            'name': mechanic.name,
-                            'total': 0,
-                            'pass': 0,
-                            'fail': 0,
-                            'pass_rate': 0,
-                            'fail_rate': 0
-                        }
-                    
-                    mechanic_stats[mechanic.id]['total'] += 1
-                    if sampling.result == 'pass':
-                        mechanic_stats[mechanic.id]['pass'] += 1
-                    elif sampling.result == 'fail':
-                        mechanic_stats[mechanic.id]['fail'] += 1
+            # Process all samplings
+            for sampling in samplings:
+                role = sampling.sop_id.role
+                result = sampling.result
+                
+                if role not in summary['roles']:
+                    continue
 
-            # Calculate per-SA statistics
-            sa_stats = {}
-            sa_samplings = samplings.filtered(lambda s: s.sop_id.is_sa)
-            
-            for sampling in sa_samplings:
-                for sa in sampling.sa_id:
-                    if sa.id not in sa_stats:
-                        sa_stats[sa.id] = {
-                            'id': sa.id,
-                            'name': sa.name,
-                            'total': 0,
-                            'pass': 0,
-                            'fail': 0,
-                            'pass_rate': 0,
-                            'fail_rate': 0
-                        }
-                    
-                    sa_stats[sa.id]['total'] += 1
-                    if sampling.result == 'pass':
-                        sa_stats[sa.id]['pass'] += 1
-                    elif sampling.result == 'fail':
-                        sa_stats[sa.id]['fail'] += 1
+                # Update total stats
+                update_stats(summary['total'], result)
+                
+                # Update role stats
+                update_stats(summary['roles'][role], result)
+                
+                # Update employee stats based on role
+                if role == 'service_advisor' and sampling.sa_id:
+                    for employee in sampling.sa_id:
+                        update_employee_stats(employee_stats['service_advisor'], employee, result)
+                elif role == 'mechanic' and sampling.mechanic_id:
+                    for employee in sampling.mechanic_id:
+                        update_employee_stats(employee_stats['mechanic'], employee, result)
+                elif role == 'valet' and sampling.valet_id:
+                    for employee in sampling.valet_id:
+                        update_employee_stats(employee_stats['valet'], employee, result)
+                elif role == 'part_support' and sampling.part_support_id:
+                    for employee in sampling.part_support_id:
+                        update_employee_stats(employee_stats['part_support'], employee, result)
 
-            # Calculate rates and sort by performance
-            def calculate_rates_and_sort(stats_dict):
-                stats_list = list(stats_dict.values())
-                for stat in stats_list:
-                    if stat['total'] > 0:
-                        stat['pass_rate'] = round((stat['pass'] / stat['total']) * 100, 2)
-                        stat['fail_rate'] = round((stat['fail'] / stat['total']) * 100, 2)
+            # Calculate rates and sort employee details
+            def calculate_rates(stats):
+                if stats['total'] > 0:
+                    stats['pass_rate'] = round((stats['pass'] / stats['total']) * 100, 2)
+                    stats['fail_rate'] = round((stats['fail'] / stats['total']) * 100, 2)
+
+            # Calculate rates for overall totals
+            calculate_rates(summary['total'])
+
+            # Process each role's stats
+            for role in summary['roles']:
+                # Calculate rates for role totals
+                calculate_rates(summary['roles'][role])
+                
+                # Process employee details for this role
+                details = list(employee_stats[role].values())
+                for detail in details:
+                    calculate_rates(detail)
                 
                 # Sort by pass rate (descending)
-                stats_list.sort(key=lambda x: x['pass_rate'], reverse=True)
+                details.sort(key=lambda x: x['pass_rate'], reverse=True)
                 
                 # Add ranking
-                for i, stat in enumerate(stats_list, 1):
-                    stat['rank'] = i
+                for i, detail in enumerate(details, 1):
+                    detail['rank'] = i
                 
-                return stats_list
-
-            # Add detailed stats to summary
-            summary['mechanic_details'] = calculate_rates_and_sort(mechanic_stats)
-            summary['sa_details'] = calculate_rates_and_sort(sa_stats)
+                summary['roles'][role]['details'] = details
 
             return {
                 'status': 'success',

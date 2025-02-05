@@ -41,18 +41,20 @@ class FrontOfficeController(http.Controller):
     def get_equipment_list(self, **kw):
         """Get list of front office equipment"""
         try:
+            # Get parameters
             page = max(1, int(kw.get('page', 1)))
             limit = max(1, min(100, int(kw.get('limit', 25))))
-            search = kw.get('search', '').strip()
+            search = (kw.get('search') or '').strip()
             show_inactive = kw.get('show_inactive', False)
             
+            # Base domain
             domain = [] if show_inactive else [('active', '=', True)]
+
+            # Add search domain
             if search:
-                domain += [
-                    '|', '|',
+                domain += ['|',
                     ('name', 'ilike', search),
-                    ('description', 'ilike', search)
-                ]
+                    ('description', 'ilike', search)]
             
             Equipment = request.env['pitcar.front.office.equipment'].sudo()
             total_count = Equipment.search_count(domain)

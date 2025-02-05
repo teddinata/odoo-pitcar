@@ -1308,6 +1308,18 @@ class KPIOverview(http.Controller):
                         formatted_revenue = "{:,.0f}".format(total_revenue)
                         formatted_target = "{:,.0f}".format(monthly_target)
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
+
+                    # service_efficiency
+                    elif kpi['type'] == 'service_efficiency':
+                        # Hitung efisiensi waktu servis untuk mekanik individual
+                        orders_with_duration = orders.filtered(lambda o: o.duration_deviation is not False)
+                        if orders_with_duration:
+                            avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
+                            actual = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
+                            kpi['measurement'] = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Belum ada data deviasi waktu pengerjaan"
                         
                     elif kpi['type'] == 'service_recommendation':
                         if orders:
@@ -1322,8 +1334,24 @@ class KPIOverview(http.Controller):
                             actual = avg_realization
                         
                     elif kpi['type'] == 'sop_compliance':
-                        actual = ((total_orders - sop_violations) / total_orders * 100) if total_orders else 0
-                        kpi['measurement'] = f"Total order: {total_orders}, Sesuai SOP: {total_orders - sop_violations}, Pelanggaran: {sop_violations}"
+                        # Get mechanic's SOP samplings
+                        mechanic_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('mechanic_id', 'in', [mechanic.id]),
+                            ('sop_id.role', '=', 'mechanic'),  # Pastikan hanya SOP untuk mekanik
+                            ('state', '=', 'done')
+                        ])
+                        
+                        total_samplings = len(mechanic_samplings)
+                        failed_samplings = len(mechanic_samplings.filtered(lambda s: s.result == 'fail'))
+                        
+                        if total_samplings > 0:
+                            actual = ((total_samplings - failed_samplings) / total_samplings * 100)
+                            kpi['measurement'] = f"Sampling sesuai SOP: {total_samplings - failed_samplings} dari {total_samplings} sampling ({actual:.1f}%)"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada sampling SOP pada periode {month}/{year}"
                         
                     # elif kpi['type'] == 'discipline':
                     #     actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
@@ -1478,10 +1506,28 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Revenue tim: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
                         
                     elif kpi['type'] == 'sop_compliance':
-                        total_samplings = len(team_orders.mapped('sop_sampling_ids'))
-                        failed_samplings = len(team_orders.mapped('sop_sampling_ids').filtered(lambda s: s.result == 'fail'))
-                        actual = ((total_samplings - failed_samplings) / total_samplings * 100) if total_samplings else 0
-                        kpi['measurement'] = f"Sampling sesuai SOP: {total_samplings - failed_samplings} dari {total_samplings} sampling"
+                        # Get SOP samplings for all team members
+                        team_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('mechanic_id', 'in', team_members.ids),
+                            ('sop_id.role', '=', 'mechanic'),
+                            ('state', '=', 'done')
+                        ])
+                        
+                        total_samplings = len(team_samplings)
+                        failed_samplings = len(team_samplings.filtered(lambda s: s.result == 'fail'))
+                        
+                        if total_samplings > 0:
+                            actual = ((total_samplings - failed_samplings) / total_samplings * 100)
+                            kpi['measurement'] = (
+                                f"Total sampling tim: {total_samplings}, "
+                                f"Sesuai SOP: {total_samplings - failed_samplings}, "
+                                f"Pelanggaran: {failed_samplings} ({actual:.1f}%)"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada sampling SOP tim pada periode {month}/{year}"
 
                         
                     elif kpi['type'] == 'team_discipline':

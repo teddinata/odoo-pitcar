@@ -10,3 +10,4 @@ from . import sop_controller
 from . import kpi_overview
 from . import lead_time_part
 from . import employee_api
+from . import frontoffice_api

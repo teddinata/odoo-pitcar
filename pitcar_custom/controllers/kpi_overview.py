@@ -388,6 +388,37 @@ class KPIOverview(http.Controller):
                 }
             ]
 
+            # Template KPI untuk Valet Parking
+            valet_kpi_template = [
+                {
+                    'no': 1,
+                    'name': '% sampel tim valet parking bekerja sesuai alur SOP',
+                    'type': 'valet_sop',
+                    'weight': 50,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 2,
+                    'name': '% peralatan front office lengkap dan sesuai pada tempatnya',
+                    'type': 'front_office',
+                    'weight': 30,
+                    'target': 100,
+                    'measurement': 'Diukur dari jumlah temuan peralatan lengkap & sesuai',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 3,
+                    'name': 'Rating survey kepuasan customer memberikan nilai minimal 4.8 dari 5',
+                    'type': 'customer_satisfaction',
+                    'weight': 20,
+                    'target': 95,
+                    'measurement': 'Diukur dari survey rating kepuasan customer',
+                    'include_in_calculation': True
+                }
+            ]
+
 
                 # Kemudian gunakan start_date_utc dan end_date_utc untuk semua query database
             # Contoh:
@@ -870,6 +901,106 @@ class KPIOverview(http.Controller):
                         'editable': ['weight', 'target']
                     })
 
+            # Handle Valet
+            # Di bagian handle different roles, tambahkan kondisi untuk Valet:
+            elif 'Valet Parking' in job_title:
+                kpi_scores = []
+                
+                for kpi in valet_kpi_template:
+                    actual = 0
+                    if kpi['type'] == 'front_office':
+                        # Get daily checks data
+                        front_office_checks = request.env['pitcar.front.office.check'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('valet_id', '=', employee.id),
+                            ('state', '=', 'done')
+                        ])
+
+                        total_checks = len(front_office_checks)
+                        if total_checks > 0:
+                            # Calculate average completeness rate
+                            total_rate = sum(check.completeness_rate for check in front_office_checks)
+                            actual = total_rate / total_checks
+                            
+                            # Format measurement message
+                            total_complete = sum(1 for check in front_office_checks if check.completeness_rate >= 100)
+                            kpi['measurement'] = (
+                                f"Pengecekan lengkap: {total_complete} dari {total_checks} kali pengecekan. "
+                                f"Rata-rata kelengkapan: {actual:.1f}%"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada pengecekan pada periode {month}/{year}"
+
+                    elif kpi['type'] == 'valet_sop':
+                        # Get SOP samplings for valet 
+                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('valet_id', 'in', [employee.id]),
+                            ('state', '=', 'done')
+                        ])
+                        
+                        total_samplings = len(samplings)
+                        if total_samplings > 0:
+                            passed_samplings = len(samplings.filtered(lambda s: s.result == 'pass'))
+                            actual = (passed_samplings / total_samplings * 100)
+                            kpi['measurement'] = f"Sampel sesuai SOP: {passed_samplings} dari {total_samplings} sampling"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada sampling SOP pada periode {month}/{year}"
+                            
+                    elif kpi['type'] == 'customer_satisfaction':
+                        # Get orders in period
+                        period_orders = request.env['sale.order'].sudo().search([
+                            ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('state', 'in', ['sale', 'done'])
+                        ])
+                        
+                        # Get rated orders
+                        rated_orders = period_orders.filtered(lambda o: o.customer_rating)
+                        total_rated_orders = len(rated_orders)
+                        
+                        if total_rated_orders > 0:
+                            # Calculate average rating
+                            total_rating = sum(float(order.customer_rating) for order in rated_orders)
+                            avg_rating = total_rating / total_rated_orders
+                            
+                            # Special rating formula 
+                            if avg_rating > 4.8:
+                                actual = 120
+                            elif avg_rating == 4.8:
+                                actual = 100
+                            elif 4.6 <= avg_rating <= 4.7:
+                                actual = 50
+                            else:  # < 4.6
+                                actual = 0
+                                
+                            kpi['measurement'] = (
+                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
+                                f"pada periode {month}/{year}"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada rating customer pada periode {month}/{year}"
+
+                    # Calculate achievement and weighted score
+                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+
+                    kpi_scores.append({
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': kpi['measurement'],
+                        'actual': actual,
+                        'achievement': achievement,
+                        'weighted_score': weighted_score
+                    })
 
             else:
                 return {'status': 'error', 'message': f'Invalid position: {job_title}'}

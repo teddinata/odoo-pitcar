@@ -30,3 +30,4 @@ from . import service_booking
 from . import hr_working_days_config
 from . import kpi_detail
 from . import lead_time_part
+from . import frontoffice_equipment

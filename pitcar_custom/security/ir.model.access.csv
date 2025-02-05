@@ -56,3 +56,6 @@ pitcar_custom.access_hr_working_days_config_manager,hr.working.days.config.manag
 pitcar_custom.access_part_purchase_leadtime_user,part.purchase.leadtime.user,model_part_purchase_leadtime,base.group_user,1,1,1,0
 pitcar_custom.access_part_purchase_leadtime_manager,part.purchase.leadtime.manager,model_part_purchase_leadtime,base.group_system,1,1,1,1
 pitcar_custom.access_part_purchase_leadtime_controller,part.purchase.leadtime.controller,model_part_purchase_leadtime,pitcar_custom.group_controller,1,1,1,0
+pitcar_custom.access_front_office_equipment_user,front.office.equipment user,model_pitcar_front_office_equipment,base.group_user,1,1,1,1
+pitcar_custom.access_front_office_check_user,front.office.check user,model_pitcar_front_office_check,base.group_user,1,1,1,1
+pitcar_custom.access_front_office_check_line_user,front.office.check.line user,model_pitcar_front_office_check_line,base.group_user,1,1,1,1

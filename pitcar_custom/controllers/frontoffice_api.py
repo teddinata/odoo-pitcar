@@ -141,6 +141,34 @@ class FrontOfficeController(http.Controller):
             _logger.error(f"Error in update_equipment: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
+    @http.route('/web/front-office/equipment/<int:equipment_id>/delete', type='json', auth='user', methods=['POST'], csrf=False)
+    def delete_equipment(self, equipment_id, **kw):
+        """Delete equipment"""
+        try:
+            equipment = request.env['pitcar.front.office.equipment'].sudo().browse(equipment_id)
+            if not equipment.exists():
+                return {'status': 'error', 'message': 'Equipment not found'}
+
+            # Check if equipment is used in any checks
+            if request.env['pitcar.front.office.check.line'].sudo().search_count([('equipment_id', '=', equipment_id)]) > 0:
+                # Just archive if equipment is used
+                equipment.write({'active': False})
+                return {
+                    'status': 'success',
+                    'message': 'Equipment has been archived because it is used in check records'
+                }
+            else:
+                # Delete if not used
+                equipment.unlink()
+                return {
+                    'status': 'success',
+                    'message': 'Equipment has been deleted successfully'
+                }
+
+        except Exception as e:
+            _logger.error(f"Error in delete_equipment: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
     @http.route('/web/front-office/check/create', type='json', auth='user', methods=['POST'], csrf=False)
     def create_check(self, **kw):
         """Create new front office daily check"""

@@ -82,15 +82,33 @@ class SOPController(http.Controller):
             role = kw.get('role')
             department = kw.get('department')
             search = (kw.get('search') or '').strip()
+            
+            # Sort parameters
+            sort_by = kw.get('sort_by', 'code')  # Default sort by code
+            sort_order = kw.get('sort_order', 'asc')  # Default ascending
+            
+            # Validate dan map sort_by ke field yang valid
+            valid_sort_fields = {
+                'code': 'code',
+                'name': 'name',
+                'department': 'department',
+                'role': 'role'
+            }
+            
+            # Pastikan sort_by valid, jika tidak gunakan default
+            sort_field = valid_sort_fields.get(sort_by, 'code')
+            
+            # Build order string
+            order_string = f"{sort_field} {sort_order}"
 
             # Build domain
             domain = self._get_sop_domain(role, department, search)
             
-            # Get data
+            # Get data with ordering
             SOP = request.env['pitcar.sop'].sudo()
             total_count = SOP.search_count(domain)
             offset = (page - 1) * limit
-            sops = SOP.search(domain, limit=limit, offset=offset, order='sequence, name')
+            sops = SOP.search(domain, limit=limit, offset=offset, order=order_string)
 
             # Format response
             rows = []
@@ -116,7 +134,13 @@ class SOPController(http.Controller):
                         'total_items': total_count,
                         'total_pages': math.ceil(total_count / limit) if total_count > 0 else 1,
                         'current_page': page,
-                        'items_per_page': limit
+                        'items_per_page': limit,
+                        'has_next': page * limit < total_count,
+                        'has_previous': page > 1
+                    },
+                    'sort': {
+                        'sort_by': sort_by,
+                        'sort_order': sort_order
                     },
                     'filters': {
                         'departments': [

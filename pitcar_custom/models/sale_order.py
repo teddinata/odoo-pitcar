@@ -2288,6 +2288,147 @@ class SaleOrder(models.Model):
         ('completed', 'Selesai')
     ], string='Status Beli Part', compute='_compute_part_purchase_status', store=True)
 
+    # Fields baru untuk tracking request part
+    # Tambahkan field part_request_time di sini, bersama fields lainnya
+    part_request_time = fields.Datetime(
+        'Waktu Request Part',
+        compute='_compute_part_request_time', 
+        store=True,  # Penting untuk menyimpan nilai
+        readonly=False,  # Bisa diubah manual jika perlu
+        tracking=True
+    )
+    part_request_notes = fields.Text('Catatan Umum Request Part', tracking=True)
+    
+    # One2many ke items yang direquest
+    part_request_items_ids = fields.One2many(
+        'sale.order.part.item', 
+        'sale_order_id', 
+        string='Items yang Diminta'
+    )
+    
+    # Computed fields untuk status
+    total_requested_items = fields.Integer(
+        compute='_compute_items_status',
+        string='Total Items Diminta'
+    )
+    total_fulfilled_items = fields.Integer(
+        compute='_compute_items_status',
+        string='Total Items Terpenuhi'
+    )
+    all_items_fulfilled = fields.Boolean(
+        compute='_compute_items_status',
+        string='Semua Items Terpenuhi'
+    )
+    part_request_state = fields.Selection([
+        ('draft', 'Draft'),
+        ('requested', 'Requested'),
+        ('completed', 'Completed')
+    ], string='Part Request State', default='draft', tracking=True)
+
+    # Tambahkan compute method di sini, setelah semua fields
+    @api.depends('need_part_purchase', 'part_request_items_ids')
+    def _compute_part_request_time(self):
+        """Compute part request time based on need_part_purchase"""
+        for record in self:
+            if record.need_part_purchase == 'yes' and not record.part_request_time:
+                record.part_request_time = fields.Datetime.now()
+            elif record.need_part_purchase == 'no':
+                record.part_request_time = False
+
+    @api.depends('part_request_items_ids', 'part_request_items_ids.is_fulfilled')
+    def _compute_items_status(self):
+        for order in self:
+            total = len(order.part_request_items_ids)
+            fulfilled = len(order.part_request_items_ids.filtered('is_fulfilled'))
+            order.total_requested_items = total
+            order.total_fulfilled_items = fulfilled
+            order.all_items_fulfilled = total > 0 and total == fulfilled
+
+    # Di model sale.order
+    @api.onchange('need_part_purchase')
+    def _onchange_need_part_purchase(self):
+        """Handle konfirmasi saat radio button diubah"""
+        if self.need_part_purchase == 'yes':
+            # Generate warning message dulu
+            warning = {
+                'title': 'Konfirmasi Request Part',
+                'message': 'Anda akan membuat request part ke Tim Part. Lanjutkan?'
+            }
+            
+            # Set values dan write ke database
+            vals = {
+                'part_request_state': 'draft',
+                'part_request_time': fields.Datetime.now(),
+                'part_purchase_status': 'pending'
+            }
+            self.write(vals)
+            
+            return {'warning': warning}
+            
+        elif self.need_part_purchase == 'no':
+            # Reset values
+            vals = {
+                'part_request_state': False,
+                'part_request_time': False,
+                'part_purchase_status': 'not_needed'
+            }
+            self.write(vals)
+            
+            if self.part_request_items_ids:
+                return {
+                    'warning': {
+                        'title': 'Konfirmasi Batalkan Request',
+                        'message': 'Request part yang sudah dibuat akan dibatalkan. Lanjutkan?'
+                    }
+                }
+
+    def action_request_part(self):
+        """SA memulai request part"""
+        _logger.info("action_request_part called")
+        
+        self.ensure_one()
+        if not self.part_request_items_ids:
+            raise ValidationError(_("Mohon tambahkan item part yang dibutuhkan"))
+        
+        current_time = fields.Datetime.now()
+        _logger.info(f"Setting values: need_part_purchase=yes, part_request_time={current_time}")
+        
+        vals = {
+            'need_part_purchase': 'yes',
+            'part_purchase_status': 'pending',
+            'part_request_time': current_time,
+            'part_request_state': 'requested'
+        }
+        self.write(vals)
+        
+        # Verify after write
+        self.invalidate_cache()
+        _logger.info(f"After write - part_request_time: {self.part_request_time}")
+
+    @api.depends('part_request_items_ids', 'part_request_items_ids.is_fulfilled')
+    def _compute_items_status(self):
+        for order in self:
+            total = len(order.part_request_items_ids)
+            fulfilled = len(order.part_request_items_ids.filtered('is_fulfilled'))
+            order.total_requested_items = total
+            order.total_fulfilled_items = fulfilled
+            order.all_items_fulfilled = total > 0 and total == fulfilled
+            
+            # Update state jika semua item fulfilled
+            if order.all_items_fulfilled:
+                order.part_request_state = 'completed'
+
+    @api.depends('need_part_purchase', 'part_request_items_ids', 'part_request_items_ids.is_fulfilled') 
+    def _compute_part_purchase_status(self):
+        for order in self:
+            if order.need_part_purchase == 'no':
+                order.part_purchase_status = 'not_needed'
+            elif not order.part_request_items_ids:
+                order.part_purchase_status = 'pending'
+            else:
+                fulfilled = all(item.is_fulfilled for item in order.part_request_items_ids)
+                order.part_purchase_status = 'completed' if fulfilled else 'in_progress'
+
     @api.depends('need_part_purchase', 'part_purchase_ids', 'part_purchase_ids.state')
     def _compute_part_purchase_status(self):
         for order in self:

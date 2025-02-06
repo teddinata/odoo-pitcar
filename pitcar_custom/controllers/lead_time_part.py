@@ -98,11 +98,14 @@ class LeadTimePartController(http.Controller):
             search_query = kw.get('search', '').strip()
             filter_type = kw.get('filter', 'all')  # all, need_part, active, completed
             
-            # Base domain - ambil order yang sudah ada PKB
+            # Improved base domain
             domain = [
-                ('sa_cetak_pkb', '!=', False),  # Harus sudah cetak PKB
-                ('controller_mulai_servis', '!=', False),  # Harus sudah mulai servis
-                ('controller_selesai', '=', False)  # Belum selesai servis
+                ('sa_mulai_penerimaan', '!=', False),  # Sudah mulai penerimaan
+                ('car_arrival_time', '!=', False),  # Mobil sudah masuk
+                ('fo_unit_keluar', '=', False),  # Mobil belum keluar
+                ('need_part_purchase', '=', 'yes'),  # Sudah request part
+                ('part_purchase_status', 'in', ['pending', 'in_progress']),  # Status pending/progress
+                ('state', 'not in', ['cancel', 'done'])  # Order aktif
             ]
             
             # Add search
@@ -139,6 +142,16 @@ class LeadTimePartController(http.Controller):
             # Format response
             result = []
             for order in orders:
+                 # Hitung status part request
+                has_pending_items = False
+                has_late_responses = False
+                has_part_request = bool(order.part_request_items_ids)
+
+                if has_part_request:
+                    pending_items = order.part_request_items_ids.filtered(lambda x: not x.is_fulfilled)
+                    late_responses = order.part_request_items_ids.filtered(lambda x: x.is_response_late)
+                    has_pending_items = bool(pending_items)
+                    has_late_responses = bool(late_responses)
                 result.append({
                     'id': order.id,
                     'name': order.name,
@@ -152,6 +165,36 @@ class LeadTimePartController(http.Controller):
                         'plate': order.partner_car_id.number_plate
                     },
                     'need_part': order.need_part_purchase == 'yes',
+                    'request_info': {
+                        'request_time': self._format_datetime(order.part_request_time),
+                        'notes': order.part_request_notes,
+                        'status': order.part_purchase_status,
+                        'total_items': order.total_requested_items,
+                        'fulfilled_items': order.total_fulfilled_items,
+                        'all_fulfilled': order.all_items_fulfilled
+                    },
+                    'items': [{
+                        'id': item.id,
+                        'product': {
+                            'id': item.product_id.id,
+                            'name': item.part_name,
+                            'part_number': item.part_number
+                        },
+                        'quantity': item.quantity,
+                        'notes': item.notes,
+                        'status': {
+                            'is_fulfilled': item.is_fulfilled,
+                            'response_time': self._format_datetime(item.response_time),
+                            'response_deadline': self._format_datetime(item.response_deadline),
+                            'is_response_late': item.is_response_late
+                        },
+                        'response': {
+                            'alternative_part': item.alternative_part,
+                            'estimated_cost': item.estimated_cost,
+                            'estimated_arrival': self._format_datetime(item.estimated_arrival),
+                            'notes': item.response_notes
+                        } if item.response_time else None
+                    } for item in order.part_request_items_ids],
                     'part_purchase_status': {
                         'code': order.part_purchase_status,
                         'text': dict(order._fields['part_purchase_status'].selection).get(
@@ -193,8 +236,14 @@ class LeadTimePartController(http.Controller):
                         'need_part': SaleOrder.search_count([
                             ('need_part_purchase', '=', 'yes')
                         ]),
-                        'active_purchases': SaleOrder.search_count([
-                            ('part_purchase_ids.state', 'in', ['draft', 'departed'])
+                        'has_part_request': SaleOrder.search_count([
+                            ('part_request_items_ids', '!=', False)
+                        ]),
+                        'pending_responses': SaleOrder.search_count([
+                            ('part_request_items_ids.is_fulfilled', '=', False)
+                        ]),
+                        'late_responses': SaleOrder.search_count([
+                            ('part_request_items_ids.is_response_late', '=', True)
                         ])
                     }
                 }
@@ -206,6 +255,142 @@ class LeadTimePartController(http.Controller):
                 'status': 'error',
                 'message': str(e)
             }
+        
+    @http.route('/web/part-request/<int:item_id>/respond', type='json', auth='user')
+    def respond_to_request(self, item_id, **kw):
+        """Tim Part memberikan response untuk request part"""
+        try:
+            item = request.env['sale.order.part.item'].browse(item_id)
+            if not item.exists():
+                return {'status': 'error', 'message': 'Item not found'}
+
+            order = item.sale_order_id
+            if order.part_purchase_status not in ['pending', 'in_progress']:
+                return {'status': 'error', 'message': 'Invalid order status'}
+
+            # Extract response data
+            response_data = kw.get('response', {})
+            values = {
+                'response_time': fields.Datetime.now(),
+                'alternative_part': response_data.get('alternative_part'),
+                'estimated_cost': response_data.get('estimated_cost'),
+                'estimated_arrival': response_data.get('estimated_arrival'),
+                'response_notes': response_data.get('response_notes')
+            }
+            
+            _logger.info(f"Writing values to item {item_id}: {values}")
+            item.write(values)
+
+            return {
+                'status': 'success',
+                'data': {
+                    'item': {
+                        'id': item.id,
+                        'response_time': item.response_time,
+                        'is_response_late': item.is_response_late,
+                        'response': {
+                            'alternative_part': item.alternative_part or False,
+                            'estimated_cost': item.estimated_cost or 0.0,
+                            'estimated_arrival': item.estimated_arrival or False,
+                            'notes': item.response_notes or False
+                        }
+                    },
+                    'order_status': {
+                        'total_items': order.total_requested_items,
+                        'fulfilled_items': order.total_fulfilled_items,
+                        'all_fulfilled': order.all_items_fulfilled,
+                        'status': order.part_purchase_status
+                    }
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error responding to part request: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+
+    @http.route('/web/part-request/respond-batch', type='json', auth='user')
+    def respond_to_requests_batch(self, items=None, **kw):
+        """Handle batch response for part requests from Tim Part"""
+        try:
+            _logger.info(f"Received batch request with items: {items}")
+            if not items:
+                return {'status': 'error', 'message': 'No items provided'}
+
+            PartItem = request.env['sale.order.part.item']
+            results = []
+            
+            for item_data in items:
+                try:
+                    item_id = item_data.get('id')
+                    if not item_id:
+                        _logger.warning(f"Skipping item without ID: {item_data}")
+                        continue
+                        
+                    item = PartItem.browse(item_id)
+                    if not item.exists():
+                        _logger.warning(f"Item {item_id} not found")
+                        continue
+                    
+                    # Update values    
+                    values = {
+                        'response_time': fields.Datetime.now(),
+                        'alternative_part': item_data.get('alternative_part'),
+                        'estimated_cost': item_data.get('estimated_cost'),
+                        'estimated_arrival': item_data.get('estimated_arrival'),
+                        'response_notes': item_data.get('response_notes')
+                    }
+                    
+                    _logger.info(f"Updating item {item_id} with values: {values}")
+                    item.write(values)
+                    
+                    results.append({
+                        'id': item.id,
+                        'status': 'success',
+                        'data': {
+                            'response_time': item.response_time,
+                            'is_response_late': item.is_response_late,
+                            'response': {
+                                'alternative_part': item.alternative_part or False,
+                                'estimated_cost': item.estimated_cost or 0.0,
+                                'estimated_arrival': item.estimated_arrival or False,
+                                'notes': item.response_notes or False
+                            }
+                        }
+                    })
+                    _logger.info(f"Successfully updated item {item_id}")
+                    
+                except Exception as item_error:
+                    _logger.error(f"Error processing item {item_data.get('id')}: {str(item_error)}")
+                    continue
+
+            return {
+                'status': 'success',
+                'data': {
+                    'results': results,
+                    'failed': len(items) - len(results)
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in batch response: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    def _validate_items(self, items_data):
+        """Validate items data for batch operations"""
+        if not isinstance(items_data, list):
+            return False, "Items data must be a list"
+            
+        required_fields = {'id', 'is_fulfilled'}
+        for item in items_data:
+            if not all(field in item for field in required_fields):
+                return False, f"Missing required fields: {required_fields}"
+        return True, ""
+
+    def _batch_items(self, items, batch_size=100):
+        """Helper to process items in batches"""
+        for i in range(0, len(items), batch_size):
+            yield items[i:i + batch_size]
 
     @http.route('/web/part-purchase/order/<int:order_id>/toggle-need-part', type='json', auth='user', methods=['POST'])
     def toggle_need_part(self, order_id, **kw):

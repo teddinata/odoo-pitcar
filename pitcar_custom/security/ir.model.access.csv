@@ -59,3 +59,8 @@ pitcar_custom.access_part_purchase_leadtime_controller,part.purchase.leadtime.co
 pitcar_custom.access_front_office_equipment_user,front.office.equipment user,model_pitcar_front_office_equipment,base.group_user,1,1,1,1
 pitcar_custom.access_front_office_check_user,front.office.check user,model_pitcar_front_office_check,base.group_user,1,1,1,1
 pitcar_custom.access_front_office_check_line_user,front.office.check.line user,model_pitcar_front_office_check_line,base.group_user,1,1,1,1
+pitcar_custom.access_sale_order_part_item_user,sale.order.part.item user,model_sale_order_part_item,base.group_user,1,1,1,0
+pitcar_custom.access_sale_order_part_item_manager,sale.order.part.item manager,model_sale_order_part_item,base.group_system,1,1,1,1
+pitcar_custom.access_sale_order_part_item_service_advisor,sale.order.part.item.service.advisor,model_sale_order_part_item,pitcar_custom.group_service_advisor,1,1,1,0
+pitcar_custom.access_sale_order_part_item_controller,sale.order.part.item.controller,model_sale_order_part_item,pitcar_custom.group_controller,1,1,1,0
+pitcar_custom.access_part_response_reject_wizard,access_part_response_reject_wizard,model_part_response_reject_wizard,base.group_user,1,1,1,1

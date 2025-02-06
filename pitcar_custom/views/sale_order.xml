@@ -481,7 +481,7 @@
                     
                 </xpath>
                 <xpath expr="//notebook" position="inside">
-                    <page string="After Service" name="after_service">
+                    <page string="After Service" name="after_service" attrs="{'invisible': [('id', '!=', True)]}">
                         <div class="row">
                             <div class="col-lg-6 col-md-6 col-sm-12">
                                 <div class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small">Customer Feedback</div>
@@ -745,27 +745,55 @@
                 <xpath expr="//page[@name='after_service']" position="before">
                     <page string="Lead Time" name="lead_time">
                         <group>
-                            <group string="Service Advisor (SA)" class="o_group_controller">
+
+                        <!-- Service Sub Kategori -->
+                            <group string="Sub Kategori Servis" class="o_group_controller">
                                 <field name="service_subcategory" 
-                                   widget="selection"
-                                   options="{'no_create': True, 'no_open': True}"
-                                   class="mb-2"/>
-                                <field name="service_category" readonly="1" force_save="1"/>
-                                
+                                    widget="selection"
+                                    options="{'no_create': True, 'no_open': True}"/>
+                            </group>
+                        <!-- Service Kategori -->
+                            <group string="Kategori Servis" class="o_group_controller">
+                                <field name="service_category" 
+                                    readonly="1" 
+                                    force_save="1"/>
+                            </group>
+
+                            
+                            <group string="Service Advisor (SA)" class="o_group_controller">
+                                <!-- <field name="service_subcategory" widget="float_time" string="Sub Kategori Servis"  class="o_input_controller2"/>
+                                <field name="service_category" widget="float_time" string="Kategori Servis" class="o_input_controller2"/> -->
+                                <!-- Sub Kategori -->
                                 <label for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
                                 <div class="d-flex align-items-center">
                                     <button name="action_record_sa_mulai_penerimaan" string="Mulai Penerimaan" type="object" 
                                             class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
                                     <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2"/>
                                 </div>
-                                
+
+                                 <!-- Request Part dengan layout yang lebih terorganisir -->
+                                <group colspan="4">
+                                    <field name="need_part_purchase" 
+                                        widget="radio" 
+                                        options="{'horizontal': True}"
+                                        string="Perlu Request Part?" 
+                                        class="oe_inline mt-4"/>
+                                    
+                                    <div attrs="{'invisible': [('need_part_purchase', '!=', 'yes')]}"
+                                        class="alert alert-info mt-2 mb-2" colspan="4">
+                                        <i class="fa fa-info-circle"/> 
+                                        Silahkan ke tab "Request Part" untuk menambahkan detail part yang dibutuhkan
+                                    </div>
+                                </group>
                                 <label for="sa_cetak_pkb" string="Cetak PKB"/>
                                 <div class="d-flex align-items-center">
                                     <button name="action_print_work_order" string="Cetak PKB" type="object" 
                                             class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
                                     <field name="sa_cetak_pkb" readonly="1" nolabel="1" class="ms-2"/>
                                 </div>
+                                
                             </group>
+                            
                             <group string="Final Output (FO)" class="o_group_controller">
                                 <label for="fo_unit_keluar" string="Unit Keluar"/>
                                 <div class="d-flex align-items-center">
@@ -1038,6 +1066,81 @@
                             </div>
                         </group>
                     </page>
+
+                    <!-- Modifikasi tab Request Part -->
+                    <page string="Request Part" name="part_request" 
+                        attrs="{'invisible': [('need_part_purchase', '!=', 'yes')]}">
+                        <group>
+                            <field name="part_request_state" widget="badge"
+                                decoration-info="part_request_state == 'draft'"
+                                decoration-warning="part_request_state == 'requested'"
+                                decoration-success="part_request_state == 'completed'"/>
+                            <field name="part_request_time" readonly="1" string="Waktu Request"/>
+                            <field name="total_requested_items" readonly="1"/>
+                            <field name="total_fulfilled_items" readonly="1"/>
+                        </group>
+                        
+                        <field name="part_request_items_ids">
+                              <tree editable="bottom" 
+                                    decoration-success="state == 'approved'" 
+                                    decoration-warning="state == 'responded'"
+                                    decoration-danger="state == 'rejected' or is_response_late">
+                                <!-- Basic Info -->
+                                <field name="product_id"/>
+                                <field name="part_name"/>
+                                <!-- <field name="part_number"/> -->
+                                <field name="quantity"/>
+                                <field name="notes" string="Catatan SA"/>
+                                
+                                <!-- Tim Part Response -->
+                                <field name="response_time" string="Waktu Respon Part"/>
+                                <field name="is_response_late" string="Respon Terlambat"/>
+                                <field name="estimated_cost" string="Estimasi Biaya"/>
+                                <field name="estimated_arrival" string="Estimasi Kedatangan"/>
+                                <field name="alternative_part" string="Part Alternatif"/>
+                                <field name="response_notes" string="Catatan Tim Part"/>
+                                
+                                <!-- SA Approval -->
+                                <field name="state" invisible="1"/>
+                                <field name="is_fulfilled" string="Disetujui SA"/>
+                                <button name="action_approve_part_response" 
+                                        string="Terima" 
+                                        type="object" 
+                                        icon="fa-check"
+                                        attrs="{'invisible': ['|', ('response_time', '=', False), '|', ('state', '=', 'approved'), ('state', '=', 'rejected')]}"/>
+                                <button name="action_reject_part_response" 
+                                        string="Tolak" 
+                                        type="object" 
+                                        icon="fa-times"
+                                        attrs="{'invisible': ['|', ('response_time', '=', False), '|', ('state', '=', 'approved'), ('state', '=', 'rejected')]}"/>
+                            </tree>
+                            <form>
+                                <sheet>
+                                    <group>
+                                        <group string="Informasi Part">
+                                            <field name="product_id"/>
+                                            <field name="part_name"/>
+                                            <field name="part_number"/>
+                                            <field name="quantity"/>
+                                            <field name="notes" string="Catatan SA"/>
+                                        </group>
+                                        <group string="Respon Tim Part">
+                                            <field name="response_time" string="Waktu Respon"/>
+                                            <field name="is_response_late" string="Respon Terlambat"/>
+                                            <field name="estimated_cost" string="Estimasi Biaya"/>
+                                            <field name="estimated_arrival" string="Estimasi Kedatangan"/>
+                                            <field name="alternative_part" string="Part Alternatif"/>
+                                            <field name="response_notes" string="Catatan Tim Part"/>
+                                        </group>
+                                        <group string="Persetujuan SA">
+                                            <field name="is_fulfilled" string="Disetujui"/>
+                                        </group>
+                                    </group>
+                                </sheet>
+                            </form>
+                        </field>
+                    </page>
+
                 </xpath>
             </field>
         </record>

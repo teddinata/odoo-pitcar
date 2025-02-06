@@ -67,6 +67,7 @@
         'wizard/mechanic_credential_views.xml',
         'wizard/attendance_export_wizard_view.xml',
         'wizard/booking_link_sale_order_views.xml',
+        'wizard/part_response_wizard_views.xml',
         
         'views/account_move.xml',
         'views/pitcar_mechanic_views.xml',
@@ -103,5 +104,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.64'
+    'version':'16.0.90'
 }

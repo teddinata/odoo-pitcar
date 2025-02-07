@@ -103,6 +103,7 @@ class LeadTimePartController(http.Controller):
                 ('sa_mulai_penerimaan', '!=', False),  # Sudah mulai penerimaan
                 ('car_arrival_time', '!=', False),  # Mobil sudah masuk
                 ('fo_unit_keluar', '=', False),  # Mobil belum keluar
+                ('controller_selesai' , '=', False),  # Servis belum selesai
                 ('need_part_purchase', '=', 'yes'),  # Sudah request part
                 ('part_purchase_status', 'in', ['pending', 'in_progress']),  # Status pending/progress
                 ('state', 'not in', ['cancel', 'done'])  # Order aktif

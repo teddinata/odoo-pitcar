@@ -6,7 +6,7 @@ class PartResponseRejectWizard(models.TransientModel):
     _description = 'Wizard Penolakan Estimasi Part'
 
     part_item_id = fields.Many2one('sale.order.part.item', string='Part Item')
-    reason = fields.Text('Alasan Penolakan', required=True)
+    rejection_reason = fields.Text('Alasan Penolakan', required=True)
 
     def action_confirm(self):
         self.ensure_one()
@@ -15,7 +15,7 @@ class PartResponseRejectWizard(models.TransientModel):
             
         self.part_item_id.write({
             'is_fulfilled': False,
-            'rejection_reason': self.reason,
+            'rejection_reason': self.rejection_reason,
             'approved_date': fields.Datetime.now(),
             'approved_by': self.env.user.id,
             'state': 'rejected'  # Update state
@@ -27,7 +27,7 @@ class PartResponseRejectWizard(models.TransientModel):
             <p><strong>Estimasi Tim Part Ditolak</strong></p>
             <ul>
                 <li>Part: {self.part_item_id.part_name}</li>
-                <li>Alasan: {self.reason}</li>
+                <li>Alasan: {self.rejection_reason}</li>
                 <li>Ditolak oleh: {self.env.user.name}</li>
             </ul>
         """

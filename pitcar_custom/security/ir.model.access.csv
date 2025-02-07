@@ -64,3 +64,5 @@ pitcar_custom.access_sale_order_part_item_manager,sale.order.part.item manager,m
 pitcar_custom.access_sale_order_part_item_service_advisor,sale.order.part.item.service.advisor,model_sale_order_part_item,pitcar_custom.group_service_advisor,1,1,1,0
 pitcar_custom.access_sale_order_part_item_controller,sale.order.part.item.controller,model_sale_order_part_item,pitcar_custom.group_controller,1,1,1,0
 pitcar_custom.access_part_response_reject_wizard,access_part_response_reject_wizard,model_part_response_reject_wizard,base.group_user,1,1,1,1
+pitcar_custom.access_part_response_reject_wizard,access.part.response.reject.wizard,model_part_response_reject_wizard,base.group_user,1,1,1,1
+pitcar_custom.access_part_response_approve_wizard,access.part.response.approve.wizard,model_part_response_approve_wizard,base.group_user,1,1,1,1

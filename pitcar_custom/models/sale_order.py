@@ -2271,6 +2271,7 @@ class SaleOrder(models.Model):
             'domain': [('sale_order_id', '=', self.id)]
         }
     
+    # REQUEST PART
     part_purchase_ids = fields.One2many('part.purchase.leadtime', 'sale_order_id',
                                        string='Part Purchases')
     part_purchase_count = fields.Integer(string='Part Purchases',
@@ -2334,15 +2335,6 @@ class SaleOrder(models.Model):
                 record.part_request_time = fields.Datetime.now()
             elif record.need_part_purchase == 'no':
                 record.part_request_time = False
-
-    @api.depends('part_request_items_ids', 'part_request_items_ids.is_fulfilled')
-    def _compute_items_status(self):
-        for order in self:
-            total = len(order.part_request_items_ids)
-            fulfilled = len(order.part_request_items_ids.filtered('is_fulfilled'))
-            order.total_requested_items = total
-            order.total_fulfilled_items = fulfilled
-            order.all_items_fulfilled = total > 0 and total == fulfilled
 
     # Di model sale.order
     @api.onchange('need_part_purchase')
@@ -2446,6 +2438,26 @@ class SaleOrder(models.Model):
                         order.part_purchase_status = 'in_progress'
                     else:
                         order.part_purchase_status = 'pending'
+
+    @api.depends('part_request_items_ids.is_fulfilled', 'part_request_items_ids.state')
+    def _compute_items_status(self):
+        for order in self:
+            total = len(order.part_request_items_ids)
+            fulfilled = len(order.part_request_items_ids.filtered(
+                lambda x: x.state == 'approved'  # Gunakan state sebagai patokan
+            ))
+            
+            order.total_requested_items = total
+            order.total_fulfilled_items = fulfilled
+            order.all_items_fulfilled = total > 0 and total == fulfilled
+            
+            # Update part_request_state berdasarkan state items
+            if total == 0:
+                order.part_request_state = 'draft'
+            elif fulfilled == total:
+                order.part_request_state = 'completed'
+            else:
+                order.part_request_state = 'requested'
 
     def action_need_part_purchase(self):
         self.write({'need_part_purchase': 'yes'})

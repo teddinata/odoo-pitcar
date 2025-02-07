@@ -8,7 +8,26 @@
                 <sheet>
                     <group>
                         <field name="part_item_id" invisible="1"/>
-                        <field name="reason" placeholder="Masukkan alasan penolakan estimasi..." required="1"/>
+                        <field name="rejection_reason" placeholder="Masukkan alasan penolakan estimasi..." required="1"/>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_confirm" string="Konfirmasi" type="object" class="btn-primary"/>
+                    <button string="Batal" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_part_response_approve_wizard" model="ir.ui.view">
+        <field name="name">part.response.approve.wizard.form</field>
+        <field name="model">part.response.approve.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Konfirmasi Setuju Estimasi">
+                <sheet>
+                    <group>
+                        <field name="part_item_id" invisible="1"/>
+                        <field name="approve_message" placeholder="Masukkan pesan setuju estimasi..." />
                     </group>
                 </sheet>
                 <footer>
@@ -23,6 +42,14 @@
         <field name="name">Alasan Penolakan</field>
         <field name="type">ir.actions.act_window</field>
         <field name="res_model">part.response.reject.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <record id="action_part_response_approve_wizard" model="ir.actions.act_window">
+        <field name="name">Konfirmasi Setuju</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">part.response.approve.wizard</field>
         <field name="view_mode">form</field>
         <field name="target">new</field>
     </record>

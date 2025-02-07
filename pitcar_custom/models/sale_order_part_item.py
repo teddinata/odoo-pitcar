@@ -38,6 +38,7 @@ class SaleOrderPartItem(models.Model):
     approved_date = fields.Datetime('Tanggal Persetujuan')
     approved_by = fields.Many2one('res.users', string='Disetujui Oleh')
     rejection_reason = fields.Text('Alasan Penolakan')
+    approve_message = fields.Text('Pesan Persetujuan')
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -46,20 +47,48 @@ class SaleOrderPartItem(models.Model):
         ('rejected', 'Rejected')
     ], string='Status', default='draft', tracking=True)
 
-
     def action_approve_part_response(self):
         """SA menyetujui estimasi dari tim part"""
         self.ensure_one()
+        
+        # Validasi
         if not self.response_time:
             raise UserError("Tidak dapat menyetujui. Tim Part belum memberikan respon.")
             
-        self.write({
-            'is_fulfilled': True,
+        # Tampilkan konfirmasi
+        return {
+            'name': 'Konfirmasi Persetujuan',
+            'type': 'ir.actions.act_window',
+            'res_model': 'part.response.approve.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': { 'default_part_item_id': self.id }
+        }
+
+    def write(self, vals):
+        # Jika ada response time dan state masih draft, update ke responded
+        if vals.get('response_time') and self.state == 'draft':
+            vals['state'] = 'responded'
+        return super().write(vals)
+
+    # Di SaleOrderPartItem
+    @api.depends('state')
+    def _compute_is_fulfilled(self):
+        for item in self:
+            item.is_fulfilled = item.state == 'approved'
+
+    def _do_approve(self):
+        """Internal method untuk proses approval setelah konfirmasi"""
+        vals = {
+            'state': 'approved',  # Update state dulu
             'approved_date': fields.Datetime.now(),
             'approved_by': self.env.user.id
-        })
+        }
+        self.write(vals)
         
-        # Post message to chatter
+        # is_fulfilled akan terupdate otomatis lewat compute
+        # Dan akan trigger _compute_items_status di sale order
+        
         msg = f"""
             <p><strong>Estimasi Tim Part Disetujui</strong></p>
             <ul>
@@ -70,6 +99,7 @@ class SaleOrderPartItem(models.Model):
             </ul>
         """
         self.sale_order_id.message_post(body=msg)
+
 
     def action_reject_part_response(self):
         """Method untuk membuka wizard penolakan estimasi part"""
@@ -94,15 +124,6 @@ class SaleOrderPartItem(models.Model):
             self.part_name = self.product_id.get_product_multiline_description_sale()
             self.part_number = self.product_id.default_code
 
-    @api.depends('response_time', 'create_date')
-    def _compute_is_response_late(self):
-        for item in self:
-            if not item.response_time and item.create_date:
-                deadline = item.create_date + timedelta(minutes=15)
-                item.is_response_late = fields.Datetime.now() > deadline
-            else:
-                item.is_response_late = False
-
     @api.depends('sale_order_id.part_request_time')
     def _compute_response_deadline(self):
         for item in self:
@@ -111,11 +132,13 @@ class SaleOrderPartItem(models.Model):
             else:
                 item.response_deadline = False
 
-    @api.depends('response_deadline', 'response_time')
+    @api.depends('response_deadline', 'response_time', 'state')
     def _compute_is_response_late(self):
         now = fields.Datetime.now()
         for item in self:
-            if item.response_deadline:
+            if item.state in ['approved', 'rejected']:
+                item.is_response_late = False
+            elif item.response_deadline:
                 if not item.response_time:
                     item.is_response_late = now > item.response_deadline
                 else:

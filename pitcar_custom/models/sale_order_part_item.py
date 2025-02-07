@@ -3,6 +3,9 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 import pytz
 from datetime import datetime, timedelta
+import logging
+
+_logger = logging.getLogger(__name__)
 
 class SaleOrderPartItem(models.Model):
     _name = 'sale.order.part.item'
@@ -132,16 +135,23 @@ class SaleOrderPartItem(models.Model):
             else:
                 item.response_deadline = False
 
-    @api.depends('response_deadline', 'response_time', 'state')
+    @api.depends('response_deadline', 'response_time')  # Hapus dependency ke state
     def _compute_is_response_late(self):
-        now = fields.Datetime.now()
         for item in self:
-            if item.state in ['approved', 'rejected']:
-                item.is_response_late = False
-            elif item.response_deadline:
-                if not item.response_time:
-                    item.is_response_late = now > item.response_deadline
-                else:
+            now = fields.Datetime.now()
+            _logger.info(f"Computing is_response_late for item {item.id}")
+            _logger.info(f"Response time: {item.response_time}")
+            _logger.info(f"Deadline: {item.response_deadline}")
+
+            if item.response_deadline:
+                if item.response_time:
+                    # Jika sudah ada response, bandingkan waktu response dengan deadline
                     item.is_response_late = item.response_time > item.response_deadline
+                    _logger.info(f"Has response time, comparing with deadline: {item.is_response_late}")
+                else:
+                    # Jika belum ada response, bandingkan waktu sekarang dengan deadline
+                    item.is_response_late = now > item.response_deadline
+                    _logger.info(f"No response time, comparing now with deadline: {item.is_response_late}")
             else:
                 item.is_response_late = False
+                _logger.info("No deadline, is_response_late = False")

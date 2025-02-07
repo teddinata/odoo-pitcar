@@ -312,45 +312,58 @@ class LeadTimePartController(http.Controller):
 
     @http.route('/web/part-request/respond-batch', type='json', auth='user')
     def respond_to_requests_batch(self, items=None, **kw):
-        """Handle batch response for part requests from Tim Part"""
         try:
-            _logger.info(f"Received batch request with items: {items}")
+            _logger.info(f"Starting batch response with items: {items}")
             if not items:
                 return {'status': 'error', 'message': 'No items provided'}
 
             PartItem = request.env['sale.order.part.item']
             results = []
+            now = fields.Datetime.now()
             
             for item_data in items:
                 try:
                     item_id = item_data.get('id')
+                    _logger.info(f"Processing item ID: {item_id}")
+                    
                     if not item_id:
-                        _logger.warning(f"Skipping item without ID: {item_data}")
+                        _logger.warning("Skipping - No item ID")
                         continue
                         
                     item = PartItem.browse(item_id)
                     if not item.exists():
-                        _logger.warning(f"Item {item_id} not found")
+                        _logger.warning(f"Skipping - Item {item_id} not found")
                         continue
-                    
-                    # Update values    
+
+                    # Validate required fields
+                    if not item_data.get('estimated_cost'):
+                        _logger.warning(f"Skipping item {item_id} - Missing estimated cost")
+                        continue
+
+                    # Update values
                     values = {
-                        'response_time': fields.Datetime.now(),
+                        'response_time': now,
+                        'state': 'responded',
                         'alternative_part': item_data.get('alternative_part'),
                         'estimated_cost': item_data.get('estimated_cost'),
                         'estimated_arrival': item_data.get('estimated_arrival'),
                         'response_notes': item_data.get('response_notes')
                     }
                     
-                    _logger.info(f"Updating item {item_id} with values: {values}")
+                    _logger.info(f"Writing values for item {item_id}: {values}")
                     item.write(values)
                     
-                    results.append({
+                    # Force recompute is_response_late
+                    item.invalidate_cache(['is_response_late'])
+                    item._compute_is_response_late()
+                    
+                    result = {
                         'id': item.id,
                         'status': 'success',
                         'data': {
                             'response_time': item.response_time,
                             'is_response_late': item.is_response_late,
+                            'state': item.state,
                             'response': {
                                 'alternative_part': item.alternative_part or False,
                                 'estimated_cost': item.estimated_cost or 0.0,
@@ -358,23 +371,26 @@ class LeadTimePartController(http.Controller):
                                 'notes': item.response_notes or False
                             }
                         }
-                    })
-                    _logger.info(f"Successfully updated item {item_id}")
+                    }
+                    _logger.info(f"Result for item {item_id}: {result}")
+                    results.append(result)
                     
                 except Exception as item_error:
-                    _logger.error(f"Error processing item {item_data.get('id')}: {str(item_error)}")
+                    _logger.error(f"Error processing item {item_id}: {str(item_error)}", exc_info=True)
                     continue
 
-            return {
+            response = {
                 'status': 'success',
                 'data': {
                     'results': results,
                     'failed': len(items) - len(results)
                 }
             }
+            _logger.info(f"Final response: {response}")
+            return response
 
         except Exception as e:
-            _logger.error(f"Error in batch response: {str(e)}")
+            _logger.error("Error in batch response", exc_info=True)
             return {'status': 'error', 'message': str(e)}
         
     def _validate_items(self, items_data):

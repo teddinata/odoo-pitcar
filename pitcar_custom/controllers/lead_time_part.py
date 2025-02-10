@@ -105,7 +105,6 @@ class LeadTimePartController(http.Controller):
                 ('fo_unit_keluar', '=', False),  # Mobil belum keluar
                 ('controller_selesai' , '=', False),  # Servis belum selesai
                 ('need_part_purchase', '=', 'yes'),  # Sudah request part
-                ('part_purchase_status', 'in', ['pending', 'in_progress']),  # Status pending/progress
                 ('state', 'not in', ['cancel', 'done'])  # Order aktif
             ]
             

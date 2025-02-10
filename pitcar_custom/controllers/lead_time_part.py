@@ -340,14 +340,38 @@ class LeadTimePartController(http.Controller):
                         _logger.warning(f"Skipping item {item_id} - Missing estimated cost")
                         continue
 
-                    # Update values
+                    # Konversi estimated_arrival dari Asia/Jakarta ke UTC
+                    estimated_arrival = False
+                    if item_data.get('estimated_arrival'):
+                        try:
+                            # Parse datetime string
+                            local_tz = pytz.timezone('Asia/Jakarta')
+                            datetime_str = item_data.get('estimated_arrival')
+                            
+                            # Handle different datetime formats
+                            if 'T' in datetime_str:
+                                local_dt = datetime.strptime(datetime_str, '%Y-%m-%dT%H:%M')
+                            else:
+                                local_dt = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
+                                
+                            # Lokalisasi ke timezone Asia/Jakarta dan konversi ke UTC
+                            local_dt = local_tz.localize(local_dt)
+                            utc_dt = local_dt.astimezone(pytz.UTC)
+                            estimated_arrival = utc_dt.replace(tzinfo=None)  # Remove tzinfo for Odoo
+                            
+                            _logger.info(f"Converted estimated_arrival: {estimated_arrival}")
+                        except Exception as e:
+                            _logger.error(f"Error converting datetime: {str(e)}")
+                            estimated_arrival = False
+
+                    # Update values dengan waktu yang sudah dikonversi
                     values = {
                         'response_time': now,
                         'state': 'responded',
                         'alternative_part': item_data.get('alternative_part'),
                         'estimated_cost': item_data.get('estimated_cost'),
-                        'estimated_arrival': item_data.get('estimated_arrival'),
-                        'response_notes': item_data.get('response_notes')
+                        'estimated_arrival': estimated_arrival,
+                        'response_notes': item_data.get('notes')
                     }
                     
                     _logger.info(f"Writing values for item {item_id}: {values}")
@@ -367,7 +391,7 @@ class LeadTimePartController(http.Controller):
                             'response': {
                                 'alternative_part': item.alternative_part or False,
                                 'estimated_cost': item.estimated_cost or 0.0,
-                                'estimated_arrival': item.estimated_arrival or False,
+                                'estimated_arrival': self._format_datetime(item.estimated_arrival),
                                 'notes': item.response_notes or False
                             }
                         }

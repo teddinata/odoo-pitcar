@@ -231,20 +231,27 @@ class LeadTimePartController(http.Controller):
                         'has_next': page < total_pages,
                         'has_previous': page > 1
                     },
+                    # Di endpoint get_available_orders
                     'summary': {
-                        'total_orders': total_count,
-                        'need_part': SaleOrder.search_count([
-                            ('need_part_purchase', '=', 'yes')
+                        'total_orders': SaleOrder.search_count(domain),  # Total dengan domain dasar
+                        'not_purchased': SaleOrder.search_count([
+                            ('need_part_purchase', '=', 'yes'),
+                            ('part_purchase_ids', '=', False),  # Belum ada pembelian sama sekali
+                            ('fo_unit_keluar', '=', False),     # Mobil belum keluar
+                            ('controller_selesai', '=', False)   # Servis belum selesai
                         ]),
-                        'has_part_request': SaleOrder.search_count([
-                            ('part_request_items_ids', '!=', False)
+                        'in_progress': SaleOrder.search_count([
+                            ('need_part_purchase', '=', 'yes'),
+                            ('part_purchase_ids.state', '=', 'departed'),  # Ada pembelian yang sedang berjalan
+                            ('fo_unit_keluar', '=', False),
+                            ('controller_selesai', '=', False)
                         ]),
-                        'pending_responses': SaleOrder.search_count([
-                            ('part_request_items_ids.is_fulfilled', '=', False)
+                        'purchased': SaleOrder.search_count([
+                            ('need_part_purchase', '=', 'yes'),
+                            ('part_purchase_ids.state', '=', 'returned'),  # Ada pembelian yang sudah selesai
+                            ('fo_unit_keluar', '=', False),
+                            ('controller_selesai', '=', False)
                         ]),
-                        'late_responses': SaleOrder.search_count([
-                            ('part_request_items_ids.is_response_late', '=', True)
-                        ])
                     }
                 }
             }

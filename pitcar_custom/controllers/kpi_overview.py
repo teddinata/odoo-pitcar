@@ -606,12 +606,21 @@ class KPIOverview(http.Controller):
                             kpi['measurement'] = f"Rata-rata kelengkapan verifikasi: {actual:.1f}%"
                         
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Existing code untuk customer satisfaction
+                        # Define period_orders first
+                        period_orders = request.env['sale.order'].sudo().search([
+                            ('date_completed', '>=', start_date.strftime('%Y-%m-%d')),
+                            ('date_completed', '<=', end_date.strftime('%Y-%m-%d')),
+                            ('state', 'in', ['sale', 'done'])
+                        ])
+                        
+                        # Then process the ratings
                         rated_orders = period_orders.filtered(lambda o: o.customer_rating)
                         total_rated_orders = len(rated_orders)
+                        
                         if total_rated_orders > 0:
                             total_rating = sum(float(order.customer_rating) for order in rated_orders)
                             avg_rating = total_rating / total_rated_orders
+                            
                             if avg_rating > 4.8:
                                 actual = 120
                             elif avg_rating == 4.8:
@@ -620,7 +629,11 @@ class KPIOverview(http.Controller):
                                 actual = 50
                             else:
                                 actual = 0
+                                
                             kpi['measurement'] = f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada rating pada periode {month}/{year}"
                         
                     elif kpi['type'] == 'sop_compliance':
                         # Existing code untuk SOP compliance

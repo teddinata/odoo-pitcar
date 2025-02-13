@@ -69,3 +69,13 @@ pitcar_custom.access_part_response_approve_wizard,access.part.response.approve.w
 pitcar_custom.access_stock_mandatory_stockout_user,stock.mandatory.stockout user,model_stock_mandatory_stockout,base.group_user,1,1,1,1
 pitcar_custom.access_stock_mandatory_stockout_manager,stock.mandatory.stockout manager,model_stock_mandatory_stockout,base.group_system,1,1,1,1
 pitcar_custom.access_stock_audit_report_user,stock.audit.report.user,model_stock_audit_report,base.group_user,1,0,0,0
+pitcar_custom.access_cs_chat_sampling_user,cs.chat.sampling.user,model_cs_chat_sampling,base.group_user,1,1,1,0
+pitcar_custom.access_cs_chat_sampling_manager,cs.chat.sampling.manager,model_cs_chat_sampling,base.group_system,1,1,1,1
+pitcar_custom.access_cs_chat_sampling_controller,cs.chat.sampling.controller,model_cs_chat_sampling,pitcar_custom.group_controller,1,1,1,0
+pitcar_custom.access_cs_leads_verification_user,cs.leads.verification.user,model_cs_leads_verification,base.group_user,1,1,1,0
+pitcar_custom.access_cs_leads_verification_line_user,cs.leads.verification.line.user,model_cs_leads_verification_line,base.group_user,1,1,1,0
+pitcar_custom.access_cs_contact_monitoring_user,cs.contact.monitoring.user,model_cs_contact_monitoring,base.group_user,1,1,1,0
+pitcar_custom.access_cs_contact_monitoring_line_user,cs.contact.monitoring.line.user,model_cs_contact_monitoring_line,base.group_user,1,1,1,0
+pitcar_custom.access_cs_finance_check_item_user,cs.finance.check.item.user,model_cs_finance_check_item,base.group_user,1,1,1,0
+pitcar_custom.access_cs_finance_check_user,cs.finance.check.user,model_cs_finance_check,base.group_user,1,1,1,0
+pitcar_custom.access_cs_finance_check_line_user,cs.finance.check.line.user,model_cs_finance_check_line,base.group_user,1,1,1,0

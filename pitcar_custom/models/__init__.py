@@ -34,3 +34,7 @@ from . import frontoffice_equipment
 from . import sale_order_part_item
 from . import stock_mandatory_stockout
 from . import stock_audit_report
+from . import cs_chat_sampling
+from . import cs_leads_verification
+from . import cs_contact_monitoring
+from . import cs_finance_check

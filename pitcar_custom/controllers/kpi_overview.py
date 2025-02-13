@@ -176,16 +176,16 @@ class KPIOverview(http.Controller):
             cs_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Pelayanan customer online',
+                    'name': 'Persentase seluruh interaksi calon customer direspon sesuai waktu yang ditentukan setiap harinya',
                     'type': 'online_response',
                     'weight': 25,
                     'target': 90,
-                    'measurement': 'Diukur dari jumlah temuan interaksi customer yang tidak direspon sesuai target waktu setup harinya',
+                    'measurement': 'Diukur dari jumlah chat yang direspon sesuai target waktu',
                     'include_in_calculation': True
                 },
                 {
                     'no': 2,
-                    'name': 'Laporan rekap leads harian',
+                    'name': 'Persentase rekap leads tepat sesuai sampel',
                     'type': 'leads_report',
                     'weight': 15,
                     'target': 100,
@@ -194,16 +194,16 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 3,
-                    'name': 'Kontak semua customer & calon customer di grup',
+                    'name': 'Persentase seluruh customer ditambahkan grup siaran & melakukan story WA setiap hari serta broadcast',
                     'type': 'customer_contact',
                     'weight': 10,
                     'target': 100,
-                    'measurement': 'Diukur dari temuan kontak customer tidak ditambahkan grup harian & tidak melakukan story serta siaran WA setiap harinya',
+                    'measurement': 'Diukur dari kelengkapan kontak, story dan broadcast WA',
                     'include_in_calculation': True
                 },
                 {
                     'no': 4,
-                    'name': 'Reminder service 3 bulan untuk customer loyal',
+                    'name': 'Persentase customer loyal direminder servis',
                     'type': 'service_reminder',
                     'weight': 10,
                     'target': 100,
@@ -212,16 +212,16 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 5,
-                    'name': 'Laporan keuangan harian kasir bengkel (dokumentasi)',
-                    'type': 'documentation',
+                    'name': 'Jumlah transaksi keuangan harian selalu balance',
+                    'type': 'finance_check',
                     'weight': 10,
                     'target': 100,
-                    'measurement': 'Diukur dari jumlah uang masuk dan keluar sesuai, jumlah revenue di rekap leads sesuai',
+                    'measurement': 'Diukur dari kelengkapan verifikasi laporan keuangan harian',
                     'include_in_calculation': True
                 },
                 {
                     'no': 6,
-                    'name': 'Kepuasan customer',
+                    'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
                     'type': 'customer_satisfaction',
                     'weight': 15,
                     'target': 95,
@@ -230,7 +230,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 7,
-                    'name': 'CS bekerja sesuai alur dan SOP',
+                    'name': 'Persentase sampel tim CS bekerja sesuai alur SOP',
                     'type': 'sop_compliance',
                     'weight': 15,
                     'target': 95,
@@ -537,55 +537,51 @@ class KPIOverview(http.Controller):
 
             # === HANDLE DIFFERENT ROLES ===
             # Handle Customer Service
+            # Update perhitungan di dalam handler
             if 'Customer Service' in job_title:
-                team_members = request.env['hr.employee'].sudo().search([
-                    ('parent_id', '=', employee.id)
-                ])
-                online_orders = request.env['sale.order'].sudo().search([
-                    *base_domain,
-                    ('campaign', '!=', False)
-                ])
-
-                # Calculate metrics
-                total_responses = len(online_orders)
-                on_time_responses = len(online_orders.filtered(
-                    lambda o: o.response_duration and o.response_duration <= 30
-                ))
-                converted_leads = len(online_orders.filtered(lambda o: o.state in ['sale', 'done']))
-
-                attendance_domain = [
-                    ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                    ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
-                    ('employee_id', 'in', team_members.ids)
-                ]
-
-                # Calculate attendance
-                attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
-                late_count = sum(1 for att in attendances if att.is_late)
-
-                kpi_scores = []
                 for kpi in cs_kpi_template:
                     actual = 0
+                    
                     if kpi['type'] == 'online_response':
-                        # Manual input dulu karena belum ada sistem tracking response time
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah interaksi yang direspon tepat waktu"
-
+                        # Ambil data dari cs.chat.sampling
+                        chat_sampling = request.env['cs.chat.sampling'].sudo().search([
+                            ('cs_id', '=', employee.id),
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('state', '=', 'done')
+                        ])
+                        if chat_sampling:
+                            responses = sum(chat_sampling.mapped('responded_ontime'))
+                            total_chats = sum(chat_sampling.mapped('total_chats'))
+                            actual = (responses / total_chats * 100) if total_chats else 0
+                            kpi['measurement'] = f"Chat direspon tepat waktu: {responses} dari {total_chats} chat"
+                        
                     elif kpi['type'] == 'leads_report':
-                        # Manual input dari cs.kpi.detail
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah leads sesuai rekap vs aktual"
-
+                        # Ambil data dari cs.leads.verification
+                        leads_checks = request.env['cs.leads.verification'].sudo().search([
+                            ('cs_id', '=', employee.id),
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('state', '=', 'done')
+                        ])
+                        if leads_checks:
+                            actual = sum(leads_checks.mapped('accuracy_rate')) / len(leads_checks)
+                            kpi['measurement'] = f"Rata-rata akurasi rekap leads: {actual:.1f}%"
+                        
                     elif kpi['type'] == 'customer_contact':
-                        # Manual input dari cs.kpi.detail
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah customer yang ditambahkan ke grup"
-
+                        # Ambil data dari cs.contact.monitoring
+                        contact_checks = request.env['cs.contact.monitoring'].sudo().search([
+                            ('cs_id', '=', employee.id),
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('state', '=', 'done')
+                        ])
+                        if contact_checks:
+                            actual = sum(contact_checks.mapped('compliance_rate')) / len(contact_checks)
+                            kpi['measurement'] = f"Rata-rata kepatuhan kontak & broadcast: {actual:.1f}%"
+                        
                     elif kpi['type'] == 'service_reminder':
-                        # Gunakan data dari sale.order dengan filter periode
+                        # Existing code untuk reminder service
                         reminder_domain = [
                             ('next_follow_up_3_months', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
                             ('next_follow_up_3_months', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
@@ -593,101 +589,51 @@ class KPIOverview(http.Controller):
                         ]
                         due_reminders = request.env['sale.order'].sudo().search(reminder_domain)
                         completed_reminders = due_reminders.filtered(lambda o: o.reminder_3_months == 'yes')
-                        
                         total_due = len(due_reminders)
-                        total_completed = len(completed_reminders)
+                        actual = (len(completed_reminders) / total_due * 100) if total_due else 0
+                        kpi['measurement'] = f"Reminder terkirim: {len(completed_reminders)} dari {total_due}"
                         
-                        actual = (total_completed / total_due * 100) if total_due else 0
-                        kpi['measurement'] = (
-                            f"Reminder terkirim: {total_completed} dari {total_due} yang jatuh tempo "
-                            f"pada periode {month}/{year}"
-                        )
-
-                    elif kpi['type'] == 'documentation':
-                        # Manual input dari cs.kpi.detail
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Kesesuaian laporan keuangan kasir"
-
-                    # elif kpi['type'] == 'customer_satisfaction':
-                    #     # Data dari customer rating di sale.order
-                    #     rated_orders = online_orders.filtered(lambda o: o.customer_rating)
-                    #     satisfied_customers = rated_orders.filtered(lambda o: o.customer_rating in ['4', '5'])
-                    #     actual = (len(satisfied_customers) / len(rated_orders) * 100) if rated_orders else 0
-                    #     kpi['measurement'] = f"Customer puas: {len(satisfied_customers)} dari {len(rated_orders)} order"
-
-                    elif kpi['type'] == 'customer_satisfaction':
-                        # Filter orders berdasarkan periode yang dipilih
-                        period_orders = request.env['sale.order'].sudo().search([
-                            ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                            ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                            ('state', 'in', ['sale', 'done'])
+                    elif kpi['type'] == 'finance_check':
+                        # Ambil data dari cs.finance.check
+                        finance_checks = request.env['cs.finance.check'].sudo().search([
+                            ('cs_id', '=', employee.id),
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('state', '=', 'done')
                         ])
+                        if finance_checks:
+                            actual = sum(finance_checks.mapped('completeness_rate')) / len(finance_checks)
+                            kpi['measurement'] = f"Rata-rata kelengkapan verifikasi: {actual:.1f}%"
                         
-                        # Ambil order yang memiliki rating dari periode yang dipilih
+                    elif kpi['type'] == 'customer_satisfaction':
+                        # Existing code untuk customer satisfaction
                         rated_orders = period_orders.filtered(lambda o: o.customer_rating)
                         total_rated_orders = len(rated_orders)
-                        
                         if total_rated_orders > 0:
-                            # Hitung rata-rata rating
                             total_rating = sum(float(order.customer_rating) for order in rated_orders)
                             avg_rating = total_rating / total_rated_orders
-                            
-                            # Implementasi formula khusus
                             if avg_rating > 4.8:
                                 actual = 120
                             elif avg_rating == 4.8:
                                 actual = 100
                             elif 4.6 <= avg_rating <= 4.7:
                                 actual = 50
-                            else:  # < 4.6
+                            else:
                                 actual = 0
-                                
-                            kpi['measurement'] = (
-                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
-                                f"pada periode {month}/{year}."
-                            )
-                        else:
-                            actual = 0
-                            kpi['measurement'] = f"Belum ada rating customer pada periode {month}/{year}"
-
-                    # elif kpi['type'] == 'customer_satisfaction':
-                    #     # Ambil semua order yang memiliki rating
-                    #     rated_orders = all_orders.filtered(lambda o: o.customer_rating)
-                    #     total_rated_orders = len(rated_orders)
+                            kpi['measurement'] = f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order"
                         
-                    #     if total_rated_orders > 0:
-                    #         # Hitung rata-rata rating
-                    #         total_rating = sum(float(order.customer_rating) for order in rated_orders)
-                    #         avg_rating = total_rating / total_rated_orders
-                            
-                    #         # Implementasi formula khusus yang benar:
-                    #         # > 4.8 = 120%
-                    #         # 4.8 = 100%
-                    #         # 4.6 s.d 4.7 = 50%
-                    #         # < 4.6 = 0%
-                    #         if avg_rating > 4.8:
-                    #             actual = 120
-                    #         elif avg_rating == 4.8:
-                    #             actual = 100
-                    #         elif 4.6 <= avg_rating <= 4.7:
-                    #             actual = 50
-                    #         else:  # < 4.6
-                    #             actual = 0
-                                
-                    #         kpi['measurement'] = (
-                    #             f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order. "
-                    #             f"
-                    #         )
-                    #     else:
-                    #         actual = 0
-                    #         kpi['measurement'] = "Belum ada rating customer"
-
                     elif kpi['type'] == 'sop_compliance':
-                        # Manual input dari cs.kpi.detail
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        stored_measurement = kpi_values.get(kpi['type'], {}).get('measurement', '')
-                        kpi['measurement'] = stored_measurement or "Menunggu input: Jumlah temuan ketidaksesuaian SOP"
+                        # Existing code untuk SOP compliance
+                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('cs_id', '=', employee.id),
+                            ('state', '=', 'done')
+                        ])
+                        total_samples = len(samplings)
+                        passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
+                        actual = (passed_samples / total_samples * 100) if total_samples else 0
+                        kpi['measurement'] = f"Sesuai SOP: {passed_samples} dari {total_samples} sampel"
 
                     elif kpi['type'] == 'discipline':
                         attendances = request.env['hr.attendance'].sudo().search([
@@ -699,8 +645,8 @@ class KPIOverview(http.Controller):
                         actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
                         kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
 
-                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+                    # Update rumus achievement - langsung actual × weight/100
+                    weighted_score = actual * (kpi['weight'] / 100)
 
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -710,10 +656,12 @@ class KPIOverview(http.Controller):
                         'target': kpi['target'],
                         'measurement': kpi['measurement'],
                         'actual': actual,
-                        'achievement': achievement,
-                        'weighted_score': weighted_score,
-                        'editable': ['weight', 'target', 'actual', 'measurement']
+                        'weighted_score': weighted_score
                     })
+
+                # Calculate total score
+                total_weight = sum(kpi['weight'] for kpi in kpi_scores)
+                total_score = sum(kpi['weighted_score'] for kpi in kpi_scores)
 
             # Handle Lead Customer Support
             elif 'Lead Customer Support' in job_title:

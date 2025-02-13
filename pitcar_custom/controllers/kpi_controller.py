@@ -784,7 +784,8 @@ class KPIController(http.Controller):
                                     att.check_out
                                 )
                                 mechanic_count = len(order.car_mechanic_id_new)
-                                total_productive_hours += productive_duration / mechanic_count
+                                total_productive_hours += productive_duration 
+                                # total_productive_hours += productive_duration / mechanic_count
 
                 # Update metrics
                 mechanic['metrics']['utilization'] = {
@@ -852,7 +853,8 @@ class KPIController(http.Controller):
                                     att.check_out
                                 )
                                 mechanic_count = len(order.car_mechanic_id_new)
-                                productive_hours += productive_duration / mechanic_count
+                                productive_hours += productive_duration 
+                                # productive_hours += productive_duration / mechanic_count
                 
                 trend['metrics']['utilization'] = {
                     'attendance_hours': attendance_hours,
@@ -1727,7 +1729,8 @@ class KPIController(http.Controller):
                             day_attendances
                         )
                         mechanic_count = len(order.car_mechanic_id_new)
-                        total_productive_hours += productive_duration / mechanic_count
+                        total_productive_hours += productive_duration
+                        # total_productive_hours += productive_duration / mechanic_count
 
             # 6. Update metrics with utilization data
             metrics['utilization'] = {
@@ -1757,7 +1760,8 @@ class KPIController(http.Controller):
                             day_attendances
                         )
                         mechanic_count = len(order.car_mechanic_id_new)
-                        day_productive_hours += productive_duration / mechanic_count
+                        day_productive_hours += productive_duration
+                        # day_productive_hours += productive_duration / mechanic_count
                 
                 trend['metrics']['utilization'] = {
                     'attendance_hours': attendance_hours,

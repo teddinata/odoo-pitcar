@@ -1198,7 +1198,7 @@ class KPIOverview(http.Controller):
                     })
             
             # Handler untuk Toolkeeper
-            elif 'Toolkeeper' in job_title:
+            elif 'Partman' in job_title:
                 kpi_scores = []
 
                 for kpi in toolkeeper_template:

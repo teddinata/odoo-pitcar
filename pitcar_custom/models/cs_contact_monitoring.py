@@ -36,11 +36,12 @@ class CSContactMonitoring(models.Model):
             if record.total_customers:
                 # Calculate compliance based on all three criteria
                 contact_rate = (record.contacts_saved / record.total_customers * 100) if record.contacts_saved else 0
-                story_rate = (record.story_posted / record.total_customers * 100) if record.story_posted else 0
-                broadcast_rate = (record.broadcast_sent / record.total_customers * 100) if record.broadcast_sent else 0
+                # story_rate = (record.story_posted / record.total_customers * 100) if record.story_posted else 0
+                # broadcast_rate = (record.broadcast_sent / record.total_customers * 100) if record.broadcast_sent else 0
                 
                 # Average of all rates
-                record.compliance_rate = (contact_rate + story_rate + broadcast_rate) / 3
+                # record.compliance_rate = (contact_rate + story_rate + broadcast_rate) / 3
+                record.compliance_rate = contact_rate
             else:
                 record.compliance_rate = 0
 

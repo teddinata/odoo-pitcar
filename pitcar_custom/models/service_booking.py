@@ -4,6 +4,10 @@ from odoo.exceptions import ValidationError
 from datetime import datetime, timedelta
 import pytz
 from odoo.tools import ormcache
+import logging
+
+# logger
+_logger = logging.getLogger(__name__)
 
 class ServiceBooking(models.Model):
     _name = 'pitcar.service.booking'
@@ -198,7 +202,13 @@ class ServiceBooking(models.Model):
                     })
                     continue
 
-                # Handle product lines
+                # Handle product lines dengan diskon yang benar
+                # Kompensasi pembagian 100 yang dilakukan oleh Odoo
+                actual_discount = line.discount * 100 if line.discount else 0.0
+                
+                _logger.info(f"Original discount: {line.discount}")
+                _logger.info(f"Compensated discount: {actual_discount}")
+
                 line_values = {
                     'order_id': sale_order.id,
                     'product_id': line.product_id.id,
@@ -206,11 +216,16 @@ class ServiceBooking(models.Model):
                     'service_duration': line.service_duration,
                     'name': line.name,
                     'price_unit': line.price_unit,
-                    'discount': line.discount,  # Pastikan discount terbawa
+                    'discount': actual_discount,  # Gunakan nilai yang sudah dikompensasi
                     'tax_id': [(6, 0, line.tax_ids.ids)],
                     'sequence': line.sequence,
                 }
-                self.env['sale.order.line'].create(line_values)
+                
+                # Create sale order line dan log hasilnya
+                sale_line = self.env['sale.order.line'].create(line_values)
+                _logger.info("Created sale order line with discount: %s", sale_line.discount)
+                # new_line = self.env['sale.order.line'].create(line_values)
+                # _logger.info(f"Created sale order line with discount: {new_line.discount}")
 
             # Update booking status
             self.write({
@@ -543,7 +558,7 @@ class ServiceBookingLine(models.Model):
     
     discount = fields.Float(
         string='Discount (%)',
-        digits='Discount',
+        digits=(16, 2),  # Ubah precision menjadi lebih spesifik
         default=0.0
     )
     
@@ -598,7 +613,7 @@ class ServiceBookingLine(models.Model):
             self.service_duration = 0
             self.tax_ids = [(5, 0, 0)]  # Clear taxes
 
-    @api.depends('quantity', 'price_unit', 'tax_ids', 'discount', 'display_type')
+    @api.depends('quantity', 'price_unit', 'tax_ids', 'discount')
     def _compute_amount(self):
         """Compute the amounts of the booking line."""
         for line in self:
@@ -609,6 +624,28 @@ class ServiceBookingLine(models.Model):
                     'price_tax': 0.0,
                 })
                 continue
+
+            # Hitung price setelah diskon
+            price = line.price_unit * (1 - (line.discount / 100.0))  # Konversi diskon ke desimal
+            
+            # Hitung subtotal
+            subtotal = line.quantity * price
+
+            # Hitung pajak
+            taxes = line.tax_ids.compute_all(
+                price,
+                line.booking_id.currency_id,
+                line.quantity,
+                product=line.product_id,
+                partner=line.booking_id.partner_id
+            )
+
+            line.update({
+                'price_subtotal': taxes['total_excluded'],
+                'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),
+                'price_total': taxes['total_included']
+            })
+
 
             # Hitung price setelah 
             price = line.price_unit * (1 - line.discount)  # Hapus pembagian dengan 100

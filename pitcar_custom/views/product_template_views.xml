@@ -1,73 +1,117 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <record id="product_template_form_view_inventory_age" model="ir.ui.view">
-        <field name="name">product.template.form.inventory.age</field>
+    <record id="product_template_form_view_complete" model="ir.ui.view">
+        <field name="name">product.template.form.complete</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="mode">extension</field>
+        <field name="priority">999</field>
+        <field name="arch" type="xml">
+            <!-- Service Duration Field -->
+            <xpath expr="//group[@name='group_general']" position="inside">
+                <field name="service_duration" 
+                       widget="float_time" 
+                       attrs="{'invisible': [('type', '!=', 'service')]}"
+                       force_save="1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="product_template_form_view_inventory_extensions" model="ir.ui.view">
+        <field name="name">product.template.form.inventory.extensions</field>
         <field name="model">product.template</field>
         <field name="inherit_id" ref="product.product_template_only_form_view"/>
+        <field name="mode">extension</field>
+        <field name="priority">1000</field>
         <field name="arch" type="xml">
+            <!-- Inventory Aging Section -->
             <xpath expr="//div[@name='options']" position="after">
-                <group string="Inventory Aging">
-                    <field name="oldest_stock_entry_date" readonly="1"/>
-                    <field name="inventory_age" readonly="1"/>
-                    <field name="inventory_age_days" readonly="1"/>
-                    <field name="inventory_age_category" readonly="1"/>
-                    <button name="action_update_inventory_age" string="Perbarui Umur Persediaan" type="object" class="oe_highlight"/>
+                <group string="Inventory Aging" name="group_inventory_aging">
+                    <field name="oldest_stock_entry_date" readonly="1" force_save="1"/>
+                    <field name="inventory_age" readonly="1" force_save="1"/>
+                    <field name="inventory_age_days" readonly="1" force_save="1"/>
+                    <field name="inventory_age_category" readonly="1" force_save="1"/>
+                    <button name="action_update_inventory_age" 
+                            string="Perbarui Umur Persediaan" 
+                            type="object" 
+                            class="oe_highlight"/>
+                </group>
+            </xpath>
+
+            <!-- Mandatory Stock Section -->
+            <xpath expr="//page//group[@name='group_standard_price']" position="after">
+                <group name="group_mandatory_stock" string="Stock Wajib">
+                    <field name="is_mandatory_stock"/>
+                    <field name="min_mandatory_stock" 
+                           attrs="{'invisible': [('is_mandatory_stock', '=', False)], 
+                                  'required': [('is_mandatory_stock', '=', True)]}"
+                           force_save="1"/>
+                    <field name="is_below_mandatory_level" 
+                           readonly="1" 
+                           force_save="1"
+                           attrs="{'invisible': [('is_mandatory_stock', '=', False)]}"/>
                 </group>
             </xpath>
         </field>
     </record>
 
-    <record id="product_template_tree_view_inventory_age" model="ir.ui.view">
-        <field name="name">product.template.tree.inventory.age</field>
+    <!-- Tree view -->
+    <record id="product_template_tree_view_complete" model="ir.ui.view">
+        <field name="name">product.template.tree.complete</field>
         <field name="model">product.template</field>
         <field name="inherit_id" ref="product.product_template_tree_view"/>
+        <field name="mode">extension</field>
+        <field name="priority">999</field>
         <field name="arch" type="xml">
             <xpath expr="//tree" position="attributes">
+                <attribute name="js_class">product_template_list</attribute>
                 <attribute name="decoration-info">1==1</attribute>
             </xpath>
             <xpath expr="//tree" position="inside">
                 <header>
-                    <button name="action_update_all_inventory_age" string="Perbarui Semua Umur Persediaan" type="object" class="btn-primary"/>
+                    <button name="action_update_all_inventory_age" 
+                            string="Perbarui Semua Umur Persediaan" 
+                            type="object" 
+                            class="btn-primary"/>
                 </header>
             </xpath>
             <field name="name" position="after">
+                <!-- Inventory Age Fields -->
                 <field name="oldest_stock_entry_date" optional="show"/>
                 <field name="inventory_age" optional="show"/>
                 <field name="inventory_age_days" optional="show"/>
                 <field name="inventory_age_category" optional="show"/>
-                <button name="action_update_inventory_age" string="Perbarui" type="object" class="oe_highlight"/>
+                <button name="action_update_inventory_age" 
+                        string="Perbarui" 
+                        type="object" 
+                        class="oe_highlight"/>
+                <!-- Mandatory Stock Fields -->
+                <field name="is_mandatory_stock" optional="show"/>
+                <field name="min_mandatory_stock" optional="show"/>
+                <field name="is_below_mandatory_level" 
+                       optional="show" 
+                       decoration-danger="is_below_mandatory_level"/>
             </field>
         </field>
     </record>
 
-    <!-- Existing action server definition -->
-    <record id="action_update_all_inventory_ages" model="ir.actions.server">
-        <field name="name">Update All Inventory Ages</field>
-        <field name="type">ir.actions.server</field>
-        <field name="model_id" ref="product.model_product_template"/>
-        <field name="state">code</field>
-        <field name="code">
-            action = model.action_update_all_inventory_age()
-        </field>
-    </record>
-
-    <!-- Add menu item for the action -->
-    <menuitem id="menu_update_all_inventory_ages"
-              name="Update All Inventory Ages"
-              action="action_update_all_inventory_ages"
-              parent="stock.menu_stock_inventory_control"
-              sequence="100"/>
-
-    <record id="product_template_search_view_inventory_age" model="ir.ui.view">
-        <field name="name">product.template.search.inventory.age</field>
+    <!-- Search view -->
+    <record id="product_template_search_view_complete" model="ir.ui.view">
+        <field name="name">product.template.search.complete</field>
         <field name="model">product.template</field>
         <field name="inherit_id" ref="product.product_template_search_view"/>
+        <field name="mode">extension</field>
+        <field name="priority">999</field>
         <field name="arch" type="xml">
             <xpath expr="//search" position="inside">
-                <filter string="Update All Inventory Ages" name="update_inventory_ages" help="Update inventory ages for all products" context="{'update_inventory_ages': True}"/>
+                <filter string="Update All Inventory Ages" 
+                        name="update_inventory_ages" 
+                        help="Update inventory ages for all products" 
+                        context="{'update_inventory_ages': True}"/>
             </xpath>
             <filter name="consumable" position="after">
                 <separator/>
+                <!-- Age Filters -->
                 <filter string="1+ Month in Inventory" name="one_month" domain="[('inventory_age_days', '&gt;=', 30)]"/>
                 <filter string="3+ Months in Inventory" name="three_months" domain="[('inventory_age_days', '&gt;=', 90)]"/>
                 <filter string="6+ Months in Inventory" name="six_months" domain="[('inventory_age_days', '&gt;=', 180)]"/>
@@ -75,40 +119,74 @@
                 <filter string="Medium Age Inventory" name="medium_inventory" domain="[('inventory_age_category', '=', 'medium')]"/>
                 <filter string="Old Inventory" name="old_inventory" domain="[('inventory_age_category', '=', 'old')]"/>
                 <filter string="Very Old Inventory" name="very_old_inventory" domain="[('inventory_age_category', '=', 'very_old')]"/>
+                <!-- Stock Filters -->
+                <separator/>
+                <filter string="Wajib Ready Stock" name="mandatory_stock" domain="[('is_mandatory_stock', '=', True)]"/>
+                <filter string="Stock Di Bawah Minimum" name="below_minimum" domain="[('is_below_mandatory_level', '=', True)]"/>
             </filter>
         </field>
     </record>
 
-    <record id="view_product_template_tree" model="ir.ui.view">
-        <field name="name">product.template.tree</field>
-        <field name="model">product.template</field>
-        <field name="inherit_id" ref="product.product_template_tree_view"/>
+    <!-- Stock Mandatory Stockout views -->
+    <record id="view_stock_mandatory_stockout_tree" model="ir.ui.view">
+        <field name="name">stock.mandatory.stockout.tree</field>
+        <field name="model">stock.mandatory.stockout</field>
+        <field name="priority">1</field>
         <field name="arch" type="xml">
-            <xpath expr="//tree" position="attributes">
-                <attribute name="js_class">product_template_list</attribute>
-            </xpath>
+            <tree string="Stockout Wajib Ready" 
+                  editable="bottom" 
+                  create="0" 
+                  delete="0">
+                <field name="date"/>
+                <field name="product_tmpl_id"/>
+                <field name="available_qty"/>
+                <field name="min_required"/>
+                <field name="shortage_qty"/>
+                <field name="sale_order_id"/>
+            </tree>
         </field>
     </record>
 
-    <record id="product_template_kanban_view" model="ir.ui.view">
-        <field name="name">product.template.kanban</field>
-        <field name="model">product.template</field>
-        <field name="inherit_id" ref="product.product_template_kanban_view"/>
-        <field name="arch" type="xml">
-            <kanban position="attributes">
-                <attribute name="js_class">product_template_kanban</attribute>
-            </kanban>
+    <!-- Actions -->
+    <record id="action_update_all_inventory_ages" model="ir.actions.server">
+        <field name="name">Update All Inventory Ages</field>
+        <field name="type">ir.actions.server</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="binding_model_id" ref="product.model_product_template"/>
+        <field name="state">code</field>
+        <field name="code">
+            action = model.action_update_all_inventory_age()
         </field>
     </record>
-    <!-- views/product_views.xml -->
-    <record id="product_template_form_view_inherit" model="ir.ui.view">
-        <field name="name">product.template.form.inherit</field>
-        <field name="model">product.template</field>
-        <field name="inherit_id" ref="product.product_template_form_view"/>
-        <field name="arch" type="xml">
-            <xpath expr="//group[@name='group_general']" position="inside">
-                <field name="service_duration" widget="float_time" attrs="{'invisible': [('type', '!=', 'service')]}"/>
-            </xpath>
+
+    <record id="action_stock_mandatory_stockout" model="ir.actions.act_window">
+        <field name="name">Stockout Wajib Ready</field>
+        <field name="res_model">stock.mandatory.stockout</field>
+        <field name="view_mode">tree</field>
+        <field name="context">{
+            'search_default_today': 1,
+            'create': 0,
+            'edit': 0,
+            'delete': 0
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Belum ada stockout untuk part wajib ready
+            </p>
         </field>
     </record>
+
+    <!-- Menus -->
+    <menuitem id="menu_update_all_inventory_ages"
+              name="Update All Inventory Ages"
+              action="action_update_all_inventory_ages"
+              parent="stock.menu_stock_inventory_control"
+              sequence="100"/>
+
+    <menuitem id="menu_stock_mandatory_stockout"
+              name="Stockout Wajib Ready"
+              action="action_stock_mandatory_stockout"
+              parent="stock.menu_warehouse_report"
+              sequence="200"/>
+
 </odoo>

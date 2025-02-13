@@ -87,7 +87,8 @@
                                             <field name="quantity"/>
                                             <field name="service_duration" widget="float_time"/>
                                             <field name="price_unit" widget="monetary"/>
-                                            <field name="discount" widget="percentage"/>
+                                            <!-- <field name="discount" widget="percentage_discount"/> -->
+                                            <field name="discount" widget="percentage" options="{'currency_field': 'currency_id'}" force_save="1"/>
                                         </group>
                                         <group>
                                             <field name="tax_ids" widget="many2many_tags"/>

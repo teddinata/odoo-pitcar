@@ -34,6 +34,66 @@ class ProductTemplate(models.Model):
         ('very_old', 'Sangat Lama (> 180 hari)')
     ], string='Kategori Umur Persediaan', compute='_compute_inventory_age', store=True)
 
+     # Tambah field untuk mandatory stock
+    is_mandatory_stock = fields.Boolean(
+        string='Wajib Ready Stock',
+        default=False,
+        help='Centang jika part ini wajib selalu tersedia di stock',
+        tracking=True
+    )
+    min_mandatory_stock = fields.Float(
+        string='Minimum Stock Wajib',
+        default=0.0,
+        help='Jumlah minimum yang harus selalu tersedia untuk part wajib stock',
+        tracking=True
+    )
+    
+    is_below_mandatory_level = fields.Boolean(
+        string='Di Bawah Level Minimum',
+        compute='_compute_is_below_mandatory_level',
+        store=True,
+        help='True jika stok saat ini di bawah level minimum yang diwajibkan'
+    )
+
+    @api.depends('qty_available', 'min_mandatory_stock', 'is_mandatory_stock')
+    def _compute_is_below_mandatory_level(self):
+        for product in self:
+            if product.is_mandatory_stock and product.min_mandatory_stock > 0:
+                current_qty = product.with_context(company_owned=True).qty_available
+                product.is_below_mandatory_level = current_qty < product.min_mandatory_stock
+                
+                # Jika di bawah minimum, create record stockout
+                if product.is_below_mandatory_level:
+                    self.env['stock.mandatory.stockout'].sudo().create({
+                        'date': fields.Date.today(),
+                        'product_tmpl_id': product.id,
+                        'available_qty': current_qty,
+                        'min_required': product.min_mandatory_stock
+                    })
+            else:
+                product.is_below_mandatory_level = False
+
+     # Tambahkan method baru untuk menghitung stockout mandatory parts
+    def check_mandatory_stock_status(self):
+        """
+        Check status stok untuk parts yang wajib ready
+        Returns dict dengan informasi stockout jika ada
+        """
+        self.ensure_one()
+        if not self.is_mandatory_stock:
+            return None
+
+        available_qty = self.with_context(company_owned=True).qty_available
+        if available_qty < self.min_mandatory_stock:
+            return {
+                'product_id': self.id,
+                'name': self.name,
+                'available_qty': available_qty,
+                'min_required': self.min_mandatory_stock,
+                'shortage': self.min_mandatory_stock - available_qty
+            }
+        return None
+
     @api.depends('product_variant_ids.stock_move_ids.state', 'product_variant_ids.stock_quant_ids.quantity')
     def _compute_oldest_stock_entry_date(self):
         for product in self:

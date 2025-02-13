@@ -66,3 +66,6 @@ pitcar_custom.access_sale_order_part_item_controller,sale.order.part.item.contro
 pitcar_custom.access_part_response_reject_wizard,access_part_response_reject_wizard,model_part_response_reject_wizard,base.group_user,1,1,1,1
 pitcar_custom.access_part_response_reject_wizard,access.part.response.reject.wizard,model_part_response_reject_wizard,base.group_user,1,1,1,1
 pitcar_custom.access_part_response_approve_wizard,access.part.response.approve.wizard,model_part_response_approve_wizard,base.group_user,1,1,1,1
+pitcar_custom.access_stock_mandatory_stockout_user,stock.mandatory.stockout user,model_stock_mandatory_stockout,base.group_user,1,1,1,1
+pitcar_custom.access_stock_mandatory_stockout_manager,stock.mandatory.stockout manager,model_stock_mandatory_stockout,base.group_system,1,1,1,1
+pitcar_custom.access_stock_audit_report_user,stock.audit.report.user,model_stock_audit_report,base.group_user,1,0,0,0

@@ -48,6 +48,14 @@ class PartPurchaseLeadtime(models.Model):
     estimated_return = fields.Datetime('Estimated Return')
     estimated_duration = fields.Float('Estimated Duration', digits=(12, 2))
 
+    purchase_type = fields.Selection([
+        ('part', 'Part'),
+        ('tool', 'Tool')
+    ], string='Tipe Pembelian', required=True, default='part', tracking=True)
+
+    estimated_completeness = fields.Float('Target Kecocokan (%)', default=100)
+    actual_completeness = fields.Float('Kecocokan Aktual (%)')
+
     @api.model
     def get_orders_need_part(self):
         """Get sale orders that need part purchase"""

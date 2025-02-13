@@ -66,6 +66,63 @@ class AccountMove(models.Model):
         string="Car Arrival Time",
         help="Record the time when the car arrived."
     )
+
+    is_stock_audit = fields.Boolean(
+        'Is Stock Audit',
+        help='Centang jika jurnal ini untuk pencatatan selisih audit'
+    )
+    audit_type = fields.Selection([
+        ('part', 'Part'),
+        ('tool', 'Tool')
+    ], string='Audit Type',
+    help='Pilih tipe audit: Part atau Tool')
+    audit_difference = fields.Float(
+        'Selisih Audit', 
+        compute='_compute_audit_difference',
+        store=True,
+        help='Selisih antara nilai sistem dan aktual'
+    )
+
+    is_within_tolerance = fields.Boolean(
+        'Within Tolerance',
+        compute='_compute_is_within_tolerance',
+        store=True
+    )
+
+    @api.onchange('is_stock_audit')
+    def _onchange_is_stock_audit(self):
+        if self.is_stock_audit:
+            self.ref = 'Selisih audit stock '
+        else:
+            self.audit_type = False
+            
+    @api.depends('line_ids.debit', 'line_ids.credit')
+    def _compute_audit_difference(self):
+        for move in self:
+            if move.is_stock_audit:
+                # Ambil selisih dari line pertama
+                line = move.line_ids[0] if move.line_ids else False
+                if line:
+                    move.audit_difference = line.debit - line.credit
+            else:
+                move.audit_difference = 0
+
+    @api.depends('audit_difference')
+    def _compute_is_within_tolerance(self):
+        for move in self:
+            if move.is_stock_audit:
+                move.is_within_tolerance = abs(move.audit_difference) < 200000 
+            else:
+                move.is_within_tolerance = False
+
+    # Override untuk memastikan referensi selisih audit terformat benar
+    @api.onchange('is_stock_audit', 'audit_type', 'date')
+    def _onchange_audit_fields(self):
+        if self.is_stock_audit and self.audit_type and self.date:
+            type_text = 'Part' if self.audit_type == 'part' else 'Tools'
+            self.ref = f'Selisih audit stock {type_text} {self.date.strftime("%d/%m/%Y")}'
+
+
     
     @api.depends('car_mechanic_id_new')
     def _compute_generated_mechanic_team(self):

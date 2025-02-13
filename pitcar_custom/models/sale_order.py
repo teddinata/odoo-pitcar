@@ -1698,44 +1698,44 @@ class SaleOrder(models.Model):
             except Exception as e:
                 _logger.error(f"Error dalam compute overall lead time: {str(e)}")
                 order.overall_lead_time = 0
-    def action_recompute_lead_time(self):
-        """
-        Method untuk memaksa recompute semua lead time
-        Dapat dipanggil dari button di form view atau server action
-        """
-        orders = self.search([])
-        # Paksa compute ulang dengan mengosongkan semua field terkait
-        orders.write({
-            'lead_time_servis': 0,
-            'total_lead_time_servis': 0,
-            'lead_time_tunggu_konfirmasi': 0,
-            'lead_time_tunggu_part1': 0, 
-            'lead_time_tunggu_part2': 0,
-            'lead_time_istirahat': 0,
-            'overall_lead_time': 0,
-            'is_overnight': False
-        })
+    # def action_recompute_lead_time(self):
+    #     """
+    #     Method untuk memaksa recompute semua lead time
+    #     Dapat dipanggil dari button di form view atau server action
+    #     """
+    #     orders = self.search([])
+    #     # Paksa compute ulang dengan mengosongkan semua field terkait
+    #     orders.write({
+    #         'lead_time_servis': 0,
+    #         'total_lead_time_servis': 0,
+    #         'lead_time_tunggu_konfirmasi': 0,
+    #         'lead_time_tunggu_part1': 0, 
+    #         'lead_time_tunggu_part2': 0,
+    #         'lead_time_istirahat': 0,
+    #         'overall_lead_time': 0,
+    #         'is_overnight': False
+    #     })
         
-        # Trigger compute untuk semua field terkait
-        for order in orders:
-            order._compute_lead_time_tunggu_konfirmasi()
-            order._compute_lead_time_tunggu_part1()
-            order._compute_lead_time_tunggu_part2()
-            order._compute_lead_time_istirahat()
-            order._compute_lead_time_servis()
-            order._compute_overall_lead_time()
+    #     # Trigger compute untuk semua field terkait
+    #     for order in orders:
+    #         order._compute_lead_time_tunggu_konfirmasi()
+    #         order._compute_lead_time_tunggu_part1()
+    #         order._compute_lead_time_tunggu_part2()
+    #         order._compute_lead_time_istirahat()
+    #         order._compute_lead_time_servis()
+    #         order._compute_overall_lead_time()
             
-            _logger.info(f"""
-                Recompute selesai untuk {order.name}:
-                - Lead Time Servis: {order.lead_time_servis:.2f} jam
-                - Total Lead Time: {order.total_lead_time_servis:.2f} jam
-                - Tunggu Konfirmasi: {order.lead_time_tunggu_konfirmasi:.2f} jam
-                - Tunggu Part 1: {order.lead_time_tunggu_part1:.2f} jam
-                - Tunggu Part 2: {order.lead_time_tunggu_part2:.2f} jam
-                - Istirahat: {order.lead_time_istirahat:.2f} jam
-                - Overall Lead Time: {order.overall_lead_time:.2f} jam
-            """)
-        return True
+    #         _logger.info(f"""
+    #             Recompute selesai untuk {order.name}:
+    #             - Lead Time Servis: {order.lead_time_servis:.2f} jam
+    #             - Total Lead Time: {order.total_lead_time_servis:.2f} jam
+    #             - Tunggu Konfirmasi: {order.lead_time_tunggu_konfirmasi:.2f} jam
+    #             - Tunggu Part 1: {order.lead_time_tunggu_part1:.2f} jam
+    #             - Tunggu Part 2: {order.lead_time_tunggu_part2:.2f} jam
+    #             - Istirahat: {order.lead_time_istirahat:.2f} jam
+    #             - Overall Lead Time: {order.overall_lead_time:.2f} jam
+    #         """)
+    #     return True
     
     def action_recompute_single_order(self):
         """
@@ -1802,13 +1802,29 @@ class SaleOrder(models.Model):
                     Selesai Servis: {order.controller_selesai}
                 """)
 
-                # 1. Hitung total waktu
-                total_waktu = order.controller_selesai - order.controller_mulai_servis
+                # 1. Hitung total waktu dalam jam kerja (08:00-17:00)
+                total_waktu = timedelta()
+                current_date = order.controller_mulai_servis.date()
+                end_date = order.controller_selesai.date()
+
+                while current_date <= end_date:
+                    # Set jam kerja untuk hari ini
+                    day_start = datetime.combine(current_date, time(8, 0))  # 08:00
+                    day_end = datetime.combine(current_date, time(17, 0))   # 17:00
+                    
+                    # Tentukan waktu efektif start dan end untuk hari ini
+                    effective_start = max(day_start, order.controller_mulai_servis) if current_date == order.controller_mulai_servis.date() else day_start
+                    effective_end = min(day_end, order.controller_selesai) if current_date == order.controller_selesai.date() else day_end
+                    
+                    if effective_end > effective_start:
+                        total_waktu += (effective_end - effective_start)
+                    
+                    current_date += timedelta(days=1)
+
                 order.total_lead_time_servis = total_waktu.total_seconds() / 3600
+                _logger.info(f"Total waktu efektif: {order.total_lead_time_servis} jam")
 
-                _logger.info(f"Total waktu kotor: {order.total_lead_time_servis} jam")
-
-                # 2. Hitung total waktu job stop
+                # 2. Hitung total waktu job stop dalam jam kerja
                 total_job_stop = timedelta()
                 
                 # Dictionary untuk semua job stop
@@ -1820,26 +1836,40 @@ class SaleOrder(models.Model):
                     'Istirahat': (order.controller_istirahat_shift1_mulai, order.controller_istirahat_shift1_selesai)
                 }
 
-                # Hitung setiap job stop
+                # Hitung setiap job stop dalam jam kerja
                 for job_name, (start, end) in job_stops.items():
                     if start and end and end > start:
-                        job_duration = end - start
-                        total_job_stop += job_duration
-                        _logger.info(f"{job_name}: {job_duration.total_seconds() / 3600} jam")
+                        job_total = timedelta()
+                        current = start.date()
+                        job_end_date = end.date()
+                        
+                        while current <= job_end_date:
+                            day_start = datetime.combine(current, time(8, 0))
+                            day_end = datetime.combine(current, time(17, 0))
+                            
+                            job_effective_start = max(day_start, start) if current == start.date() else day_start
+                            job_effective_end = min(day_end, end) if current == end.date() else day_end
+                            
+                            if job_effective_end > job_effective_start:
+                                job_total += (job_effective_end - job_effective_start)
+                            
+                            current += timedelta(days=1)
+                            
+                        total_job_stop += job_total
+                        _logger.info(f"{job_name}: {job_total.total_seconds() / 3600} jam")
 
                 # 3. Hitung waktu istirahat otomatis (12:00-13:00)
                 # Hanya jika tidak ada istirahat manual yang diinput
                 if not (order.controller_istirahat_shift1_mulai and order.controller_istirahat_shift1_selesai):
-                    start_date = order.controller_mulai_servis.date()
+                    current_date = order.controller_mulai_servis.date()
                     end_date = order.controller_selesai.date()
-                    current_date = start_date
                     istirahat_auto = timedelta()
 
                     while current_date <= end_date:
                         istirahat_start = datetime.combine(current_date, time(12, 0))
                         istirahat_end = datetime.combine(current_date, time(13, 0))
                         
-                        # Cek overlap dengan waktu kerja
+                        # Hanya hitung istirahat jika dalam rentang jam kerja dan overlap dengan waktu servis
                         if (order.controller_mulai_servis <= istirahat_end and 
                             order.controller_selesai >= istirahat_start):
                             overlap_start = max(order.controller_mulai_servis, istirahat_start)
@@ -1856,7 +1886,7 @@ class SaleOrder(models.Model):
                 total_seconds = total_waktu.total_seconds()
                 job_stop_seconds = total_job_stop.total_seconds()
                 
-                # Lead time bersih = Total waktu - Total job stop
+                # Lead time bersih = Total waktu efektif - Total job stop
                 order.lead_time_servis = max(0, (total_seconds - job_stop_seconds) / 3600)
 
                 # Set flag menginap
@@ -1864,15 +1894,105 @@ class SaleOrder(models.Model):
 
                 _logger.info(f"""
                     Hasil akhir {order.name}:
-                    - Total Lead Time: {order.total_lead_time_servis:.2f} jam
+                    - Total Lead Time Efektif: {order.total_lead_time_servis:.2f} jam
                     - Total Job Stop: {job_stop_seconds / 3600:.2f} jam
                     - Lead Time Bersih: {order.lead_time_servis:.2f} jam
+                    - Menginap: {order.is_overnight}
                 """)
 
             except Exception as e:
                 _logger.error(f"Error pada perhitungan {order.name}: {str(e)}")
                 order.lead_time_servis = 0
                 order.total_lead_time_servis = 0
+
+    # Di model sale.order, tambahkan method:
+    def action_recompute_lead_time(self):
+        """Method untuk memaksa recompute lead time servis"""
+        self.ensure_one()
+        try:
+            # Catat nilai sebelum recompute untuk logging
+            old_total = self.total_lead_time_servis
+            old_net = self.lead_time_servis
+
+            # Force recompute dengan invalidate cache
+            self.invalidate_cache(['lead_time_servis', 'total_lead_time_servis'])
+            self._compute_lead_time_servis()
+
+            # Log perubahan ke chatter
+            message = f"""
+                <p><strong>Lead Time Re-calculation Result</strong></p>
+                <ul>
+                    <li>Total Lead Time: {old_total:.2f} → {self.total_lead_time_servis:.2f} jam</li>
+                    <li>Lead Time Bersih: {old_net:.2f} → {self.lead_time_servis:.2f} jam</li>
+                    <li>Recomputed by: {self.env.user.name}</li>
+                </ul>
+            """
+            self.message_post(body=message, message_type='notification')
+
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Success',
+                    'message': 'Lead time berhasil dihitung ulang',
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in recompute lead time for {self.name}: {str(e)}")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Error',
+                    'message': f'Gagal menghitung ulang lead time: {str(e)}',
+                    'type': 'danger',
+                    'sticky': True,
+                }
+            }
+
+    # Tambahkan method untuk recompute batch/multiple orders
+    def action_recompute_lead_time_batch(self):
+        """Method untuk recompute multiple orders sekaligus"""
+        success_count = 0
+        error_count = 0
+        
+        for order in self:
+            try:
+                order.invalidate_cache(['lead_time_servis', 'total_lead_time_servis'])
+                order._compute_lead_time_servis()
+                success_count += 1
+            except Exception as e:
+                _logger.error(f"Error recomputing lead time for order {order.name}: {str(e)}")
+                error_count += 1
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Recompute Complete',
+                'message': f'Successfully recomputed {success_count} orders. {error_count} errors.',
+                'type': 'info',
+                'sticky': False,
+            }
+        }
+    
+    def action_recompute_all_orders(self):
+        """Recompute lead time untuk semua order yang ditampilkan di list view"""
+        for order in self:
+            order.action_recompute_lead_time()
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Success',
+                'message': f'Successfully recomputed {len(self)} orders',
+                'type': 'success',
+                'sticky': False,
+            }
+        }
 
     def hitung_waktu_kerja_efektif(self, waktu_mulai, waktu_selesai, is_normal_break=True):
         """

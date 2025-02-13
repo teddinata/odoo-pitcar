@@ -1094,3 +1094,76 @@ class LeadTimePartController(http.Controller):
         hours = int(duration_hours)
         minutes = int((duration_hours - hours) * 60)
         return f"{hours}j {minutes}m"
+
+    @http.route('/web/sale-order/recompute', type='json', auth='user', methods=['POST'])
+    def recompute_lead_time(self, **kw):
+        """Recompute lead time for sale orders"""
+        try:
+            # Untuk JSON-RPC, parameter ada di kw langsung
+            all_orders = kw.get('all_orders')
+            order_ids = kw.get('order_ids', [])
+            
+            SaleOrder = request.env['sale.order']
+            recomputed = 0
+            errors = 0
+            
+            if all_orders:
+                # Recompute semua order yang active
+                orders = SaleOrder.search([
+                    ('state', 'in', ['sale', 'done']),  # Hanya order yang sudah confirmed
+                    ('controller_mulai_servis', '!=', False),  # Ada waktu mulai servis
+                    ('controller_selesai', '!=', False)  # Ada waktu selesai servis
+                ])
+            elif order_ids:
+                # Recompute specific orders
+                orders = SaleOrder.browse(order_ids)
+            else:
+                return {
+                    'status': 'error',
+                    'message': 'Either order_ids or all_orders parameter is required'
+                }
+
+            # Proses recompute
+            for order in orders:
+                try:
+                    # Invalidate cache untuk fields yang akan dihitung ulang
+                    order.invalidate_cache([
+                        'lead_time_servis', 
+                        'total_lead_time_servis'
+                    ])
+                    
+                    # Panggil compute lead time
+                    order._compute_lead_time_servis()
+                    recomputed += 1
+                    
+                    # Log ke chatter
+                    msg = f"""
+                        <p><strong>Lead Time Re-calculation Result</strong></p>
+                        <ul>
+                            <li>Total Lead Time: {order.total_lead_time_servis:.2f} jam</li>
+                            <li>Lead Time Bersih: {order.lead_time_servis:.2f} jam</li>
+                            <li>Recomputed by: {request.env.user.name}</li>
+                        </ul>
+                    """
+                    order.message_post(body=msg, message_type='notification')
+                    
+                except Exception as e:
+                    _logger.error(f"Error recomputing order {order.name}: {str(e)}")
+                    errors += 1
+
+            return {
+                'status': 'success',
+                'data': {
+                    'total_processed': len(orders),
+                    'recomputed': recomputed,
+                    'errors': errors
+                },
+                'message': f'Successfully recomputed {recomputed} orders. {errors} errors occurred.'
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in recompute_lead_time: {str(e)}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }

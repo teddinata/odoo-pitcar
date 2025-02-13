@@ -330,6 +330,53 @@ class CSSampling(http.Controller):
                         } for line in record.monitoring_line_ids]
                     } for record in monitorings]
                 }
+            
+            elif operation == 'update':
+                if not kw.get('id'):
+                    return {'status': 'error', 'message': 'Missing monitoring ID'}
+                    
+                monitoring = request.env['cs.contact.monitoring'].sudo().browse(int(kw['id']))
+                if not monitoring.exists():
+                    return {'status': 'error', 'message': 'Monitoring not found'}
+                
+                update_values = {}
+                optional_fields = {
+                    'total_customers': int,
+                    'contacts_saved': int,
+                    'story_posted': int,
+                    'broadcast_sent': int,
+                    'notes': str
+                }
+
+                for field, field_type in optional_fields.items():
+                    if field in kw:
+                        update_values[field] = field_type(kw[field])
+                        
+                if update_values:
+                    monitoring.write(update_values)
+                
+                # Update monitoring lines
+                if kw.get('monitoring_lines'):
+                    # Hapus lines lama
+                    monitoring.monitoring_line_ids.unlink()
+                    # Buat lines baru
+                    for line in kw['monitoring_lines']:
+                        line['monitoring_id'] = monitoring.id
+                        request.env['cs.contact.monitoring.line'].sudo().create(line)
+                        
+                if kw.get('complete', False):
+                    monitoring.action_done()
+                    
+                return {
+                    'status': 'success',
+                    'data': {
+                        'id': monitoring.id,
+                        'name': monitoring.name,
+                        'compliance_rate': monitoring.compliance_rate,
+                        'state': monitoring.state
+                    }
+                }
+
 
         except Exception as e:
             _logger.error(f"Error in cs_contact_monitoring: {str(e)}")

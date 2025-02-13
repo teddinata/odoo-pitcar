@@ -419,6 +419,113 @@ class KPIOverview(http.Controller):
                 }
             ]
 
+                        # Template KPI Admin Part
+            admin_part_template = [
+                {
+                    'no': 1,
+                    'name': '% kebutuhan part & tools terpenuhi',
+                    'type': 'part_fulfillment',
+                    'weight': 20,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah part & tools terpenuhi / jumlah sampel',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 2,
+                    'name': 'Response time estimasi part < 15 menit',
+                    'type': 'part_response',
+                    'weight': 20,
+                    'target': 95,
+                    'measurement': 'Diukur dari kecepatan response part request',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 3,
+                    'name': 'Jumlah hari stok part tersedia',
+                    'type': 'part_availability',
+                    'weight': 20,
+                    'target': 100,
+                    'measurement': 'Diukur dari jumlah hari stok part wajib ready tersedia',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 4,
+                    'name': 'Selisih nilai part sistem vs aktual',
+                    'type': 'part_audit',
+                    'weight': 10,
+                    'target': 100,
+                    'measurement': 'Diukur dari selisih nilai part < Rp 200.000',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 5,
+                    'name': 'Selisih nilai tools sistem vs aktual',
+                    'type': 'tools_audit',
+                    'weight': 10,
+                    'target': 100,
+                    'measurement': 'Diukur dari selisih nilai tools < Rp 200.000',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 6,
+                    'name': '% sampel admin part bekerja sesuai SOP',
+                    'type': 'sop_compliance',
+                    'weight': 20,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah sampel sesuai SOP / total sampel',
+                    'include_in_calculation': True
+                }
+            ]
+
+            # Template KPI untuk Toolkeeper
+            toolkeeper_template = [
+                {
+                    'no': 1,
+                    'name': '% hari belanja part sesuai target & kecocokan',
+                    'type': 'part_purchase',
+                    'weight': 25,
+                    'target': 90,
+                    'measurement': 'Diukur dari jumlah belanja part yang sesuai target dan cocok',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 2,
+                    'name': '% hari belanja tools sesuai target & kecocokan',
+                    'type': 'tool_purchase',
+                    'weight': 20,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah belanja tools yang sesuai target dan cocok',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 3,
+                    'name': 'Selisih nilai part sistem vs aktual',
+                    'type': 'part_audit',
+                    'weight': 10,
+                    'target': 100,
+                    'measurement': 'Diukur dari selisih nilai part < Rp 200.000',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 4,
+                    'name': 'Selisih nilai tools sistem vs aktual',
+                    'type': 'tools_audit',
+                    'weight': 25,
+                    'target': 100,
+                    'measurement': 'Diukur dari selisih nilai tools < Rp 200.000',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 5,
+                    'name': '% sampel toolkeeper bekerja sesuai SOP',
+                    'type': 'sop_compliance',
+                    'weight': 20,
+                    'target': 90,
+                    'measurement': 'Diukur dari jumlah sampel sesuai SOP / total sampel',
+                    'include_in_calculation': True
+                }
+            ]
+
 
                 # Kemudian gunakan start_date_utc dan end_date_utc untuk semua query database
             # Contoh:
@@ -1001,6 +1108,179 @@ class KPIOverview(http.Controller):
                         'achievement': achievement,
                         'weighted_score': weighted_score
                     })
+
+            # Handle Admin Part
+            elif 'Admin Part' in job_title:
+                kpi_scores = []
+                
+                for kpi in admin_part_template:
+                    actual = 0
+                    if kpi['type'] == 'part_fulfillment':
+                        # Hitung dari sale.order.part.item
+                        part_items = request.env['sale.order.part.item'].sudo().search([
+                            ('create_date', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('create_date', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                        ])
+                        total_items = len(part_items)
+                        fulfilled_items = len(part_items.filtered(lambda x: x.is_fulfilled))
+                        actual = (fulfilled_items / total_items * 100) if total_items else 0
+                        kpi['measurement'] = f'Total request: {total_items}, Terpenuhi: {fulfilled_items}'
+
+                    elif kpi['type'] == 'part_response':
+                        # Hitung response time dari part request
+                        part_items = request.env['sale.order.part.item'].sudo().search([
+                            ('create_date', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('create_date', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('response_time', '!=', False)
+                        ])
+                        total_responses = len(part_items)
+                        on_time_responses = len(part_items.filtered(
+                            lambda x: (x.response_time - x.create_date).total_seconds() / 60 <= 15
+                        ))
+                        actual = (on_time_responses / total_responses * 100) if total_responses else 0
+                        kpi['measurement'] = f'Total response: {total_responses}, Tepat waktu: {on_time_responses}'
+
+                    elif kpi['type'] == 'part_availability':
+                        # Hitung ketersediaan stock wajib ready
+                        stockouts = request.env['stock.mandatory.stockout'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d'))
+                        ])
+                        total_days = (end_date - start_date).days + 1
+                        stockout_days = len(set(stockouts.mapped('date')))
+                        actual = ((total_days - stockout_days) / total_days * 100)
+                        kpi['measurement'] = f'Hari tanpa stockout: {total_days - stockout_days} dari {total_days} hari'
+
+                    elif kpi['type'] in ['part_audit', 'tools_audit']:
+                        # Hitung dari account.move (journal entries)
+                        audit_type = 'part' if kpi['type'] == 'part_audit' else 'tool'
+                        audit_entries = request.env['account.move'].sudo().search([
+                            ('is_stock_audit', '=', True),
+                            ('audit_type', '=', audit_type),
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('state', '=', 'posted')
+                        ])
+                        total_audits = len(audit_entries)
+                        within_tolerance = len(audit_entries.filtered(
+                            lambda x: abs(x.audit_difference) < 200000
+                        ))
+                        actual = (within_tolerance / total_audits * 100) if total_audits else 0
+                        kpi['measurement'] = f'Audit dalam toleransi: {within_tolerance} dari {total_audits}'
+
+                    elif kpi['type'] == 'sop_compliance':
+                        # Hitung dari sampling SOP
+                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('sop_id.role', '=', 'admin_part'),
+                            ('state', '=', 'done')
+                        ])
+                        total_samples = len(samplings)
+                        passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
+                        actual = (passed_samples / total_samples * 100) if total_samples else 0
+                        kpi['measurement'] = f'Sesuai SOP: {passed_samples} dari {total_samples} sampel'
+
+                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+
+                    kpi_scores.append({
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': kpi['measurement'],
+                        'actual': actual,
+                        'achievement': achievement,
+                        'weighted_score': weighted_score,
+                        'editable': ['weight', 'target']
+                    })
+            
+            # Handler untuk Toolkeeper
+            elif 'Toolkeeper' in job_title:
+                kpi_scores = []
+
+                for kpi in toolkeeper_template:
+                    actual = 0
+                    if kpi['type'] == 'part_purchase':
+                        # Hitung dari part.purchase.leadtime untuk pembelian part
+                        purchases = request.env['part.purchase.leadtime'].sudo().search([
+                            ('partman_id', '=', employee.id),
+                            ('purchase_type', '=', 'part'),
+                            ('state', '=', 'returned'),
+                            ('return_time', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('return_time', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                        ])
+                        total_purchases = len(purchases)
+                        success_purchases = len(purchases.filtered(lambda p: p.actual_completeness >= 90))
+                        actual = (success_purchases / total_purchases * 100) if total_purchases else 0
+                        kpi['measurement'] = f"Belanja part sesuai: {success_purchases} dari {total_purchases} kali belanja"
+
+                    elif kpi['type'] == 'tool_purchase':
+                        # Hitung dari part.purchase.leadtime untuk pembelian tool
+                        tool_purchases = request.env['part.purchase.leadtime'].sudo().search([
+                            ('partman_id', '=', employee.id),
+                            ('purchase_type', '=', 'tool'),
+                            ('state', '=', 'returned'),
+                            ('return_time', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('return_time', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                        ])
+                        total_tools = len(tool_purchases)
+                        success_tools = len(tool_purchases.filtered(lambda p: p.actual_completeness >= 90))
+                        actual = (success_tools / total_tools * 100) if total_tools else 0
+                        kpi['measurement'] = f"Belanja tools sesuai: {success_tools} dari {total_tools} kali belanja"
+
+                    elif kpi['type'] in ['part_audit', 'tools_audit']:
+                        # Gunakan logika yang sama dengan admin part untuk audit
+                        audit_type = 'part' if kpi['type'] == 'part_audit' else 'tool'
+                        audit_entries = request.env['account.move'].sudo().search([
+                            ('is_stock_audit', '=', True),
+                            ('audit_type', '=', audit_type),
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('state', '=', 'posted')
+                        ])
+                        total_audits = len(audit_entries)
+                        within_tolerance = len(audit_entries.filtered(
+                            lambda x: abs(x.audit_difference) < 200000
+                        ))
+                        actual = (within_tolerance / total_audits * 100) if total_audits else 0
+                        kpi['measurement'] = f'Audit dalam toleransi: {within_tolerance} dari {total_audits}'
+
+                    elif kpi['type'] == 'sop_compliance':
+                        # Hitung dari sampling SOP khusus toolkeeper
+                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('sop_id.role', '=', 'toolkeeper'),
+                            ('state', '=', 'done')
+                        ])
+                        total_samples = len(samplings)
+                        passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
+                        actual = (passed_samples / total_samples * 100) if total_samples else 0
+                        kpi['measurement'] = f'Sesuai SOP: {passed_samples} dari {total_samples} sampel'
+
+                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+
+                    kpi_scores.append({
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': kpi['measurement'],
+                        'actual': actual,
+                        'achievement': achievement,
+                        'weighted_score': weighted_score,
+                        'editable': ['weight', 'target']
+                    })
+
+                # Calculate total score
+                total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
+                total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
+                avg_target = sum(kpi['target'] * kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True)) / total_weight if total_weight else 0
 
             else:
                 return {'status': 'error', 'message': f'Invalid position: {job_title}'}

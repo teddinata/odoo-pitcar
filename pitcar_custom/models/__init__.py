@@ -32,3 +32,5 @@ from . import kpi_detail
 from . import lead_time_part
 from . import frontoffice_equipment
 from . import sale_order_part_item
+from . import stock_mandatory_stockout
+from . import stock_audit_report

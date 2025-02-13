@@ -61,5 +61,89 @@
                 </xpath>
             </field>
         </record>
+
+        <!-- Extend account.move form -->
+        <record id="view_move_form_audit_inherit" model="ir.ui.view">
+            <field name="name">account.move.form.audit</field>
+            <field name="model">account.move</field>
+            <field name="inherit_id" ref="account.view_move_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='ref']" position="after">
+                    <field name="is_stock_audit" />
+                    <field name="audit_type" 
+                        attrs="{'invisible': [('is_stock_audit', '=', False)], 
+                                'readonly': [('state', '!=', 'draft')]}"/>
+                    <field name="audit_difference" 
+                        attrs="{'invisible': [('is_stock_audit', '=', False)]}"
+                        groups="account.group_account_readonly"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- Extend account.move search -->
+        <record id="view_account_move_filter_audit" model="ir.ui.view">
+            <field name="name">account.move.select.audit</field>
+            <field name="model">account.move</field>
+            <field name="inherit_id" ref="account.view_account_move_filter"/>
+            <field name="arch" type="xml">
+                <!-- Ubah xpath untuk mencari lokasi yang tepat -->
+                <filter name="posted" position="after">
+                    <separator/>
+                    <filter string="Selisih Audit" name="stock_audit" domain="[('is_stock_audit', '=', True)]"/>
+                    <filter string="Selisih Audit Part" name="audit_part" domain="[('is_stock_audit', '=', True), ('audit_type', '=', 'part')]"/>
+                    <filter string="Selisih Audit Tool" name="audit_tool" domain="[('is_stock_audit', '=', True), ('audit_type', '=', 'tool')]"/>
+                </filter>
+                <!-- Tambahkan juga di group by -->
+                <filter name="status" position="after">
+                    <filter string="Tipe Audit" name="group_audit_type" 
+                            domain="[('is_stock_audit', '=', True)]" 
+                            context="{'group_by': 'audit_type'}"/>
+                </filter>
+            </field>
+        </record>
+
+        <!-- Add server action untuk membuat journal audit -->
+        <record id="action_create_audit_entry" model="ir.actions.server">
+            <field name="name">Create Stock Audit Entry</field>
+            <field name="model_id" ref="account.model_account_move"/>
+            <field name="binding_model_id" ref="account.model_account_move"/>
+            <field name="state">code</field>
+            <field name="code">
+                action = {
+                    'type': 'ir.actions.act_window',
+                    'res_model': 'account.move',
+                    'view_mode': 'form',
+                    'context': {
+                        'default_type': 'entry',
+                        'default_is_stock_audit': True,
+                    },
+                    'target': 'current',
+                }
+            </field>
+        </record>
+
+        <record id="view_stock_audit_report_pivot" model="ir.ui.view">
+            <field name="name">stock.audit.report.pivot</field>
+            <field name="model">stock.audit.report</field>
+            <field name="arch" type="xml">
+                <pivot string="Stock Audit Analysis">
+                    <field name="date" type="row"/>
+                    <field name="audit_type" type="col"/>
+                    <field name="success_rate" type="measure"/>
+                </pivot>
+            </field>
+        </record>
+
+        <record id="action_stock_audit_report" model="ir.actions.act_window">
+            <field name="name">Stock Audit Analysis</field>
+            <field name="res_model">stock.audit.report</field>
+            <field name="view_mode">pivot</field>
+        </record>
+
+        <menuitem id="menu_stock_audit_report"
+                name="Stock Audit Analysis"
+                parent="account.menu_finance_reports"
+                action="action_stock_audit_report"
+                sequence="100"/>
     </data>
 </odoo>

@@ -98,7 +98,7 @@ class BookingLinkSaleOrderWizard(models.TransientModel):
                             'service_duration': line.service_duration,
                             'name': line.name,
                             'price_unit': line.price_unit,
-                            'discount': line.discount,
+                            'discount': float(line.discount) * 100 if line.discount else 0.0,  # Konversi diskon
                             'tax_id': [(6, 0, line.tax_ids.ids)],
                             'sequence': line.sequence,
                         }

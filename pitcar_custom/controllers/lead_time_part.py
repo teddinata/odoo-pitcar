@@ -51,41 +51,45 @@ class LeadTimePartController(http.Controller):
           return {}
 
       return {
-          'id': purchase.id,
-          'name': f'PP{str(purchase.id).zfill(5)}',
-          'sale_order': {
-              'id': purchase.sale_order_id.id,
-              'name': purchase.sale_order_id.name
-          },
-          'customer': {
-              'id': purchase.partner_id.id,
-              'name': purchase.partner_id.name
-          },
-          'car': {
-              'id': purchase.partner_car_id.id,
-              'brand': purchase.partner_car_id.brand.name if purchase.partner_car_id.brand else None,
-              'type': purchase.partner_car_id.brand_type.name if purchase.partner_car_id.brand_type else None,
-              'plate': purchase.partner_car_id.number_plate
-          },
-          'timestamps': {
-              'departure': self._format_datetime(purchase.departure_time),
-              'return': self._format_datetime(purchase.return_time),
-              'estimated_departure': self._format_datetime(purchase.estimated_departure),
-              'estimated_return': self._format_datetime(purchase.estimated_return)
-          },
-          'duration': {
-              'hours': purchase.duration,
-              'display': purchase.duration_display,
-              'estimated_hours': purchase.estimated_duration,
-              'estimated_display': self._format_duration(purchase.estimated_duration)
-          },
-          'partman': {
-              'id': purchase.partman_id.id,
-              'name': purchase.partman_id.name
-          } if purchase.partman_id else None,
-          'review_type': purchase.review_type,
-          'notes': purchase.notes,
-          'state': purchase.state
+        'id': purchase.id,
+        'name': f'PP{str(purchase.id).zfill(5)}',
+        # Add new fields
+        'purchase_type': purchase.purchase_type,
+        'estimated_completeness': purchase.estimated_completeness,
+        'actual_completeness': purchase.actual_completeness,
+        'sale_order': {
+            'id': purchase.sale_order_id.id,
+            'name': purchase.sale_order_id.name
+        },
+        'customer': {
+            'id': purchase.partner_id.id,
+            'name': purchase.partner_id.name
+        },
+        'car': {
+            'id': purchase.partner_car_id.id,
+            'brand': purchase.partner_car_id.brand.name if purchase.partner_car_id.brand else None,
+            'type': purchase.partner_car_id.brand_type.name if purchase.partner_car_id.brand_type else None,
+            'plate': purchase.partner_car_id.number_plate
+        },
+        'timestamps': {
+            'departure': self._format_datetime(purchase.departure_time),
+            'return': self._format_datetime(purchase.return_time),
+            'estimated_departure': self._format_datetime(purchase.estimated_departure),
+            'estimated_return': self._format_datetime(purchase.estimated_return)
+        },
+        'duration': {
+            'hours': purchase.duration,
+            'display': purchase.duration_display,
+            'estimated_hours': purchase.estimated_duration,
+            'estimated_display': self._format_duration(purchase.estimated_duration)
+        },
+        'partman': {
+            'id': purchase.partman_id.id,
+            'name': purchase.partman_id.name
+        } if purchase.partman_id else None,
+        'review_type': purchase.review_type,
+        'notes': purchase.notes,
+        'state': purchase.state
       }
     
     @http.route('/web/part-purchase/available-orders', type='json', auth='user', methods=['POST'])
@@ -625,6 +629,14 @@ class LeadTimePartController(http.Controller):
                     'status': 'error',
                     'message': 'sale_order_id and partman_id are required'
                 }
+            
+            # Add purchase type validation
+            purchase_type = kw.get('purchase_type', 'part')  # Default to 'part'
+            if purchase_type not in ['part', 'tool']:
+                return {
+                    'status': 'error',
+                    'message': 'Invalid purchase type. Must be either "part" or "tool"'
+                }
 
             # Parse time inputs
             est_departure_str = kw.get('estimated_departure')
@@ -657,6 +669,7 @@ class LeadTimePartController(http.Controller):
             values = {
                 'sale_order_id': int(sale_order_id),
                 'partman_id': int(partman_id),
+                'purchase_type': purchase_type,
                 'review_type': kw.get('review_type'),
                 'notes': kw.get('notes'),
                 'estimated_departure': est_departure,
@@ -778,6 +791,7 @@ class LeadTimePartController(http.Controller):
             # Get parameters from kw
             end_time = kw.get('endTime')  # Format HH:MM
             notes = kw.get('notes')
+            actual_completeness = kw.get('actual_completeness')  # New field
 
             purchase = request.env['part.purchase.leadtime'].browse(purchase_id)
             if not purchase.exists():
@@ -801,6 +815,10 @@ class LeadTimePartController(http.Controller):
             if notes:
                 values['notes'] = notes
 
+             # Add actual completeness
+            if actual_completeness is not None:
+                values['actual_completeness'] = float(actual_completeness)
+
             values['state'] = 'returned'
             purchase.write(values)
 
@@ -809,6 +827,8 @@ class LeadTimePartController(http.Controller):
                 <p><strong>Partman kembali</strong></p>
                 <ul>
                     <li>Waktu: {self._format_datetime(values['return_time'])}</li>
+                    <li>Tipe: {purchase.purchase_type}</li>
+                    <li>Kecocokan: {actual_completeness}%</li>
                     {f'<li>Catatan: {notes}</li>' if notes else ''}
                     <li>Durasi: {purchase.duration_display}</li>
                 </ul>
@@ -889,6 +909,7 @@ class LeadTimePartController(http.Controller):
             end_date = params.get('end_date')
 
             PartPurchase = request.env['part.purchase.leadtime']
+            SaleOrderPartItem = request.env['sale.order.part.item']
             
             # Build date domain
             domain = []
@@ -906,6 +927,51 @@ class LeadTimePartController(http.Controller):
                     ('create_date', '>=', start_date),
                     ('create_date', '<=', end_date)
                 ]
+
+            # 1. Statistik Response Part Request
+            part_request_domain = domain.copy()
+            part_requests = SaleOrderPartItem.search(part_request_domain)
+            responded_requests = part_requests.filtered(lambda r: r.response_time)
+            
+            total_requests = len(part_requests)
+            total_responded = len(responded_requests)
+            
+            # Hitung response time rata-rata
+            avg_response_time = 0
+            on_time_responses = 0
+            if responded_requests:
+                response_times = []
+                for request in responded_requests:
+                    time_diff = (request.response_time - request.create_date).total_seconds() / 60  # dalam menit
+                    response_times.append(time_diff)
+                    if time_diff <= 15:  # Response dalam 15 menit
+                        on_time_responses += 1
+                avg_response_time = sum(response_times) / len(response_times)
+
+            # 2. Statistik Pemenuhan Request (Fulfillment)
+            fulfilled_requests = part_requests.filtered(lambda r: r.is_fulfilled)
+            total_fulfilled = len(fulfilled_requests)
+
+            # 3. Statistik Pembelian berdasarkan tipe
+            purchase_stats = {
+                'part': {
+                    'total': PartPurchase.search_count(domain + [('purchase_type', '=', 'part')]),
+                    'success': PartPurchase.search_count(domain + [
+                        ('purchase_type', '=', 'part'),
+                        ('state', '=', 'returned'),
+                        ('actual_completeness', '>=', 90)  # Dianggap sukses jika completeness >= 90%
+                    ])
+                },
+                'tool': {
+                    'total': PartPurchase.search_count(domain + [('purchase_type', '=', 'tool')]),
+                    'success': PartPurchase.search_count(domain + [
+                        ('purchase_type', '=', 'tool'),
+                        ('state', '=', 'returned'),
+                        ('actual_completeness', '>=', 90)
+                    ])
+                }
+            }
+
 
             # Basic stats with date filter
             total_purchases = PartPurchase.search_count(domain)
@@ -941,6 +1007,17 @@ class LeadTimePartController(http.Controller):
                 'range': date_range
             }
 
+            # Add type-specific stats
+            part_purchases = PartPurchase.search_count(domain + [('purchase_type', '=', 'part')])
+            tool_purchases = PartPurchase.search_count(domain + [('purchase_type', '=', 'tool')])
+            
+            # Add completeness stats
+            completeness_stats = PartPurchase.read_group(
+                domain + [('state', '=', 'returned')],
+                ['purchase_type', 'actual_completeness:avg'],
+                ['purchase_type']
+            )
+
             return {
                 'status': 'success',
                 'data': {
@@ -950,6 +1027,46 @@ class LeadTimePartController(http.Controller):
                         'departed_purchases': departed_purchases,
                         'completed_purchases': completed_purchases,
                         'cancelled_purchases': cancelled_purchases,
+
+                        # Response stats
+                        'request_stats': {
+                            'total_requests': total_requests,
+                            'responded_requests': total_responded,
+                            'response_rate': (total_responded / total_requests * 100) if total_requests else 0,
+                            'avg_response_time': avg_response_time,
+                            'on_time_responses': on_time_responses,
+                            'on_time_rate': (on_time_responses / total_responded * 100) if total_responded else 0
+                        },
+
+                        # Fulfillment stats
+                        'fulfillment_stats': {
+                            'total_requests': total_requests,
+                            'fulfilled_requests': total_fulfilled,
+                            'fulfillment_rate': (total_fulfilled / total_requests * 100) if total_requests else 0
+                        },
+
+                        # Purchase type stats
+                        'purchase_type_stats': {
+                            'part': {
+                                'total': purchase_stats['part']['total'],
+                                'successful': purchase_stats['part']['success'],
+                                'success_rate': (purchase_stats['part']['success'] / purchase_stats['part']['total'] * 100) 
+                                    if purchase_stats['part']['total'] else 0
+                            },
+                            'tool': {
+                                'total': purchase_stats['tool']['total'],
+                                'successful': purchase_stats['tool']['success'],
+                                'success_rate': (purchase_stats['tool']['success'] / purchase_stats['tool']['total'] * 100)
+                                    if purchase_stats['tool']['total'] else 0
+                            }
+                        },
+                        
+                        # Add completeness
+                        'completeness_stats': [{
+                            'type': stat['purchase_type'],
+                            'avg_completeness': stat['actual_completeness']
+                        } for stat in completeness_stats],
+                        
                         'completion_rate': (completed_purchases / total_purchases * 100) if total_purchases else 0,
                         'average_duration': avg_duration,
                         'average_duration_display': self._format_duration(avg_duration)

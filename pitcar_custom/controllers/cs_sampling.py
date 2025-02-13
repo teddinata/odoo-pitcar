@@ -77,7 +77,8 @@ class CSSampling(http.Controller):
             'status': 'success',
             'data': [{
                 'id': record.id,
-                'cs_id': record.cs_id,
+                'cs_id': record.cs_id.id,  # Ambil ID numerik
+                'cs_name': record.cs_id.name,  # Ambil nama CS
                 'name': record.name,
                 'date': record.date,
                 'total_chats': record.total_chats,

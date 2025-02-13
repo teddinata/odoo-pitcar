@@ -23,6 +23,8 @@ class CSSampling(http.Controller):
                 return self._create_chat_sampling(kw)
             elif operation == 'get':
                 return self._get_chat_sampling(kw)
+            elif operation == 'update':
+              return self._update_chat_sampling(kw)
             else:
                 return {'status': 'error', 'message': 'Invalid operation'}
                 
@@ -75,13 +77,51 @@ class CSSampling(http.Controller):
             'status': 'success',
             'data': [{
                 'id': record.id,
+                'cs_id': record.cs_id,
                 'name': record.name,
                 'date': record.date,
                 'total_chats': record.total_chats,
                 'responded_ontime': record.responded_ontime,
                 'response_rate': record.response_rate,
+                'notes': record.notes,
                 'state': record.state
             } for record in samplings]
+        }
+    
+    # create update function
+    def _update_chat_sampling(self, data):
+        """Update existing chat sampling record"""
+        if not data.get('id'):
+          return {'status': 'error', 'message': 'Missing chat sampling ID'}
+
+        sampling = request.env['cs.chat.sampling'].sudo().browse(int(data['id']))
+        if not sampling.exists():
+          return {'status': 'error', 'message': 'Chat sampling not found'}
+
+        update_values = {}
+        optional_fields = {
+          'total_chats': int,
+          'responded_ontime': int,
+          'notes': str
+        }
+
+        for field, field_type in optional_fields.items():
+          if field in data:
+            update_values[field] = field_type(data[field])
+
+        if update_values:
+          sampling.write(update_values)
+
+        if data.get('complete', False):
+          sampling.action_done()
+
+        return {
+          'status': 'success',
+          'data': {
+            'id': sampling.id,
+            'name': sampling.name,
+            'response_rate': sampling.response_rate
+          }
         }
     
     @http.route('/web/v2/cs/leads-verification', type='json', auth='user', methods=['POST'], csrf=False)

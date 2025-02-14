@@ -45,7 +45,8 @@ class CSSampling(http.Controller):
             'date': data['date'],
             'total_chats': int(data['total_chats']),
             'responded_ontime': int(data['responded_ontime']),
-            'notes': data.get('notes', '')
+            'notes': data.get('notes', ''),
+            'controller_id': request.env.user.employee_id.id 
         }
 
         sampling = request.env['cs.chat.sampling'].sudo().create(values)
@@ -87,7 +88,9 @@ class CSSampling(http.Controller):
                 'responded_ontime': record.responded_ontime,
                 'response_rate': record.response_rate,
                 'notes': record.notes,
-                'state': record.state
+                'state': record.state,
+                'controller_id': record.controller_id.id,  # Tambahkan ini
+                'controller_name': record.controller_id.name  # Tambahkan ini
             } for record in samplings]
         }
     
@@ -111,6 +114,11 @@ class CSSampling(http.Controller):
         for field, field_type in optional_fields.items():
           if field in data:
             update_values[field] = field_type(data[field])
+
+        if data.get('controller_id'):  # Optional override controller
+            update_values['controller_id'] = int(data['controller_id'])
+        elif not sampling.controller_id:  # Set if not yet set
+            update_values['controller_id'] = request.env.user.employee_id.id
 
         if update_values:
           sampling.write(update_values)
@@ -154,7 +162,8 @@ class CSSampling(http.Controller):
 
                 values = {
                     'cs_id': int(kw['cs_id']),
-                    'date': kw['date']
+                    'date': kw['date'],
+                    'controller_id': request.env.user.employee_id.id 
                 }
 
                 # Optional fields
@@ -186,7 +195,9 @@ class CSSampling(http.Controller):
                         'id': verification.id,
                         'name': verification.name,
                         'accuracy_rate': verification.accuracy_rate,
-                        'state': verification.state
+                        'state': verification.state,
+                        'controller_id': verification.controller_id.id,  # Tambahkan ini
+                        'controller_name': verification.controller_id.name  # Tambahkan ini
                     }
                 }
 
@@ -213,6 +224,8 @@ class CSSampling(http.Controller):
                         'missing_leads_count': record.missing_leads_count,
                         'accuracy_rate': record.accuracy_rate,
                         'state': record.state,
+                        'controller_id': record.controller_id.id,  # Tambahkan ini
+                        'controller_name': record.controller_id.name,  # Tambahkan ini
                         'verification_lines': [{
                             'lead_source': line.lead_source,
                             'customer_name': line.customer_name,
@@ -309,7 +322,8 @@ class CSSampling(http.Controller):
                     'contacts_saved': int(kw.get('contacts_saved', 0)),
                     'story_posted': int(kw.get('story_posted', 0)),
                     'broadcast_sent': int(kw.get('broadcast_sent', 0)),
-                    'notes': kw.get('notes', '')
+                    'notes': kw.get('notes', ''),
+                    'controller_id': request.env.user.employee_id
                 }
 
                 monitoring = request.env['cs.contact.monitoring'].sudo().create(values)
@@ -328,7 +342,9 @@ class CSSampling(http.Controller):
                         'id': monitoring.id,
                         'name': monitoring.name,
                         'compliance_rate': monitoring.compliance_rate,
-                        'state': monitoring.state
+                        'state': monitoring.state,
+                        'controller_id': monitoring.controller_id.id,  # Tambahkan ini
+                        'controller_name': monitoring.controller_id.name  # Tambahkan ini
                     }
                 }
 
@@ -357,6 +373,8 @@ class CSSampling(http.Controller):
                         'broadcast_sent': record.broadcast_sent,
                         'compliance_rate': record.compliance_rate,
                         'state': record.state,
+                        'controller_id': record.controller_id.id,  # Tambahkan ini
+                        'controller_name': record.controller_id.name,  # Tambahkan ini
                         'monitoring_lines': [{
                             'customer_name': line.customer_name,
                             'contact_saved': line.contact_saved,
@@ -454,7 +472,8 @@ class CSSampling(http.Controller):
                     'cs_id': int(kw['cs_id']),
                     'date': kw['date'],
                     'notes': kw.get('notes', ''),
-                    'cash_amount': float(kw.get('cash_amount', 0.0))  # Tambah field cash_amount
+                    'cash_amount': float(kw.get('cash_amount', 0.0)),  # Tambah field cash_amount
+                    'controller_id': request.env.user.employee_id.id
                 }
 
                 check = request.env['cs.finance.check'].sudo().create(values)
@@ -480,7 +499,9 @@ class CSSampling(http.Controller):
                         'id': check.id,
                         'name': check.name,
                         'completeness_rate': check.completeness_rate,
-                        'state': check.state
+                        'state': check.state,
+                        'controller_id': check.controller_id.id,  # Tambahkan ini
+                        'controller_name': check.controller_id.name  # Tambahkan ini
                     }
                 }
 
@@ -506,6 +527,8 @@ class CSSampling(http.Controller):
                         'cash_amount': record.cash_amount,  # Tambah field di response
                         'completeness_rate': record.completeness_rate,
                         'state': record.state,
+                        'controller_id': record.controller_id.id,  # Tambahkan ini
+                        'controller_name': record.controller_id.name,  # Tambahkan ini
                         'check_lines': [{
                             'item_id': line.item_id.id,
                             'item_name': line.item_id.name,

@@ -1096,10 +1096,9 @@ class LeadTimePartController(http.Controller):
         return f"{hours}j {minutes}m"
 
     @http.route('/web/sale-order/recompute', type='json', auth='user', methods=['POST'])
-    def recompute_lead_time(self, **kw):
-        """Recompute lead time for sale orders"""
+    def recompute_leadtime_and_productive(self, **kw):
+        """Recompute both lead time dan productive hours"""
         try:
-            # Untuk JSON-RPC, parameter ada di kw langsung
             all_orders = kw.get('all_orders')
             order_ids = kw.get('order_ids', [])
             
@@ -1107,15 +1106,14 @@ class LeadTimePartController(http.Controller):
             recomputed = 0
             errors = 0
             
+            # Get orders to process
             if all_orders:
-                # Recompute semua order yang active
                 orders = SaleOrder.search([
-                    ('state', 'in', ['sale', 'done']),  # Hanya order yang sudah confirmed
-                    ('controller_mulai_servis', '!=', False),  # Ada waktu mulai servis
-                    ('controller_selesai', '!=', False)  # Ada waktu selesai servis
+                    ('state', '=', 'sale'),
+                    ('controller_mulai_servis', '!=', False),
+                    ('controller_selesai', '!=', False)
                 ])
             elif order_ids:
-                # Recompute specific orders
                 orders = SaleOrder.browse(order_ids)
             else:
                 return {
@@ -1123,29 +1121,46 @@ class LeadTimePartController(http.Controller):
                     'message': 'Either order_ids or all_orders parameter is required'
                 }
 
-            # Proses recompute
+            # Recompute each order
             for order in orders:
                 try:
-                    # Invalidate cache untuk fields yang akan dihitung ulang
-                    order.invalidate_cache([
-                        'lead_time_servis', 
-                        'total_lead_time_servis'
-                    ])
+                    # Clear cache
+                    order.invalidate_cache(['lead_time_servis', 'total_lead_time_servis'])
                     
-                    # Panggil compute lead time
+                    # Store old values
+                    old_total = order.total_lead_time_servis
+                    old_net = order.lead_time_servis
+
+                    # Recompute lead time
                     order._compute_lead_time_servis()
-                    recomputed += 1
                     
-                    # Log ke chatter
+                    # Get new values
+                    new_total = order.total_lead_time_servis
+                    new_net = order.lead_time_servis
+
+                    # Compute productive hours for each mechanic
+                    productive_hours = order.recompute_productive_hours()
+
+                    # Log results
+                    mechanic_hours = []
+                    for mechanic_id, hours in productive_hours.items():
+                        mechanic = request.env['pitcar.mechanic.new'].browse(mechanic_id)
+                        mechanic_hours.append(f"{mechanic.name}: {hours:.2f} jam")
+
                     msg = f"""
-                        <p><strong>Lead Time Re-calculation Result</strong></p>
+                        <p><strong>Lead Time & Productive Hours Re-calculation Result</strong></p>
                         <ul>
-                            <li>Total Lead Time: {order.total_lead_time_servis:.2f} jam</li>
-                            <li>Lead Time Bersih: {order.lead_time_servis:.2f} jam</li>
+                            <li>Total Lead Time: {old_total:.2f} → {new_total:.2f} jam</li>
+                            <li>Lead Time Bersih: {old_net:.2f} → {new_net:.2f} jam</li>
+                            <li>Productive Hours per Mechanic:</li>
+                            <ul>{''.join(f'<li>{mh}</li>' for mh in mechanic_hours)}</ul>
                             <li>Recomputed by: {request.env.user.name}</li>
+                            <li>Recomputed at: {fields.Datetime.now()}</li>
                         </ul>
                     """
                     order.message_post(body=msg, message_type='notification')
+                    
+                    recomputed += 1
                     
                 except Exception as e:
                     _logger.error(f"Error recomputing order {order.name}: {str(e)}")
@@ -1162,7 +1177,7 @@ class LeadTimePartController(http.Controller):
             }
 
         except Exception as e:
-            _logger.error(f"Error in recompute_lead_time: {str(e)}")
+            _logger.error(f"Error in recompute_leadtime_and_productive: {str(e)}")
             return {
                 'status': 'error',
                 'message': str(e)

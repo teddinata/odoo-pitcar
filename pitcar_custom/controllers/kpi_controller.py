@@ -3134,16 +3134,18 @@ class KPIController(http.Controller):
             prev_end = start_utc - timedelta(microseconds=1)
             prev_start = prev_end - delta
 
-            # Get current period orders and quotations
+            # Get current period orders dengan state='sale' dan menggunakan date_completed
             current_domain = [
-                ('create_date', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                ('create_date', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                ('date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale')  # Hanya ambil confirmed sales
             ]
 
-            # Get previous period orders and quotations
+            # Get previous period orders
             prev_domain = [
-                ('create_date', '>=', prev_start.strftime('%Y-%m-%d %H:%M:%S')),
-                ('create_date', '<=', prev_end.strftime('%Y-%m-%d %H:%M:%S'))
+                ('date_completed', '>=', prev_start.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', prev_end.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale')  # Hanya ambil confirmed sales
             ]
 
             # Get quotations
@@ -3157,19 +3159,23 @@ class KPIController(http.Controller):
             ])
 
             # Get confirmed orders
-            current_orders = request.env['sale.order'].sudo().search([
-                *current_domain,
-                ('state', '=', 'sale')
-            ])
-            prev_orders = request.env['sale.order'].sudo().search([
-                *prev_domain,
-                ('state', '=', 'sale')
-            ])
+            # current_orders = request.env['sale.order'].sudo().search([
+            #     *current_domain,
+            #     ('state', '=', 'sale')
+            # ])
+            # prev_orders = request.env['sale.order'].sudo().search([
+            #     *prev_domain,
+            #     ('state', '=', 'sale')
+            # ])
+            current_orders = request.env['sale.order'].sudo().search(current_domain)
+            prev_orders = request.env['sale.order'].sudo().search(prev_domain)
 
             # Calculate basic metrics
             # current_revenue = sum(order.amount_total for order in current_orders)
+            # current_revenue = sum(order.amount_untaxed for order in current_orders)
+            # prev_revenue = sum(order.amount_total for order in prev_orders)
             current_revenue = sum(order.amount_untaxed for order in current_orders)
-            prev_revenue = sum(order.amount_total for order in prev_orders)
+            prev_revenue = sum(order.amount_untaxed for order in prev_orders)
             
             metrics = {
                 'quotations': {
@@ -3220,9 +3226,14 @@ class KPIController(http.Controller):
                 current += timedelta(days=1)
 
             # Get top products
+            # order_lines = request.env['sale.order.line'].sudo().search([
+            #     ('order_id.state', '=', 'sale'),
+            #     *current_domain
+            # ])
             order_lines = request.env['sale.order.line'].sudo().search([
                 ('order_id.state', '=', 'sale'),
-                *current_domain
+                ('order_id.date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('order_id.date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
             ])
             
             # Get top products separated by category

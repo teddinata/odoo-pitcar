@@ -1096,89 +1096,167 @@ class LeadTimePartController(http.Controller):
         return f"{hours}j {minutes}m"
 
     @http.route('/web/sale-order/recompute', type='json', auth='user', methods=['POST'])
-    def recompute_leadtime_and_productive(self, **kw):
-        """Recompute both lead time dan productive hours"""
+    def recompute_lead_time(self, **kw):
+        """Recompute lead time for sale orders with optimization"""
         try:
             all_orders = kw.get('all_orders')
             order_ids = kw.get('order_ids', [])
+            batch_size = kw.get('batch_size', 50)  # Process 50 orders per batch
             
             SaleOrder = request.env['sale.order']
             recomputed = 0
             errors = 0
             
             # Get orders to process
+            base_domain = [
+                ('state', '=', 'sale'),
+                ('controller_mulai_servis', '!=', False),
+                ('controller_selesai', '!=', False)
+            ]
+            
             if all_orders:
-                orders = SaleOrder.search([
-                    ('state', '=', 'sale'),
-                    ('controller_mulai_servis', '!=', False),
-                    ('controller_selesai', '!=', False)
-                ])
+                total_orders = SaleOrder.search_count(base_domain)
+                total_batches = (total_orders + batch_size - 1) // batch_size
+                
+                for batch_num in range(total_batches):
+                    offset = batch_num * batch_size
+                    batch_orders = SaleOrder.search(base_domain, limit=batch_size, offset=offset)
+                    
+                    self._process_batch(batch_orders, recomputed, errors)
+                    request.env.cr.commit()  # Commit after each batch
+                    
             elif order_ids:
                 orders = SaleOrder.browse(order_ids)
+                self._process_batch(orders, recomputed, errors)
             else:
-                return {
-                    'status': 'error',
-                    'message': 'Either order_ids or all_orders parameter is required'
-                }
-
-            # Recompute each order
-            for order in orders:
-                try:
-                    # Clear cache
-                    order.invalidate_cache(['lead_time_servis', 'total_lead_time_servis'])
-                    
-                    # Store old values
-                    old_total = order.total_lead_time_servis
-                    old_net = order.lead_time_servis
-
-                    # Recompute lead time
-                    order._compute_lead_time_servis()
-                    
-                    # Get new values
-                    new_total = order.total_lead_time_servis
-                    new_net = order.lead_time_servis
-
-                    # Compute productive hours for each mechanic
-                    productive_hours = order.recompute_productive_hours()
-
-                    # Log results
-                    mechanic_hours = []
-                    for mechanic_id, hours in productive_hours.items():
-                        mechanic = request.env['pitcar.mechanic.new'].browse(mechanic_id)
-                        mechanic_hours.append(f"{mechanic.name}: {hours:.2f} jam")
-
-                    msg = f"""
-                        <p><strong>Lead Time & Productive Hours Re-calculation Result</strong></p>
-                        <ul>
-                            <li>Total Lead Time: {old_total:.2f} → {new_total:.2f} jam</li>
-                            <li>Lead Time Bersih: {old_net:.2f} → {new_net:.2f} jam</li>
-                            <li>Productive Hours per Mechanic:</li>
-                            <ul>{''.join(f'<li>{mh}</li>' for mh in mechanic_hours)}</ul>
-                            <li>Recomputed by: {request.env.user.name}</li>
-                            <li>Recomputed at: {fields.Datetime.now()}</li>
-                        </ul>
-                    """
-                    order.message_post(body=msg, message_type='notification')
-                    
-                    recomputed += 1
-                    
-                except Exception as e:
-                    _logger.error(f"Error recomputing order {order.name}: {str(e)}")
-                    errors += 1
+                return {'status': 'error', 'message': 'Either order_ids or all_orders parameter is required'}
 
             return {
                 'status': 'success',
                 'data': {
-                    'total_processed': len(orders),
+                    'total_processed': recomputed + errors,
                     'recomputed': recomputed,
                     'errors': errors
-                },
-                'message': f'Successfully recomputed {recomputed} orders. {errors} errors occurred.'
+                }
             }
 
         except Exception as e:
-            _logger.error(f"Error in recompute_leadtime_and_productive: {str(e)}")
-            return {
-                'status': 'error',
-                'message': str(e)
-            }
+            _logger.error(f"Error in recompute_lead_time: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    def _process_batch(self, orders, recomputed, errors):
+        """Process a batch of orders"""
+        # Cache timezone
+        tz = pytz.timezone('Asia/Jakarta')
+        
+        # Pre-fetch all required attendances for batch
+        employee_ids = orders.mapped('car_mechanic_id_new.employee_id').ids
+        min_date = min(orders.mapped('controller_mulai_servis'))
+        max_date = max(orders.mapped('controller_selesai'))
+        
+        # Get all attendances in one query
+        attendance_domain = [
+            ('employee_id', 'in', employee_ids),
+            ('check_in', '<=', max_date),
+            ('check_out', '>=', min_date),
+            ('check_out', '!=', False)
+        ]
+        all_attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+        
+        # Group attendances by employee
+        attendance_by_employee = {}
+        for att in all_attendances:
+            if att.employee_id.id not in attendance_by_employee:
+                attendance_by_employee[att.employee_id.id] = []
+            attendance_by_employee[att.employee_id.id].append(att)
+
+        # Process each order
+        for order in orders:
+            try:
+                # Invalidate cache
+                order.invalidate_cache(['lead_time_servis', 'total_lead_time_servis'])
+                
+                # Store old values
+                old_values = {
+                    'total': order.total_lead_time_servis,
+                    'net': order.lead_time_servis
+                }
+                
+                # Recompute lead time
+                order._compute_lead_time_servis()
+                
+                # Only process productive hours if mechanic assigned
+                if order.car_mechanic_id_new:
+                    productive_hours = {}
+                    for mechanic in order.car_mechanic_id_new:
+                        if not mechanic.employee_id:
+                            continue
+                            
+                        # Get pre-fetched attendances for this employee
+                        emp_attendances = attendance_by_employee.get(mechanic.employee_id.id, [])
+                        if not emp_attendances:
+                            continue
+                            
+                        hours = self._calculate_mechanic_hours(
+                            order, mechanic, emp_attendances, tz
+                        )
+                        if hours > 0:
+                            productive_hours[mechanic.id] = hours
+
+                    # Log results if there are changes
+                    if old_values['total'] != order.total_lead_time_servis or old_values['net'] != order.lead_time_servis:
+                        mechanic_hours = [
+                            f"{mechanic.name}: {hours:.2f} jam"
+                            for mechanic_id, hours in productive_hours.items()
+                            for mechanic in order.car_mechanic_id_new.filtered(lambda m: m.id == mechanic_id)
+                        ]
+
+                        msg = f"""
+                            <p><strong>Lead Time Re-calculation Result</strong></p>
+                            <ul>
+                                <li>Total Lead Time: {old_values['total']:.2f} → {order.total_lead_time_servis:.2f} jam</li>
+                                <li>Lead Time Bersih: {old_values['net']:.2f} → {order.lead_time_servis:.2f} jam</li>
+                                {'<li>Productive Hours:</li><ul>' + ''.join(f'<li>{mh}</li>' for mh in mechanic_hours) + '</ul>' if mechanic_hours else ''}
+                            </ul>
+                        """
+                        order.message_post(body=msg, message_type='notification')
+
+                recomputed += 1
+                
+            except Exception as e:
+                _logger.error(f"Error processing order {order.name}: {str(e)}")
+                errors += 1
+
+    def _calculate_mechanic_hours(self, order, mechanic, attendances, tz):
+        """Calculate productive hours for a mechanic (optimized)"""
+        total_hours = 0
+        work_periods = []
+        
+        # First pass: collect all valid work periods
+        for att in attendances:
+            start = max(order.controller_mulai_servis, att.check_in)
+            end = min(order.controller_selesai, att.check_out)
+            if end > start:
+                work_periods.append((start, end))
+        
+        # Second pass: merge overlapping periods and calculate hours
+        if work_periods:
+            work_periods.sort()
+            merged = [work_periods[0]]
+            
+            for current in work_periods[1:]:
+                previous = merged[-1]
+                if current[0] <= previous[1]:
+                    merged[-1] = (previous[0], max(previous[1], current[1]))
+                else:
+                    merged.append(current)
+            
+            # Calculate hours for merged periods
+            for start, end in merged:
+                start_local = pytz.utc.localize(start).astimezone(tz)
+                end_local = pytz.utc.localize(end).astimezone(tz)
+                
+                work_hours = order.calculate_effective_hours(start, end)
+                total_hours += work_hours
+        
+        return total_hours

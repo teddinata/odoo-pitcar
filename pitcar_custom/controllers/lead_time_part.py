@@ -1097,15 +1097,14 @@ class LeadTimePartController(http.Controller):
 
     @http.route('/web/sale-order/recompute', type='json', auth='user', methods=['POST'])
     def recompute_lead_time(self, **kw):
-        """Recompute lead time for sale orders with optimization"""
+        """Recompute lead time for sale orders"""
         try:
             all_orders = kw.get('all_orders')
             order_ids = kw.get('order_ids', [])
             batch_size = kw.get('batch_size', 50)  # Process 50 orders per batch
             
             SaleOrder = request.env['sale.order']
-            recomputed = 0
-            errors = 0
+            result = {'recomputed': 0, 'errors': 0}  # Use dict to store counters
             
             # Get orders to process
             base_domain = [
@@ -1116,27 +1115,34 @@ class LeadTimePartController(http.Controller):
             
             if all_orders:
                 total_orders = SaleOrder.search_count(base_domain)
+                _logger.info(f"Found {total_orders} orders to process")
+                
                 total_batches = (total_orders + batch_size - 1) // batch_size
                 
                 for batch_num in range(total_batches):
                     offset = batch_num * batch_size
                     batch_orders = SaleOrder.search(base_domain, limit=batch_size, offset=offset)
+                    _logger.info(f"Processing batch {batch_num + 1}/{total_batches} with {len(batch_orders)} orders")
                     
-                    self._process_batch(batch_orders, recomputed, errors)
+                    self._process_batch(batch_orders, result)
                     request.env.cr.commit()  # Commit after each batch
+                    
+                    _logger.info(f"Batch {batch_num + 1} completed. Current totals: Recomputed={result['recomputed']}, Errors={result['errors']}")
                     
             elif order_ids:
                 orders = SaleOrder.browse(order_ids)
-                self._process_batch(orders, recomputed, errors)
+                _logger.info(f"Processing {len(orders)} specific orders")
+                self._process_batch(orders, result)
             else:
                 return {'status': 'error', 'message': 'Either order_ids or all_orders parameter is required'}
 
+            _logger.info(f"Recompute completed. Total recomputed={result['recomputed']}, errors={result['errors']}")
             return {
                 'status': 'success',
                 'data': {
-                    'total_processed': recomputed + errors,
-                    'recomputed': recomputed,
-                    'errors': errors
+                    'total_processed': result['recomputed'] + result['errors'],
+                    'recomputed': result['recomputed'],
+                    'errors': result['errors']
                 }
             }
 
@@ -1144,7 +1150,7 @@ class LeadTimePartController(http.Controller):
             _logger.error(f"Error in recompute_lead_time: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    def _process_batch(self, orders, recomputed, errors):
+    def _process_batch(self, orders, result):
         """Process a batch of orders"""
         # Cache timezone
         tz = pytz.timezone('Asia/Jakarta')
@@ -1173,6 +1179,8 @@ class LeadTimePartController(http.Controller):
         # Process each order
         for order in orders:
             try:
+                _logger.info(f"Processing order {order.name}")
+                
                 # Invalidate cache
                 order.invalidate_cache(['lead_time_servis', 'total_lead_time_servis'])
                 
@@ -1220,43 +1228,11 @@ class LeadTimePartController(http.Controller):
                             </ul>
                         """
                         order.message_post(body=msg, message_type='notification')
-
-                recomputed += 1
+                        _logger.info(f"Updated order {order.name}")
+                        result['recomputed'] += 1
+                    else:
+                        _logger.info(f"No changes for order {order.name}")
                 
             except Exception as e:
                 _logger.error(f"Error processing order {order.name}: {str(e)}")
-                errors += 1
-
-    def _calculate_mechanic_hours(self, order, mechanic, attendances, tz):
-        """Calculate productive hours for a mechanic (optimized)"""
-        total_hours = 0
-        work_periods = []
-        
-        # First pass: collect all valid work periods
-        for att in attendances:
-            start = max(order.controller_mulai_servis, att.check_in)
-            end = min(order.controller_selesai, att.check_out)
-            if end > start:
-                work_periods.append((start, end))
-        
-        # Second pass: merge overlapping periods and calculate hours
-        if work_periods:
-            work_periods.sort()
-            merged = [work_periods[0]]
-            
-            for current in work_periods[1:]:
-                previous = merged[-1]
-                if current[0] <= previous[1]:
-                    merged[-1] = (previous[0], max(previous[1], current[1]))
-                else:
-                    merged.append(current)
-            
-            # Calculate hours for merged periods
-            for start, end in merged:
-                start_local = pytz.utc.localize(start).astimezone(tz)
-                end_local = pytz.utc.localize(end).astimezone(tz)
-                
-                work_hours = order.calculate_effective_hours(start, end)
-                total_hours += work_hours
-        
-        return total_hours
+                result['errors'] += 1

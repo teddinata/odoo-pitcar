@@ -25,6 +25,8 @@ class CSSampling(http.Controller):
                 return self._get_chat_sampling(kw)
             elif operation == 'update':
               return self._update_chat_sampling(kw)
+            elif operation == 'delete':
+                return self._delete_chat_sampling(kw)
             else:
                 return {'status': 'error', 'message': 'Invalid operation'}
                 
@@ -124,6 +126,19 @@ class CSSampling(http.Controller):
             'response_rate': sampling.response_rate
           }
         }
+    
+    # create delete function
+    def _delete_chat_sampling(self, data):
+        """Delete existing chat sampling record"""
+        if not data.get('id'):
+            return {'status': 'error', 'message': 'Missing chat sampling ID'}
+
+        sampling = request.env['cs.chat.sampling'].sudo().browse(int(data['id']))
+        if not sampling.exists():
+            return {'status': 'error', 'message': 'Chat sampling not found'}
+
+        sampling.unlink()
+        return {'status': 'success'}
     
     @http.route('/web/v2/cs/leads-verification', type='json', auth='user', methods=['POST'], csrf=False)
     def cs_leads_verification(self, **kw):
@@ -250,6 +265,27 @@ class CSSampling(http.Controller):
                         'state': verification.state
                     }
                 }
+            
+            elif operation == 'delete':
+                if not kw.get('id'):
+                    return {'status': 'error', 'message': 'Missing verification ID'}
+                    
+                verification = request.env['cs.leads.verification'].sudo().browse(int(kw['id']))
+                if not verification.exists():
+                    return {'status': 'error', 'message': 'Verification not found'}
+                
+                try:
+                    verification.verification_line_ids.unlink()
+                    verification.unlink()
+                    return {
+                        'status': 'success',
+                        'message': 'Leads verification berhasil dihapus'
+                    }
+                except Exception as e:
+                    return {
+                        'status': 'error',
+                        'message': 'Gagal menghapus data: ' + str(e)
+                    }
 
         except Exception as e:
             _logger.error(f"Error in cs_leads_verification: {str(e)}")
@@ -376,6 +412,27 @@ class CSSampling(http.Controller):
                         'state': monitoring.state
                     }
                 }
+            
+            elif operation == 'delete':
+                if not kw.get('id'):
+                    return {'status': 'error', 'message': 'Missing monitoring ID'}
+                    
+                monitoring = request.env['cs.contact.monitoring'].sudo().browse(int(kw['id']))
+                if not monitoring.exists():
+                    return {'status': 'error', 'message': 'Contact monitoring not found'}
+                
+                try:
+                    monitoring.monitoring_line_ids.unlink()
+                    monitoring.unlink()
+                    return {
+                        'status': 'success',
+                        'message': 'Contact monitoring berhasil dihapus'
+                    }
+                except Exception as e:
+                    return {
+                        'status': 'error',
+                        'message': 'Gagal menghapus data: ' + str(e)
+                    }
 
 
         except Exception as e:
@@ -457,6 +514,30 @@ class CSSampling(http.Controller):
                         } for line in record.check_line_ids]
                     } for record in checks]
                 }
+            
+            elif operation == 'delete':
+                if not kw.get('id'):
+                    return {'status': 'error', 'message': 'Missing check ID'}
+                    
+                check = request.env['cs.finance.check'].sudo().browse(int(kw['id']))
+                if not check.exists():
+                    return {'status': 'error', 'message': 'Check not found'}
+                    
+                try:
+                    # Hapus check lines terlebih dahulu (jika perlu, tapi sebenarnya sudah ada ondelete='cascade')
+                    check.check_line_ids.unlink()
+                    # Hapus check header
+                    check.unlink()
+                    
+                    return {
+                        'status': 'success',
+                        'message': 'Finance check berhasil dihapus'
+                    }
+                except Exception as e:
+                    return {
+                        'status': 'error',
+                        'message': 'Gagal menghapus data: ' + str(e)
+                    }
 
         except Exception as e:
             _logger.error(f"Error in cs_finance_check: {str(e)}")
@@ -534,6 +615,26 @@ class CSSampling(http.Controller):
                         'active': item.active
                     } for item in items]
                 }
+            
+            elif operation == 'delete':
+                if not kw.get('id'):
+                    return {'status': 'error', 'message': 'Missing item ID'}
+                    
+                item = request.env['cs.finance.check.item'].sudo().browse(int(kw['id']))
+                if not item.exists():
+                    return {'status': 'error', 'message': 'Finance check item not found'}
+                
+                try:
+                    item.unlink()
+                    return {
+                        'status': 'success',
+                        'message': 'Finance check item berhasil dihapus'
+                    }
+                except Exception as e:
+                    return {
+                        'status': 'error',
+                        'message': 'Gagal menghapus data: ' + str(e)
+                    }
 
         except Exception as e:
             _logger.error(f"Error in cs_finance_check_items: {str(e)}")

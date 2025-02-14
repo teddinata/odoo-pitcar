@@ -21,6 +21,7 @@ class CSFinanceCheck(models.Model):
     cs_id = fields.Many2one('hr.employee', 'Customer Service', 
         domain="[('job_id.name', 'ilike', 'customer service')]", required=True, tracking=True)
     controller_id = fields.Many2one('hr.employee', 'Checked By', tracking=True)
+    cash_amount = fields.Float('Cash Amount', default=0.0, tracking=True)
     
     check_line_ids = fields.One2many('cs.finance.check.line', 'check_id', 'Finance Checks')
     total_items = fields.Integer('Total Items', compute='_compute_metrics', store=True)

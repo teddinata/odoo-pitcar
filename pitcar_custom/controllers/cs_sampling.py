@@ -396,7 +396,8 @@ class CSSampling(http.Controller):
                 values = {
                     'cs_id': int(kw['cs_id']),
                     'date': kw['date'],
-                    'notes': kw.get('notes', '')
+                    'notes': kw.get('notes', ''),
+                    'cash_amount': float(kw.get('cash_amount', 0.0))  # Tambah field cash_amount
                 }
 
                 check = request.env['cs.finance.check'].sudo().create(values)
@@ -445,6 +446,7 @@ class CSSampling(http.Controller):
                         'date': record.date,
                         'cs_id': record.cs_id.id,
                         'cs_name': record.cs_id.name,
+                        'cash_amount': record.cash_amount,  # Tambah field di response
                         'completeness_rate': record.completeness_rate,
                         'state': record.state,
                         'check_lines': [{

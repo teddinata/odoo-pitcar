@@ -2483,7 +2483,8 @@ class KPIController(http.Controller):
                     advisor_count = len(order.service_advisor_id)
                     
                     # Calculate revenue
-                    order_revenue = order.amount_total / advisor_count
+                    # order_revenue = order.amount_total / advisor_count
+                    order_revenue = order.amount_untaxed / advisor_count
                     advisor_data['revenue'] += order_revenue
                     advisor_data['orders'] += 1
 
@@ -2898,7 +2899,8 @@ class KPIController(http.Controller):
 
                 # Calculate revenue considering multiple advisors
                 advisor_count = len(order.service_advisor_id)
-                order_revenue = order.amount_total / advisor_count
+                # order_revenue = order.amount_total / advisor_count
+                order_revenue = order.amount_untaxed / advisor_count
                 total_revenue += order_revenue
 
                 # Service time metrics
@@ -3165,7 +3167,8 @@ class KPIController(http.Controller):
             ])
 
             # Calculate basic metrics
-            current_revenue = sum(order.amount_total for order in current_orders)
+            # current_revenue = sum(order.amount_total for order in current_orders)
+            current_revenue = sum(order.amount_untaxed for order in current_orders)
             prev_revenue = sum(order.amount_total for order in prev_orders)
             
             metrics = {
@@ -3202,8 +3205,8 @@ class KPIController(http.Controller):
             while current <= end:
                 current_end = min(current.replace(hour=23, minute=59, second=59), end)
                 day_orders = request.env['sale.order'].sudo().search([
-                    ('create_date', '>=', current.strftime('%Y-%m-%d %H:%M:%S')),
-                    ('create_date', '<=', current_end.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('date_completed', '>=', current.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('date_completed', '<=', current_end.strftime('%Y-%m-%d %H:%M:%S')),
                     ('state', '=', 'sale')
                 ])
                 

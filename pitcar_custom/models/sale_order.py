@@ -1910,18 +1910,8 @@ class SaleOrder(models.Model):
              'controller_tunggu_part1_mulai', 'controller_tunggu_part1_selesai',
              'controller_tunggu_part2_mulai', 'controller_tunggu_part2_selesai',
              'controller_tunggu_sublet_mulai', 'controller_tunggu_sublet_selesai',
-             'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai')
+             'controller_job_stop_lain_mulai', 'controller_job_stop_lain_selesai')  # Tambahkan dependency job stop lain
     def _compute_lead_time_servis(self):
-        """
-        Menghitung lead time servis dengan aturan:
-        1. Hanya hitung dalam jam kerja (08:00-17:00)
-        2. Kurangi waktu istirahat (12:00-13:00)
-        3. Untuk kasus menginap:
-        - Hari pertama: mulai_servis sampai 17:00
-        - Hari tengah (jika ada): 08:00-17:00 full
-        - Hari terakhir: 08:00 sampai selesai_servis
-        4. Kurangi semua job stops
-        """
         for order in self:
             try:
                 if not order.controller_mulai_servis or not order.controller_selesai:
@@ -1932,22 +1922,14 @@ class SaleOrder(models.Model):
 
                 # Set timezone dan convert waktu
                 tz = pytz.timezone('Asia/Jakarta')
-                mulai_local = pytz.utc.localize(order.controller_mulai_servis).astimezone(tz)
-                selesai_local = pytz.utc.localize(order.controller_selesai).astimezone(tz)
+                mulai_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
+                selesai_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
 
                 _logger.info(f"""
                     Mulai hitung lead time untuk {order.name}:
                     Mulai: {mulai_local.strftime('%Y-%m-%d %H:%M:%S')}
                     Selesai: {selesai_local.strftime('%Y-%m-%d %H:%M:%S')}
                 """)
-
-                # Handle kasus selesai < mulai
-                if selesai_local < mulai_local:
-                    _logger.warning(f"Order {order.name}: Waktu selesai sebelum waktu mulai")
-                    order.lead_time_servis = 0
-                    order.total_lead_time_servis = 0
-                    order.is_overnight = False
-                    continue
 
                 total_duration = timedelta()
                 current_date = mulai_local.date()
@@ -1957,19 +1939,13 @@ class SaleOrder(models.Model):
                 while current_date <= end_date:
                     # Set waktu awal dan akhir untuk hari ini
                     if current_date == mulai_local.date():
-                        # Hari pertama: MAX(jam mulai, 08:00) 
-                        work_start = tz.localize(datetime.combine(current_date, time(8, 0)))
-                        day_start = max(mulai_local, work_start)
+                        day_start = max(mulai_local, tz.localize(datetime.combine(current_date, time(8, 0))))
                     else:
-                        # Hari berikutnya mulai 08:00
                         day_start = tz.localize(datetime.combine(current_date, time(8, 0)))
 
                     if current_date == selesai_local.date():
-                        # Hari terakhir: MIN(jam selesai, 17:00)
-                        work_end = tz.localize(datetime.combine(current_date, time(17, 0)))
-                        day_end = min(selesai_local, work_end)
+                        day_end = min(selesai_local, tz.localize(datetime.combine(current_date, time(17, 0))))
                     else:
-                        # Hari sebelumnya sampai 17:00
                         day_end = tz.localize(datetime.combine(current_date, time(17, 0)))
 
                     # Set waktu istirahat untuk hari ini
@@ -1989,43 +1965,95 @@ class SaleOrder(models.Model):
                             morning_duration = break_start - day_start
                             afternoon_duration = day_end - break_end
                             total_duration += morning_duration + afternoon_duration
-                            _logger.info(f"Hari {current_date}: {morning_duration.total_seconds()/3600:.2f} jam pagi + {afternoon_duration.total_seconds()/3600:.2f} jam sore")
-                        
+                            
                         # Case 2: Hanya overlap dengan akhir istirahat
                         elif day_start < break_end and day_end > break_end:
                             duration = day_end - break_end
                             total_duration += duration
-                            _logger.info(f"Hari {current_date}: {duration.total_seconds()/3600:.2f} jam (setelah istirahat)")
 
                         # Case 3: Hanya overlap dengan awal istirahat
                         elif day_start < break_start and day_end > break_start:
                             duration = break_start - day_start
                             total_duration += duration
-                            _logger.info(f"Hari {current_date}: {duration.total_seconds()/3600:.2f} jam (sebelum istirahat)")
 
                         # Case 4: Tidak overlap dengan istirahat
                         else:
                             duration = day_end - day_start
                             total_duration += duration
-                            _logger.info(f"Hari {current_date}: {duration.total_seconds()/3600:.2f} jam (tanpa istirahat)")
 
                     current_date += timedelta(days=1)
 
+                # Calculate job stops including 'job stop lain'
+                job_stops = []
+                
+                # Helper function untuk menghitung waktu efektif job stop
+                def calculate_stop_duration(start, end):
+                    if not start or not end:
+                        return 0
+                    
+                    start_dt = pytz.utc.localize(fields.Datetime.from_string(start))
+                    end_dt = pytz.utc.localize(fields.Datetime.from_string(end))
+                    
+                    start_local = start_dt.astimezone(tz)
+                    end_local = end_dt.astimezone(tz)
+                    
+                    stop_duration = timedelta()
+                    current = start_local.date()
+                    stop_end_date = end_local.date()
+                    
+                    while current <= stop_end_date:
+                        # Get day's boundaries
+                        if current == start_local.date():
+                            day_start = max(start_local, tz.localize(datetime.combine(current, time(8, 0))))
+                        else:
+                            day_start = tz.localize(datetime.combine(current, time(8, 0)))
+
+                        if current == end_local.date():
+                            day_end = min(end_local, tz.localize(datetime.combine(current, time(17, 0))))
+                        else:
+                            day_end = tz.localize(datetime.combine(current, time(17, 0)))
+
+                        # Adjust for lunch break
+                        break_start = tz.localize(datetime.combine(current, time(12, 0)))
+                        break_end = tz.localize(datetime.combine(current, time(13, 0)))
+
+                        if day_end > day_start:
+                            if day_start < break_start and day_end > break_end:
+                                morning = break_start - day_start
+                                afternoon = day_end - break_end
+                                stop_duration += morning + afternoon
+                            elif day_start < break_end and day_end > break_end:
+                                stop_duration += day_end - break_end
+                            elif day_start < break_start and day_end > break_start:
+                                stop_duration += break_start - day_start
+                            else:
+                                stop_duration += day_end - day_start
+
+                        current += timedelta(days=1)
+                    
+                    return stop_duration.total_seconds() / 3600
+
+                # Calculate each job stop
+                stops_to_calculate = [
+                    ('Tunggu Konfirmasi', order.controller_tunggu_konfirmasi_mulai, order.controller_tunggu_konfirmasi_selesai),
+                    ('Tunggu Part 1', order.controller_tunggu_part1_mulai, order.controller_tunggu_part1_selesai),
+                    ('Tunggu Part 2', order.controller_tunggu_part2_mulai, order.controller_tunggu_part2_selesai),
+                    ('Tunggu Sublet', order.controller_tunggu_sublet_mulai, order.controller_tunggu_sublet_selesai),
+                    ('Job Stop Lain', order.controller_job_stop_lain_mulai, order.controller_job_stop_lain_selesai)  # Tambahkan job stop lain
+                ]
+
+                for stop_name, start, end in stops_to_calculate:
+                    if start and end:
+                        duration = calculate_stop_duration(start, end)
+                        job_stops.append(duration)
+                        _logger.info(f"{stop_name}: {duration:.2f} jam")
+
                 # Convert total durasi ke jam
                 total_hours = total_duration.total_seconds() / 3600
-                order.total_lead_time_servis = total_hours
-
-                # Hitung total job stops
-                job_stops = [
-                    order.lead_time_tunggu_konfirmasi or 0,
-                    order.lead_time_tunggu_part1 or 0,
-                    order.lead_time_tunggu_part2 or 0,
-                    order.lead_time_tunggu_sublet or 0,
-                    order.lead_time_job_stop_lain or 0
-                ]
                 total_stops = sum(job_stops)
 
-                # Lead time bersih = total - job stops
+                # Set final values
+                order.total_lead_time_servis = total_hours
                 order.lead_time_servis = max(0, total_hours - total_stops)
                 order.is_overnight = end_date > mulai_local.date()
 

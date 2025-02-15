@@ -1097,16 +1097,16 @@ class LeadTimePartController(http.Controller):
 
     @http.route('/web/sale-order/recompute', type='json', auth='user', methods=['POST'])
     def recompute_lead_time(self, **kw):
-        """Recompute lead time for sale orders"""
+        """Recompute lead time dan productive hours dengan batch processing"""
         try:
             all_orders = kw.get('all_orders')
             order_ids = kw.get('order_ids', [])
-            batch_size = kw.get('batch_size', 50)  # Process 50 orders per batch
+            batch_size = kw.get('batch_size', 50)  # Default 50 orders per batch
             
             SaleOrder = request.env['sale.order']
-            result = {'recomputed': 0, 'errors': 0}  # Use dict to store counters
+            result = {'recomputed': 0, 'errors': 0}
             
-            # Get orders to process
+            # Build domain
             base_domain = [
                 ('state', '=', 'sale'),
                 ('controller_mulai_servis', '!=', False),
@@ -1117,26 +1117,22 @@ class LeadTimePartController(http.Controller):
                 total_orders = SaleOrder.search_count(base_domain)
                 _logger.info(f"Found {total_orders} orders to process")
                 
-                total_batches = (total_orders + batch_size - 1) // batch_size
-                
-                for batch_num in range(total_batches):
-                    offset = batch_num * batch_size
-                    batch_orders = SaleOrder.search(base_domain, limit=batch_size, offset=offset)
-                    _logger.info(f"Processing batch {batch_num + 1}/{total_batches} with {len(batch_orders)} orders")
+                # Process in batches
+                batches = range(0, total_orders, batch_size)
+                for batch_start in batches:
+                    batch_orders = SaleOrder.search(base_domain, limit=batch_size, offset=batch_start)
+                    _logger.info(f"Processing batch {batch_start//batch_size + 1}, orders {batch_start} to {batch_start + len(batch_orders)}")
                     
-                    self._process_batch(batch_orders, result)
-                    request.env.cr.commit()  # Commit after each batch
-                    
-                    _logger.info(f"Batch {batch_num + 1} completed. Current totals: Recomputed={result['recomputed']}, Errors={result['errors']}")
+                    self._process_batch_efficiently(batch_orders, result)
+                    request.env.cr.commit()  # Commit setiap batch
                     
             elif order_ids:
                 orders = SaleOrder.browse(order_ids)
-                _logger.info(f"Processing {len(orders)} specific orders")
-                self._process_batch(orders, result)
+                self._process_batch_efficiently(orders, result)
+                
             else:
                 return {'status': 'error', 'message': 'Either order_ids or all_orders parameter is required'}
 
-            _logger.info(f"Recompute completed. Total recomputed={result['recomputed']}, errors={result['errors']}")
             return {
                 'status': 'success',
                 'data': {
@@ -1150,89 +1146,102 @@ class LeadTimePartController(http.Controller):
             _logger.error(f"Error in recompute_lead_time: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    def _process_batch(self, orders, result):
-        """Process a batch of orders"""
-        # Cache timezone
-        tz = pytz.timezone('Asia/Jakarta')
-        
-        # Pre-fetch all required attendances for batch
-        employee_ids = orders.mapped('car_mechanic_id_new.employee_id').ids
-        min_date = min(orders.mapped('controller_mulai_servis'))
-        max_date = max(orders.mapped('controller_selesai'))
-        
-        # Get all attendances in one query
-        attendance_domain = [
-            ('employee_id', 'in', employee_ids),
-            ('check_in', '<=', max_date),
-            ('check_out', '>=', min_date),
-            ('check_out', '!=', False)
-        ]
-        all_attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
-        
-        # Group attendances by employee
-        attendance_by_employee = {}
-        for att in all_attendances:
-            if att.employee_id.id not in attendance_by_employee:
-                attendance_by_employee[att.employee_id.id] = []
-            attendance_by_employee[att.employee_id.id].append(att)
+    def _process_batch_efficiently(self, orders, result):
+        """
+        Process batch dengan lebih efisien:
+        1. Pre-fetch semua data yang dibutuhkan
+        2. Compute lead time dan productive hours sekaligus
+        3. Update database dalam batch
+        """
+        try:
+            # Pre-fetch semua mechanics dan employees
+            mechanic_ids = orders.mapped('car_mechanic_id_new.id')
+            mechanics = request.env['pitcar.mechanic.new'].browse(mechanic_ids)
+            mechanic_dict = {m.id: m for m in mechanics}
+            
+            # Pre-fetch attendance untuk date range
+            min_date = min(orders.mapped('controller_mulai_servis'))
+            max_date = max(orders.mapped('controller_selesai'))
+            
+            attendances = request.env['hr.attendance'].sudo().search([
+                ('employee_id.mechanic_id', 'in', mechanic_ids),
+                ('check_in', '<=', max_date),
+                ('check_out', '>=', min_date),
+                ('check_out', '!=', False)
+            ])
+            
+            # Group attendance by mechanic_id dan date
+            attendance_by_mechanic = {}
+            for att in attendances:
+                mechanic_id = att.employee_id.mechanic_id.id
+                if mechanic_id not in attendance_by_mechanic:
+                    attendance_by_mechanic[mechanic_id] = []
+                attendance_by_mechanic[mechanic_id].append(att)
 
-        # Process each order
-        for order in orders:
-            try:
-                _logger.info(f"Processing order {order.name}")
-                
-                # Invalidate cache
-                order.invalidate_cache(['lead_time_servis', 'total_lead_time_servis'])
-                
-                # Store old values
-                old_values = {
-                    'total': order.total_lead_time_servis,
-                    'net': order.lead_time_servis
-                }
-                
-                # Recompute lead time
-                order._compute_lead_time_servis()
-                
-                # Only process productive hours if mechanic assigned
-                if order.car_mechanic_id_new:
+            # Process each order
+            for order in orders:
+                try:
+                    # 1. Recompute lead time
+                    order._compute_lead_time_servis()
+                    
+                    # 2. Recompute productive hours untuk setiap mekanik
                     productive_hours = {}
                     for mechanic in order.car_mechanic_id_new:
                         if not mechanic.employee_id:
                             continue
                             
-                        # Get pre-fetched attendances for this employee
-                        emp_attendances = attendance_by_employee.get(mechanic.employee_id.id, [])
-                        if not emp_attendances:
-                            continue
+                        # Get attendance untuk mekanik ini
+                        mechanic_attendances = attendance_by_mechanic.get(mechanic.id, [])
+                        mechanic_productive_hours = 0
+                        
+                        if mechanic_attendances:
+                            # Gunakan lead time servis sebagai basis
+                            base_hours = order.lead_time_servis
                             
-                        hours = self._calculate_mechanic_hours(
-                            order, mechanic, emp_attendances, tz
-                        )
-                        if hours > 0:
-                            productive_hours[mechanic.id] = hours
+                            # Hitung overlap dengan attendance
+                            for att in mechanic_attendances:
+                                productive_duration = order.calculate_effective_hours(
+                                    order.controller_mulai_servis,
+                                    order.controller_selesai,
+                                    att.check_in,
+                                    att.check_out
+                                )
+                                mechanic_productive_hours += min(productive_duration, base_hours)
+                                
+                        productive_hours[mechanic.id] = mechanic_productive_hours
 
-                    # Log results if there are changes
-                    if old_values['total'] != order.total_lead_time_servis or old_values['net'] != order.lead_time_servis:
-                        mechanic_hours = [
-                            f"{mechanic.name}: {hours:.2f} jam"
-                            for mechanic_id, hours in productive_hours.items()
-                            for mechanic in order.car_mechanic_id_new.filtered(lambda m: m.id == mechanic_id)
-                        ]
+                    # Log hasil
+                    old_values = {
+                        'total': order.total_lead_time_servis,
+                        'net': order.lead_time_servis
+                    }
+                    
+                    mechanic_hours = [
+                        f"{mechanic_dict[mechanic_id].name}: {hours:.2f} jam"
+                        for mechanic_id, hours in productive_hours.items()
+                    ]
 
-                        msg = f"""
-                            <p><strong>Lead Time Re-calculation Result</strong></p>
+                    msg = f"""
+                        <p><strong>Lead Time & Productive Hours Re-calculation Result</strong></p>
+                        <ul>
+                            <li>Total Lead Time: {old_values['total']:.2f} → {order.total_lead_time_servis:.2f} jam</li>
+                            <li>Lead Time Bersih: {old_values['net']:.2f} → {order.lead_time_servis:.2f} jam</li>
+                            <li>Productive Hours per Mechanic:</li>
                             <ul>
-                                <li>Total Lead Time: {old_values['total']:.2f} → {order.total_lead_time_servis:.2f} jam</li>
-                                <li>Lead Time Bersih: {old_values['net']:.2f} → {order.lead_time_servis:.2f} jam</li>
-                                {'<li>Productive Hours:</li><ul>' + ''.join(f'<li>{mh}</li>' for mh in mechanic_hours) + '</ul>' if mechanic_hours else ''}
+                                {''.join(f'<li>{mh}</li>' for mh in mechanic_hours)}
                             </ul>
-                        """
-                        order.message_post(body=msg, message_type='notification')
-                        _logger.info(f"Updated order {order.name}")
-                        result['recomputed'] += 1
-                    else:
-                        _logger.info(f"No changes for order {order.name}")
-                
-            except Exception as e:
-                _logger.error(f"Error processing order {order.name}: {str(e)}")
-                result['errors'] += 1
+                            <li>Recomputed by: {request.env.user.name}</li>
+                            <li>Recomputed at: {fields.Datetime.now()}</li>
+                        </ul>
+                    """
+                    order.message_post(body=msg, message_type='notification')
+                    
+                    result['recomputed'] += 1
+                    
+                except Exception as e:
+                    _logger.error(f"Error processing order {order.name}: {str(e)}")
+                    result['errors'] += 1
+
+        except Exception as e:
+            _logger.error(f"Error in batch processing: {str(e)}")
+            raise

@@ -1970,6 +1970,7 @@ class KPIController(http.Controller):
             }
 
             # 7. Update trends dengan daily utilization
+            # 7. Update trends dengan daily utilization
             for trend in trends:
                 trend_date = datetime.strptime(trend['date'], '%Y-%m-%d').date()
                 day_attendances = attendance_by_date.get(trend_date, [])
@@ -1983,14 +1984,16 @@ class KPIController(http.Controller):
                 
                 for order in day_orders:
                     if order.controller_mulai_servis and order.controller_selesai:
-                        productive_duration = calculate_productive_hours(
-                            order.controller_mulai_servis,
-                            order.controller_selesai,
-                            day_attendances
-                        )
-                        mechanic_count = len(order.car_mechanic_id_new)
-                        day_productive_hours += productive_duration
-                        # day_productive_hours += productive_duration / mechanic_count
+                        # Iterate through each attendance record for the day
+                        for att in day_attendances:
+                            if att.check_out:  # Only process complete attendance records
+                                productive_duration = calculate_productive_hours(
+                                    order.controller_mulai_servis,
+                                    order.controller_selesai,
+                                    att.check_in,
+                                    att.check_out
+                                )
+                                day_productive_hours += productive_duration
                 
                 trend['metrics']['utilization'] = {
                     'attendance_hours': attendance_hours,

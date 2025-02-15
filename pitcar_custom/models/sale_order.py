@@ -1913,10 +1913,14 @@ class SaleOrder(models.Model):
              'controller_istirahat_shift1_mulai', 'controller_istirahat_shift1_selesai')
     def _compute_lead_time_servis(self):
         """
-        Hitung lead time servis bersih:
-        - Total waktu dari mulai sampai selesai servis
-        - Dikurangi waktu istirahat (12:00-13:00)
-        - Dikurangi semua job stops 
+        Menghitung lead time servis dengan aturan:
+        1. Hanya hitung dalam jam kerja (08:00-17:00)
+        2. Kurangi waktu istirahat (12:00-13:00)
+        3. Untuk kasus menginap:
+        - Hari pertama: mulai_servis sampai 17:00
+        - Hari tengah (jika ada): 08:00-17:00 full
+        - Hari terakhir: 08:00 sampai selesai_servis
+        4. Kurangi semua job stops
         """
         for order in self:
             try:
@@ -1926,63 +1930,92 @@ class SaleOrder(models.Model):
                     order.is_overnight = False
                     continue
 
-                # Set timezone
+                # Set timezone dan convert waktu
                 tz = pytz.timezone('Asia/Jakarta')
                 mulai_local = pytz.utc.localize(order.controller_mulai_servis).astimezone(tz)
                 selesai_local = pytz.utc.localize(order.controller_selesai).astimezone(tz)
+
+                _logger.info(f"""
+                    Mulai hitung lead time untuk {order.name}:
+                    Mulai: {mulai_local.strftime('%Y-%m-%d %H:%M:%S')}
+                    Selesai: {selesai_local.strftime('%Y-%m-%d %H:%M:%S')}
+                """)
+
+                # Handle kasus selesai < mulai
+                if selesai_local < mulai_local:
+                    _logger.warning(f"Order {order.name}: Waktu selesai sebelum waktu mulai")
+                    order.lead_time_servis = 0
+                    order.total_lead_time_servis = 0
+                    order.is_overnight = False
+                    continue
 
                 total_duration = timedelta()
                 current_date = mulai_local.date()
                 end_date = selesai_local.date()
 
-                _logger.info(f"""
-                    Mulai hitung lead time untuk {order.name}:
-                    Mulai: {mulai_local}
-                    Selesai: {selesai_local}
-                """)
-
+                # Loop untuk setiap hari
                 while current_date <= end_date:
-                    # Set waktu start dan end untuk hari ini
+                    # Set waktu awal dan akhir untuk hari ini
                     if current_date == mulai_local.date():
-                        day_start = mulai_local
+                        # Hari pertama: MAX(jam mulai, 08:00) 
+                        work_start = tz.localize(datetime.combine(current_date, time(8, 0)))
+                        day_start = max(mulai_local, work_start)
                     else:
+                        # Hari berikutnya mulai 08:00
                         day_start = tz.localize(datetime.combine(current_date, time(8, 0)))
 
                     if current_date == selesai_local.date():
-                        day_end = selesai_local
+                        # Hari terakhir: MIN(jam selesai, 17:00)
+                        work_end = tz.localize(datetime.combine(current_date, time(17, 0)))
+                        day_end = min(selesai_local, work_end)
                     else:
+                        # Hari sebelumnya sampai 17:00
                         day_end = tz.localize(datetime.combine(current_date, time(17, 0)))
 
-                    # Set waktu istirahat
+                    # Set waktu istirahat untuk hari ini
                     break_start = tz.localize(datetime.combine(current_date, time(12, 0)))
                     break_end = tz.localize(datetime.combine(current_date, time(13, 0)))
 
-                    # Jika ada overlap dengan istirahat, pecah menjadi 2 period
-                    if day_start < break_start and day_end > break_end:
-                        # Period 1: day_start ke istirahat
-                        total_duration += break_start - day_start
-                        # Period 2: setelah istirahat ke day_end
-                        total_duration += day_end - break_end
+                    # Validasi waktu kerja valid
+                    if day_start.time() < time(8, 0):
+                        day_start = tz.localize(datetime.combine(current_date, time(8, 0)))
+                    if day_end.time() > time(17, 0):
+                        day_end = tz.localize(datetime.combine(current_date, time(17, 0)))
+
+                    # Hitung durasi kerja efektif
+                    if day_end > day_start:
+                        # Case 1: Overlap dengan istirahat
+                        if day_start < break_start and day_end > break_end:
+                            morning_duration = break_start - day_start
+                            afternoon_duration = day_end - break_end
+                            total_duration += morning_duration + afternoon_duration
+                            _logger.info(f"Hari {current_date}: {morning_duration.total_seconds()/3600:.2f} jam pagi + {afternoon_duration.total_seconds()/3600:.2f} jam sore")
                         
-                    elif day_start < break_end and day_end > break_end:
-                        # Hanya period setelah istirahat
-                        total_duration += day_end - break_end
-                        
-                    elif day_start < break_start and day_end > break_start:
-                        # Hanya period sebelum istirahat
-                        total_duration += break_start - day_start
-                        
-                    else:
-                        # Tidak overlap dengan istirahat
-                        total_duration += day_end - day_start
+                        # Case 2: Hanya overlap dengan akhir istirahat
+                        elif day_start < break_end and day_end > break_end:
+                            duration = day_end - break_end
+                            total_duration += duration
+                            _logger.info(f"Hari {current_date}: {duration.total_seconds()/3600:.2f} jam (setelah istirahat)")
+
+                        # Case 3: Hanya overlap dengan awal istirahat
+                        elif day_start < break_start and day_end > break_start:
+                            duration = break_start - day_start
+                            total_duration += duration
+                            _logger.info(f"Hari {current_date}: {duration.total_seconds()/3600:.2f} jam (sebelum istirahat)")
+
+                        # Case 4: Tidak overlap dengan istirahat
+                        else:
+                            duration = day_end - day_start
+                            total_duration += duration
+                            _logger.info(f"Hari {current_date}: {duration.total_seconds()/3600:.2f} jam (tanpa istirahat)")
 
                     current_date += timedelta(days=1)
 
-                # Convert total duration ke jam
+                # Convert total durasi ke jam
                 total_hours = total_duration.total_seconds() / 3600
                 order.total_lead_time_servis = total_hours
 
-                # Kurangi semua job stops
+                # Hitung total job stops
                 job_stops = [
                     order.lead_time_tunggu_konfirmasi or 0,
                     order.lead_time_tunggu_part1 or 0,
@@ -1990,22 +2023,25 @@ class SaleOrder(models.Model):
                     order.lead_time_tunggu_sublet or 0,
                     order.lead_time_job_stop_lain or 0
                 ]
-                
                 total_stops = sum(job_stops)
+
+                # Lead time bersih = total - job stops
                 order.lead_time_servis = max(0, total_hours - total_stops)
-                order.is_overnight = end_date > current_date
+                order.is_overnight = end_date > mulai_local.date()
 
                 _logger.info(f"""
-                    Hasil perhitungan {order.name}:
-                    Total jam: {total_hours}
-                    Total stops: {total_stops}
-                    Lead time bersih: {order.lead_time_servis}
+                    Hasil akhir {order.name}:
+                    - Total Lead Time: {total_hours:.2f} jam
+                    - Total Job Stops: {total_stops:.2f} jam
+                    - Lead Time Bersih: {order.lead_time_servis:.2f} jam
+                    - Menginap: {order.is_overnight}
                 """)
 
             except Exception as e:
-                _logger.error(f"Error calculating lead time for {order.name}: {str(e)}")
+                _logger.error(f"Error menghitung lead time untuk {order.name}: {str(e)}")
                 order.lead_time_servis = 0
                 order.total_lead_time_servis = 0
+                order.is_overnight = False
 
     def calculate_effective_hours(self, start_dt, end_dt):
         """

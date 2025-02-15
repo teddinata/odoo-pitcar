@@ -1858,10 +1858,16 @@ class KPIController(http.Controller):
             #         return 0
 
             def calculate_productive_hours(start_servis, end_servis, check_in, check_out):
-                """Hitung jam produktif untuk detail view mekanik"""
+                """
+                Hitung jam produktif dengan mempertimbangkan:
+                1. Overlap antara waktu servis dan attendance 
+                2. Jam kerja (08:00-17:00)
+                3. Istirahat (12:00-13:00)
+                4. Perhitungan per hari untuk kasus overnight
+                """
                 try:
                     # Convert semua waktu ke timezone yang sama
-                    tz = pytz.timezone('Asia/Jakarta')
+                    tz = pytz.timezone('Asia/Jakarta') 
                     start_dt = pytz.utc.localize(fields.Datetime.from_string(start_servis))
                     end_dt = pytz.utc.localize(fields.Datetime.from_string(end_servis))
                     check_in_dt = pytz.utc.localize(fields.Datetime.from_string(check_in))
@@ -1869,7 +1875,7 @@ class KPIController(http.Controller):
 
                     # Convert ke local time
                     start_local = start_dt.astimezone(tz)
-                    end_local = end_dt.astimezone(tz)
+                    end_local = end_dt.astimezone(tz)  
                     check_in_local = check_in_dt.astimezone(tz)
                     check_out_local = check_out_dt.astimezone(tz)
 
@@ -1913,7 +1919,7 @@ class KPIController(http.Controller):
                     return max(0, total_hours)
 
                 except Exception as e:
-                    _logger.error(f"Error calculating productive hours in detail view: {str(e)}")
+                    _logger.error(f"Error calculating productive hours: {str(e)}")
                     return 0
                 
             total_attendance_hours = 0

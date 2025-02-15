@@ -1095,16 +1095,16 @@ class LeadTimePartController(http.Controller):
         minutes = int((duration_hours - hours) * 60)
         return f"{hours}j {minutes}m"
 
-    @http.route('/web/sale-order/recompute', type='json', auth='user', methods=['POST'])
+    @http.route('/web/smart/recompute', type='json', auth='user', methods=['POST'])
     def recompute_lead_time(self, **kw):
-        """Recompute lead time dan productive hours dengan batch processing"""
+        """Recompute lead time dan productive hours dengan batch processing yang lebih efisien"""
         try:
             all_orders = kw.get('all_orders')
             order_ids = kw.get('order_ids', [])
-            batch_size = kw.get('batch_size', 50)  # Default 50 orders per batch
+            batch_size = kw.get('batch_size', 50)
             
             SaleOrder = request.env['sale.order']
-            result = {'recomputed': 0, 'errors': 0}
+            result = {'recomputed': 0, 'errors': 0, 'error_details': []}
             
             # Build domain
             base_domain = [
@@ -1117,18 +1117,114 @@ class LeadTimePartController(http.Controller):
                 total_orders = SaleOrder.search_count(base_domain)
                 _logger.info(f"Found {total_orders} orders to process")
                 
-                # Process in batches
-                batches = range(0, total_orders, batch_size)
-                for batch_start in batches:
+                # Pre-fetch data yang dibutuhkan
+                orders_to_process = []
+                for batch_start in range(0, total_orders, batch_size):
                     batch_orders = SaleOrder.search(base_domain, limit=batch_size, offset=batch_start)
-                    _logger.info(f"Processing batch {batch_start//batch_size + 1}, orders {batch_start} to {batch_start + len(batch_orders)}")
+                    orders_to_process.extend(batch_orders.ids)
                     
-                    self._process_batch_efficiently(batch_orders, result)
-                    request.env.cr.commit()  # Commit setiap batch
+                # Group orders by mechanic untuk optimasi perhitungan productive hours
+                orders_by_mechanic = {}
+                all_orders = SaleOrder.browse(orders_to_process)
+                for order in all_orders:
+                    for mechanic in order.car_mechanic_id_new:
+                        if mechanic.id not in orders_by_mechanic:
+                            orders_by_mechanic[mechanic.id] = []
+                        orders_by_mechanic[mechanic.id].append(order.id)
+                
+                # Process each batch
+                for batch_start in range(0, len(orders_to_process), batch_size):
+                    batch_end = min(batch_start + batch_size, len(orders_to_process))
+                    batch_ids = orders_to_process[batch_start:batch_end]
                     
+                    try:
+                        batch_orders = SaleOrder.browse(batch_ids)
+                        
+                        # Update dalam satu transaksi
+                        for order in batch_orders:
+                            try:
+                                # Recompute lead time
+                                old_lead_time = order.lead_time_servis
+                                old_total = order.total_lead_time_servis
+                                
+                                order._compute_lead_time_servis()
+                                
+                                # Log perubahan signifikan
+                                if abs(order.lead_time_servis - old_lead_time) > 1 or \
+                                abs(order.total_lead_time_servis - old_total) > 1:
+                                    msg = f"""
+                                        <p><strong>Lead Time Re-calculation</strong></p>
+                                        <ul>
+                                            <li>Total Lead Time: {old_total:.2f} → {order.total_lead_time_servis:.2f}</li>
+                                            <li>Net Lead Time: {old_lead_time:.2f} → {order.lead_time_servis:.2f}</li>
+                                            <li>Updated by: {request.env.user.name}</li>
+                                            <li>Updated at: {fields.Datetime.now()}</li>
+                                        </ul>
+                                    """
+                                    order.message_post(body=msg, message_type='notification')
+                                
+                                result['recomputed'] += 1
+                                
+                            except Exception as e:
+                                _logger.error(f"Error processing order {order.name}: {str(e)}")
+                                error_details = {
+                                    'order_id': order.id,
+                                    'order_name': order.name,
+                                    'error': str(e)
+                                }
+                                result['error_details'].append(error_details)
+                                result['errors'] += 1
+                        
+                        # Commit setiap batch yang berhasil
+                        request.env.cr.commit()
+                        
+                        _logger.info(f"""
+                            Batch {batch_start//batch_size + 1} completed:
+                            - Orders processed: {len(batch_orders)}
+                            - Success: {result['recomputed']}
+                            - Errors: {result['errors']}
+                        """)
+                        
+                    except Exception as e:
+                        _logger.error(f"Error processing batch {batch_start//batch_size + 1}: {str(e)}")
+                        request.env.cr.rollback()
+                        result['errors'] += len(batch_orders)
+                        
             elif order_ids:
                 orders = SaleOrder.browse(order_ids)
-                self._process_batch_efficiently(orders, result)
+                
+                # Process specific orders
+                for order in orders:
+                    try:
+                        old_lead_time = order.lead_time_servis
+                        old_total = order.total_lead_time_servis
+                        
+                        order._compute_lead_time_servis()
+                        
+                        if abs(order.lead_time_servis - old_lead_time) > 1 or \
+                        abs(order.total_lead_time_servis - old_total) > 1:
+                            msg = f"""
+                                <p><strong>Lead Time Re-calculation</strong></p>
+                                <ul>
+                                    <li>Total Lead Time: {old_total:.2f} → {order.total_lead_time_servis:.2f}</li>
+                                    <li>Net Lead Time: {old_lead_time:.2f} → {order.lead_time_servis:.2f}</li>
+                                    <li>Updated by: {request.env.user.name}</li>
+                                    <li>Updated at: {fields.Datetime.now()}</li>
+                                </ul>
+                            """
+                            order.message_post(body=msg, message_type='notification')
+                        
+                        result['recomputed'] += 1
+                        
+                    except Exception as e:
+                        _logger.error(f"Error processing order {order.name}: {str(e)}")
+                        error_details = {
+                            'order_id': order.id,
+                            'order_name': order.name,  
+                            'error': str(e)
+                        }
+                        result['error_details'].append(error_details)
+                        result['errors'] += 1
                 
             else:
                 return {'status': 'error', 'message': 'Either order_ids or all_orders parameter is required'}
@@ -1138,7 +1234,8 @@ class LeadTimePartController(http.Controller):
                 'data': {
                     'total_processed': result['recomputed'] + result['errors'],
                     'recomputed': result['recomputed'],
-                    'errors': result['errors']
+                    'errors': result['errors'],
+                    'error_details': result['error_details']
                 }
             }
 

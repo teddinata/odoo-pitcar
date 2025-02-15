@@ -1857,7 +1857,7 @@ class KPIController(http.Controller):
             #         _logger.error(f"Error calculating productive hours: {str(e)}")
             #         return 0
 
-            def calculate_detail_productive_hours(start_servis, end_servis, check_in, check_out):
+            def calculate_productive_hours(start_servis, end_servis, check_in, check_out):
                 """Hitung jam produktif untuk detail view mekanik"""
                 try:
                     # Convert semua waktu ke timezone yang sama
@@ -1947,7 +1947,7 @@ class KPIController(http.Controller):
                     # Calculate untuk setiap order
                     for order in mechanic_orders:
                         if order.controller_mulai_servis and order.controller_selesai:
-                            productive_hours = calculate_detail_productive_hours(
+                            productive_hours = calculate_productive_hours(
                                 order.controller_mulai_servis,
                                 order.controller_selesai,
                                 att.check_in,

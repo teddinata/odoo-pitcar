@@ -7,6 +7,114 @@ import json
 _logger = logging.getLogger(__name__)
 
 class LeadsAPI(http.Controller):
+    @http.route('/web/v1/utm/data', type='json', auth='user', methods=['POST'])
+    def get_utm_data(self, **kw):
+        """Get all UTM related data for dropdowns"""
+        try:
+            # Get UTM data
+            campaigns = request.env['utm.campaign'].sudo().search_read(
+                [], ['id', 'name']
+            )
+            
+            sources = request.env['utm.source'].sudo().search_read(
+                [], ['id', 'name']
+            )
+            
+            mediums = request.env['utm.medium'].sudo().search_read(
+                [], ['id', 'name']
+            )
+
+            return {
+                'status': 'success',
+                'data': {
+                    'campaigns': campaigns,
+                    'sources': sources,
+                    'mediums': mediums
+                }
+            }
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    # Endpoint untuk create source baru jika belum ada
+    @http.route('/web/v1/utm/source/create', type='json', auth='user', methods=['POST'])
+    def create_utm_source(self, **kw):
+        """Create new UTM source if not exists"""
+        try:
+            name = kw.get('name')
+            if not name:
+                return {'status': 'error', 'message': 'Name is required'}
+
+            # Check if exists
+            existing = request.env['utm.source'].sudo().search([
+                ('name', '=', name)
+            ], limit=1)
+
+            if existing:
+                return {
+                    'status': 'success',
+                    'data': {
+                        'id': existing.id,
+                        'name': existing.name
+                    }
+                }
+
+            # Create new
+            new_source = request.env['utm.source'].sudo().create({
+                'name': name
+            })
+
+            return {
+                'status': 'success',
+                'data': {
+                    'id': new_source.id,
+                    'name': new_source.name
+                }
+            }
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    # Modifikasi create lead untuk handle UTM
+    def _create_lead(self, data):
+        """Create new lead with UTM tracking"""
+        try:
+            values = {
+                'customer_name': data['customer_name'],
+                'phone': data.get('phone'),
+                'state': 'new'
+            }
+
+            # Handle UTM
+            if data.get('source'):
+                # Auto create source if not exists
+                source = request.env['utm.source'].sudo().search([
+                    ('name', '=', data['source'])
+                ], limit=1)
+                
+                if not source:
+                    source = request.env['utm.source'].sudo().create({
+                        'name': data['source']
+                    })
+                values['source_id'] = source.id
+
+            # Optional UTM fields
+            if data.get('campaign_id'):
+                values['campaign_id'] = int(data['campaign_id'])
+            if data.get('medium_id'):
+                values['medium_id'] = int(data['medium_id'])
+
+            # Create lead
+            lead = request.env['cs.leads'].sudo().create(values)
+
+            return {
+                'status': 'success',
+                'data': {
+                    'id': lead.id,
+                    'name': lead.name
+                }
+            }
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
     @http.route('/web/v1/leads', type='json', auth='user', methods=['POST'])
     def handle_leads(self, **kw):
         """Handle leads operations"""
@@ -32,29 +140,34 @@ class LeadsAPI(http.Controller):
 
     def _create_lead(self, data):
         """Create new lead"""
-        required_fields = ['customer_name', 'cs_id', 'source']
+        required_fields = ['customer_name', 'phone']
         if not all(data.get(field) for field in required_fields):
             return {'status': 'error', 'message': 'Missing required fields'}
 
         values = {
             'customer_name': data['customer_name'],
-            'cs_id': int(data['cs_id']),
-            'source': data['source'],
-            'phone': data.get('phone'),
-            'state': 'new'
+            'phone': data['phone'],
+            'state': 'new',
+            
+            # Channel & Timing
+            'channel': data.get('channel'),
+            'tanggal_chat': data.get('tanggal_chat'),
+            'jam_chat': data.get('jam_chat'),
+            
+            # Booking info
+            'is_booking': data.get('is_booking', False),
+            'tanggal_booking': data.get('tanggal_booking'),
+            
+            # Category & Revenue
+            'category': data.get('category'),
+            'omzet': data.get('omzet'),
+            'tanggal_pembayaran': data.get('tanggal_pembayaran'),
+            
+            # UTM Tracking
+            'campaign_id': data.get('campaign_id'),
+            'source_id': data.get('source_id'),
+            'medium_id': data.get('medium_id'),
         }
-
-        # Optional fields
-        optional_fields = [
-            'car_brand', 'car_type', 'car_transmission',
-            'notes', 'next_followup_date'
-        ]
-        
-        for field in optional_fields:
-            if data.get(field):
-                values[field] = data[field]
-
-        lead = request.env['cs.leads'].sudo().create(values)
 
         # Create initial followup if provided
         if data.get('initial_notes'):
@@ -67,6 +180,7 @@ class LeadsAPI(http.Controller):
             }
             request.env['cs.leads.followup'].sudo().create(followup_vals)
 
+        lead = request.env['cs.leads'].sudo().create(values)
         return {
             'status': 'success',
             'data': {
@@ -78,33 +192,30 @@ class LeadsAPI(http.Controller):
     def _get_leads(self, data):
         """Get leads with filters and pagination"""
         try:
-            # Build domain
             domain = []
             
             # Apply filters
-            if data.get('cs_id'):
-                domain.append(('cs_id', '=', int(data['cs_id'])))
+            if data.get('channel'):
+                domain.append(('channel', '=', data['channel']))
+            if data.get('category'):
+                domain.append(('category', '=', data['category']))
+            if data.get('is_booking') is not None:
+                domain.append(('is_booking', '=', data['is_booking']))
             if data.get('date_from'):
-                domain.append(('date', '>=', data['date_from']))
+                domain.append(('tanggal_chat', '>=', data['date_from']))
             if data.get('date_to'):
-                domain.append(('date', '<=', data['date_to']))
+                domain.append(('tanggal_chat', '<=', data['date_to']))
             if data.get('state'):
                 domain.append(('state', '=', data['state']))
-            if data.get('source'):
-                domain.append(('source', '=', data['source']))
                 
             # Apply search if provided
             if data.get('search'):
                 search_domain = ['|', '|', '|',
                     ('name', 'ilike', data['search']),
                     ('customer_name', 'ilike', data['search']),
-                    ('phone', 'ilike', data['search']),
-                    ('notes', 'ilike', data['search'])
+                    ('phone', 'ilike', data['search'])
                 ]
                 domain.extend(search_domain)
-
-            # Prepare sorting
-            order = f"{data.get('sort_by', 'date')} {data.get('sort_order', 'desc')}"
 
             # Get total count before pagination
             total_count = request.env['cs.leads'].sudo().search_count(domain)
@@ -117,7 +228,7 @@ class LeadsAPI(http.Controller):
             # Get paginated records
             leads = request.env['cs.leads'].sudo().search(
                 domain, 
-                order=order,
+                order=data.get('sort_by', 'create_date desc'),
                 offset=offset,
                 limit=limit
             )
@@ -130,13 +241,18 @@ class LeadsAPI(http.Controller):
                     'name': lead.name,
                     'customer_name': lead.customer_name,
                     'phone': lead.phone,
-                    'source': lead.source,
-                    'cs_id': lead.cs_id.id,
-                    'cs_name': lead.cs_id.name,
-                    'date': lead.date,
+                    'channel': lead.channel,
+                    'tanggal_chat': lead.tanggal_chat,
+                    'jam_chat': lead.jam_chat,
+                    'is_booking': lead.is_booking,
+                    'tanggal_booking': lead.tanggal_booking,
+                    'category': lead.category,
+                    'omzet': lead.omzet,
                     'state': lead.state,
                     'is_converted': lead.is_converted,
-                    'notes': lead.notes,
+                    'campaign_id': lead.campaign_id.id,
+                    'source_id': lead.source_id.id,
+                    'medium_id': lead.medium_id.id,
                     'last_followup_date': lead.last_followup_date,
                     'next_followup_date': lead.next_followup_date
                 } for lead in leads],
@@ -144,9 +260,7 @@ class LeadsAPI(http.Controller):
                     'total_items': total_count,
                     'current_page': page,
                     'total_pages': (total_count + limit - 1) // limit,
-                    'items_per_page': limit,
-                    'has_next': offset + limit < total_count,
-                    'has_previous': page > 1
+                    'items_per_page': limit
                 }
             }
 
@@ -165,24 +279,17 @@ class LeadsAPI(http.Controller):
 
         update_values = {}
         allowed_fields = [
-            'customer_name', 'phone', 'source', 'state',
-            'service_advisor_id', 'mechanic_id', 'notes',
-            'next_followup_date', 'lost_reason'
+            'customer_name', 'phone', 'channel', 'state',
+            'tanggal_chat', 'jam_chat', 'is_booking', 
+            'tanggal_booking', 'category', 'omzet',
+            'tanggal_pembayaran', 'campaign_id',
+            'source_id', 'medium_id', 'lost_reason',
+            'alasan_tidak_booking', 'detail_alasan'
         ]
 
         for field in allowed_fields:
             if field in data:
                 update_values[field] = data[field]
-
-        # Add new followup if provided
-        if data.get('followup_notes'):
-            request.env['cs.leads.followup'].sudo().create({
-                'lead_id': lead.id,
-                'notes': data['followup_notes'],
-                'result': data.get('followup_result', 'other'),
-                'next_action': data.get('next_action'),
-                'next_action_date': data.get('next_action_date')
-            })
 
         lead.write(update_values)
 

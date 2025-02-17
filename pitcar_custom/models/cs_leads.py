@@ -4,8 +4,8 @@ from datetime import datetime
 
 class CSLeads(models.Model):
     _name = 'cs.leads'
+    _inherit = ['mail.thread', 'mail.activity.mixin', 'utm.mixin']
     _description = 'Customer Service Leads'
-    _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'create_date desc'
 
     name = fields.Char('Lead Reference', required=True, copy=False, readonly=True, 
@@ -14,6 +14,62 @@ class CSLeads(models.Model):
     # Basic Information
     customer_name = fields.Char('Customer Name', required=True, tracking=True)
     phone = fields.Char('Phone/WhatsApp', tracking=True)
+    
+    # Channel & Timing Information
+    channel = fields.Selection([
+        ('whatsapp', 'WhatsApp'),
+        ('workshop', 'Workshop')
+    ], string='Channel', tracking=True)
+    
+    tanggal_chat = fields.Date('Tanggal Chat/Datang', tracking=True)
+    jam_chat = fields.Float('Jam Chat/Datang', tracking=True)
+    
+    # Booking Information
+    is_booking = fields.Boolean('Booking', tracking=True)
+    tanggal_booking = fields.Date('Tanggal Booking', tracking=True)
+    
+    # Category & Revenue
+    category = fields.Selection([
+        ('loyal', 'Loyal'),
+        ('new', 'New Customer')
+    ], string='Category', tracking=True)
+    
+    omzet = fields.Float('Omzet', tracking=True)
+    tanggal_pembayaran = fields.Date('Tanggal Pembayaran', tracking=True)
+    
+    # Lead Status and Follow-up
+    state = fields.Selection([
+        ('new', 'New'),
+        ('contacted', 'Contacted'),
+        ('qualified', 'Qualified'),
+        ('converted', 'Converted'),
+        ('lost', 'Lost')
+    ], string='Status', default='new', tracking=True)
+
+    lost_reason = fields.Selection([
+        ('price', 'Price too high'),
+        ('competition', 'Went to competitor'),
+        ('timing', 'Bad timing'),
+        ('not_interested', 'Not interested'),
+        ('other', 'Other')
+    ], string='Lost Reason')
+    
+    alasan_tidak_booking = fields.Text('Alasan Tidak Booking')
+    detail_alasan = fields.Text('Detail Alasan')
+
+    # Conversion tracking
+    is_converted = fields.Boolean('Is Converted', compute='_compute_is_converted', store=True)
+    conversion_date = fields.Datetime('Conversion Date', readonly=True)
+    
+    # Related Sale Order (existing)
+    sale_order_id = fields.Many2one('sale.order', string='Related Sale Order', tracking=True)
+
+    # Follow-up Information (existing)
+    followup_ids = fields.One2many('cs.leads.followup', 'lead_id', string='Follow-ups')
+    last_followup_date = fields.Datetime('Last Follow-up', compute='_compute_last_followup')
+    next_followup_date = fields.Datetime('Next Follow-up')
+    service_advisor_id = fields.Many2one('pitcar.service.advisor', string='Service Advisor')
+    mechanic_id = fields.Many2one('pitcar.mechanic', string='Mechanic')
     source = fields.Selection([
         ('whatsapp', 'WhatsApp'),
         ('instagram', 'Instagram'),
@@ -27,23 +83,6 @@ class CSLeads(models.Model):
     date = fields.Date('Lead Date', required=True, default=fields.Date.context_today)
     create_date = fields.Datetime('Created On', readonly=True)
     write_date = fields.Datetime('Last Updated', readonly=True)
-    
-    # Lead Status and Classification
-    state = fields.Selection([
-        ('new', 'New'),
-        ('contacted', 'Contacted'),
-        ('qualified', 'Qualified'),
-        ('converted', 'Converted'),
-        ('lost', 'Lost')
-    ], string='Status', default='new', tracking=True)
-    
-    is_converted = fields.Boolean('Is Converted', compute='_compute_is_converted', store=True)
-    conversion_date = fields.Datetime('Conversion Date', readonly=True)
-    
-    # Related Sales Info
-    sale_order_id = fields.Many2one('sale.order', string='Related Sale Order', tracking=True)
-    service_advisor_id = fields.Many2one('pitcar.service.advisor', string='Service Advisor')
-    mechanic_id = fields.Many2one('pitcar.mechanic', string='Mechanic')
     
     # Car Information
     car_brand = fields.Many2one('res.partner.car.brand', string='Car Brand')
@@ -59,11 +98,6 @@ class CSLeads(models.Model):
         ('not_interested', 'Not interested'),
         ('other', 'Other')
     ], string='Lost Reason')
-    
-    # Followup Information
-    followup_ids = fields.One2many('cs.leads.followup', 'lead_id', string='Follow-ups')
-    last_followup_date = fields.Datetime('Last Follow-up', compute='_compute_last_followup')
-    next_followup_date = fields.Datetime('Next Follow-up')
     # Tambahan field di model cs.leads
     follow_up_status = fields.Selection([
         ('pending', 'Pending'),

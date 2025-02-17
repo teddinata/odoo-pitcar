@@ -97,6 +97,7 @@
         'views/hr_employee_views.xml',
         'views/work_location_views.xml',
         'views/hr_attendance_views.xml',
+        'views/utm_menu.xml',
         'views/menu.xml',
     ],
     'installable': True,

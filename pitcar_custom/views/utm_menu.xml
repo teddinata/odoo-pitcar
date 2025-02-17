@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Action untuk UTM Campaign -->
+    <record id="action_view_utm_campaigns" model="ir.actions.act_window">
+        <field name="name">Campaigns</field>
+        <field name="res_model">utm.campaign</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Action untuk UTM Source -->
+    <record id="action_view_utm_source" model="ir.actions.act_window">
+        <field name="name">Sources</field>
+        <field name="res_model">utm.source</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Action untuk UTM Medium -->
+    <record id="action_view_utm_medium" model="ir.actions.act_window">
+        <field name="name">Mediums</field>
+        <field name="res_model">utm.medium</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Menu Items -->
+    <menuitem id="menu_utm_root"
+        name="UTM Configuration"
+        parent="sale.menu_sale_config"
+        sequence="50"/>
+
+    <menuitem id="menu_utm_campaign"
+        name="Campaigns"
+        parent="menu_utm_root"
+        action="action_view_utm_campaigns"
+        sequence="1"/>
+
+    <menuitem id="menu_utm_source"
+        name="Sources"
+        parent="menu_utm_root"
+        action="action_view_utm_source"
+        sequence="2"/>
+
+    <menuitem id="menu_utm_medium"
+        name="Mediums"
+        parent="menu_utm_root"
+        action="action_view_utm_medium"
+        sequence="3"/>
+</odoo>

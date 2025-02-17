@@ -76,52 +76,83 @@ class LeadsAPI(http.Controller):
         }
 
     def _get_leads(self, data):
-        """Get leads with filters"""
-        domain = []
-        
-        if data.get('cs_id'):
-            domain.append(('cs_id', '=', int(data['cs_id'])))
-        if data.get('date_from'):
-            domain.append(('date', '>=', data['date_from']))
-        if data.get('date_to'):
-            domain.append(('date', '<=', data['date_to']))
-        if data.get('state'):
-            domain.append(('state', '=', data['state']))
-        if data.get('is_converted') is not None:
-            domain.append(('is_converted', '=', data['is_converted']))
+        """Get leads with filters and pagination"""
+        try:
+            # Build domain
+            domain = []
+            
+            # Apply filters
+            if data.get('cs_id'):
+                domain.append(('cs_id', '=', int(data['cs_id'])))
+            if data.get('date_from'):
+                domain.append(('date', '>=', data['date_from']))
+            if data.get('date_to'):
+                domain.append(('date', '<=', data['date_to']))
+            if data.get('state'):
+                domain.append(('state', '=', data['state']))
+            if data.get('source'):
+                domain.append(('source', '=', data['source']))
+                
+            # Apply search if provided
+            if data.get('search'):
+                search_domain = ['|', '|', '|',
+                    ('name', 'ilike', data['search']),
+                    ('customer_name', 'ilike', data['search']),
+                    ('phone', 'ilike', data['search']),
+                    ('notes', 'ilike', data['search'])
+                ]
+                domain.extend(search_domain)
 
-        leads = request.env['cs.leads'].sudo().search(domain)
-        
-        return {
-            'status': 'success',
-            'data': [{
-                'id': lead.id,
-                'name': lead.name,
-                'customer_name': lead.customer_name,
-                'phone': lead.phone,
-                'source': lead.source,
-                'cs_id': lead.cs_id.id,
-                'cs_name': lead.cs_id.name,
-                'date': lead.date,
-                'state': lead.state,
-                'is_converted': lead.is_converted,
-                'sale_order_id': lead.sale_order_id.id if lead.sale_order_id else False,
-                'service_advisor_id': lead.service_advisor_id.id if lead.service_advisor_id else False,
-                'mechanic_id': lead.mechanic_id.id if lead.mechanic_id else False,
-                'notes': lead.notes,
-                'last_followup_date': lead.last_followup_date,
-                'next_followup_date': lead.next_followup_date,
-                'followups': [{
-                    'id': f.id,
-                    'notes': f.notes,
-                    'result': f.result,
-                    'next_action': f.next_action,
-                    'next_action_date': f.next_action_date,
-                    'created_by': f.created_by.name,
-                    'create_date': f.create_date
-                } for f in lead.followup_ids]
-            } for lead in leads]
-        }
+            # Prepare sorting
+            order = f"{data.get('sort_by', 'date')} {data.get('sort_order', 'desc')}"
+
+            # Get total count before pagination
+            total_count = request.env['cs.leads'].sudo().search_count(domain)
+
+            # Apply pagination
+            page = int(data.get('page', 1))
+            limit = int(data.get('limit', 20))
+            offset = (page - 1) * limit
+
+            # Get paginated records
+            leads = request.env['cs.leads'].sudo().search(
+                domain, 
+                order=order,
+                offset=offset,
+                limit=limit
+            )
+            
+            # Prepare response
+            return {
+                'status': 'success',
+                'data': [{
+                    'id': lead.id,
+                    'name': lead.name,
+                    'customer_name': lead.customer_name,
+                    'phone': lead.phone,
+                    'source': lead.source,
+                    'cs_id': lead.cs_id.id,
+                    'cs_name': lead.cs_id.name,
+                    'date': lead.date,
+                    'state': lead.state,
+                    'is_converted': lead.is_converted,
+                    'notes': lead.notes,
+                    'last_followup_date': lead.last_followup_date,
+                    'next_followup_date': lead.next_followup_date
+                } for lead in leads],
+                'pagination': {
+                    'total_items': total_count,
+                    'current_page': page,
+                    'total_pages': (total_count + limit - 1) // limit,
+                    'items_per_page': limit,
+                    'has_next': offset + limit < total_count,
+                    'has_previous': page > 1
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in _get_leads: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
 
     def _update_lead(self, data):
         """Update existing lead"""

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 _logger = logging.getLogger(__name__)
 
 class LeadsAnalyticsAPI(http.Controller):
-    @http.route('/api/v1/leads/dashboard', type='json', auth='user', methods=['POST'])
+    @http.route('/web/v1/leads/dashboard', type='json', auth='user', methods=['POST'])
     def get_dashboard_data(self, **kw):
         """Get comprehensive dashboard data"""
         try:
@@ -140,7 +140,7 @@ class LeadsAnalyticsAPI(http.Controller):
         
         return rankings
 
-    @http.route('/api/v1/leads/reports', type='json', auth='user', methods=['POST'])
+    @http.route('/web/v1/leads/reports', type='json', auth='user', methods=['POST'])
     def generate_report(self, **kw):
         """Generate detailed performance report"""
         try:

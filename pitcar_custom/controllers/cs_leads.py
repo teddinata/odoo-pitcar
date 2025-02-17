@@ -7,7 +7,7 @@ import json
 _logger = logging.getLogger(__name__)
 
 class LeadsAPI(http.Controller):
-    @http.route('/api/v1/leads', type='json', auth='user', methods=['POST'])
+    @http.route('/web/v1/leads', type='json', auth='user', methods=['POST'])
     def handle_leads(self, **kw):
         """Handle leads operations"""
         try:
@@ -234,7 +234,7 @@ class LeadsAPI(http.Controller):
         except Exception as e:
             return {'status': 'error', 'message': f'Error converting lead: {str(e)}'}
 
-    @http.route('/api/v1/leads/statistics', type='json', auth='user', methods=['POST'])
+    @http.route('/web/v1/leads/statistics', type='json', auth='user', methods=['POST'])
     def get_leads_statistics(self, **kw):
         """Get leads statistics"""
         try:
@@ -285,7 +285,7 @@ class LeadsAPI(http.Controller):
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
 
-    @http.route('/api/v1/leads/sale-orders', type='json', auth='user', methods=['POST'])
+    @http.route('/web/v1/leads/sale-orders', type='json', auth='user', methods=['POST'])
     def get_linkable_sale_orders(self, **kw):
         """Get list of sale orders that can be linked to leads"""
         try:
@@ -341,7 +341,7 @@ class LeadsAPI(http.Controller):
             _logger.error(f"Error getting linkable sale orders: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    @http.route('/api/v1/leads/link-sale-order', type='json', auth='user', methods=['POST'])
+    @http.route('/web/v1/leads/link-sale-order', type='json', auth='user', methods=['POST'])
     def link_sale_order(self, **kw):
         """Link an existing sale order to a lead"""
         try:
@@ -386,7 +386,7 @@ class LeadsAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error linking sale order to lead: {str(e)}")
             return {'status': 'error', 'message': str(e)}
-    @http.route('/api/v1/leads/follow-up', type='json', auth='user', methods=['POST'])
+    @http.route('/web/v1/leads/follow-up', type='json', auth='user', methods=['POST'])
     def handle_follow_up(self, **kw):
         try:
             operation = kw.get('operation')

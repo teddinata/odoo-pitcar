@@ -1232,6 +1232,9 @@ class SOPController(http.Controller):
                 elif role == 'part_support' and sampling.part_support_id:
                     for employee in sampling.part_support_id:
                         update_employee_stats(employee_stats['part_support'], employee, result)
+                elif role == 'customer_service' and sampling.cs_id:
+                    for employee in sampling.cs_id:
+                        update_employee_stats(employee_stats['customer_service'], employee, result)
 
             # Calculate rates and sort employee details
             def calculate_rates(stats):

@@ -1444,7 +1444,7 @@ class SOPController(http.Controller):
                 role = values.get('role', sop.role)
                 valid_combinations = {
                     'service': ['sa', 'mechanic'],
-                    'cs': ['valet', 'part_support'],
+                    'cs': ['valet', 'part_support', 'cs'],
                     'sparepart': ['part_support']
                 }
                 if role not in valid_combinations.get(department, []):

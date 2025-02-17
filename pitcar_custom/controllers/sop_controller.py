@@ -27,7 +27,8 @@ class SOPController(http.Controller):
             'sa': [],  # Using service.advisor model
             'mechanic': [],  # Using mechanic.new model
             'valet': [('job_id.name', 'ilike', 'valet')],
-            'part_support': [('job_id.name', 'ilike', 'part')]
+            'part_support': [('job_id.name', 'ilike', 'part')],
+            'cs': [('job_id.name', 'ilike', 'customer service')]  # Tambahkan domain untuk CS
         }
         return domains.get(role, [])
 
@@ -70,7 +71,12 @@ class SOPController(http.Controller):
             'part_support': [{
                 'id': ps.id,
                 'name': ps.name
-            } for ps in sampling.part_support_id] if sampling.part_support_id else []
+            } for ps in sampling.part_support_id] if sampling.part_support_id else [],
+            
+            'customer_service': [{
+                'id': cs.id,
+                'name': cs.name
+            } for cs in sampling.cs_id] if sampling.cs_id else []
         }
 
     @http.route('/web/sop/master/list', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
@@ -152,7 +158,8 @@ class SOPController(http.Controller):
                             {'value': 'sa', 'label': 'Service Advisor'},
                             {'value': 'mechanic', 'label': 'Mechanic'},
                             {'value': 'valet', 'label': 'Valet Parking'},
-                            {'value': 'part_support', 'label': 'Part Support'}
+                            {'value': 'part_support', 'label': 'Part Support'},
+                            {'value': 'cs', 'label': 'Customer Service'}  # Tambahkan role CS
                         ]
                     }
                 }
@@ -430,6 +437,12 @@ class SOPController(http.Controller):
                 if not employee_ids:
                     return {'status': 'error', 'message': 'Part support staff must be selected'}
                 values['part_support_id'] = [(6, 0, employee_ids)]
+
+             # Tambahkan handler untuk CS
+            elif sop.role == 'cs':
+                if not employee_ids:
+                    return {'status': 'error', 'message': 'Customer Service staff must be selected'}
+                values['cs_id'] = [(6, 0, employee_ids)]
 
             # Create sampling
             sampling = request.env['pitcar.sop.sampling'].create(values)
@@ -1150,6 +1163,15 @@ class SOPController(http.Controller):
                         'fail_rate': 0,
                         'label': 'Part Support',
                         'details': []
+                    },
+                    'customer_service': {  # Tambahkan CS stats
+                        'total': 0,
+                        'pass': 0,
+                        'fail': 0,
+                        'pass_rate': 0,
+                        'fail_rate': 0,
+                        'label': 'Customer Service',
+                        'details': []
                     }
                 }
             }
@@ -1179,7 +1201,8 @@ class SOPController(http.Controller):
                 'service_advisor': {},
                 'mechanic': {},
                 'valet': {},
-                'part_support': {}
+                'part_support': {},
+                'customer_service': {}  # Tambahkan CS
             }
 
             # Process all samplings
@@ -1275,7 +1298,7 @@ class SOPController(http.Controller):
             # Validate role-department compatibility
             valid_combinations = {
                 'service': ['sa', 'mechanic'],
-                'cs': ['valet', 'part_support'],
+                'cs': ['valet', 'part_support', 'cs'],  # Tambahkan 'cs'
                 'sparepart': ['part_support']
             }
             if role not in valid_combinations.get(department, []):

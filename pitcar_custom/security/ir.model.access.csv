@@ -79,3 +79,12 @@ pitcar_custom.access_cs_contact_monitoring_line_user,cs.contact.monitoring.line.
 pitcar_custom.access_cs_finance_check_item_user,cs.finance.check.item.user,model_cs_finance_check_item,base.group_user,1,1,1,0
 pitcar_custom.access_cs_finance_check_user,cs.finance.check.user,model_cs_finance_check,base.group_user,1,1,1,0
 pitcar_custom.access_cs_finance_check_line_user,cs.finance.check.line.user,model_cs_finance_check_line,base.group_user,1,1,1,0
+pitcar_custom.access_cs_leads_user,cs.leads.user,model_cs_leads,base.group_user,1,1,1,0
+pitcar_custom.access_cs_leads_manager,cs.leads.manager,model_cs_leads,base.group_system,1,1,1,1
+pitcar_custom.access_cs_leads_controller,cs.leads.controller,model_cs_leads,pitcar_custom.group_controller,1,1,1,0
+pitcar_custom.access_cs_leads_followup_user,cs.leads.followup.user,model_cs_leads_followup,base.group_user,1,1,1,0
+pitcar_custom.access_cs_leads_followup_manager,cs.leads.followup.manager,model_cs_leads_followup,base.group_system,1,1,1,1
+pitcar_custom.access_cs_leads_analytics_user,cs.leads.analytics.user,model_cs_leads_analytics,base.group_user,1,0,0,0
+pitcar_custom.access_cs_leads_analytics_manager,cs.leads.analytics.manager,model_cs_leads_analytics,base.group_system,1,1,1,1
+pitcar_custom.access_cs_performance_report_user,cs.performance.report.user,model_cs_performance_report,base.group_user,1,1,1,0
+pitcar_custom.access_cs_performance_report_manager,cs.performance.report.manager,model_cs_performance_report,base.group_system,1,1,1,1

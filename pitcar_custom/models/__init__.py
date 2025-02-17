@@ -38,3 +38,5 @@ from . import cs_chat_sampling
 from . import cs_leads_verification
 from . import cs_contact_monitoring
 from . import cs_finance_check
+from . import cs_leads
+from . import cs_leads_analytics

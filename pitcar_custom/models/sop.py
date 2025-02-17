@@ -25,7 +25,8 @@ class PitcarSOP(models.Model):
         ('sa', 'Service Advisor'),
         ('mechanic', 'Mechanic'),
         ('valet', 'Valet Parking'),
-        ('part_support', 'Part Support')
+        ('part_support', 'Part Support'),
+        ('cs', 'Customer Service')  # Tambahkan role CS
     ], string='Role', required=True, tracking=True)
 
     # Backward compatibility
@@ -47,7 +48,7 @@ class PitcarSOP(models.Model):
         if self.department == 'service':
             return {'domain': {'role': [('role', 'in', ['sa', 'mechanic'])]}}
         elif self.department == 'cs':
-            return {'domain': {'role': [('role', 'in', ['valet', 'part_support'])]}}
+            return {'domain': {'role': [('role', 'in', ['valet', 'part_support', 'cs'])]}}  # Tambahkan 'cs'
         elif self.department == 'sparepart':
             return {'domain': {'role': [('role', 'in', ['part_support'])]}}
 
@@ -128,6 +129,16 @@ class PitcarSOPSampling(models.Model):
         tracking=True
     )
 
+    cs_id = fields.Many2many(
+        'hr.employee',
+        'sop_sampling_cs_rel',
+        'sampling_id',
+        'employee_id', 
+        string='Customer Service',
+        domain="[('job_id.name', 'ilike', 'customer service')]",
+        tracking=True
+    )
+
     # Timestamps
     create_date = fields.Datetime('Created Date', readonly=True)
     write_date = fields.Datetime('Last Updated', readonly=True)
@@ -171,7 +182,7 @@ class PitcarSOPSampling(models.Model):
         elif self.sop_id.role == 'mechanic' and self.sale_order_id.car_mechanic_id_new:
             self.mechanic_id = self.sale_order_id.car_mechanic_id_new
 
-    @api.constrains('sop_id', 'sa_id', 'mechanic_id', 'valet_id', 'part_support_id')
+    @api.constrains('sop_id', 'sa_id', 'mechanic_id', 'valet_id', 'part_support_id', 'cs_id')
     def _check_employee_assignment(self):
         """Validate employee assignment based on role"""
         for record in self:
@@ -187,3 +198,5 @@ class PitcarSOPSampling(models.Model):
                 raise ValidationError('Valet staff harus diisi untuk SOP Valet')
             elif role == 'part_support' and not record.part_support_id:
                 raise ValidationError('Part Support staff harus diisi untuk SOP Part Support')
+            elif role == 'cs' and not record.cs_id:
+                raise ValidationError('Customer Service harus diisi untuk SOP CS')

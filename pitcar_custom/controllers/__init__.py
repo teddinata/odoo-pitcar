@@ -12,3 +12,5 @@ from . import lead_time_part
 from . import employee_api
 from . import frontoffice_api
 from . import cs_sampling
+from . import cs_leads_analytics
+from . import cs_leads

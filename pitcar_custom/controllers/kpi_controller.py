@@ -385,8 +385,8 @@ class KPIController(http.Controller):
                     mech_data = mechanics_data[mechanic.id]
                     
                     # Basic metrics
-                    # mech_data['revenue'] += order.amount_total / mechanic_count
-                    mech_data['revenue'] += order.amount_total 
+                    mech_data['revenue'] += order.amount_total / mechanic_count
+                    # mech_data['revenue'] += order.amount_total 
                     mech_data['orders'] += 1
                     
                     # Timing metrics
@@ -1472,8 +1472,8 @@ class KPIController(http.Controller):
             for order in mechanic_orders:
                 # Calculate revenue considering multiple mechanics
                 mechanic_count = len(order.car_mechanic_id_new)
-                # total_revenue += order.amount_total / mechanic_count
-                total_revenue += order.amount_total 
+                total_revenue += order.amount_total / mechanic_count
+                # total_revenue += order.amount_total 
 
                 # Calculate time-based metrics if all required fields exist
                 if all([order.controller_estimasi_mulai, order.controller_mulai_servis,

@@ -76,7 +76,7 @@ class CSLeads(models.Model):
         ('facebook', 'Facebook'),
         ('website', 'Website'),
         ('other', 'Other')
-    ], string='Lead Source', required=True, tracking=True)
+    ], string='Lead Source', required=False, tracking=True, default='other')
     
     # CS and Timestamps
     cs_id = fields.Many2one('hr.employee', string='CS Staff', required=True, tracking=True)

@@ -109,6 +109,10 @@ class CSLeads(models.Model):
     reminder_sent = fields.Boolean('Reminder Terkirim')
     reminder_sent_date = fields.Datetime('Tanggal Kirim Reminder')
     reminder_sent_by = fields.Many2one('res.users', string='Dikirim Oleh')
+    next_follow_up = fields.Datetime('Next Follow Up Date')
+    last_follow_up = fields.Datetime('Last Follow Up Date', readonly=True)
+    follow_up_notes = fields.Text('Follow Up Notes')
+    follow_up_reminder = fields.Boolean('Follow Up Reminder')
     
     @api.depends('state')
     def _compute_is_converted(self):

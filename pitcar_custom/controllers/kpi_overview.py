@@ -813,7 +813,7 @@ class KPIOverview(http.Controller):
                                 for mech, avg in mechanic_averages.items()
                             ]
                             
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Rata-rata tim: {team_average:.1f} jam, "
                                 f"Rentang ideal: {lower_limit:.1f} - {upper_limit:.1f} jam, "
                                 f"Mekanik dalam rentang: {mechanics_in_range} dari {len(mechanic_averages)} "
@@ -821,7 +821,7 @@ class KPIOverview(http.Controller):
                             )
                         else:
                             actual = 0
-                            kpi['measurement'] = "Belum ada data pengerjaan mekanik yang cukup"
+                            measurement = "Belum ada data pengerjaan mekanik yang cukup"
 
                     elif kpi['type'] == 'stock_management':
                         # Manual input untuk stok management (bisa diotomatisasi jika ada data stok)
@@ -1774,6 +1774,9 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Berhasil handle {total_units} PKB dari target {target_units} PKB/bulan"
                     
                     elif kpi['type'] == 'flat_rate':
+                        # Hitung jam terjual dari order yang selesai
+                        completed_orders = team_orders.filtered(lambda o: o.controller_selesai)  # Gunakan team_orders bukan orders
+                        sold_hours = sum(order.lead_time_servis for order in completed_orders)
                         # Get orders for the mechanic team first
                         team_orders = request.env['sale.order'].sudo().search([
                             *base_domain,

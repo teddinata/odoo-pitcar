@@ -37,20 +37,23 @@ class LeadsAnalyticsAPI(http.Controller):
                 'lost': len(leads.filtered(lambda l: l.state == 'lost'))
             }
             
-            # Calculate source performance
+            # Calculate source performance menggunakan source_id
             source_performance = {}
             for lead in leads:
-                source = lead.source or 'undefined'
-                if source not in source_performance:
-                    source_performance[source] = {
+                source_id = lead.source_id.id if lead.source_id else 'undefined'
+                source_name = lead.source_id.name if lead.source_id else 'Undefined'
+                
+                if source_id not in source_performance:
+                    source_performance[source_id] = {
+                        'name': source_name,
                         'total': 0,
                         'converted': 0,
                         'revenue': 0
                     }
-                source_performance[source]['total'] += 1
+                source_performance[source_id]['total'] += 1
                 if lead.is_converted:
-                    source_performance[source]['converted'] += 1
-                    source_performance[source]['revenue'] += lead.omzet or 0
+                    source_performance[source_id]['converted'] += 1
+                    source_performance[source_id]['revenue'] += lead.omzet or 0
             
             # Get CS performance
             cs_performance = {}
@@ -74,8 +77,8 @@ class LeadsAnalyticsAPI(http.Controller):
                         'total_leads': total_leads,
                         'conversion_rate': round(conversion_rate, 2),
                         'total_revenue': total_revenue,
-                        'avg_response_time': 0,  # TODO: Calculate from followup data
-                        'conversion_growth': 0  # TODO: Calculate month-over-month growth
+                        'avg_response_time': 0,
+                        'conversion_growth': 0
                     },
                     'funnel': funnel,
                     'source_performance': source_performance,

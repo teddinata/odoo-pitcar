@@ -950,7 +950,7 @@ class KPIOverview(http.Controller):
                     elif kpi['type'] == 'follow_up_h3':
                         # Dari data follow up H+3
                         due_follow_ups = orders.filtered(lambda o: o.next_follow_up_3_days)
-                        completed_follow_ups = due_follow_ups.filtered(lambda o: o.is_follow_up == 'yes')
+                        completed_follow_ups = due_follow_ups.filtered(lambda o: o.reminder_sent == True)
                         actual = (len(completed_follow_ups) / len(due_follow_ups) * 100) if due_follow_ups else 0
                         kpi['measurement'] = f"Follow up H+3: {len(completed_follow_ups)} dari {len(due_follow_ups)} order pada periode {month}/{year}"
 

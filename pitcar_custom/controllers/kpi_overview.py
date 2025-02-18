@@ -818,7 +818,7 @@ class KPIOverview(http.Controller):
                                     cv = (std_dev / team_avg) * 100 if team_avg else 0
                                     
                                     # Leader dianggap efisien jika CV < 15% (variasi antar anggota tim < 15%)
-                                    is_efficient = cv < 15
+                                    is_efficient = cv < 5
                                     if is_efficient:
                                         leaders_in_range += 1
 
@@ -1871,7 +1871,7 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
 
                     # Perbaikan perhitungan mechanic efficiency
-                    elif kpi['type'] == 'mechanic_efficiency':
+                    elif kpi['type'] == 'mechan':
                         # Ambil data tim termasuk leader
                         team_members = mechanic.team_member_ids + mechanic
                         

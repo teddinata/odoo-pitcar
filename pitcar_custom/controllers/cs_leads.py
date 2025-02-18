@@ -156,6 +156,7 @@ class LeadsAPI(http.Controller):
                 'phone': data['phone'],
                 'cs_id': request.env.user.employee_id.id,
                 'state': 'new',
+                'date': fields.Date.today(),  # Required field
                 'source_id': data.get('source_id'),
                 'channel': data.get('channel'),
                 'tanggal_chat': data.get('tanggal_chat'),
@@ -165,7 +166,8 @@ class LeadsAPI(http.Controller):
                 'category': data.get('category'),
                 'campaign_id': data.get('campaign_id'),
                 'medium_id': data.get('medium_id'),
-                'notes': data.get('notes')
+                'notes': data.get('notes'),
+                'follow_up_status': 'pending'  # Set default value
             }
 
             lead = request.env['cs.leads'].sudo().create(values)

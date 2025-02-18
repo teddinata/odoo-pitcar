@@ -10,39 +10,83 @@ _logger = logging.getLogger(__name__)
 class LeadsAnalyticsAPI(http.Controller):
     @http.route('/web/v1/leads/dashboard', type='json', auth='user', methods=['POST'])
     def get_dashboard_data(self, **kw):
-        """Get comprehensive dashboard data"""
+        """Get dashboard statistics and metrics"""
         try:
-            date_from = kw.get('date_from')
-            date_to = kw.get('date_to')
-            cs_ids = kw.get('cs_ids', [])
-
             domain = []
-            if date_from:
-                domain.append(('date', '>=', date_from))
-            if date_to:
-                domain.append(('date', '<=', date_to))
-            if cs_ids:
-                domain.append(('cs_id', 'in', cs_ids))
+            if kw.get('date_from'):
+                domain.append(('date', '>=', kw['date_from']))
+            if kw.get('date_to'):
+                domain.append(('date', '<=', kw['date_to']))
 
-            analytics = request.env['cs.leads.analytics'].sudo().search(domain)
-
-            # Prepare dashboard data
-            dashboard_data = {
-                'summary': self._get_summary_metrics(analytics),
-                'trends': self._get_trend_analysis(analytics),
-                'cs_performance': self._get_cs_performance(analytics),
-                'source_analysis': self._get_source_analysis(analytics),
-                'conversion_funnel': self._get_conversion_funnel(analytics)
+            leads = request.env['cs.leads'].sudo().search(domain)
+            
+            # Calculate summary metrics
+            total_leads = len(leads)
+            converted_leads = len(leads.filtered(lambda l: l.is_converted))
+            total_revenue = sum(leads.mapped('omzet'))
+            
+            # Calculate conversion rate
+            conversion_rate = (converted_leads / total_leads * 100) if total_leads > 0 else 0
+            
+            # Get funnel data
+            funnel = {
+                'new': len(leads.filtered(lambda l: l.state == 'new')),
+                'contacted': len(leads.filtered(lambda l: l.state == 'contacted')),
+                'qualified': len(leads.filtered(lambda l: l.state == 'qualified')),
+                'converted': converted_leads,
+                'lost': len(leads.filtered(lambda l: l.state == 'lost'))
             }
+            
+            # Calculate source performance
+            source_performance = {}
+            for lead in leads:
+                source = lead.source or 'undefined'
+                if source not in source_performance:
+                    source_performance[source] = {
+                        'total': 0,
+                        'converted': 0,
+                        'revenue': 0
+                    }
+                source_performance[source]['total'] += 1
+                if lead.is_converted:
+                    source_performance[source]['converted'] += 1
+                    source_performance[source]['revenue'] += lead.omzet or 0
+            
+            # Get CS performance
+            cs_performance = {}
+            for lead in leads:
+                cs_name = lead.cs_id.name
+                if cs_name not in cs_performance:
+                    cs_performance[cs_name] = {
+                        'total': 0,
+                        'converted': 0,
+                        'revenue': 0
+                    }
+                cs_performance[cs_name]['total'] += 1
+                if lead.is_converted:
+                    cs_performance[cs_name]['converted'] += 1
+                    cs_performance[cs_name]['revenue'] += lead.omzet or 0
 
             return {
                 'status': 'success',
-                'data': dashboard_data
+                'data': {
+                    'summary': {
+                        'total_leads': total_leads,
+                        'conversion_rate': round(conversion_rate, 2),
+                        'total_revenue': total_revenue,
+                        'avg_response_time': 0,  # TODO: Calculate from followup data
+                        'conversion_growth': 0  # TODO: Calculate month-over-month growth
+                    },
+                    'funnel': funnel,
+                    'source_performance': source_performance,
+                    'cs_performance': cs_performance
+                }
             }
 
         except Exception as e:
-            _logger.error(f"Error in dashboard API: {str(e)}")
+            _logger.error(f"Error getting dashboard data: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
 
     def _calculate_trends(self, daily_data):
         """Calculate trends from daily data"""

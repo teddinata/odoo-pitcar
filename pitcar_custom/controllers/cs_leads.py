@@ -565,11 +565,9 @@ class LeadsAPI(http.Controller):
             if not lead.exists():
                 return {'status': 'error', 'message': 'Lead not found'}
             
-            schedule_date = datetime.strptime(
-                data['schedule_date'], 
-                '%Y-%m-%dT%H:%M'
-            ).strftime('%Y-%m-%d %H:%M:00')
-
+            # Parse the datetime string directly
+            schedule_date = fields.Datetime.from_string(data['schedule_date'])
+            
             values = {
                 'next_follow_up': schedule_date,
                 'follow_up_notes': data.get('notes'),
@@ -583,7 +581,7 @@ class LeadsAPI(http.Controller):
                 'lead_id': lead.id,
                 'notes': data.get('notes', ''),
                 'result': 'thinking',
-                'next_action_date': data['schedule_date'],
+                'next_action_date': schedule_date,
                 'created_by': request.env.user.id
             })
             

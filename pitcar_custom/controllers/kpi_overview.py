@@ -327,7 +327,7 @@ class KPIOverview(http.Controller):
             sa_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Produktivitas bengkel',
+                    'name': 'Jumlah omzet pitcar service sesuai target',
                     'type': 'productivity',
                     'weight': 20,
                     'target': 100,
@@ -336,7 +336,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 2,
-                    'name': 'Efisiensi waktu penanganan customer',
+                    'name': 'Persentase rata-rata penanganan customer yang sesuai target waktu',
                     'type': 'service_efficiency',
                     'weight': 20,
                     'target': 80,
@@ -345,7 +345,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 3,
-                    'name': 'Kepuasan customer',
+                    'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
                     'type': 'customer_satisfaction',
                     'weight': 20,
                     'target': 95,
@@ -354,7 +354,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 4,
-                    'name': 'Analisis dan penyelesaian komplain dari customer',
+                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
                     'type': 'complaint_handling',
                     'weight': 15,
                     'target': 95,
@@ -364,10 +364,10 @@ class KPIOverview(http.Controller):
                 {
                     'no': 5,
                     'name': 'Follow up H+3 untuk setiap customer setelah servis',
-                    'type': 'sa_revenue',
+                    'type': 'sa_follow_up',
                     'weight': 10,
                     'target': 100,
-                    'measurement': 'Persentase pencapaian target revenue individu'
+                    'measurement': 'Diukur dari jumlah follow up yang dilakukan setelah servis',
                 },
                 {
                     'no': 6,
@@ -879,6 +879,25 @@ class KPIOverview(http.Controller):
                         else:
                             actual = 0
                             kpi['measurement'] = "Belum ada data deviasi waktu pengerjaan"
+                    
+                    elif kpi['type'] == 'sa_follow_up':
+                        # Filter order yang memiliki next_follow_up_3_days dalam bulan yang dipilih
+                        follow_up_orders = orders.filtered(lambda o: 
+                            o.next_follow_up_3_days and
+                            o.next_follow_up_3_days.month == start_date_utc.month and
+                            o.next_follow_up_3_days.year == start_date_utc.year
+                        )
+                        
+                        completed_follow_ups = follow_up_orders.filtered(lambda o: o.is_follow_up == 'yes')
+                        
+                        # Menghitung persentase follow-up yang telah dilakukan
+                        actual = (len(completed_follow_ups) / len(follow_up_orders) * 100) if follow_up_orders else 0
+                        
+                        kpi['measurement'] = (
+                            f"Follow up H+3: {len(completed_follow_ups)} dari {len(follow_up_orders)} "
+                            f"({actual:.1f}%) pada bulan {start_date_utc.strftime('%B %Y')}."
+                        )
+
 
                     elif kpi['type'] == 'customer_satisfaction':
                         # Filter orders berdasarkan periode yang dipilih

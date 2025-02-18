@@ -778,7 +778,7 @@ class KPIOverview(http.Controller):
                         # Hitung rata-rata waktu pengerjaan per mekanik
                         mechanic_times = {}
                         for order in team_orders:
-                            if order.lead_time_servis: # Only count if lead time exists
+                            if order.lead_time_servis:
                                 for mech in order.car_mechanic_id_new:
                                     if mech not in mechanic_times:
                                         mechanic_times[mech] = []
@@ -786,38 +786,41 @@ class KPIOverview(http.Controller):
 
                         # Hitung rata-rata untuk setiap mekanik
                         mechanic_averages = {}
+                        mechanic_names = {}  # Tambah dict untuk menyimpan nama mekanik
                         for mech, times in mechanic_times.items():
-                            if times:  # Only if mechanic has orders
-                                mechanic_averages[mech.id] = sum(times) / len(times)
+                            if times:
+                                avg_time = sum(times) / len(times)
+                                mechanic_averages[mech.id] = avg_time
+                                mechanic_names[mech.id] = mech.name
 
                         if mechanic_averages:
                             # Hitung rata-rata tim
                             team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
                             
                             # Hitung batas toleransi (±5%)
-                            upper_limit = team_average * 1.05  # 105% dari rata-rata
-                            lower_limit = team_average * 0.95  # 95% dari rata-rata
+                            upper_limit = team_average * 1.05
+                            lower_limit = team_average * 0.95
                             
-                            # Hitung mekanik yang masuk dalam rentang
-                            mechanics_in_range = sum(
-                                1 for avg in mechanic_averages.values()
-                                if lower_limit <= avg <= upper_limit
-                            )
+                            # Hitung mekanik dalam dan luar rentang
+                            in_range_mechanics = []
+                            out_range_mechanics = []
                             
-                            # Hitung persentase mekanik dalam rentang
-                            actual = (mechanics_in_range / len(mechanic_averages) * 100)
+                            for mech_id, avg_time in mechanic_averages.items():
+                                if lower_limit <= avg_time <= upper_limit:
+                                    in_range_mechanics.append(f"{mechanic_names[mech_id]}: {avg_time:.1f} jam ✓")
+                                else:
+                                    out_range_mechanics.append(f"{mechanic_names[mech_id]}: {avg_time:.1f} jam ✗")
                             
-                            # Tambahkan detail waktu setiap mekanik untuk debugging
-                            mechanic_details = [
-                                f"{mech.name}: {avg:.1f} jam" 
-                                for mech, avg in mechanic_averages.items()
-                            ]
+                            # Hitung persentase dalam rentang
+                            mechanics_in_range = len(in_range_mechanics)
+                            total_mechanics = len(mechanic_averages)
+                            actual = (mechanics_in_range / total_mechanics * 100)
                             
                             measurement = (
-                                f"Rata-rata tim: {team_average:.1f} jam, "
-                                f"Rentang ideal: {lower_limit:.1f} - {upper_limit:.1f} jam, "
-                                f"Mekanik dalam rentang: {mechanics_in_range} dari {len(mechanic_averages)} "
-                                f"({', '.join(mechanic_details)})"
+                                f"Rata-rata tim: {team_average:.1f} jam\n"
+                                f"Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam\n"
+                                f"Dalam rentang ({mechanics_in_range}/{total_mechanics}): {', '.join(in_range_mechanics)}\n"
+                                f"Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}): {', '.join(out_range_mechanics)}"
                             )
                         else:
                             actual = 0
@@ -1819,7 +1822,7 @@ class KPIOverview(http.Controller):
                         # Hitung rata-rata waktu pengerjaan per mekanik
                         mechanic_times = {}
                         for order in team_orders:
-                            if order.lead_time_servis: # Only count if lead time exists
+                            if order.lead_time_servis:
                                 for mech in order.car_mechanic_id_new:
                                     if mech not in mechanic_times:
                                         mechanic_times[mech] = []
@@ -1827,42 +1830,45 @@ class KPIOverview(http.Controller):
 
                         # Hitung rata-rata untuk setiap mekanik
                         mechanic_averages = {}
+                        mechanic_names = {}  # Tambah dict untuk menyimpan nama mekanik
                         for mech, times in mechanic_times.items():
-                            if times:  # Only if mechanic has orders
-                                mechanic_averages[mech.id] = sum(times) / len(times)
+                            if times:
+                                avg_time = sum(times) / len(times)
+                                mechanic_averages[mech.id] = avg_time
+                                mechanic_names[mech.id] = mech.name
 
                         if mechanic_averages:
                             # Hitung rata-rata tim
                             team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
                             
                             # Hitung batas toleransi (±5%)
-                            upper_limit = team_average * 1.05  # 105% dari rata-rata
-                            lower_limit = team_average * 0.95  # 95% dari rata-rata
+                            upper_limit = team_average * 1.05
+                            lower_limit = team_average * 0.95
                             
-                            # Hitung mekanik yang masuk dalam rentang
-                            mechanics_in_range = sum(
-                                1 for avg in mechanic_averages.values()
-                                if lower_limit <= avg <= upper_limit
-                            )
+                            # Hitung mekanik dalam dan luar rentang
+                            in_range_mechanics = []
+                            out_range_mechanics = []
                             
-                            # Hitung persentase mekanik dalam rentang
-                            actual = (mechanics_in_range / len(mechanic_averages) * 100)
+                            for mech_id, avg_time in mechanic_averages.items():
+                                if lower_limit <= avg_time <= upper_limit:
+                                    in_range_mechanics.append(f"{mechanic_names[mech_id]}: {avg_time:.1f} jam ✓")
+                                else:
+                                    out_range_mechanics.append(f"{mechanic_names[mech_id]}: {avg_time:.1f} jam ✗")
                             
-                            # Tambahkan detail waktu setiap mekanik untuk debugging
-                            mechanic_details = [
-                                f"{mech.name}: {avg:.1f} jam" 
-                                for mech, avg in mechanic_averages.items()
-                            ]
+                            # Hitung persentase dalam rentang
+                            mechanics_in_range = len(in_range_mechanics)
+                            total_mechanics = len(mechanic_averages)
+                            actual = (mechanics_in_range / total_mechanics * 100)
                             
-                            kpi['measurement'] = (
-                                f"Rata-rata tim: {team_average:.1f} jam, "
-                                f"Rentang ideal: {lower_limit:.1f} - {upper_limit:.1f} jam, "
-                                f"Mekanik dalam rentang: {mechanics_in_range} dari {len(mechanic_averages)} "
-                                f"({', '.join(mechanic_details)})"
+                            measurement = (
+                                f"Rata-rata tim: {team_average:.1f} jam\n"
+                                f"Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam\n"
+                                f"Dalam rentang ({mechanics_in_range}/{total_mechanics}): {', '.join(in_range_mechanics)}\n"
+                                f"Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}): {', '.join(out_range_mechanics)}"
                             )
                         else:
                             actual = 0
-                            kpi['measurement'] = "Belum ada data pengerjaan mekanik yang cukup"
+                            measurement = "Belum ada data pengerjaan mekanik yang cukup"
                         
                     elif kpi['type'] == 'service_efficiency':
                         # Hitung rata-rata deviasi waktu servis tim
@@ -1915,9 +1921,10 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"PKB dengan rekomendasi: {orders_with_recs} dari {total_orders} PKB"
 
                     elif kpi['type'] == 'team_recommendation':
-                        team_orders = orders.filtered(lambda o: o.car_mechanic_id_new in team_members)
-                        total_team_orders = len(team_orders)
-                        team_orders_with_recs = len(team_orders.filtered(lambda o: o.recommendation_ids))
+                        filtered_orders = team_orders.filtered(lambda o: o.car_mechanic_id_new in team_members)
+                        total_team_orders = len(filtered_orders)
+                        team_orders_with_recs = len(filtered_orders.filtered(lambda o: o.recommendation_ids))
+                        # team_orders_with_recs = len(team_orders.filtered(lambda o: o.recommendation_ids))
                         actual = (team_orders_with_recs / total_team_orders * 100) if total_team_orders else 0
                         kpi['measurement'] = f"Orders tim dengan rekomendasi: {team_orders_with_recs} dari {total_team_orders}"
                         

@@ -364,7 +364,7 @@ class KPIOverview(http.Controller):
                 {
                     'no': 5,
                     'name': 'Follow up H+3 untuk setiap customer setelah servis',
-                    'type': 'sa_follow_up',
+                    'type': 'follow_up_h3',
                     'weight': 10,
                     'target': 100,
                     'measurement': 'Diukur dari jumlah follow up yang dilakukan setelah servis',
@@ -880,25 +880,30 @@ class KPIOverview(http.Controller):
                             actual = 0
                             kpi['measurement'] = "Belum ada data deviasi waktu pengerjaan"
                     
-                    elif kpi['type'] == 'sa_follow_up':
+                    elif kpi['type'] == 'follow_up_h3':
                         # Filter order yang memiliki next_follow_up_3_days dalam bulan KPI yang dipilih
-                        follow_up_orders = orders.filtered(lambda o: 
-                            o.next_follow_up_3_days and
-                            o.next_follow_up_3_days.month == start_date_utc.month and
-                            o.next_follow_up_3_days.year == start_date_utc.year
-                        )
+                        follow_up_domain = [
+                            ('next_follow_up_3_days', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('next_follow_up_3_days', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('state', 'in', ['sale', 'done'])  # Pastikan hanya order yang sudah selesai
+                        ]
 
-                        # Filter hanya yang sudah follow-up dalam bulan tersebut
-                        completed_follow_ups = follow_up_orders.filtered(lambda o: o.is_follow_up == 'yes')
+                        # Ambil semua order yang masuk dalam kriteria follow-up
+                        due_follow_ups = request.env['sale.order'].sudo().search(follow_up_domain)
+
+                        # Filter order yang sudah benar-benar melakukan follow-up dalam bulan tersebut
+                        completed_follow_ups = due_follow_ups.filtered(lambda o: o.is_follow_up == 'yes')
 
                         # Menghitung persentase follow-up yang telah dilakukan
-                        actual = (len(completed_follow_ups) / len(follow_up_orders) * 100) if follow_up_orders else 0
+                        total_due = len(due_follow_ups)
+                        actual = (len(completed_follow_ups) / total_due * 100) if total_due else 0
 
                         # Memformat output KPI agar lebih jelas
                         kpi['measurement'] = (
-                            f"Follow up H+3: {len(completed_follow_ups)} dari {len(follow_up_orders)} "
+                            f"Follow up H+3: {len(completed_follow_ups)} dari {total_due} "
                             f"({actual:.1f}%) pada bulan {start_date_utc.strftime('%B %Y')}."
                         )
+
 
 
                     elif kpi['type'] == 'customer_satisfaction':
@@ -944,12 +949,12 @@ class KPIOverview(http.Controller):
                         actual = (len(resolved_complaints) / len(complaints) * 100) if complaints else 100
                         kpi['measurement'] = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
 
-                    elif kpi['type'] == 'follow_up_h3':
-                        # Dari data follow up H+3
-                        due_follow_ups = orders.filtered(lambda o: o.next_follow_up_3_days)
-                        completed_follow_ups = due_follow_ups.filtered(lambda o: o.is_follow_up == 'yes')
-                        actual = (len(completed_follow_ups) / len(due_follow_ups) * 100) if due_follow_ups else 0
-                        kpi['measurement'] = f"Follow up H+3: {len(completed_follow_ups)} dari {len(due_follow_ups)} order"
+                    # elif kpi['type'] == 'follow_up_h3':
+                    #     # Dari data follow up H+3
+                    #     due_follow_ups = orders.filtered(lambda o: o.next_follow_up_3_days)
+                    #     completed_follow_ups = due_follow_ups.filtered(lambda o: o.is_follow_up == 'yes')
+                    #     actual = (len(completed_follow_ups) / len(due_follow_ups) * 100) if due_follow_ups else 0
+                    #     kpi['measurement'] = f"Follow up H+3: {len(completed_follow_ups)} dari {len(due_follow_ups)} order"
 
                     elif kpi['type'] == 'sop_compliance':
                         # Ambil samplings untuk SA dari periode yang dipilih

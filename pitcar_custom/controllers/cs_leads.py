@@ -555,17 +555,40 @@ class LeadsAPI(http.Controller):
             return {'status': 'error', 'message': str(e)}
 
     def _schedule_follow_up(self, data):
-        lead = request.env['cs.leads'].sudo().browse(int(data['lead_id']))
-        
-        lead.write({
-            'next_follow_up': data['schedule_date'],
-            'notes': data.get('notes'),
-        })
-        
-        return {
-            'status': 'success',
-            'message': 'Follow up scheduled'
-        }
+        """Schedule follow up for a lead"""
+        if not data.get('lead_id'):
+            return {'status': 'error', 'message': 'Lead ID is required'}
+            
+        try:
+            lead = request.env['cs.leads'].sudo().browse(int(data['lead_id']))
+            if not lead.exists():
+                return {'status': 'error', 'message': 'Lead not found'}
+
+            values = {
+                'next_follow_up': data['schedule_date'],
+                'follow_up_notes': data.get('notes'),
+                'follow_up_reminder': data.get('reminder', False)
+            }
+            
+            lead.write(values)
+            
+            # Create follow up record
+            request.env['cs.leads.followup'].sudo().create({
+                'lead_id': lead.id,
+                'notes': data.get('notes', ''),
+                'result': 'thinking',
+                'next_action_date': data['schedule_date'],
+                'created_by': request.env.user.id
+            })
+            
+            return {
+                'status': 'success',
+                'message': 'Follow up scheduled'
+            }
+            
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
 
     def _mark_lead_contacted(self, data):
         lead = request.env['cs.leads'].sudo().browse(int(data['lead_id']))
@@ -584,22 +607,28 @@ class LeadsAPI(http.Controller):
         }
 
     def _get_pending_follow_ups(self, data):
-        domain = [
-            ('next_follow_up', '!=', False),
-            ('next_follow_up', '<=', fields.Datetime.now()),
-            ('state', 'not in', ['converted', 'lost'])
-        ]
-        
-        leads = request.env['cs.leads'].sudo().search(domain)
-        
-        return {
-            'status': 'success',
-            'data': [{
-                'id': lead.id,
-                'name': lead.name,
-                'customer_name': lead.customer_name,
-                'phone': lead.phone,
-                'next_follow_up': lead.next_follow_up,
-                'notes': lead.notes
-            } for lead in leads]
-        }
+        """Get pending follow ups"""
+        try:
+            domain = [
+                ('next_follow_up', '!=', False),
+                ('next_follow_up', '<=', fields.Datetime.now()),
+                ('state', 'not in', ['converted', 'lost'])
+            ]
+            
+            leads = request.env['cs.leads'].sudo().search(domain)
+            
+            return {
+                'status': 'success',
+                'data': [{
+                    'id': lead.id,
+                    'name': lead.name,
+                    'customer_name': lead.customer_name,
+                    'phone': lead.phone,
+                    'next_follow_up': lead.next_follow_up,
+                    'follow_up_notes': lead.follow_up_notes
+                } for lead in leads]
+            }
+            
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+

@@ -3,6 +3,7 @@ from odoo import http, fields
 from odoo.http import request
 import logging
 import json
+import datetime
 
 _logger = logging.getLogger(__name__)
 
@@ -563,9 +564,14 @@ class LeadsAPI(http.Controller):
             lead = request.env['cs.leads'].sudo().browse(int(data['lead_id']))
             if not lead.exists():
                 return {'status': 'error', 'message': 'Lead not found'}
+            
+            schedule_date = datetime.strptime(
+                data['schedule_date'], 
+                '%Y-%m-%dT%H:%M'
+            ).strftime('%Y-%m-%d %H:%M:00')
 
             values = {
-                'next_follow_up': data['schedule_date'],
+                'next_follow_up': schedule_date,
                 'follow_up_notes': data.get('notes'),
                 'follow_up_reminder': data.get('reminder', False)
             }
@@ -631,4 +637,42 @@ class LeadsAPI(http.Controller):
             
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v1/leads/reorder', type='json', auth='user', methods=['POST'])
+    def reorder_leads(self, **kw):
+        """Reorder leads position"""
+        try:
+            if not kw.get('lead_id') or 'new_position' not in kw:
+                return {'status': 'error', 'message': 'Missing required parameters'}
 
+            lead = request.env['cs.leads'].sudo().browse(int(kw['lead_id']))
+            if not lead.exists():
+                return {'status': 'error', 'message': 'Lead not found'}
+
+            # Add sequence field to model if not exists
+            if not hasattr(lead, 'sequence'):
+                request.env.cr.execute("""
+                    ALTER TABLE cs_leads 
+                    ADD COLUMN sequence INTEGER;
+                    UPDATE cs_leads SET sequence = id;
+                """)
+
+            # Update sequence
+            new_position = int(kw['new_position'])
+            leads = request.env['cs.leads'].sudo().search([])
+            
+            # Reorder sequences
+            for idx, l in enumerate(leads):
+                if l.id == lead.id:
+                    l.sequence = new_position
+                elif idx >= new_position:
+                    l.sequence = idx + 1
+
+            return {
+                'status': 'success',
+                'message': 'Lead reordered successfully'
+            }
+
+        except Exception as e:
+            _logger.error(f"Error reordering lead: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

@@ -10,6 +10,7 @@ class CSLeads(models.Model):
 
     name = fields.Char('Lead Reference', required=True, copy=False, readonly=True, 
                       default=lambda self: self.env['ir.sequence'].next_by_code('cs.leads'))
+    sequence = fields.Integer('Sequence', default=10)
     
     # Basic Information
     customer_name = fields.Char('Customer Name', required=True, tracking=True)

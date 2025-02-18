@@ -818,7 +818,7 @@ class KPIOverview(http.Controller):
                                     cv = (std_dev / team_avg) * 100 if team_avg else 0
                                     
                                     # Leader dianggap efisien jika CV < 15% (variasi antar anggota tim < 15%)
-                                    is_efficient = cv < 15
+                                    is_efficient = cv < 5
                                     if is_efficient:
                                         leaders_in_range += 1
 

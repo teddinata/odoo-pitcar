@@ -144,50 +144,50 @@ class LeadsAPI(http.Controller):
         if not all(data.get(field) for field in required_fields):
             return {'status': 'error', 'message': 'Missing required fields'}
 
-        values = {
-            'customer_name': data['customer_name'],
-            'phone': data['phone'],
-            'state': 'new',
-            
-            # Channel & Timing
-            'channel': data.get('channel'),
-            'tanggal_chat': data.get('tanggal_chat'),
-            'jam_chat': data.get('jam_chat'),
-            
-            # Booking info
-            'is_booking': data.get('is_booking', False),
-            'tanggal_booking': data.get('tanggal_booking'),
-            
-            # Category & Revenue
-            'category': data.get('category'),
-            'omzet': data.get('omzet'),
-            'tanggal_pembayaran': data.get('tanggal_pembayaran'),
-            
-            # UTM Tracking
-            'campaign_id': data.get('campaign_id'),
-            'source_id': data.get('source_id'),
-            'medium_id': data.get('medium_id'),
-        }
+        try:
+            # Get employee ID from current user
+            current_user = request.env.user
 
-        # Create initial followup if provided
-        if data.get('initial_notes'):
-            followup_vals = {
-                'lead_id': lead.id,
-                'notes': data['initial_notes'],
-                'result': data.get('initial_result', 'interested'),
-                'next_action': data.get('next_action'),
-                'next_action_date': data.get('next_action_date')
+            values = {
+                'customer_name': data['customer_name'],
+                'phone': data['phone'],
+                'cs_id': request.env.user.employee_id.id,
+                'state': 'new',
+                'source_id': data.get('source_id'),
+                'channel': data.get('channel'),
+                'tanggal_chat': data.get('tanggal_chat'),
+                'jam_chat': data.get('jam_chat'),
+                'is_booking': data.get('is_booking', False),
+                'tanggal_booking': data.get('tanggal_booking'),
+                'category': data.get('category'),
+                'campaign_id': data.get('campaign_id'),
+                'medium_id': data.get('medium_id'),
+                'notes': data.get('notes')
             }
-            request.env['cs.leads.followup'].sudo().create(followup_vals)
 
-        lead = request.env['cs.leads'].sudo().create(values)
-        return {
-            'status': 'success',
-            'data': {
-                'id': lead.id,
-                'name': lead.name
+            lead = request.env['cs.leads'].sudo().create(values)
+
+            # Create initial followup if provided
+            if data.get('initial_notes'):
+                followup_vals = {
+                    'lead_id': lead.id,
+                    'notes': data['initial_notes'],
+                    'result': 'interested',
+                    'created_by': current_user.id
+                }
+                request.env['cs.leads.followup'].sudo().create(followup_vals)
+
+            return {
+                'status': 'success',
+                'data': {
+                    'id': lead.id,
+                    'name': lead.name
+                }
             }
-        }
+        except Exception as e:
+            _logger.error(f"Error creating lead: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
 
     def _get_leads(self, data):
         """Get leads with filters and pagination"""
@@ -242,6 +242,14 @@ class LeadsAPI(http.Controller):
                     'customer_name': lead.customer_name,
                     'phone': lead.phone,
                     'channel': lead.channel,
+                    'source': {
+                        'id': lead.source_id.id,
+                        'name': lead.source_id.name
+                    } if lead.source_id else None,
+                    'campaign': {
+                        'id': lead.campaign_id.id,
+                        'name': lead.campaign_id.name
+                    } if lead.campaign_id else None,
                     'tanggal_chat': lead.tanggal_chat,
                     'jam_chat': lead.jam_chat,
                     'is_booking': lead.is_booking,
@@ -263,6 +271,7 @@ class LeadsAPI(http.Controller):
                     'items_per_page': limit
                 }
             }
+
 
         except Exception as e:
             _logger.error(f"Error in _get_leads: {str(e)}")

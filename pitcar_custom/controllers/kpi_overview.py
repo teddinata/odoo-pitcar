@@ -771,95 +771,96 @@ class KPIOverview(http.Controller):
 
                     # Perbaikan perhitungan mechanic efficiency
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # Ambil mekanik yang aktif berdasarkan orders di periode tersebut
-                        active_mechanics = request.env['sale.order'].sudo().search([
-                            *base_domain,
-                            ('state', 'in', ['sale', 'done'])
-                        ]).mapped('car_mechanic_id_new')
+                        # Ambil semua lead mechanic yang aktif di periode tersebut
+                        lead_mechanics = request.env['pitcar.mechanic.new'].sudo().search([
+                            ('position_code', '=', 'leader')
+                        ])
                         
-                        _logger.info(f"Found {len(active_mechanics)} active mechanics in period {month}/{year}")
+                        _logger.info(f"Found {len(lead_mechanics)} lead mechanics")
 
-                        if not active_mechanics:
+                        if not lead_mechanics:
                             actual = 0
-                            measurement = f"Tidak ada mekanik aktif pada periode {month}/{year}"
+                            measurement = f"Tidak ada lead mechanic aktif pada periode {month}/{year}"
                         else:
-                            # Get orders untuk mekanik yang aktif
-                            all_orders = request.env['sale.order'].sudo().search([
-                                *base_domain,
-                                ('car_mechanic_id_new', 'in', active_mechanics.ids),
-                                ('state', 'in', ['sale', 'done'])
-                            ])
+                            # Data untuk HTML output
+                            leader_performance = []
+                            leaders_in_range = 0
                             
-                            _logger.info(f"Found {len(all_orders)} orders for active mechanics")
+                            for leader in lead_mechanics:
+                                # Ambil anggota tim
+                                team_members = leader.team_member_ids
+                                
+                                if not team_members:
+                                    continue
+                                    
+                                # Ambil orders untuk tim ini
+                                team_orders = request.env['sale.order'].sudo().search([
+                                    *base_domain,
+                                    ('car_mechanic_id_new', 'in', team_members.ids)
+                                ])
+                                
+                                # Hitung rata-rata pengerjaan per mekanik dalam tim
+                                member_averages = {}
+                                for member in team_members:
+                                    member_orders = team_orders.filtered(lambda o: member in o.car_mechanic_id_new)
+                                    if member_orders:
+                                        member_times = [o.lead_time_servis for o in member_orders if o.lead_time_servis]
+                                        if member_times:
+                                            member_averages[member.id] = sum(member_times) / len(member_times)
+                                
+                                if member_averages:
+                                    # Hitung standar deviasi tim
+                                    team_avg = sum(member_averages.values()) / len(member_averages)
+                                    variance = sum((t - team_avg) ** 2 for t in member_averages.values()) / len(member_averages)
+                                    std_dev = variance ** 0.5
+                                    
+                                    # Hitung coefficient of variation (CV) sebagai ukuran distribusi kerja
+                                    cv = (std_dev / team_avg) * 100 if team_avg else 0
+                                    
+                                    # Leader dianggap efisien jika CV < 15% (variasi antar anggota tim < 15%)
+                                    is_efficient = cv < 15
+                                    if is_efficient:
+                                        leaders_in_range += 1
+                                    
+                                    leader_performance.append({
+                                        'name': leader.name,
+                                        'team_size': len(team_members),
+                                        'team_avg': team_avg,
+                                        'cv': cv,
+                                        'is_efficient': is_efficient,
+                                        'member_stats': {
+                                            mechanic_names[mid]: avg 
+                                            for mid, avg in member_averages.items()
+                                        }
+                                    })
 
-                            # Hitung rata-rata waktu pengerjaan per mekanik
-                            mechanic_times = {}
-                            for order in all_orders:
-                                if order.controller_mulai_servis and order.controller_selesai and order.lead_time_servis:
-                                    for mech in order.car_mechanic_id_new:
-                                        if mech not in mechanic_times:
-                                            mechanic_times[mech] = []
-                                        mechanic_times[mech].append(order.lead_time_servis)
+                            # Hitung actual score
+                            total_leaders = len([l for l in leader_performance if l['team_size'] > 0])
+                            actual = (leaders_in_range / total_leaders * 100) if total_leaders else 0
 
-                            # Hitung rata-rata untuk setiap mekanik
-                            mechanic_averages = {}
-                            mechanic_names = {}
-                            for mech, times in mechanic_times.items():
-                                if times:
-                                    avg_time = sum(times) / len(times)
-                                    mechanic_averages[mech.id] = avg_time
-                                    mechanic_names[mech.id] = mech.name
-                                    _logger.info(f"Mechanic {mech.name}: avg time = {avg_time:.2f} hours, orders = {len(times)}")
+                            # Generate HTML output
+                            measurement = '<div class="kpi-measurement">'
+                            measurement += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
+                            
+                            measurement += '<div class="summary-stats">'
+                            measurement += f'<div class="stat-item">Lead Mechanics efisien: {leaders_in_range}/{total_leaders}</div>'
+                            measurement += '</div>'
+                            
+                            measurement += '<div class="leader-details">'
+                            for leader in leader_performance:
+                                measurement += f'<div class="leader-card {"efficient" if leader["is_efficient"] else "inefficient"}">'
+                                measurement += f'<h4>{leader["name"]} ({leader["team_size"]} anggota)</h4>'
+                                measurement += f'<p>Rata-rata tim: {leader["team_avg"]:.1f} jam</p>'
+                                measurement += f'<p>Variasi distribusi: {leader["cv"]:.1f}%</p>'
+                                measurement += '<div class="member-stats">'
+                                for member, avg in leader['member_stats'].items():
+                                    measurement += f'<div>{member}: {avg:.1f} jam</div>'
+                                measurement += '</div>'
+                                measurement += '</div>'
+                            measurement += '</div>'
+                            
+                            measurement += '</div>'
 
-                            if mechanic_averages:
-                                # Hitung rata-rata keseluruhan
-                                team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
-                                
-                                # Hitung batas toleransi (±5%)
-                                upper_limit = team_average * 1.05
-                                lower_limit = team_average * 0.95
-                                
-                                # Hitung mekanik dalam dan luar rentang
-                                in_range_mechanics = []
-                                out_range_mechanics = []
-                                
-                                for mech_id, avg_time in mechanic_averages.items():
-                                    status_text = f"{mechanic_names[mech_id]}: {avg_time:.1f} jam"
-                                    if lower_limit <= avg_time <= upper_limit:
-                                        in_range_mechanics.append(f"{status_text} ✓")
-                                    else:
-                                        out_range_mechanics.append(f"{status_text} ✗")
-                                
-                                # Hitung persentase dalam rentang
-                                mechanics_in_range = len(in_range_mechanics)
-                                total_mechanics = len(mechanic_averages)
-                                actual = (mechanics_in_range / total_mechanics * 100)
-                                
-                                measurement = f"""
-                    Periode: {month}/{year}
-                    Rata-rata bengkel: {team_average:.1f} jam
-                    Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam
-                    Dalam rentang ({mechanics_in_range}/{total_mechanics}):
-                    {', '.join(in_range_mechanics)}
-                    Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):
-                    {', '.join(out_range_mechanics)}"""
-
-                                _logger.info(f"""
-                    KPI Results for period {month}/{year}:
-                    - Active mechanics: {len(active_mechanics)}
-                    - Mechanics with data: {len(mechanic_averages)}
-                    - Overall Average: {team_average:.1f} hours
-                    - Range: {lower_limit:.1f} - {upper_limit:.1f} hours
-                    - In range: {mechanics_in_range}/{total_mechanics}
-                    - Score: {actual:.1f}%
-                    """)
-                            else:
-                                _logger.warning(f"No valid mechanic data found for period {month}/{year}:")
-                                _logger.warning(f"- Total orders: {len(all_orders)}")
-                                _logger.warning(f"- Mechanics with data: {len(mechanic_times)}")
-                                
-                                actual = 0
-                                measurement = f"Belum ada data pengerjaan yang cukup pada periode {month}/{year}"
 
                         # kpi_scores.append({
                         #     'no': kpi['no'],
@@ -1868,101 +1869,82 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
 
                     # Perbaikan perhitungan mechanic efficiency
-                    elif kpi['type'] == 'mechanic_efficiency':
-                        # Debug log
-                        _logger.info(f"Calculating mechanic efficiency for team members: {team_members.ids}")
+                    elif kpi['type'] == 'team_efficiency':
+                        # Ambil data tim termasuk leader
+                        team_members = mechanic.team_member_ids + mechanic
                         
-                        # Get orders untuk tim
+                        # Ambil orders untuk seluruh tim
                         team_orders = request.env['sale.order'].sudo().search([
                             *base_domain,
                             ('car_mechanic_id_new', 'in', team_members.ids)
                         ])
                         
-                        _logger.info(f"Found {len(team_orders)} orders for team")
-
-                        # Hitung rata-rata waktu pengerjaan per mekanik
-                        mechanic_times = {}
-                        for order in team_orders:
-                            # Pastikan order memiliki waktu mulai dan selesai
-                            if order.controller_mulai_servis and order.controller_selesai:
-                                # Hitung waktu pengerjaan bersih (lead_time_servis)
-                                for mech in order.car_mechanic_id_new:
-                                    if mech not in mechanic_times:
-                                        mechanic_times[mech] = []
-                                    if order.lead_time_servis:  # Pastikan ada lead time
-                                        mechanic_times[mech].append(order.lead_time_servis)
-                                        
-                        _logger.info(f"Mechanic times collected: {mechanic_times}")
-
-                        # Hitung rata-rata untuk setiap mekanik
-                        mechanic_averages = {}
-                        mechanic_names = {}  # Untuk menyimpan nama mekanik
-                        for mech, times in mechanic_times.items():
-                            if times:  # Pastikan ada data waktu
-                                avg_time = sum(times) / len(times)
-                                mechanic_averages[mech.id] = avg_time
-                                mechanic_names[mech.id] = mech.name
-                                _logger.info(f"Mechanic {mech.name}: avg time = {avg_time:.2f} hours")
-
-                        if mechanic_averages:
-                            # Hitung rata-rata tim
-                            team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
-                            
-                            # Hitung batas toleransi (±5%)
-                            upper_limit = team_average * 1.05
-                            lower_limit = team_average * 0.95
-                            
-                            # Hitung mekanik dalam dan luar rentang
-                            in_range_mechanics = []
-                            out_range_mechanics = []
-                            
-                            for mech_id, avg_time in mechanic_averages.items():
-                                if lower_limit <= avg_time <= upper_limit:
-                                    in_range_mechanics.append(f"{mechanic_names[mech_id]}: {avg_time:.1f} jam ✓")
-                                else:
-                                    out_range_mechanics.append(f"{mechanic_names[mech_id]}: {avg_time:.1f} jam ✗")
-                            
-                            # Hitung persentase dalam rentang
-                            mechanics_in_range = len(in_range_mechanics)
-                            total_mechanics = len(mechanic_averages)
-                            actual = (mechanics_in_range / total_mechanics * 100)
-                            
-                            # Detailed measurement message
-                            measurement = (
-                                f"Rata-rata tim: {team_average:.1f} jam\n"
-                                f"Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam\n"
-                                f"Dalam rentang ({mechanics_in_range}/{total_mechanics}): {', '.join(in_range_mechanics)}\n"
-                                f"Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}): {', '.join(out_range_mechanics)}"
-                            )
-                            
-                            _logger.info(f"""
-                                KPI Calculation Results:
-                                - Team Average: {team_average:.1f} hours
-                                - Tolerance Range: {lower_limit:.1f} - {upper_limit:.1f} hours
-                                - Mechanics in range: {mechanics_in_range}/{total_mechanics}
-                                - Actual score: {actual:.1f}%
-                            """)
-                        else:
-                            _logger.warning("No valid mechanic averages found. Checking conditions:")
-                            _logger.warning(f"- Team orders found: {len(team_orders)}")
-                            _logger.warning(f"- Mechanics with times: {len(mechanic_times)}")
-                            _logger.warning(f"- Orders with lead times: {len([o for o in team_orders if o.lead_time_servis])}")
-                            
+                        if not team_orders:
                             actual = 0
-                            measurement = "Belum ada data pengerjaan mekanik yang cukup"
+                            measurement = f"Tidak ada orders untuk tim pada periode {month}/{year}"
+                        else:
+                            # Hitung rata-rata waktu per mekanik
+                            mechanic_times = {}
+                            for order in team_orders:
+                                if order.lead_time_servis:
+                                    for mech in order.car_mechanic_id_new:
+                                        if mech not in mechanic_times:
+                                            mechanic_times[mech] = []
+                                        mechanic_times[mech].append(order.lead_time_servis)
+                            
+                            # Hitung rata-rata untuk setiap mekanik
+                            mechanic_averages = {}
+                            for mech, times in mechanic_times.items():
+                                if times:
+                                    avg_time = sum(times) / len(times)
+                                    mechanic_averages[mech.id] = {
+                                        'name': mech.name,
+                                        'avg_time': avg_time,
+                                        'orders': len(times),
+                                        'is_leader': mech.id == mechanic.id
+                                    }
+                            
+                            if mechanic_averages:
+                                # Hitung rata-rata tim
+                                team_average = sum(m['avg_time'] for m in mechanic_averages.values()) / len(mechanic_averages)
+                                
+                                # Hitung batas toleransi (±5%)
+                                upper_limit = team_average * 1.05
+                                lower_limit = team_average * 0.95
+                                
+                                # Hitung mekanik dalam rentang
+                                in_range_count = sum(
+                                    1 for m in mechanic_averages.values() 
+                                    if lower_limit <= m['avg_time'] <= upper_limit
+                                )
+                                
+                                actual = (in_range_count / len(mechanic_averages) * 100)
+                                
+                                # Generate measurement HTML
+                                measurement = '<div class="kpi-measurement">'
+                                measurement += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
+                                
+                                measurement += '<div class="team-stats">'
+                                measurement += f'<div>Rata-rata tim: {team_average:.1f} jam</div>'
+                                measurement += f'<div>Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
+                                measurement += '</div>'
+                                
+                                measurement += '<div class="member-details">'
+                                for data in mechanic_averages.values():
+                                    is_in_range = lower_limit <= data['avg_time'] <= upper_limit
+                                    measurement += f'<div class="member-card {data["is_leader"] and "leader" or ""} {is_in_range and "in-range" or "out-range"}">'
+                                    measurement += f'<h4>{data["name"]} {data["is_leader"] and "(Leader)" or ""}</h4>'
+                                    measurement += f'<div>Rata-rata: {data["avg_time"]:.1f} jam</div>'
+                                    measurement += f'<div>Orders: {data["orders"]}</div>'
+                                    measurement += f'<div>Status: {is_in_range and "✓" or "✗"}</div>'
+                                    measurement += '</div>'
+                                measurement += '</div>'
+                                
+                                measurement += '</div>'
+                            else:
+                                actual = 0
+                                measurement = f'<div class="kpi-measurement"><div class="no-data">Tidak cukup data untuk analisis pada periode {month}/{year}</div></div>'
 
-                        kpi_scores.append({
-                            'no': kpi['no'],
-                            'name': kpi['name'],
-                            'type': kpi['type'],
-                            'weight': kpi['weight'],
-                            'target': kpi['target'],
-                            'measurement': measurement,
-                            'actual': actual,
-                            'achievement': actual,  # Langsung gunakan actual sebagai achievement
-                            'weighted_score': (actual * kpi['weight'] / 100),
-                            'editable': ['weight', 'target']
-                        })
                         
                     elif kpi['type'] == 'service_efficiency':
                         # Hitung rata-rata deviasi waktu servis tim

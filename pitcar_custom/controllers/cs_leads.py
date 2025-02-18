@@ -147,8 +147,11 @@ class LeadsAPI(http.Controller):
         try:
             # Get employee ID from current user
             current_user = request.env.user
+             # Generate name sequence
+            sequence = request.env['ir.sequence'].sudo().next_by_code('cs.leads')
 
             values = {
+                'name': sequence,  # Add name field
                 'customer_name': data['customer_name'],
                 'phone': data['phone'],
                 'cs_id': request.env.user.employee_id.id,

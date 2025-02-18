@@ -1871,7 +1871,7 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
 
                     # Perbaikan perhitungan mechanic efficiency
-                    elif kpi['type'] == 'mechan':
+                    elif kpi['type'] == 'mechanic_efficiency':
                         # Ambil data tim termasuk leader
                         team_members = mechanic.team_member_ids + mechanic
                         

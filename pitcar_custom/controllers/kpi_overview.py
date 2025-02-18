@@ -811,94 +811,55 @@ class KPIOverview(http.Controller):
                                     mechanic_names[mech.id] = mech.name
                                     _logger.info(f"Mechanic {mech.name}: avg time = {avg_time:.2f} hours, orders = {len(times)}")
 
-                            # Di bagian perhitungan measurement, ganti format teks dengan HTML
                             if mechanic_averages:
-                                # Hitung rata-rata keseluruhan dan toleransi tetap sama
+                                # Hitung rata-rata keseluruhan
                                 team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
+                                
+                                # Hitung batas toleransi (±5%)
                                 upper_limit = team_average * 1.05
                                 lower_limit = team_average * 0.95
                                 
-                                # Persiapkan data untuk tabel
-                                in_range_rows = []
-                                out_range_rows = []
+                                # Hitung mekanik dalam dan luar rentang
+                                in_range_mechanics = []
+                                out_range_mechanics = []
                                 
                                 for mech_id, avg_time in mechanic_averages.items():
-                                    row_data = {
-                                        'name': mechanic_names[mech_id],
-                                        'avg_time': avg_time,
-                                        'status': 'within' if lower_limit <= avg_time <= upper_limit else 'outside'
-                                    }
-                                    if row_data['status'] == 'within':
-                                        in_range_rows.append(row_data)
+                                    status_text = f"{mechanic_names[mech_id]}: {avg_time:.1f} jam"
+                                    if lower_limit <= avg_time <= upper_limit:
+                                        in_range_mechanics.append(f"{status_text} ✓")
                                     else:
-                                        out_range_rows.append(row_data)
-
-                                mechanics_in_range = len(in_range_rows)
+                                        out_range_mechanics.append(f"{status_text} ✗")
+                                
+                                # Hitung persentase dalam rentang
+                                mechanics_in_range = len(in_range_mechanics)
                                 total_mechanics = len(mechanic_averages)
                                 actual = (mechanics_in_range / total_mechanics * 100)
                                 
-                                # Format measurement sebagai HTML
                                 measurement = f"""
-                            <div class="kpi-measurement">
-                                <div class="period-info">
-                                    <strong>Periode:</strong> {month}/{year}
-                                </div>
-                                
-                                <div class="summary-stats">
-                                    <div class="stat-item">
-                                        <span class="label">Rata-rata bengkel:</span>
-                                        <span class="value">{team_average:.1f} jam</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="label">Rentang target:</span>
-                                        <span class="value">{lower_limit:.1f} - {upper_limit:.1f} jam</span>
-                                    </div>
-                                </div>
+                    Periode: {month}/{year}
+                    Rata-rata bengkel: {team_average:.1f} jam
+                    Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam
+                    Dalam rentang ({mechanics_in_range}/{total_mechanics}):
+                    {', '.join(in_range_mechanics)}
+                    Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):
+                    {', '.join(out_range_mechanics)}"""
 
-                                <div class="mechanics-within-range">
-                                    <h4>Dalam rentang ({mechanics_in_range}/{total_mechanics}):</h4>
-                                    <div class="mechanics-list">
-                                        {', '.join(f'<span class="mechanic within">{data["name"]}: {data["avg_time"]:.1f} jam ✓</span>' for data in in_range_rows)}
-                                    </div>
-                                </div>
-
-                                <div class="mechanics-outside-range">
-                                    <h4>Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):</h4>
-                                    <div class="mechanics-list">
-                                        {', '.join(f'<span class="mechanic outside">{data["name"]}: {data["avg_time"]:.1f} jam ✗</span>' for data in out_range_rows)}
-                                    </div>
-                                </div>
-
-                                <div class="data-table">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th>Mekanik</th>
-                                                <th>Rata-rata Waktu (jam)</th>
-                                                <th>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {''.join(f"""
-                                                <tr class="{data['status']}">
-                                                    <td>{data['name']}</td>
-                                                    <td>{data['avg_time']:.1f}</td>
-                                                    <td>{{'✓' if data['status'] == 'within' else '✗'}}</td>
-                                                </tr>
-                                            """ for data in sorted(in_range_rows + out_range_rows, key=lambda x: x['name']))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            """
+                                _logger.info(f"""
+                    KPI Results for period {month}/{year}:
+                    - Active mechanics: {len(active_mechanics)}
+                    - Mechanics with data: {len(mechanic_averages)}
+                    - Overall Average: {team_average:.1f} hours
+                    - Range: {lower_limit:.1f} - {upper_limit:.1f} hours
+                    - In range: {mechanics_in_range}/{total_mechanics}
+                    - Score: {actual:.1f}%
+                    """)
                             else:
-                                measurement = f"""
-                            <div class="kpi-measurement">
-                                <div class="no-data-message">
-                                    Belum ada data pengerjaan yang cukup pada periode {month}/{year}
-                                </div>
-                            </div>
-                            """
+                                _logger.warning(f"No valid mechanic data found for period {month}/{year}:")
+                                _logger.warning(f"- Total orders: {len(all_orders)}")
+                                _logger.warning(f"- Mechanics with data: {len(mechanic_times)}")
+                                
+                                actual = 0
+                                measurement = f"Belum ada data pengerjaan yang cukup pada periode {month}/{year}"
 
                         kpi_scores.append({
                             'no': kpi['no'],

@@ -771,86 +771,134 @@ class KPIOverview(http.Controller):
 
                     # Perbaikan perhitungan mechanic efficiency
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # Ambil semua mekanik aktif
-                        all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([
-                            ('active', '=', True)
-                        ])
-                        
-                        _logger.info(f"Calculating efficiency for all mechanics: {len(all_mechanics)} mechanics found")
-
-                        # Get orders untuk semua mekanik
-                        all_orders = request.env['sale.order'].sudo().search([
+                        # Ambil mekanik yang aktif berdasarkan orders di periode tersebut
+                        active_mechanics = request.env['sale.order'].sudo().search([
                             *base_domain,
-                            ('car_mechanic_id_new', 'in', all_mechanics.ids)
-                        ])
+                            ('state', 'in', ['sale', 'done'])
+                        ]).mapped('car_mechanic_id_new')
                         
-                        _logger.info(f"Found {len(all_orders)} orders for mechanics")
+                        _logger.info(f"Found {len(active_mechanics)} active mechanics in period {month}/{year}")
 
-                        # Hitung rata-rata waktu pengerjaan per mekanik
-                        mechanic_times = {}
-                        for order in all_orders:
-                            if order.controller_mulai_servis and order.controller_selesai and order.lead_time_servis:
-                                for mech in order.car_mechanic_id_new:
-                                    if mech not in mechanic_times:
-                                        mechanic_times[mech] = []
-                                    mechanic_times[mech].append(order.lead_time_servis)
-
-                        # Hitung rata-rata untuk setiap mekanik
-                        mechanic_averages = {}
-                        mechanic_names = {}
-                        for mech, times in mechanic_times.items():
-                            if times:
-                                avg_time = sum(times) / len(times)
-                                mechanic_averages[mech.id] = avg_time
-                                mechanic_names[mech.id] = mech.name
-                                _logger.info(f"Mechanic {mech.name}: avg time = {avg_time:.2f} hours")
-
-                        if mechanic_averages:
-                            # Hitung rata-rata keseluruhan
-                            team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
-                            
-                            # Hitung batas toleransi (±5%)
-                            upper_limit = team_average * 1.05
-                            lower_limit = team_average * 0.95
-                            
-                            # Hitung mekanik dalam dan luar rentang
-                            in_range_mechanics = []
-                            out_range_mechanics = []
-                            
-                            for mech_id, avg_time in mechanic_averages.items():
-                                status_text = f"{mechanic_names[mech_id]}: {avg_time:.1f} jam"
-                                if lower_limit <= avg_time <= upper_limit:
-                                    in_range_mechanics.append(f"{status_text} ✓")
-                                else:
-                                    out_range_mechanics.append(f"{status_text} ✗")
-                            
-                            # Hitung persentase dalam rentang
-                            mechanics_in_range = len(in_range_mechanics)
-                            total_mechanics = len(mechanic_averages)
-                            actual = (mechanics_in_range / total_mechanics * 100)
-                            
-                            measurement = f"""
-                    Rata-rata bengkel: {team_average:.1f} jam
-                    Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam
-                    Dalam rentang ({mechanics_in_range}/{total_mechanics}):
-                    {', '.join(in_range_mechanics)}
-                    Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):
-                    {', '.join(out_range_mechanics)}"""
-
-                            _logger.info(f"""
-                    KPI Results:
-                    - Overall Average: {team_average:.1f} hours
-                    - Range: {lower_limit:.1f} - {upper_limit:.1f} hours
-                    - In range: {mechanics_in_range}/{total_mechanics}
-                    - Score: {actual:.1f}%
-                    """)
-                        else:
-                            _logger.warning("No valid mechanic data found:")
-                            _logger.warning(f"- Total orders: {len(all_orders)}")
-                            _logger.warning(f"- Mechanics with data: {len(mechanic_times)}")
-                            
+                        if not active_mechanics:
                             actual = 0
-                            measurement = "Belum ada data pengerjaan mekanik yang cukup"
+                            measurement = f"Tidak ada mekanik aktif pada periode {month}/{year}"
+                        else:
+                            # Get orders untuk mekanik yang aktif
+                            all_orders = request.env['sale.order'].sudo().search([
+                                *base_domain,
+                                ('car_mechanic_id_new', 'in', active_mechanics.ids),
+                                ('state', 'in', ['sale', 'done'])
+                            ])
+                            
+                            _logger.info(f"Found {len(all_orders)} orders for active mechanics")
+
+                            # Hitung rata-rata waktu pengerjaan per mekanik
+                            mechanic_times = {}
+                            for order in all_orders:
+                                if order.controller_mulai_servis and order.controller_selesai and order.lead_time_servis:
+                                    for mech in order.car_mechanic_id_new:
+                                        if mech not in mechanic_times:
+                                            mechanic_times[mech] = []
+                                        mechanic_times[mech].append(order.lead_time_servis)
+
+                            # Hitung rata-rata untuk setiap mekanik
+                            mechanic_averages = {}
+                            mechanic_names = {}
+                            for mech, times in mechanic_times.items():
+                                if times:
+                                    avg_time = sum(times) / len(times)
+                                    mechanic_averages[mech.id] = avg_time
+                                    mechanic_names[mech.id] = mech.name
+                                    _logger.info(f"Mechanic {mech.name}: avg time = {avg_time:.2f} hours, orders = {len(times)}")
+
+                            # Di bagian perhitungan measurement, ganti format teks dengan HTML
+                            if mechanic_averages:
+                                # Hitung rata-rata keseluruhan dan toleransi tetap sama
+                                team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
+                                upper_limit = team_average * 1.05
+                                lower_limit = team_average * 0.95
+                                
+                                # Persiapkan data untuk tabel
+                                in_range_rows = []
+                                out_range_rows = []
+                                
+                                for mech_id, avg_time in mechanic_averages.items():
+                                    row_data = {
+                                        'name': mechanic_names[mech_id],
+                                        'avg_time': avg_time,
+                                        'status': 'within' if lower_limit <= avg_time <= upper_limit else 'outside'
+                                    }
+                                    if row_data['status'] == 'within':
+                                        in_range_rows.append(row_data)
+                                    else:
+                                        out_range_rows.append(row_data)
+
+                                mechanics_in_range = len(in_range_rows)
+                                total_mechanics = len(mechanic_averages)
+                                actual = (mechanics_in_range / total_mechanics * 100)
+                                
+                                # Format measurement sebagai HTML
+                                measurement = f"""
+                            <div class="kpi-measurement">
+                                <div class="period-info">
+                                    <strong>Periode:</strong> {month}/{year}
+                                </div>
+                                
+                                <div class="summary-stats">
+                                    <div class="stat-item">
+                                        <span class="label">Rata-rata bengkel:</span>
+                                        <span class="value">{team_average:.1f} jam</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="label">Rentang target:</span>
+                                        <span class="value">{lower_limit:.1f} - {upper_limit:.1f} jam</span>
+                                    </div>
+                                </div>
+
+                                <div class="mechanics-within-range">
+                                    <h4>Dalam rentang ({mechanics_in_range}/{total_mechanics}):</h4>
+                                    <div class="mechanics-list">
+                                        {', '.join(f'<span class="mechanic within">{data["name"]}: {data["avg_time"]:.1f} jam ✓</span>' for data in in_range_rows)}
+                                    </div>
+                                </div>
+
+                                <div class="mechanics-outside-range">
+                                    <h4>Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):</h4>
+                                    <div class="mechanics-list">
+                                        {', '.join(f'<span class="mechanic outside">{data["name"]}: {data["avg_time"]:.1f} jam ✗</span>' for data in out_range_rows)}
+                                    </div>
+                                </div>
+
+                                <div class="data-table">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Mekanik</th>
+                                                <th>Rata-rata Waktu (jam)</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {''.join(f"""
+                                                <tr class="{data['status']}">
+                                                    <td>{data['name']}</td>
+                                                    <td>{data['avg_time']:.1f}</td>
+                                                    <td>{{'✓' if data['status'] == 'within' else '✗'}}</td>
+                                                </tr>
+                                            """ for data in sorted(in_range_rows + out_range_rows, key=lambda x: x['name']))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            """
+                            else:
+                                measurement = f"""
+                            <div class="kpi-measurement">
+                                <div class="no-data-message">
+                                    Belum ada data pengerjaan yang cukup pada periode {month}/{year}
+                                </div>
+                            </div>
+                            """
 
                         kpi_scores.append({
                             'no': kpi['no'],

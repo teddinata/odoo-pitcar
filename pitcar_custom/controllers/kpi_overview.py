@@ -659,7 +659,12 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
 
                     # Update rumus achievement - langsung actual × weight/100
+                    # weighted_score = actual * (kpi['weight'] / 100)
+                    # Perhitungan baru: weighted_score langsung dari actual × weight/100
                     weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement sama dengan weighted_score untuk kompatibilitas frontend
+                    achievement = weighted_score
 
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -669,6 +674,7 @@ class KPIOverview(http.Controller):
                         'target': kpi['target'],
                         'measurement': kpi['measurement'],
                         'actual': actual,
+                        'achievement': achievement,
                         'weighted_score': weighted_score
                     })
 
@@ -806,8 +812,13 @@ class KPIOverview(http.Controller):
                         actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
                         measurement = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
 
-                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+                    # achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    # weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+                    # Perhitungan baru: weighted_score langsung dari actual × weight/100
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement sama dengan weighted_score untuk kompatibilitas frontend
+                    achievement = weighted_score
 
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -953,8 +964,13 @@ class KPIOverview(http.Controller):
                         actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
                         kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
 
-                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+                    # achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    # weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+                    # Perhitungan baru: weighted_score langsung dari actual × weight/100
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement sama dengan weighted_score untuk kompatibilitas frontend
+                    achievement = weighted_score
 
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -973,7 +989,6 @@ class KPIOverview(http.Controller):
             # Di bagian handle different roles, tambahkan kondisi untuk Valet:
             elif 'Valet Parking' in job_title:
                 kpi_scores = []
-                
                 for kpi in valet_kpi_template:
                     actual = 0
                     if kpi['type'] == 'front_office':
@@ -987,11 +1002,8 @@ class KPIOverview(http.Controller):
 
                         total_checks = len(front_office_checks)
                         if total_checks > 0:
-                            # Calculate average completeness rate
                             total_rate = sum(check.completeness_rate for check in front_office_checks)
                             actual = total_rate / total_checks
-                            
-                            # Format measurement message
                             total_complete = sum(1 for check in front_office_checks if check.completeness_rate >= 100)
                             kpi['measurement'] = (
                                 f"Pengecekan lengkap: {total_complete} dari {total_checks} kali pengecekan. "
@@ -1002,7 +1014,6 @@ class KPIOverview(http.Controller):
                             kpi['measurement'] = f"Belum ada pengecekan pada periode {month}/{year}"
 
                     elif kpi['type'] == 'valet_sop':
-                        # Get SOP samplings for valet 
                         samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
@@ -1020,30 +1031,26 @@ class KPIOverview(http.Controller):
                             kpi['measurement'] = f"Belum ada sampling SOP pada periode {month}/{year}"
                             
                     elif kpi['type'] == 'customer_satisfaction':
-                        # Get orders in period
                         period_orders = request.env['sale.order'].sudo().search([
                             ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
                             ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
                             ('state', 'in', ['sale', 'done'])
                         ])
                         
-                        # Get rated orders
                         rated_orders = period_orders.filtered(lambda o: o.customer_rating)
                         total_rated_orders = len(rated_orders)
                         
                         if total_rated_orders > 0:
-                            # Calculate average rating
                             total_rating = sum(float(order.customer_rating) for order in rated_orders)
                             avg_rating = total_rating / total_rated_orders
                             
-                            # Special rating formula 
                             if avg_rating > 4.8:
                                 actual = 120
                             elif avg_rating == 4.8:
                                 actual = 100
                             elif 4.6 <= avg_rating <= 4.7:
                                 actual = 50
-                            else:  # < 4.6
+                            else:
                                 actual = 0
                                 
                             kpi['measurement'] = (
@@ -1054,9 +1061,11 @@ class KPIOverview(http.Controller):
                             actual = 0
                             kpi['measurement'] = f"Belum ada rating customer pada periode {month}/{year}"
 
-                    # Calculate achievement and weighted score
-                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+                    # Perhitungan baru: weighted_score langsung dari actual × weight/100
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement sama dengan weighted_score untuk kompatibilitas frontend
+                    achievement = weighted_score
 
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -1066,18 +1075,16 @@ class KPIOverview(http.Controller):
                         'target': kpi['target'],
                         'measurement': kpi['measurement'],
                         'actual': actual,
-                        'achievement': achievement,
+                        'achievement': achievement,  # Sama dengan weighted_score
                         'weighted_score': weighted_score
                     })
 
             # Handle Admin Part
             elif 'Admin Part' in job_title:
                 kpi_scores = []
-                
                 for kpi in admin_part_template:
                     actual = 0
                     if kpi['type'] == 'part_fulfillment':
-                        # Hitung dari sale.order.part.item
                         part_items = request.env['sale.order.part.item'].sudo().search([
                             ('create_date', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
                             ('create_date', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S'))
@@ -1088,7 +1095,6 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f'Total request: {total_items}, Terpenuhi: {fulfilled_items}'
 
                     elif kpi['type'] == 'part_response':
-                        # Hitung response time dari part request
                         part_items = request.env['sale.order.part.item'].sudo().search([
                             ('create_date', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
                             ('create_date', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
@@ -1102,7 +1108,6 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f'Total response: {total_responses}, Tepat waktu: {on_time_responses}'
 
                     elif kpi['type'] == 'part_availability':
-                        # Hitung ketersediaan stock wajib ready
                         stockouts = request.env['stock.mandatory.stockout'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d'))
@@ -1113,7 +1118,6 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f'Hari tanpa stockout: {total_days - stockout_days} dari {total_days} hari'
 
                     elif kpi['type'] in ['part_audit', 'tools_audit']:
-                        # Hitung dari account.move (journal entries)
                         audit_type = 'part' if kpi['type'] == 'part_audit' else 'tool'
                         audit_entries = request.env['account.move'].sudo().search([
                             ('is_stock_audit', '=', True),
@@ -1130,7 +1134,6 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f'Audit dalam toleransi: {within_tolerance} dari {total_audits}'
 
                     elif kpi['type'] == 'sop_compliance':
-                        # Hitung dari sampling SOP
                         samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
@@ -1142,8 +1145,11 @@ class KPIOverview(http.Controller):
                         actual = (passed_samples / total_samples * 100) if total_samples else 0
                         kpi['measurement'] = f'Sesuai SOP: {passed_samples} dari {total_samples} sampel'
 
-                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+                    # Perhitungan baru: weighted_score langsung dari actual × weight/100
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement sama dengan weighted_score untuk kompatibilitas frontend
+                    achievement = weighted_score
 
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -1153,7 +1159,7 @@ class KPIOverview(http.Controller):
                         'target': kpi['target'],
                         'measurement': kpi['measurement'],
                         'actual': actual,
-                        'achievement': achievement,
+                        'achievement': achievement,  # Sama dengan weighted_score
                         'weighted_score': weighted_score,
                         'editable': ['weight', 'target']
                     })
@@ -1161,11 +1167,9 @@ class KPIOverview(http.Controller):
             # Handler untuk Toolkeeper
             elif 'Partman' in job_title:
                 kpi_scores = []
-
                 for kpi in toolkeeper_template:
                     actual = 0
                     if kpi['type'] == 'part_purchase':
-                        # Hitung dari part.purchase.leadtime untuk pembelian part
                         purchases = request.env['part.purchase.leadtime'].sudo().search([
                             ('partman_id', '=', employee.id),
                             ('purchase_type', '=', 'part'),
@@ -1179,7 +1183,6 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Belanja part sesuai: {success_purchases} dari {total_purchases} kali belanja"
 
                     elif kpi['type'] == 'tool_purchase':
-                        # Hitung dari part.purchase.leadtime untuk pembelian tool
                         tool_purchases = request.env['part.purchase.leadtime'].sudo().search([
                             ('partman_id', '=', employee.id),
                             ('purchase_type', '=', 'tool'),
@@ -1193,7 +1196,6 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Belanja tools sesuai: {success_tools} dari {total_tools} kali belanja"
 
                     elif kpi['type'] in ['part_audit', 'tools_audit']:
-                        # Gunakan logika yang sama dengan admin part untuk audit
                         audit_type = 'part' if kpi['type'] == 'part_audit' else 'tool'
                         audit_entries = request.env['account.move'].sudo().search([
                             ('is_stock_audit', '=', True),
@@ -1210,7 +1212,6 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f'Audit dalam toleransi: {within_tolerance} dari {total_audits}'
 
                     elif kpi['type'] == 'sop_compliance':
-                        # Hitung dari sampling SOP khusus toolkeeper
                         samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
@@ -1222,8 +1223,11 @@ class KPIOverview(http.Controller):
                         actual = (passed_samples / total_samples * 100) if total_samples else 0
                         kpi['measurement'] = f'Sesuai SOP: {passed_samples} dari {total_samples} sampel'
 
-                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
+                    # Perhitungan baru: weighted_score langsung dari actual × weight/100
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement sama dengan weighted_score untuk kompatibilitas frontend
+                    achievement = weighted_score
 
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -1233,7 +1237,7 @@ class KPIOverview(http.Controller):
                         'target': kpi['target'],
                         'measurement': kpi['measurement'],
                         'actual': actual,
-                        'achievement': achievement,
+                        'achievement': achievement,  # Sama dengan weighted_score
                         'weighted_score': weighted_score,
                         'editable': ['weight', 'target']
                     })
@@ -1540,19 +1544,15 @@ class KPIOverview(http.Controller):
                         monthly_target = mechanic.monthly_target or 64000000
                         if monthly_target == 0:
                             actual = 0
-                            achievement = 0
                         else:
                             revenue = total_revenue
                             actual = (revenue / monthly_target * 100)  # Actual jadi persentase
-                            achievement = actual  # Achievement sama dengan actual
                         
                         formatted_revenue = "{:,.0f}".format(total_revenue)
                         formatted_target = "{:,.0f}".format(monthly_target)
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
 
-                    # service_efficiency
                     elif kpi['type'] == 'service_efficiency':
-                        # Hitung efisiensi waktu servis untuk mekanik individual
                         orders_with_duration = orders.filtered(lambda o: o.duration_deviation is not False)
                         if orders_with_duration:
                             avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
@@ -1575,12 +1575,11 @@ class KPIOverview(http.Controller):
                             actual = avg_realization
                         
                     elif kpi['type'] == 'sop_compliance':
-                        # Get mechanic's SOP samplings
                         mechanic_samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
                             ('mechanic_id', 'in', [mechanic.id]),
-                            ('sop_id.role', '=', 'mechanic'),  # Pastikan hanya SOP untuk mekanik
+                            ('sop_id.role', '=', 'mechanic'),
                             ('state', '=', 'done')
                         ])
                         
@@ -1594,12 +1593,7 @@ class KPIOverview(http.Controller):
                             actual = 0
                             kpi['measurement'] = f"Belum ada sampling SOP pada periode {month}/{year}"
                         
-                    # elif kpi['type'] == 'discipline':
-                    #     actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
-                    #     kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
-
-                    # Tetap hitung kedisiplinan tapi tidak masuk total
-                    if kpi['type'] == 'discipline':
+                    elif kpi['type'] == 'discipline':
                         attendances = request.env['hr.attendance'].sudo().search([
                             ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
                             ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
@@ -1608,7 +1602,12 @@ class KPIOverview(http.Controller):
                         late_count = sum(1 for att in attendances if att.is_late)
                         actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
                         kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
-                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+
+                    # Perhitungan baru: weighted_score langsung dari actual × weight/100
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement sama dengan weighted_score untuk kompatibilitas frontend
+                    achievement = weighted_score
                     
                     kpi_scores.append({
                         'no': kpi['no'],
@@ -1618,8 +1617,8 @@ class KPIOverview(http.Controller):
                         'target': kpi['target'],
                         'measurement': kpi['measurement'],
                         'actual': actual,
-                        'achievement': achievement,
-                        'weighted_score': achievement * (kpi['weight'] / 100)
+                        'achievement': achievement,  # Sama dengan weighted_score
+                        'weighted_score': weighted_score
                     })
 
 

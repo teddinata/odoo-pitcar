@@ -821,6 +821,8 @@ class KPIOverview(http.Controller):
                                     is_efficient = cv < 15
                                     if is_efficient:
                                         leaders_in_range += 1
+
+                                    mechanic_names = {m.id: m.name for m in team_members}
                                     
                                     leader_performance.append({
                                         'name': leader.name,
@@ -1869,7 +1871,7 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
 
                     # Perbaikan perhitungan mechanic efficiency
-                    elif kpi['type'] == 'team_efficiency':
+                    elif kpi['type'] == 'mechanic_efficiency':
                         # Ambil data tim termasuk leader
                         team_members = mechanic.team_member_ids + mechanic
                         

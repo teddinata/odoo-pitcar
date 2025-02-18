@@ -1872,29 +1872,27 @@ class KPIOverview(http.Controller):
 
                     # Perbaikan perhitungan mechanic efficiency
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # Ambil semua anggota tim
-                        team_members = mechanic.team_member_ids
-                        all_mechanics = team_members + mechanic  # Include leader
+                        # Ambil data tim termasuk leader
+                        team_members = mechanic.team_member_ids + mechanic  # Include leader
                         
-                        _logger.info(f"Calculating efficiency for leader {mechanic.name} with {len(team_members)} team members")
+                        _logger.info(f"Found {len(team_members)} mechanics including leader")
 
                         # Get orders untuk seluruh tim
                         team_orders = request.env['sale.order'].sudo().search([
                             *base_domain,
-                            ('car_mechanic_id_new', 'in', all_mechanics.ids)
+                            ('car_mechanic_id_new', 'in', team_members.ids)
                         ])
                         
                         if not team_orders:
                             actual = 0
                             measurement = f"Tidak ada orders untuk tim pada periode {month}/{year}"
                         else:
-                            # Hitung rata-rata pengerjaan per mekanik
+                            # Hitung rata-rata pengerjaan per mekanik dalam tim
                             member_averages = {}
-                            for member in all_mechanics:
+                            for member in team_members:
                                 member_orders = team_orders.filtered(lambda o: member in o.car_mechanic_id_new)
                                 if member_orders:
                                     member_times = [
-                                        # Bagi waktu dengan jumlah mekanik per order
                                         o.lead_time_servis / len(o.car_mechanic_id_new) 
                                         for o in member_orders 
                                         if o.lead_time_servis
@@ -1915,60 +1913,51 @@ class KPIOverview(http.Controller):
                                 upper_limit = team_avg * 1.05
                                 lower_limit = team_avg * 0.95
                                 
-                                # Hitung status setiap mekanik
+                                # Hitung mekanik dalam dan luar rentang
                                 in_range_mechanics = []
                                 out_range_mechanics = []
                                 
-                                for mech_id, data in member_averages.items():
-                                    is_in_range = lower_limit <= data['avg_time'] <= upper_limit
-                                    role = "(Leader)" if data['is_leader'] else ""
-                                    mechanic_info = f"{data['name']} {role}: {data['avg_time']:.1f} jam {'✓' if is_in_range else '✗'}"
+                                for mech_data in member_averages.values():
+                                    is_in_range = lower_limit <= mech_data['avg_time'] <= upper_limit
+                                    role = "(Leader)" if mech_data['is_leader'] else ""
+                                    mechanic_info = f"{mech_data['name']} {role}: {mech_data['avg_time']:.1f} jam {'✓' if is_in_range else '✗'}"
                                     
                                     if is_in_range:
                                         in_range_mechanics.append(mechanic_info)
                                     else:
                                         out_range_mechanics.append(mechanic_info)
 
-                                # Hitung persentase dalam rentang            
                                 mechanics_in_range = len(in_range_mechanics)
                                 total_mechanics = len(member_averages)
                                 actual = (mechanics_in_range / total_mechanics * 100)
                                 
-                                # Generate measurement dalam format HTML yang sama dengan lead CS
-                                measurement = f'<div class="kpi-measurement">'
+                                # Format measurement seperti lead CS
+                                measurement = '<div class="kpi-measurement">'
                                 measurement += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
                                 
                                 measurement += '<div class="summary-stats">'
-                                measurement += f'<div class="stat-item">Mekanik sesuai target: {mechanics_in_range}/{total_mechanics}</div>'
-                                measurement += f'<div class="stat-item">Rata-rata tim: {team_avg:.1f} jam</div>'
-                                measurement += f'<div class="stat-item">Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
+                                measurement += f'<div>Mekanik dalam rentang target: {mechanics_in_range}/{total_mechanics}</div>'
+                                measurement += f'<div>Rata-rata tim: {team_avg:.1f} jam</div>'
+                                measurement += f'<div>Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
                                 measurement += '</div>'
                                 
-                                measurement += '<div class="mechanic-details">'
+                                measurement += '<div class="mechanics-section">'
+                                measurement += f'<div class="in-range"><h4>Dalam rentang ({mechanics_in_range}/{total_mechanics}):</h4>'
+                                measurement += f'<div class="mechanic-list">{", ".join(in_range_mechanics)}</div></div>'
                                 
-                                # Mekanik dalam rentang
-                                measurement += '<div class="range-section in-range">'
-                                measurement += f'<h4>Dalam rentang ({mechanics_in_range}/{total_mechanics}):</h4>'
-                                measurement += '<div class="mechanic-list">'
-                                measurement += ', '.join(in_range_mechanics)
-                                measurement += '</div></div>'
+                                measurement += f'<div class="out-range"><h4>Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):</h4>'
+                                measurement += f'<div class="mechanic-list">{", ".join(out_range_mechanics)}</div></div>'
+                                measurement += '</div>'
                                 
-                                # Mekanik luar rentang
-                                measurement += '<div class="range-section out-range">'
-                                measurement += f'<h4>Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):</h4>'
-                                measurement += '<div class="mechanic-list">'
-                                measurement += ', '.join(out_range_mechanics)
-                                measurement += '</div></div>'
-                                
-                                measurement += '</div></div>'
+                                measurement += '</div>'
                             else:
                                 actual = 0
-                                measurement = f'<div class="kpi-measurement"><div class="no-data">Tidak cukup data pengerjaan untuk analisis pada periode {month}/{year}</div></div>'
+                                measurement = f'<div class="kpi-measurement"><div class="no-data">Tidak cukup data untuk analisis pada periode {month}/{year}</div></div>'
 
                         _logger.info(f"""
                             KPI Calculation Results:
-                            - Total mechanics: {len(all_mechanics)}
-                            - Total orders: {len(team_orders) if team_orders else 0}
+                            - Total team members: {len(team_members)}
+                            - Orders analyzed: {len(team_orders) if team_orders else 0}
                             - Achievement: {actual:.1f}%
                         """)
 

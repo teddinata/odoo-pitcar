@@ -881,18 +881,20 @@ class KPIOverview(http.Controller):
                             kpi['measurement'] = "Belum ada data deviasi waktu pengerjaan"
                     
                     elif kpi['type'] == 'sa_follow_up':
-                        # Filter order yang memiliki next_follow_up_3_days dalam bulan yang dipilih
+                        # Filter order yang memiliki next_follow_up_3_days dalam bulan KPI yang dipilih
                         follow_up_orders = orders.filtered(lambda o: 
                             o.next_follow_up_3_days and
                             o.next_follow_up_3_days.month == start_date_utc.month and
                             o.next_follow_up_3_days.year == start_date_utc.year
                         )
-                        
+
+                        # Filter hanya yang sudah follow-up dalam bulan tersebut
                         completed_follow_ups = follow_up_orders.filtered(lambda o: o.is_follow_up == 'yes')
-                        
+
                         # Menghitung persentase follow-up yang telah dilakukan
                         actual = (len(completed_follow_ups) / len(follow_up_orders) * 100) if follow_up_orders else 0
-                        
+
+                        # Memformat output KPI agar lebih jelas
                         kpi['measurement'] = (
                             f"Follow up H+3: {len(completed_follow_ups)} dari {len(follow_up_orders)} "
                             f"({actual:.1f}%) pada bulan {start_date_utc.strftime('%B %Y')}."

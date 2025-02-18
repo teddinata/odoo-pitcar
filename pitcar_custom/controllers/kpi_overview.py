@@ -251,7 +251,7 @@ class KPIOverview(http.Controller):
             lead_cs_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Produktivitas bengkel',
+                    'name': 'Jumlah omzet pitcar service sesuai target',
                     'type': 'productivity',
                     'weight': 20,
                     'target': 100,
@@ -260,7 +260,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 2,
-                    'name': 'Efisiensi waktu penanganan customer',
+                    'name': 'Persentase rata-rata waktu penanganan customer yang sesuai target waktu',
                     'type': 'service_efficiency',
                     'weight': 15,
                     'target': 80,
@@ -278,7 +278,7 @@ class KPIOverview(http.Controller):
                 # },
                 {
                     'no': 3,
-                    'name': 'Kepuasan customer',
+                    'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
                     'type': 'customer_satisfaction',
                     'weight': 20,
                     'target': 95,
@@ -287,7 +287,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 4,
-                    'name': 'Analisis dan penyelesaian komplain dari customer',
+                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
                     'type': 'complaint_handling',
                     'weight': 20,
                     'target': 95,
@@ -296,16 +296,16 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 5,
-                    'name': 'Pengelolaan Stok Part',
-                    'type': 'stock_management',
+                    'name': 'Persentase waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
+                    'type': 'mechanic_efficiency',
                     'weight': 10,
                     'target': 90,
-                    'measurement': 'Diukur dari temuan stok part habis/tidak tersedia untuk pengerjaan',
+                    'measurement': 'Diukur dari rata-rata waktu pengerjaan per PKB setiap mekanik',
                     'include_in_calculation': True
                 },
                 {
                     'no': 6,
-                    'name': 'Kontrol kinerja tim support',
+                    'name': 'Persentase sampel tim support bekerja sesuai alur SOP',
                     'type': 'team_control',
                     'weight': 15,
                     'target': 95,
@@ -768,6 +768,80 @@ class KPIOverview(http.Controller):
                         # Otomatis ambil data penanganan komplain dari sistem
                         actual = (len(resolved_complaints) / len(complaints) * 100) if complaints else 100
                         measurement = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
+
+                    elif kpi['type'] == 'mechanic_efficiency':
+                        # mechanic
+                        mechanic = request.env['pitcar.mechanic.new'].sudo().search([
+                            ('leader_id', '=', employee.id)
+                        ])
+                        # Get team mechanics first
+                        team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                            ('leader_id', '=', mechanic.id)
+                        ])
+                        
+                        # Get all orders for the team within period
+                        team_orders = request.env['sale.order'].sudo().search([
+                            *base_domain,
+                            ('car_mechanic_id_new', 'in', team_members.ids)
+                        ])
+
+                        # Calculate average lead time for each mechanic
+                        mechanic_times = {}
+                        for order in team_orders:
+                            if order.lead_time_servis: # Only count if lead time exists
+                                for mech in order.car_mechanic_id_new:
+                                    if mech not in mechanic_times:
+                                        mechanic_times[mech] = []
+                                    mechanic_times[mech].append(order.lead_time_servis)
+
+                        # Calculate average for each mechanic
+                        mechanic_averages = {}
+                        for mech, times in mechanic_times.items():
+                            if times:  # Only if mechanic has orders
+                                mechanic_averages[mech.id] = sum(times) / len(times)
+
+                        if mechanic_averages:
+                            # Calculate team average
+                            team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
+                            
+                            # Calculate tolerance range (±5%)
+                            upper_limit = team_average * 1.05
+                            lower_limit = team_average * 0.95
+                            
+                            # Count mechanics within range
+                            mechanics_in_range = sum(
+                                1 for avg in mechanic_averages.values()
+                                if lower_limit <= avg <= upper_limit
+                            )
+                            
+                            # Calculate percentage
+                            actual = (mechanics_in_range / len(mechanic_averages) * 100)
+                            
+                            # Format measurement message
+                            kpi['measurement'] = (
+                                f"Rata-rata tim: {team_average:.1f} jam, "
+                                f"Rentang: {lower_limit:.1f} - {upper_limit:.1f} jam, "
+                                f"Mekanik dalam rentang: {mechanics_in_range} dari {len(mechanic_averages)}"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Belum ada data pengerjaan mekanik yang cukup"
+
+                        # Calculate weighted score directly
+                        weighted_score = actual * (kpi['weight'] / 100)
+                        achievement = weighted_score  # Set achievement same as weighted_score
+
+                        kpi_scores.append({
+                            'no': kpi['no'],
+                            'name': kpi['name'],
+                            'type': kpi['type'],
+                            'weight': kpi['weight'],
+                            'target': kpi['target'],
+                            'measurement': kpi['measurement'],
+                            'actual': actual,
+                            'achievement': achievement,
+                            'weighted_score': weighted_score
+                        })
 
                     elif kpi['type'] == 'stock_management':
                         # Manual input untuk stok management (bisa diotomatisasi jika ada data stok)
@@ -1404,49 +1478,40 @@ class KPIOverview(http.Controller):
             mechanic_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Produktivitas Mekanik Optimal',
-                    'type': 'productivity',
-                    'weight': 25,
+                    'name': 'Jumlah flat rate sesuai target',
+                    'type': 'flat_rate',
+                    'weight': 30,
                     'target': 100,
                     'measurement': 'Diukur dari jumlah omset yang dihasilkan dari PKB yang ditangani'
                 },
                 {
                     'no': 2,
-                    'name': 'Efisiensi waktu servis',
-                    'type': 'service_efficiency',
-                    'weight': 15,
-                    'target': 80,
-                    'measurement': 'Diukur dari kesesuaian waktu pengerjaan',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 3,
-                    'name': 'Rekomendasi setelah servis',
+                    'name': 'Jumlah PKB yang diberikan rekomendasi tambahan servis',
                     'type': 'service_recommendation',
-                    'weight': 15,
+                    'weight': 20,
                     'target': 80,
                     'measurement': 'Diukur dari persentase rekomendasi yang diberikan',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 4,
-                    'name': 'Hasil pekerjaan servis terlaksana dengan baik',
+                    'no': 3,
+                    'name': 'Persentase customer puas dari hasil pengerjaan / tidak komplain karena mis-analisa atau mis-pengerjaan',
                     'type': 'service_quality',
-                    'weight': 25,
+                    'weight': 30,
                     'target': 90,
                     'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)'
                 },
                 {
-                    'no': 5,
-                    'name': 'Pekerjaan operasional sesuai alur dan SOP',
+                    'no': 4,
+                    'name': 'Persentase sampel tim mekanik bekerja sesuai alur SOP',
                     'type': 'sop_compliance',
-                    'weight': 20,
+                    'weight': 15,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 6,  # Tambahkan sebagai KPI terakhir
+                    'no': 5,  # Tambahkan sebagai KPI terakhir
                     'name': 'Kedisiplinan (Informasi)',
                     'type': 'discipline',
                     'weight': 0,  # Weight 0 karena tidak dihitung
@@ -1459,44 +1524,44 @@ class KPIOverview(http.Controller):
             leader_kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Produktivitas mekanik optimal',
-                    'type': 'productivity',
-                    'weight': 15,
+                    'name': 'Jumlah flat rate sesuai target',
+                    'type': 'flat_rate',
+                    'weight': 20,
                     'target': 100,
                     'measurement': 'Diukur dari jumlah PKB yang berhasil dikerjakan',
                     'include_in_calculation': True
                 },
                 {
                     'no': 2,
-                    'name': 'Efisiensi waktu servis',
-                    'type': 'service_efficiency',
-                    'weight': 15,
+                    'name': 'Persentase waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
+                    'type': 'mechanic_efficiency',
+                    'weight': 20,
                     'target': 80,
                     'measurement': 'Diukur dari kesesuaian waktu pengerjaan berdasarkan target waktu',
                     'include_in_calculation': True
                 },
                 {
                     'no': 3,
-                    'name': 'Distribusi pekerjaan servis secara optimal',
-                    'type': 'work_distribution',
+                    'name': 'Jumlah PKB yang diberikan rekomendasi tambahan servis',
+                    'type': 'service_recommendation',
                     'weight': 15,
                     'target': 80,
-                    'measurement': 'Diukur dari rata-rata waktu pengerjaan per PKB setiap mekanik',
+                    'measurement': 'Diukur dari jumlah PKB yang diberikan rekomendasi tambahan servis',
                     'include_in_calculation': True
                 },
                 {
                     'no': 4,
-                    'name': 'Rekomendasi setelah servis',
-                    'type': 'service_recommendation',
-                    'weight': 10,
+                    'name': 'Persentase customer puas dari hasil pengerjaan / tidak komplain karena mis-analisa atau mis-pengerjaan',
+                    'type': 'service_quality',
+                    'weight': 15,
                     'target': 80,
-                    'measurement': 'Diukur dari jumlah persentase PKB yang diberikan rekomendasi servis',
+                    'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
                     'include_in_calculation': True
                 },
                 {
                     'no': 5,
-                    'name': 'Analisa dan hasil pekerjaan servis',
-                    'type': 'service_quality',
+                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
+                    'type': 'complaint_handling',
                     'weight': 15,
                     'target': 90,
                     'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
@@ -1511,17 +1576,17 @@ class KPIOverview(http.Controller):
                     'measurement': 'Diukur dari customer merasa puas terhadap pelayanan & solusi yang diberikan dalam kurun waktu 3 hari setelah complaint dilayangkan',
                     'include_in_calculation': True
                 },
+                # {
+                #     'no': 7,
+                #     'name': 'Kontrol kinerja tim mekanik',
+                #     'type': 'sop_compliance',
+                #     'weight': 15,
+                #     'target': 95,
+                #     'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
+                #     'include_in_calculation': True
+                # },
                 {
                     'no': 7,
-                    'name': 'Kontrol kinerja tim mekanik',
-                    'type': 'sop_compliance',
-                    'weight': 15,
-                    'target': 95,
-                    'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 8,
                     'name': 'Menjalankan kegiatan operasional secara disiplin',
                     'type': 'team_discipline',
                     'weight': 0,
@@ -1575,6 +1640,34 @@ class KPIOverview(http.Controller):
                         formatted_revenue = "{:,.0f}".format(total_revenue)
                         formatted_target = "{:,.0f}".format(monthly_target)
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
+
+                    elif kpi['type'] == 'flat_rate':
+                        # Hitung productive hours dari absensi
+                        attendances = request.env['hr.attendance'].sudo().search([
+                            ('employee_id', '=', employee.id),
+                            ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+                        ])
+                        
+                        productive_hours = 0
+                        for attendance in attendances:
+                            if attendance.check_out:
+                                worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
+                                # Kurangi waktu istirahat (1 jam) jika bekerja lebih dari 6 jam
+                                if worked_hours > 6:
+                                    worked_hours -= 1
+                                productive_hours += worked_hours
+
+                        # Hitung jam terjual dari order yang selesai
+                        completed_orders = orders.filtered(lambda o: o.controller_selesai)
+                        sold_hours = sum(order.lead_time_servis for order in completed_orders)
+                        
+                        # Hitung flat rate (dalam persentase)
+                        actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
+                        
+                        formatted_sold = f"{sold_hours:.1f}"
+                        formatted_productive = f"{productive_hours:.1f}"
+                        kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
 
                     elif kpi['type'] == 'service_efficiency':
                         orders_with_duration = orders.filtered(lambda o: o.duration_deviation is not False)
@@ -1699,6 +1792,82 @@ class KPIOverview(http.Controller):
                         target_units = 145  # Target PKB per bulan
                         actual = (total_units / target_units * 100) if target_units else 0
                         kpi['measurement'] = f"Berhasil handle {total_units} PKB dari target {target_units} PKB/bulan"
+                    
+                    elif kpi['type'] == 'flat_rate':
+                        # Hitung productive hours dari absensi
+                        attendances = request.env['hr.attendance'].sudo().search([
+                            ('employee_id', '=', employee.id),
+                            ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+                        ])
+                        
+                        productive_hours = 0
+                        for attendance in attendances:
+                            if attendance.check_out:
+                                worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
+                                # Kurangi waktu istirahat (1 jam) jika bekerja lebih dari 6 jam
+                                if worked_hours > 6:
+                                    worked_hours -= 1
+                                productive_hours += worked_hours
+
+                        # Hitung jam terjual dari order yang selesai
+                        completed_orders = orders.filtered(lambda o: o.controller_selesai)
+                        sold_hours = sum(order.lead_time_servis for order in completed_orders)
+                        
+                        # Hitung flat rate (dalam persentase)
+                        actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
+                        
+                        formatted_sold = f"{sold_hours:.1f}"
+                        formatted_productive = f"{productive_hours:.1f}"
+                        kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
+
+                    elif kpi['type'] == 'mechanic_efficiency':
+                        # Get team orders dalam periode
+                        team_orders = request.env['sale.order'].sudo().search([
+                            *base_domain,
+                            ('car_mechanic_id_new', 'in', team_members.ids)
+                        ])
+
+                        # Hitung rata-rata waktu pengerjaan per mekanik
+                        mechanic_times = {}
+                        for order in team_orders:
+                            if order.lead_time_servis: # Only count if lead time exists
+                                for mech in order.car_mechanic_id_new:
+                                    if mech not in mechanic_times:
+                                        mechanic_times[mech] = []
+                                    mechanic_times[mech].append(order.lead_time_servis)
+
+                        # Hitung rata-rata untuk setiap mekanik
+                        mechanic_averages = {}
+                        for mech, times in mechanic_times.items():
+                            if times:  # Only if mechanic has orders
+                                mechanic_averages[mech.id] = sum(times) / len(times)
+
+                        if mechanic_averages:
+                            # Hitung rata-rata tim
+                            team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
+                            
+                            # Hitung batas toleransi (±5%)
+                            upper_limit = team_average * 1.05
+                            lower_limit = team_average * 0.95
+                            
+                            # Hitung berapa mekanik yang masuk dalam rentang
+                            mechanics_in_range = sum(
+                                1 for avg in mechanic_averages.values()
+                                if lower_limit <= avg <= upper_limit
+                            )
+                            
+                            # Hitung persentase
+                            actual = (mechanics_in_range / len(mechanic_averages) * 100)
+                            
+                            kpi['measurement'] = (
+                                f"Rata-rata tim: {team_average:.1f} jam, "
+                                f"Rentang: {lower_limit:.1f} - {upper_limit:.1f} jam, "
+                                f"Mekanik dalam rentang: {mechanics_in_range} dari {len(mechanic_averages)}"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Belum ada data pengerjaan mekanik yang cukup"
                         
                     elif kpi['type'] == 'service_efficiency':
                         # Hitung rata-rata deviasi waktu servis tim

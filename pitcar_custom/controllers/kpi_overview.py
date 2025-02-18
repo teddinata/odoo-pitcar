@@ -861,18 +861,18 @@ class KPIOverview(http.Controller):
                                 actual = 0
                                 measurement = f"Belum ada data pengerjaan yang cukup pada periode {month}/{year}"
 
-                        kpi_scores.append({
-                            'no': kpi['no'],
-                            'name': kpi['name'],
-                            'type': kpi['type'],
-                            'weight': kpi['weight'],
-                            'target': kpi['target'],
-                            'measurement': measurement,
-                            'actual': actual,
-                            'achievement': actual,
-                            'weighted_score': (actual * kpi['weight'] / 100),
-                            'editable': ['weight', 'target']
-                        })
+                        # kpi_scores.append({
+                        #     'no': kpi['no'],
+                        #     'name': kpi['name'],
+                        #     'type': kpi['type'],
+                        #     'weight': kpi['weight'],
+                        #     'target': kpi['target'],
+                        #     'measurement': measurement,
+                        #     'actual': actual,
+                        #     'achievement': actual,
+                        #     'weighted_score': (actual * kpi['weight'] / 100),
+                        #     'editable': ['weight', 'target']
+                        # })
 
                     elif kpi['type'] == 'stock_management':
                         # Manual input untuk stok management (bisa diotomatisasi jika ada data stok)

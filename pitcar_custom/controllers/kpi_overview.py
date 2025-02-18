@@ -1872,78 +1872,106 @@ class KPIOverview(http.Controller):
 
                     # Perbaikan perhitungan mechanic efficiency
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # Ambil order yang memiliki data waktu pengerjaan
-                        orders_with_duration = orders.filtered(lambda o: o.duration_deviation is not False)
+                        # Ambil semua anggota tim
+                        team_members = mechanic.team_member_ids
+                        all_mechanics = team_members + mechanic  # Include leader
                         
-                        if not orders_with_duration:
+                        _logger.info(f"Calculating efficiency for leader {mechanic.name} with {len(team_members)} team members")
+
+                        # Get orders untuk seluruh tim
+                        team_orders = request.env['sale.order'].sudo().search([
+                            *base_domain,
+                            ('car_mechanic_id_new', 'in', all_mechanics.ids)
+                        ])
+                        
+                        if not team_orders:
                             actual = 0
-                            measurement = f"<div class='kpi-measurement'><div class='no-data'>Tidak ada data deviasi waktu pada periode {month}/{year}</div></div>"
+                            measurement = f"Tidak ada orders untuk tim pada periode {month}/{year}"
                         else:
-                            # Hitung rata-rata deviasi waktu
-                            avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
-                            actual = max(0, 100 - avg_deviation)  # Konversi deviasi menjadi efisiensi
-
-                            # Ambil data deviasi waktu tiap mekanik
-                            mechanic_times = {}
-                            for order in orders_with_duration:
-                                for mech in order.car_mechanic_id_new:
-                                    if mech not in mechanic_times:
-                                        mechanic_times[mech] = []
-                                    mechanic_times[mech].append(order.duration_deviation)
-
-                            # Hitung rata-rata deviasi per mekanik
-                            mechanic_averages = {}
-                            for mech, times in mechanic_times.items():
-                                avg_time = sum(times) / len(times) if times else 0
-                                mechanic_averages[mech.id] = {
-                                    'name': mech.name,
-                                    'avg_time': avg_time,
-                                    'orders': len(times),
-                                    'is_leader': mech.id == mechanic.id
-                                }
-
-                            # Hitung rata-rata tim
-                            if mechanic_averages:
-                                team_average = sum(m['avg_time'] for m in mechanic_averages.values()) / len(mechanic_averages)
-
-                                # Hitung batas toleransi deviasi (±5%)
-                                upper_limit = team_average * 1.05
-                                lower_limit = team_average * 0.95
-
-                                # Hitung mekanik yang sesuai target
-                                in_range_count = sum(
-                                    1 for m in mechanic_averages.values() 
-                                    if lower_limit <= m['avg_time'] <= upper_limit
-                                )
-
-                                # Hitung persentase mekanik yang sesuai target
-                                actual = (in_range_count / len(mechanic_averages) * 100)
-
-                                # Generate tampilan measurement dalam HTML
-                                measurement = '<div class="kpi-measurement">'
-                                measurement += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
-
-                                measurement += '<div class="summary-stats">'
-                                measurement += f'<div class="stat-item">Mekanik efisien: {in_range_count}/{len(mechanic_averages)}</div>'
-                                measurement += '</div>'
-
-                                measurement += '<div class="member-details">'
-                                for data in mechanic_averages.values():
+                            # Hitung rata-rata pengerjaan per mekanik
+                            member_averages = {}
+                            for member in all_mechanics:
+                                member_orders = team_orders.filtered(lambda o: member in o.car_mechanic_id_new)
+                                if member_orders:
+                                    member_times = [
+                                        # Bagi waktu dengan jumlah mekanik per order
+                                        o.lead_time_servis / len(o.car_mechanic_id_new) 
+                                        for o in member_orders 
+                                        if o.lead_time_servis
+                                    ]
+                                    if member_times:
+                                        member_averages[member.id] = {
+                                            'name': member.name,
+                                            'avg_time': sum(member_times) / len(member_times),
+                                            'orders': len(member_times),
+                                            'is_leader': member.id == mechanic.id
+                                        }
+                            
+                            if member_averages:
+                                # Hitung rata-rata tim
+                                team_avg = sum(data['avg_time'] for data in member_averages.values()) / len(member_averages)
+                                
+                                # Hitung batas toleransi (±5%)
+                                upper_limit = team_avg * 1.05
+                                lower_limit = team_avg * 0.95
+                                
+                                # Hitung status setiap mekanik
+                                in_range_mechanics = []
+                                out_range_mechanics = []
+                                
+                                for mech_id, data in member_averages.items():
                                     is_in_range = lower_limit <= data['avg_time'] <= upper_limit
-                                    measurement += f'<div class="member-card {"leader" if data["is_leader"] else ""} {"in-range" if is_in_range else "out-range"}">'
-                                    measurement += f'<h4>{data["name"]} {"(Leader)" if data["is_leader"] else ""}</h4>'
-                                    measurement += f'<div>Rata-rata deviasi: {data["avg_time"]:.1f}%</div>'
-                                    measurement += f'<div>Orders: {data["orders"]}</div>'
-                                    measurement += f'<div>Status: {"✓" if is_in_range else "✗"}</div>'
-                                    measurement += '</div>'
-                                measurement += '</div>'
+                                    role = "(Leader)" if data['is_leader'] else ""
+                                    mechanic_info = f"{data['name']} {role}: {data['avg_time']:.1f} jam {'✓' if is_in_range else '✗'}"
+                                    
+                                    if is_in_range:
+                                        in_range_mechanics.append(mechanic_info)
+                                    else:
+                                        out_range_mechanics.append(mechanic_info)
 
+                                # Hitung persentase dalam rentang            
+                                mechanics_in_range = len(in_range_mechanics)
+                                total_mechanics = len(member_averages)
+                                actual = (mechanics_in_range / total_mechanics * 100)
+                                
+                                # Generate measurement dalam format HTML yang sama dengan lead CS
+                                measurement = f'<div class="kpi-measurement">'
+                                measurement += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
+                                
+                                measurement += '<div class="summary-stats">'
+                                measurement += f'<div class="stat-item">Mekanik sesuai target: {mechanics_in_range}/{total_mechanics}</div>'
+                                measurement += f'<div class="stat-item">Rata-rata tim: {team_avg:.1f} jam</div>'
+                                measurement += f'<div class="stat-item">Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
                                 measurement += '</div>'
+                                
+                                measurement += '<div class="mechanic-details">'
+                                
+                                # Mekanik dalam rentang
+                                measurement += '<div class="range-section in-range">'
+                                measurement += f'<h4>Dalam rentang ({mechanics_in_range}/{total_mechanics}):</h4>'
+                                measurement += '<div class="mechanic-list">'
+                                measurement += ', '.join(in_range_mechanics)
+                                measurement += '</div></div>'
+                                
+                                # Mekanik luar rentang
+                                measurement += '<div class="range-section out-range">'
+                                measurement += f'<h4>Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):</h4>'
+                                measurement += '<div class="mechanic-list">'
+                                measurement += ', '.join(out_range_mechanics)
+                                measurement += '</div></div>'
+                                
+                                measurement += '</div></div>'
                             else:
                                 actual = 0
-                                measurement = f'<div class="kpi-measurement"><div class="no-data">Tidak cukup data untuk analisis pada periode {month}/{year}</div></div>'
+                                measurement = f'<div class="kpi-measurement"><div class="no-data">Tidak cukup data pengerjaan untuk analisis pada periode {month}/{year}</div></div>'
 
-                        kpi['measurement'] = measurement
+                        _logger.info(f"""
+                            KPI Calculation Results:
+                            - Total mechanics: {len(all_mechanics)}
+                            - Total orders: {len(team_orders) if team_orders else 0}
+                            - Achievement: {actual:.1f}%
+                        """)
+
                         
                     elif kpi['type'] == 'service_efficiency':
                         # Hitung rata-rata deviasi waktu servis tim

@@ -323,7 +323,7 @@ class CSSampling(http.Controller):
                     'story_posted': int(kw.get('story_posted', 0)),
                     'broadcast_sent': int(kw.get('broadcast_sent', 0)),
                     'notes': kw.get('notes', ''),
-                    'controller_id': request.env.user.employee_id
+                    'controller_id': request.env.user.employee_id.id
                 }
 
                 monitoring = request.env['cs.contact.monitoring'].sudo().create(values)

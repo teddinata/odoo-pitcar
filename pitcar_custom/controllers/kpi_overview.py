@@ -1885,7 +1885,7 @@ class KPIOverview(http.Controller):
                         
                         if not team_orders:
                             actual = 0
-                            measurement = f"Tidak ada orders untuk tim pada periode {month}/{year}"
+                            kpi['measurement'] = f"Tidak ada orders untuk tim pada periode {month}/{year}"
                         else:
                             # Hitung rata-rata pengerjaan per mekanik dalam tim
                             member_averages = {}
@@ -1931,28 +1931,28 @@ class KPIOverview(http.Controller):
                                 total_mechanics = len(member_averages)
                                 actual = (mechanics_in_range / total_mechanics * 100)
                                 
-                                # Format measurement seperti lead CS
-                                measurement = '<div class="kpi-measurement">'
-                                measurement += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
+                                # Update kpi['measurement'] dengan format HTML yang sama dengan lead CS
+                                kpi['measurement'] = '<div class="kpi-measurement">'
+                                kpi['measurement'] += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
                                 
-                                measurement += '<div class="summary-stats">'
-                                measurement += f'<div>Mekanik dalam rentang target: {mechanics_in_range}/{total_mechanics}</div>'
-                                measurement += f'<div>Rata-rata tim: {team_avg:.1f} jam</div>'
-                                measurement += f'<div>Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
-                                measurement += '</div>'
+                                kpi['measurement'] += '<div class="summary-stats">'
+                                kpi['measurement'] += f'<div>Mekanik dalam rentang target: {mechanics_in_range}/{total_mechanics}</div>'
+                                kpi['measurement'] += f'<div>Rata-rata tim: {team_avg:.1f} jam</div>'
+                                kpi['measurement'] += f'<div>Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
+                                kpi['measurement'] += '</div>'
                                 
-                                measurement += '<div class="mechanics-section">'
-                                measurement += f'<div class="in-range"><h4>Dalam rentang ({mechanics_in_range}/{total_mechanics}):</h4>'
-                                measurement += f'<div class="mechanic-list">{", ".join(in_range_mechanics)}</div></div>'
+                                kpi['measurement'] += '<div class="mechanics-section">'
+                                kpi['measurement'] += f'<div class="in-range"><h4>Dalam rentang ({mechanics_in_range}/{total_mechanics}):</h4>'
+                                kpi['measurement'] += f'<div class="mechanic-list">{", ".join(in_range_mechanics)}</div></div>'
                                 
-                                measurement += f'<div class="out-range"><h4>Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):</h4>'
-                                measurement += f'<div class="mechanic-list">{", ".join(out_range_mechanics)}</div></div>'
-                                measurement += '</div>'
+                                kpi['measurement'] += f'<div class="out-range"><h4>Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):</h4>'
+                                kpi['measurement'] += f'<div class="mechanic-list">{", ".join(out_range_mechanics)}</div></div>'
+                                kpi['measurement'] += '</div>'
                                 
-                                measurement += '</div>'
+                                kpi['measurement'] += '</div>'
                             else:
                                 actual = 0
-                                measurement = f'<div class="kpi-measurement"><div class="no-data">Tidak cukup data untuk analisis pada periode {month}/{year}</div></div>'
+                                kpi['measurement'] = f'<div class="kpi-measurement"><div class="no-data">Tidak cukup data untuk analisis pada periode {month}/{year}</div></div>'
 
                         _logger.info(f"""
                             KPI Calculation Results:
@@ -1961,6 +1961,18 @@ class KPIOverview(http.Controller):
                             - Achievement: {actual:.1f}%
                         """)
 
+                        # kpi_scores.append({
+                        #     'no': kpi['no'],
+                        #     'name': kpi['name'],
+                        #     'type': kpi['type'],
+                        #     'weight': kpi['weight'],
+                        #     'target': kpi['target'],
+                        #     'measurement': kpi['measurement'],  # Menggunakan kpi['measurement'] yang sudah diupdate
+                        #     'actual': actual,
+                        #     'achievement': actual,
+                        #     'weighted_score': (actual * kpi['weight'] / 100),
+                        #     'editable': ['weight', 'target']
+                        # })
                         
                     elif kpi['type'] == 'service_efficiency':
                         # Hitung rata-rata deviasi waktu servis tim

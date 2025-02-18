@@ -9,5 +9,14 @@
             <field name="padding">4</field>
             <field name="company_id" eval="False"/>
         </record>
+
+        <!-- Di file data/sequence.xml -->
+        <record id="sequence_cs_leads" model="ir.sequence">
+            <field name="name">CS Leads</field>
+            <field name="code">cs.leads</field>
+            <field name="prefix">LD/%(year)s/%(month)s/</field>
+            <field name="padding">4</field>
+            <field name="company_id" eval="False"/>
+        </record>
     </data>
 </odoo>

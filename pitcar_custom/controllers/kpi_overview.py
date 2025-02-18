@@ -262,7 +262,7 @@ class KPIOverview(http.Controller):
                     'no': 2,
                     'name': 'Persentase rata-rata waktu penanganan customer yang sesuai target waktu',
                     'type': 'service_efficiency',
-                    'weight': 15,
+                    'weight': 10,
                     'target': 80,
                     'measurement': 'Diukur dari kesesuaian waktu penanganan customer berdasarkan target waktu',
                     'include_in_calculation': True
@@ -298,7 +298,7 @@ class KPIOverview(http.Controller):
                     'no': 5,
                     'name': 'Persentase waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
                     'type': 'mechanic_efficiency',
-                    'weight': 10,
+                    'weight': 15,
                     'target': 90,
                     'measurement': 'Diukur dari rata-rata waktu pengerjaan per PKB setiap mekanik',
                     'include_in_calculation': True
@@ -770,22 +770,12 @@ class KPIOverview(http.Controller):
                         measurement = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
 
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # mechanic
-                        mechanic = request.env['pitcar.mechanic.new'].sudo().search([
-                            ('leader_id', '=', employee.id)
-                        ])
-                        # Get team mechanics first
-                        team_members = request.env['pitcar.mechanic.new'].sudo().search([
-                            ('leader_id', '=', mechanic.id)
-                        ])
-                        
-                        # Get all orders for the team within period
                         team_orders = request.env['sale.order'].sudo().search([
                             *base_domain,
                             ('car_mechanic_id_new', 'in', team_members.ids)
                         ])
 
-                        # Calculate average lead time for each mechanic
+                        # Hitung rata-rata waktu pengerjaan per mekanik
                         mechanic_times = {}
                         for order in team_orders:
                             if order.lead_time_servis: # Only count if lead time exists
@@ -794,54 +784,44 @@ class KPIOverview(http.Controller):
                                         mechanic_times[mech] = []
                                     mechanic_times[mech].append(order.lead_time_servis)
 
-                        # Calculate average for each mechanic
+                        # Hitung rata-rata untuk setiap mekanik
                         mechanic_averages = {}
                         for mech, times in mechanic_times.items():
                             if times:  # Only if mechanic has orders
                                 mechanic_averages[mech.id] = sum(times) / len(times)
 
                         if mechanic_averages:
-                            # Calculate team average
+                            # Hitung rata-rata tim
                             team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
                             
-                            # Calculate tolerance range (±5%)
-                            upper_limit = team_average * 1.05
-                            lower_limit = team_average * 0.95
+                            # Hitung batas toleransi (±5%)
+                            upper_limit = team_average * 1.05  # 105% dari rata-rata
+                            lower_limit = team_average * 0.95  # 95% dari rata-rata
                             
-                            # Count mechanics within range
+                            # Hitung mekanik yang masuk dalam rentang
                             mechanics_in_range = sum(
                                 1 for avg in mechanic_averages.values()
                                 if lower_limit <= avg <= upper_limit
                             )
                             
-                            # Calculate percentage
+                            # Hitung persentase mekanik dalam rentang
                             actual = (mechanics_in_range / len(mechanic_averages) * 100)
                             
-                            # Format measurement message
+                            # Tambahkan detail waktu setiap mekanik untuk debugging
+                            mechanic_details = [
+                                f"{mech.name}: {avg:.1f} jam" 
+                                for mech, avg in mechanic_averages.items()
+                            ]
+                            
                             kpi['measurement'] = (
                                 f"Rata-rata tim: {team_average:.1f} jam, "
-                                f"Rentang: {lower_limit:.1f} - {upper_limit:.1f} jam, "
-                                f"Mekanik dalam rentang: {mechanics_in_range} dari {len(mechanic_averages)}"
+                                f"Rentang ideal: {lower_limit:.1f} - {upper_limit:.1f} jam, "
+                                f"Mekanik dalam rentang: {mechanics_in_range} dari {len(mechanic_averages)} "
+                                f"({', '.join(mechanic_details)})"
                             )
                         else:
                             actual = 0
                             kpi['measurement'] = "Belum ada data pengerjaan mekanik yang cukup"
-
-                        # Calculate weighted score directly
-                        weighted_score = actual * (kpi['weight'] / 100)
-                        achievement = weighted_score  # Set achievement same as weighted_score
-
-                        kpi_scores.append({
-                            'no': kpi['no'],
-                            'name': kpi['name'],
-                            'type': kpi['type'],
-                            'weight': kpi['weight'],
-                            'target': kpi['target'],
-                            'measurement': kpi['measurement'],
-                            'actual': actual,
-                            'achievement': achievement,
-                            'weighted_score': weighted_score
-                        })
 
                     elif kpi['type'] == 'stock_management':
                         # Manual input untuk stok management (bisa diotomatisasi jika ada data stok)
@@ -1794,6 +1774,12 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Berhasil handle {total_units} PKB dari target {target_units} PKB/bulan"
                     
                     elif kpi['type'] == 'flat_rate':
+                        # Get orders for the mechanic team first
+                        team_orders = request.env['sale.order'].sudo().search([
+                            *base_domain,
+                            ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])  # Include leader
+                        ])
+
                         # Hitung productive hours dari absensi
                         attendances = request.env['hr.attendance'].sudo().search([
                             ('employee_id', '=', employee.id),
@@ -1822,7 +1808,6 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
 
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # Get team orders dalam periode
                         team_orders = request.env['sale.order'].sudo().search([
                             *base_domain,
                             ('car_mechanic_id_new', 'in', team_members.ids)
@@ -1848,22 +1833,29 @@ class KPIOverview(http.Controller):
                             team_average = sum(mechanic_averages.values()) / len(mechanic_averages)
                             
                             # Hitung batas toleransi (±5%)
-                            upper_limit = team_average * 1.05
-                            lower_limit = team_average * 0.95
+                            upper_limit = team_average * 1.05  # 105% dari rata-rata
+                            lower_limit = team_average * 0.95  # 95% dari rata-rata
                             
-                            # Hitung berapa mekanik yang masuk dalam rentang
+                            # Hitung mekanik yang masuk dalam rentang
                             mechanics_in_range = sum(
                                 1 for avg in mechanic_averages.values()
                                 if lower_limit <= avg <= upper_limit
                             )
                             
-                            # Hitung persentase
+                            # Hitung persentase mekanik dalam rentang
                             actual = (mechanics_in_range / len(mechanic_averages) * 100)
+                            
+                            # Tambahkan detail waktu setiap mekanik untuk debugging
+                            mechanic_details = [
+                                f"{mech.name}: {avg:.1f} jam" 
+                                for mech, avg in mechanic_averages.items()
+                            ]
                             
                             kpi['measurement'] = (
                                 f"Rata-rata tim: {team_average:.1f} jam, "
-                                f"Rentang: {lower_limit:.1f} - {upper_limit:.1f} jam, "
-                                f"Mekanik dalam rentang: {mechanics_in_range} dari {len(mechanic_averages)}"
+                                f"Rentang ideal: {lower_limit:.1f} - {upper_limit:.1f} jam, "
+                                f"Mekanik dalam rentang: {mechanics_in_range} dari {len(mechanic_averages)} "
+                                f"({', '.join(mechanic_details)})"
                             )
                         else:
                             actual = 0

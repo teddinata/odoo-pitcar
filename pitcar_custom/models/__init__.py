@@ -40,3 +40,4 @@ from . import cs_contact_monitoring
 from . import cs_finance_check
 from . import cs_leads
 from . import cs_leads_analytics
+from . import content_project

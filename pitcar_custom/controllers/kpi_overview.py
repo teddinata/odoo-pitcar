@@ -423,7 +423,7 @@ class KPIOverview(http.Controller):
             admin_part_template = [
                 {
                     'no': 1,
-                    'name': '% kebutuhan part & tools terpenuhi',
+                    'name': 'Persentase kebutuhan part & tools terpenuhi',
                     'type': 'part_fulfillment',
                     'weight': 20,
                     'target': 95,
@@ -468,7 +468,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 6,
-                    'name': '% sampel admin part bekerja sesuai SOP',
+                    'name': 'Persentase sampel admin part bekerja sesuai SOP',
                     'type': 'sop_compliance',
                     'weight': 20,
                     'target': 95,
@@ -481,7 +481,7 @@ class KPIOverview(http.Controller):
             toolkeeper_template = [
                 {
                     'no': 1,
-                    'name': '% hari belanja part sesuai target & kecocokan',
+                    'name': 'Persentase belanja part sesuai target & kecocokan',
                     'type': 'part_purchase',
                     'weight': 25,
                     'target': 90,
@@ -490,7 +490,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 2,
-                    'name': '% hari belanja tools sesuai target & kecocokan',
+                    'name': 'Persentase belanja tools sesuai target & kecocokan',
                     'type': 'tool_purchase',
                     'weight': 20,
                     'target': 95,
@@ -517,7 +517,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 5,
-                    'name': '% sampel toolkeeper bekerja sesuai SOP',
+                    'name': 'Persentase sampel toolkeeper bekerja sesuai SOP',
                     'type': 'sop_compliance',
                     'weight': 20,
                     'target': 90,
@@ -1545,7 +1545,7 @@ class KPIOverview(http.Controller):
                     'no': 4,
                     'name': 'Persentase sampel tim mekanik bekerja sesuai alur SOP',
                     'type': 'sop_compliance',
-                    'weight': 15,
+                    'weight': 20,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
                     'include_in_calculation': True
@@ -1607,24 +1607,24 @@ class KPIOverview(http.Controller):
                     'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
                     'include_in_calculation': True
                 },
-                {
-                    'no': 6,
-                    'name': 'Analisis dan penyelesaian komplain dari customer',
-                    'type': 'complaint_handling',
-                    'weight': 15,
-                    'target': 100,
-                    'measurement': 'Diukur dari customer merasa puas terhadap pelayanan & solusi yang diberikan dalam kurun waktu 3 hari setelah complaint dilayangkan',
-                    'include_in_calculation': True
-                },
                 # {
-                #     'no': 7,
-                #     'name': 'Kontrol kinerja tim mekanik',
-                #     'type': 'sop_compliance',
+                #     'no': 6,
+                #     'name': 'Analisis dan penyelesaian komplain dari customer',
+                #     'type': 'complaint_handling',
                 #     'weight': 15,
-                #     'target': 95,
-                #     'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
+                #     'target': 100,
+                #     'measurement': 'Diukur dari customer merasa puas terhadap pelayanan & solusi yang diberikan dalam kurun waktu 3 hari setelah complaint dilayangkan',
                 #     'include_in_calculation': True
                 # },
+                {
+                    'no': 6,
+                    'name': 'Kontrol kinerja tim mekanik',
+                    'type': 'sop_compliance',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
+                    'include_in_calculation': True
+                },
                 {
                     'no': 7,
                     'name': 'Menjalankan kegiatan operasional secara disiplin',
@@ -1747,7 +1747,7 @@ class KPIOverview(http.Controller):
                             actual = ((total_samplings - failed_samplings) / total_samplings * 100)
                             kpi['measurement'] = f"Sampling sesuai SOP: {total_samplings - failed_samplings} dari {total_samplings} sampling ({actual:.1f}%)"
                         else:
-                            actual = 0
+                            actual = 100
                             kpi['measurement'] = f"Belum ada sampling SOP pada periode {month}/{year}"
                         
                     elif kpi['type'] == 'discipline':
@@ -2065,7 +2065,7 @@ class KPIOverview(http.Controller):
                                 f"Pelanggaran: {failed_samplings} ({actual:.1f}%)"
                             )
                         else:
-                            actual = 0
+                            actual = 100
                             kpi['measurement'] = f"Belum ada sampling SOP tim pada periode {month}/{year}"
 
                         

@@ -14,3 +14,4 @@ from . import frontoffice_api
 from . import cs_sampling
 from . import cs_leads_analytics
 from . import cs_leads
+from . import content_api

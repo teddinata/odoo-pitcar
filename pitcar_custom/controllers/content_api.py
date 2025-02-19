@@ -136,11 +136,15 @@ class ContentManagementAPI(http.Controller):
             return {'status': 'error', 'message': 'Missing required fields'}
 
         try:
+            assigned_to = data['assigned_to']
+            if isinstance(assigned_to, list):
+                assigned_to = assigned_to[0] if assigned_to else None
             values = {
                 'name': data['name'],
                 'project_id': int(data['project_id']),
                 'content_type': data['content_type'],
-                'assigned_to': int(data['assigned_to']),
+                # 'assigned_to': int(data['assigned_to']),
+                'assigned_to': int(assigned_to),
                 'state': 'draft',
                 'progress': 0.0
             }

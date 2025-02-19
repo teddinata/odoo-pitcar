@@ -88,3 +88,11 @@ pitcar_custom.access_cs_leads_analytics_user,cs.leads.analytics.user,model_cs_le
 pitcar_custom.access_cs_leads_analytics_manager,cs.leads.analytics.manager,model_cs_leads_analytics,base.group_system,1,1,1,1
 pitcar_custom.access_cs_performance_report_user,cs.performance.report.user,model_cs_performance_report,base.group_user,1,1,1,0
 pitcar_custom.access_cs_performance_report_manager,cs.performance.report.manager,model_cs_performance_report,base.group_system,1,1,1,1
+pitcar_custom.access_content_project_user,content.project.user,pitcar_custom.model_content_project,base.group_user,1,1,1,0
+pitcar_custom.access_content_project_manager,content.project.manager,pitcar_custom.model_content_project,base.group_system,1,1,1,1
+pitcar_custom.access_content_task_user,content.task.user,pitcar_custom.model_content_task,base.group_user,1,1,1,0
+pitcar_custom.access_content_task_manager,content.task.manager,pitcar_custom.model_content_task,base.group_system,1,1,1,1
+pitcar_custom.access_content_revision_user,content.revision.user,pitcar_custom.model_content_revision,base.group_user,1,1,1,0
+pitcar_custom.access_content_revision_manager,content.revision.manager,pitcar_custom.model_content_revision,base.group_system,1,1,1,1
+pitcar_custom.access_content_bau_user,content.bau.user,pitcar_custom.model_content_bau,base.group_user,1,1,1,0
+pitcar_custom.access_content_bau_manager,content.bau.manager,pitcar_custom.model_content_bau,base.group_system,1,1,1,1

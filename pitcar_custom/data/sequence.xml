@@ -18,5 +18,13 @@
             <field name="padding">4</field>
             <field name="company_id" eval="False"/>
         </record>
+
+        <record id="seq_content_project" model="ir.sequence">
+            <field name="name">Content Project Sequence</field>
+            <field name="code">content.project</field>
+            <field name="prefix">PROJ/%(year)s/</field>
+            <field name="padding">4</field>
+            <field name="company_id" eval="False"/>
+        </record>
     </data>
 </odoo>

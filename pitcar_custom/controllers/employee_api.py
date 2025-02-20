@@ -583,3 +583,185 @@ class EmployeeAPI(http.Controller):
                 'status': 'error',
                 'message': str(e)
             }
+
+    @http.route('/web/department/update', type='json', auth='user', methods=['POST'], csrf=False)
+    def update_department(self, **kw):
+        try:
+            data = request.get_json_data()
+            params = data.get('params', {})
+            
+            if not params.get('id'):
+                return {
+                    'status': 'error',
+                    'message': 'Department ID is required'
+                }
+                
+            Department = request.env['hr.department']
+            department = Department.browse(int(params['id']))
+            
+            if not department.exists():
+                return {
+                    'status': 'error',
+                    'message': 'Department not found'
+                }
+                
+            vals = {
+                'name': params.get('name'),
+                'manager_id': int(params.get('manager_id')) if params.get('manager_id') else False,
+                'parent_id': int(params.get('parent_id')) if params.get('parent_id') else False
+            }
+            
+            department.write(vals)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'id': department.id,
+                    'name': department.name,
+                    'manager': department.manager_id.name if department.manager_id else None,
+                    'parent_dept': department.parent_id.name if department.parent_id else None,
+                    'total_employees': len(department.member_ids)
+                },
+                'message': 'Department updated successfully'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in update_department: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    @http.route('/web/position/update', type='json', auth='user', methods=['POST'], csrf=False)
+    def update_position(self, **kw):
+        try:
+            data = request.get_json_data()
+            params = data.get('params', {})
+            
+            if not params.get('id'):
+                return {
+                    'status': 'error',
+                    'message': 'Position ID is required'
+                }
+                
+            Job = request.env['hr.job']
+            position = Job.browse(int(params['id']))
+            
+            if not position.exists():
+                return {
+                    'status': 'error',
+                    'message': 'Position not found'
+                }
+                
+            vals = {
+                'name': params.get('name'),
+                'department_id': int(params.get('department_id')) if params.get('department_id') else False,
+                'description': params.get('description', '')
+            }
+            
+            position.write(vals)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'id': position.id,
+                    'name': position.name,
+                    'department_id': position.department_id.id if position.department_id else None,
+                    'department_name': position.department_id.name if position.department_id else None,
+                    'description': position.description,
+                    'total_employees': position.no_of_employee
+                },
+                'message': 'Position updated successfully'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in update_position: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    # Optional: Endpoint untuk soft delete department/position jika diperlukan
+    @http.route('/web/department/archive', type='json', auth='user', methods=['POST'], csrf=False)
+    def archive_department(self, **kw):
+        try:
+            data = request.get_json_data()
+            params = data.get('params', {})
+            
+            if not params.get('id'):
+                return {
+                    'status': 'error',
+                    'message': 'Department ID is required'
+                }
+                
+            Department = request.env['hr.department']
+            department = Department.browse(int(params['id']))
+            
+            if not department.exists():
+                return {
+                    'status': 'error',
+                    'message': 'Department not found'
+                }
+                
+            # Check if department has active employees
+            if department.member_ids.filtered(lambda e: e.active):
+                return {
+                    'status': 'error',
+                    'message': 'Cannot archive department with active employees'
+                }
+                
+            department.write({'active': False})
+            
+            return {
+                'status': 'success',
+                'message': 'Department archived successfully'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in archive_department: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    @http.route('/web/position/archive', type='json', auth='user', methods=['POST'], csrf=False)
+    def archive_position(self, **kw):
+        try:
+            data = request.get_json_data()
+            params = data.get('params', {})
+            
+            if not params.get('id'):
+                return {
+                    'status': 'error',
+                    'message': 'Position ID is required'
+                }
+                
+            Job = request.env['hr.job']
+            position = Job.browse(int(params['id']))
+            
+            if not position.exists():
+                return {
+                    'status': 'error',
+                    'message': 'Position not found'
+                }
+                
+            # Check if position has employees
+            if position.no_of_employee > 0:
+                return {
+                    'status': 'error',
+                    'message': 'Cannot archive position with active employees'
+                }
+                
+            position.write({'active': False})
+            
+            return {
+                'status': 'success',
+                'message': 'Position archived successfully'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in archive_position: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }

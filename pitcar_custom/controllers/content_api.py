@@ -595,7 +595,8 @@ class ContentManagementAPI(http.Controller):
             'author': {
                 'id': log.author_id.id,
                 'name': log.author_id.name,
-                'position': log.author_id.job_id.name,
+                # Remove job_id since it's not available in res.partner
+                'email': log.author_id.email,
             } if log.author_id else None,
             'message': log.body,
             'tracking_values': [{

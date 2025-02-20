@@ -15,12 +15,12 @@ class ContentProject(models.Model):
     # Project Details
     description = fields.Html('Description')
     # Ubah ke hr.employee
-    project_manager_id = fields.Many2one('hr.employee', 'Project Manager', required=True)
-    team_ids = fields.Many2many('hr.employee', string='Team Members')
+    project_manager_id = fields.Many2one('hr.employee', 'Project Manager', required=True, tracking=True)
+    team_ids = fields.Many2many('hr.employee', string='Team Members', tracking=True)
     
     # Content Plan
-    planned_video_count = fields.Integer('Planned Video Content')
-    planned_design_count = fields.Integer('Planned Design Content')
+    planned_video_count = fields.Integer('Planned Video Content', tracking=True)
+    planned_design_count = fields.Integer('Planned Design Content', tracking=True)
     
     # Content Tasks
     task_ids = fields.One2many('content.task', 'project_id', 'Tasks')
@@ -36,7 +36,7 @@ class ContentProject(models.Model):
         ('cancelled', 'Cancelled')
     ], string='Status', default='draft', tracking=True)
     
-    progress = fields.Float('Progress %', compute='_compute_progress')
+    progress = fields.Float('Progress %', compute='_compute_progress', tracking=True)
     
     @api.model
     def create(self, vals):
@@ -126,11 +126,11 @@ class ContentTask(models.Model):
         required=True,
         tracking=True
     )
-    reviewer_id = fields.Many2one('hr.employee', 'Reviewer')
+    reviewer_id = fields.Many2one('hr.employee', 'Reviewer', tracking=True)
     
     # Dates and Duration
-    planned_date_start = fields.Datetime('Planned Start')
-    planned_date_end = fields.Datetime('Planned End')
+    planned_date_start = fields.Datetime('Planned Start', tracking=True)
+    planned_date_end = fields.Datetime('Planned End', tracking=True)
     actual_date_start = fields.Datetime('Actual Start')
     actual_date_end = fields.Datetime('Actual End')
     
@@ -139,12 +139,13 @@ class ContentTask(models.Model):
     actual_hours = fields.Float('Actual Hours', compute='_compute_hours')
     
     # Revision Tracking
-    revision_count = fields.Integer('Revision Count', default=0)
+    revision_count = fields.Integer(compute='_compute_revision_count', store=True)
     revision_ids = fields.One2many('content.revision', 'task_id', 'Revisions')
-    has_excessive_revisions = fields.Boolean('Excessive Revisions', compute='_compute_excessive_revisions')
+    has_excessive_revisions = fields.Boolean(compute='_compute_excessive_revisions')
+    max_allowed_revisions = fields.Integer(default=5)  # config untuk max revisi
     
     # Progress and Status
-    progress = fields.Float('Progress %')
+    progress = fields.Float('Progress %', tracking=True)
     state = fields.Selection([
         ('draft', 'Draft'),
         ('in_progress', 'In Progress'),
@@ -156,10 +157,15 @@ class ContentTask(models.Model):
 
     description = fields.Text('Task Description')
     
+    @api.depends('revision_ids')
+    def _compute_revision_count(self):
+        for task in self:
+            task.revision_count = len(task.revision_ids)
+
     @api.depends('revision_count')
     def _compute_excessive_revisions(self):
-        for record in self:
-            record.has_excessive_revisions = record.revision_count > 5
+        for task in self:
+            task.has_excessive_revisions = task.revision_count > task.max_allowed_revisions
 
     @api.depends('actual_date_start', 'actual_date_end')
     def _compute_hours(self):
@@ -175,26 +181,29 @@ class ContentRevision(models.Model):
     _name = 'content.revision'
     _description = 'Content Revision'
     
-    task_id = fields.Many2one('content.task', 'Task', required=True)
+    task_id = fields.Many2one('content.task', 'Task', required=True, tracking=True)
     revision_number = fields.Integer('Revision #', required=True)
-    requested_by = fields.Many2one('hr.employee', 'Requested By')
-    date_requested = fields.Datetime('Date Requested')
+    requested_by = fields.Many2one('hr.employee', 'Requested By', tracking=True)
+    date_requested = fields.Datetime('Date Requested', tracking=True)
+    feedback = fields.Text(required=True)
+    revision_points = fields.Text("Points to Revise")
+    deadline = fields.Datetime()
     
     description = fields.Text('Revision Notes')
     status = fields.Selection([
         ('requested', 'Requested'),
         ('in_progress', 'In Progress'),
         ('completed', 'Completed')
-    ], string='Status', default='requested')
+    ], string='Status', default='requested', tracking=True)
 
 class ContentBAU(models.Model):
     _name = 'content.bau'
     _description = 'BAU Activity'
     
-    name = fields.Char('Activity Name', required=True)
-    project_id = fields.Many2one('content.project', 'Related Project')
+    name = fields.Char('Activity Name', required=True, tracking=True)
+    project_id = fields.Many2one('content.project', 'Related Project', tracking=True)
      # Ubah ke hr.employee
-    creator_id = fields.Many2one('hr.employee', 'Creator', required=True)
+    creator_id = fields.Many2one('hr.employee', 'Creator', required=True, tracking=True)
     
     date = fields.Date('Date', required=True)
     hours_spent = fields.Float('Hours Spent')
@@ -203,7 +212,7 @@ class ContentBAU(models.Model):
         ('video', 'Video Related'),
         ('design', 'Design Related'),
         ('other', 'Other BAU')
-    ], string='Activity Type', required=True)
+    ], string='Activity Type', required=True, tracking=True)
     
     description = fields.Text('Description')
     impact_on_delivery = fields.Text('Impact on Deliverables')

@@ -442,6 +442,13 @@ class ContentManagementAPI(http.Controller):
 
     def _prepare_task_data(self, task):
         """Helper method to prepare task data"""
+        # Get task logs
+        logs = request.env['mail.message'].sudo().search([
+            ('model', '=', 'content.task'),
+            ('res_id', '=', task.id),
+            ('message_type', 'in', ['comment', 'notification'])
+        ], order='date desc')
+
         return {
             'id': task.id,
             'name': task.name,

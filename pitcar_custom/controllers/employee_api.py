@@ -34,83 +34,91 @@ class EmployeeAPI(http.Controller):
             return 1, 20
 
     def _format_employee_data(self, employee):
-      """Format employee data for API response"""
-      try:
-          avatar_data = False
-          if employee.image_1920:
-              avatar_data = {
-                  'full': employee.image_1920.decode('utf-8') if employee.image_1920 else False,
-                  'medium': employee.image_128.decode('utf-8') if employee.image_128 else False,
-                  'small': employee.image_512.decode('utf-8') if employee.image_512 else False
-              }
+        """Format employee data for API response"""
+        try:
+            # Format avatar data
+            avatar_data = False
+            if employee.image_1920:
+                avatar_data = {
+                    'full': employee.image_1920.decode('utf-8') if employee.image_1920 else False,
+                    'medium': employee.image_128.decode('utf-8') if employee.image_128 else False,
+                    'small': employee.image_512.decode('utf-8') if employee.image_512 else False
+                }
 
-          # Format department data
-          department_data = False
-          if employee.department_id:
-              department_data = {
-                  'id': employee.department_id.id,
-                  'name': employee.department_id.name,
-                  'manager': employee.department_id.manager_id.name if employee.department_id.manager_id else False
-              }
+            # Format department data
+            department_data = False
+            if employee.department_id:
+                department_data = {
+                    'id': employee.department_id.id,
+                    'name': employee.department_id.name,
+                    'manager': employee.department_id.manager_id.name if employee.department_id.manager_id else False
+                }
 
-          # Format job position data
-          position_data = False
-          if employee.job_id:
-              position_data = {
-                  'id': employee.job_id.id,
-                  'name': employee.job_id.name
-              }
+            # Format job position data
+            position_data = False
+            if employee.job_id:
+                position_data = {
+                    'id': employee.job_id.id,
+                    'name': employee.job_id.name,
+                    'department_id': employee.job_id.department_id.id if employee.job_id.department_id else False
+                }
 
-          # Format work location data
-          location_data = False
-          if employee.work_location_id:
-              location_data = {
-                  'id': employee.work_location_id.id,
-                  'name': employee.work_location_id.name,
-                  'address': employee.work_location_id.address
-              }
+            # Format work location data
+            location_data = False
+            if employee.work_location_id:
+                location_data = {
+                    'id': employee.work_location_id.id,
+                    'name': employee.work_location_id.name,
+                    'address': employee.work_location_id.address if hasattr(employee.work_location_id, 'address') else False
+                }
 
-          return {
-              'id': employee.id,
-              'name': employee.name,
-              'avatar': avatar_data,
-              'work_email': employee.work_email or False,
-              'job_title': employee.job_title or False,
-              'department': department_data,
-              'position': position_data,
-              'work_location': location_data,
-              'work_phone': employee.work_phone or False,
-              'mobile_phone': employee.mobile_phone or False,
-              'company': employee.company_id.name if employee.company_id else False,
-              'manager': employee.parent_id.name if employee.parent_id else False,
-              'parent_id': employee.parent_id.id if employee.parent_id else False,
-              'coach': employee.coach_id.name if employee.coach_id else False,
-              'address_home': employee.address_id.name_get()[0][1] if employee.address_id else False,
-              'active': employee.active,
-              'gender': dict(employee._fields['gender'].selection).get(employee.gender, False),
-              'marital': dict(employee._fields['marital'].selection).get(employee.marital, False),
-              'birthday': str(employee.birthday) if employee.birthday else False,
-              'identification_id': employee.identification_id or False,
-              'passport_id': employee.passport_id or False,
-              'children': employee.children or 0,
-              'emergency_contact': employee.emergency_contact or False,
-              'emergency_phone': employee.emergency_phone or False,
-              'notes': employee.notes or False,
-              'color': employee.color or 0,
-              'barcode': employee.barcode or False,
-              'pin': employee.pin or False,
-              'create_date': str(employee.create_date),
-              'write_date': str(employee.write_date)
-          }
-      except Exception as e:
-          _logger.error(f"Error formatting employee data: {str(e)}")
-          return {}
+            # Get selection field values
+            gender_selection = dict(employee._fields['gender'].selection or [])
+            marital_selection = dict(employee._fields['marital'].selection or [])
+
+            return {
+                'id': employee.id,
+                'name': employee.name,
+                'avatar': avatar_data,
+                'work_email': employee.work_email or False,
+                'job_title': employee.job_title or False,
+                'department': department_data,
+                'position': position_data,
+                'work_location': location_data,
+                'work_phone': employee.work_phone or False,
+                'mobile_phone': employee.mobile_phone or False,
+                'company': employee.company_id.name if employee.company_id else False,
+                'manager': employee.parent_id.name if employee.parent_id else False,
+                'parent_id': employee.parent_id.id if employee.parent_id else False,
+                'coach': employee.coach_id.name if employee.coach_id else False,
+                'address_home': employee.address_id.name_get()[0][1] if employee.address_id else False,
+                'active': employee.active,
+                'gender': employee.gender or False,
+                'gender_display': gender_selection.get(employee.gender, False),
+                'marital': employee.marital or False,
+                'marital_display': marital_selection.get(employee.marital, False),
+                'birthday': str(employee.birthday) if employee.birthday else False,
+                'identification_id': employee.identification_id or False,
+                'passport_id': employee.passport_id or False,
+                'children': employee.children or 0,
+                'emergency_contact': employee.emergency_contact or False,
+                'emergency_phone': employee.emergency_phone or False,
+                'notes': employee.notes or False,
+                'color': employee.color or 0,
+                'barcode': employee.barcode or False,
+                'pin': employee.pin or False,
+                'create_date': str(employee.create_date),
+                'write_date': str(employee.write_date)
+            }
+        except Exception as e:
+            _logger.error(f"Error formatting employee data: {str(e)}")
+            return {}
         
     @http.route('/web/employees/masters', type='json', auth='user', methods=['POST'], csrf=False)
     def get_employee_masters(self, **kw):
-        """Get master data for employees (departments, positions, locations)"""
+        """Get master data for employees (departments, positions, locations, and selection fields)"""
         try:
-            # Get Departments dengan prefetch
+            # Get Departments
             Department = request.env['hr.department']
             departments = Department.search([])
             department_list = [{
@@ -121,46 +129,49 @@ class EmployeeAPI(http.Controller):
                 'total_employees': len(dept.member_ids)
             } for dept in departments]
 
-            # Get Job Positions dengan domain yang memastikan relasi department terload
+            # Get Job Positions
             Job = request.env['hr.job']
             jobs = Job.search([])
-            position_list = []
-            
-            for job in jobs:
-                dept = job.department_id
-                position_data = {
-                    'id': job.id,
-                    'name': job.name,
-                    'department_id': dept.id if dept else None,
-                    'department': {
-                        'id': dept.id,
-                        'name': dept.name,
-                        'manager_id': dept.manager_id.id if dept.manager_id else None,
-                        'manager_name': dept.manager_id.name if dept.manager_id else None
-                    } if dept else None,
-                    'total_employees': job.no_of_employee,
-                    'description': job.description or None
-                }
-                position_list.append(position_data)
+            position_list = [{
+                'id': job.id,
+                'name': job.name,
+                'department_id': job.department_id.id if job.department_id else None,
+                'department': {
+                    'id': job.department_id.id,
+                    'name': job.department_id.name,
+                    'manager_id': job.department_id.manager_id.id if job.department_id.manager_id else None,
+                    'manager_name': job.department_id.manager_id.name if job.department_id.manager_id else None
+                } if job.department_id else None,
+                'total_employees': job.no_of_employee,
+                'description': job.description or None
+            } for job in jobs]
 
             # Get Work Locations
             Location = request.env['pitcar.work.location']
             locations = Location.search([])
             location_list = [{
                 'id': loc.id,
-                'name': loc.name
+                'name': loc.name,
+                'address': loc.address if hasattr(loc, 'address') else None
             } for loc in locations]
 
-            # Get additional data
-            employee_count = request.env['hr.employee'].search_count([('active', '=', True)])
+            # Get Selection Fields
+            Employee = request.env['hr.employee']
+            selection_fields = {
+                'gender': dict(Employee._fields['gender'].selection or []),
+                'marital': dict(Employee._fields['marital'].selection or [])
+            }
 
-            # Return data dengan format yang konsisten
+            # Get employee count
+            employee_count = Employee.search_count([('active', '=', True)])
+
             return {
                 'status': 'success',
                 'data': {
                     'departments': department_list,
                     'positions': position_list,
                     'locations': location_list,
+                    'selection_fields': selection_fields,
                     'summary': {
                         'total_departments': len(departments),
                         'total_positions': len(jobs),
@@ -474,6 +485,88 @@ class EmployeeAPI(http.Controller):
             
         except Exception as e:
             _logger.error(f"Error in delete_employee: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+        
+    # Add these methods to your EmployeeAPI class
+    @http.route('/web/department/create', type='json', auth='user', methods=['POST'], csrf=False)
+    def create_department(self, **kw):
+        try:
+            params = request.get_json_data()
+            
+            required_fields = ['name']
+            missing_fields = [field for field in required_fields if not params.get(field)]
+            if missing_fields:
+                return {
+                    'status': 'error',
+                    'message': f"Missing required fields: {', '.join(missing_fields)}"
+                }
+                
+            Department = request.env['hr.department']
+            vals = {
+                'name': params.get('name'),
+                'manager_id': int(params.get('manager_id')) if params.get('manager_id') else False,
+                'parent_id': int(params.get('parent_id')) if params.get('parent_id') else False,
+            }
+            
+            department = Department.create(vals)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'id': department.id,
+                    'name': department.name,
+                    'manager': department.manager_id.name if department.manager_id else None,
+                    'parent_dept': department.parent_id.name if department.parent_id else None
+                },
+                'message': 'Department created successfully'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in create_department: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    @http.route('/web/position/create', type='json', auth='user', methods=['POST'], csrf=False)
+    def create_position(self, **kw):
+        try:
+            params = request.get_json_data()
+            
+            required_fields = ['name']
+            missing_fields = [field for field in required_fields if not params.get(field)]
+            if missing_fields:
+                return {
+                    'status': 'error',
+                    'message': f"Missing required fields: {', '.join(missing_fields)}"
+                }
+                
+            Job = request.env['hr.job']
+            vals = {
+                'name': params.get('name'),
+                'department_id': int(params.get('department_id')) if params.get('department_id') else False,
+                'description': params.get('description', ''),
+            }
+            
+            position = Job.create(vals)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'id': position.id,
+                    'name': position.name,
+                    'department_id': position.department_id.id if position.department_id else None,
+                    'department_name': position.department_id.name if position.department_id else None,
+                    'description': position.description
+                },
+                'message': 'Position created successfully'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in create_position: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)

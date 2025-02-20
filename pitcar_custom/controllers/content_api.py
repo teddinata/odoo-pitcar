@@ -443,11 +443,11 @@ class ContentManagementAPI(http.Controller):
     def _prepare_task_data(self, task):
         """Helper method to prepare task data"""
         # Get task logs
-        logs = request.env['mail.message'].sudo().search([
-            ('model', '=', 'content.task'),
-            ('res_id', '=', task.id),
-            ('message_type', 'in', ['comment', 'notification'])
-        ], order='date desc')
+        # logs = request.env['mail.message'].sudo().search([
+        #     ('model', '=', 'content.task'),
+        #     ('res_id', '=', task.id),
+        #     ('message_type', 'in', ['comment', 'notification'])
+        # ], order='date desc')
 
         return {
             'id': task.id,
@@ -487,21 +487,21 @@ class ContentManagementAPI(http.Controller):
                     'notes': rev.description
                 } for rev in task.revision_ids]
             },
-            'activity_logs': [{
-                'id': log.id,
-                'date': log.date,
-                'author': {
-                    'id': log.author_id.id,
-                    'name': log.author_id.name,
-                    'position': log.author_id.job_id.name,
-                } if log.author_id else None,
-                'message': log.body,
-                'tracking_values': [{
-                    'field': tracking.field_desc,
-                    'old_value': tracking.old_value_char,
-                    'new_value': tracking.new_value_char
-                } for tracking in log.tracking_value_ids] if log.tracking_value_ids else []
-            } for log in logs],
+            # 'activity_logs': [{
+            #     'id': log.id,
+            #     'date': log.date,
+            #     'author': {
+            #         'id': log.author_id.id,
+            #         'name': log.author_id.name,
+            #         'position': log.author_id.job_id.name,
+            #     } if log.author_id else None,
+            #     'message': log.body,
+            #     'tracking_values': [{
+            #         'field': tracking.field_desc,
+            #         'old_value': tracking.old_value_char,
+            #         'new_value': tracking.new_value_char
+            #     } for tracking in log.tracking_value_ids] if log.tracking_value_ids else []
+            # } for log in logs],
             'progress': task.progress,
             'state': task.state
         }

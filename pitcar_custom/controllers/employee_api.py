@@ -462,7 +462,8 @@ class EmployeeAPI(http.Controller):
     def delete_employee(self, **kw):
         try:
             # Get params from request
-            params = request.get_json_data()
+            data = request.get_json_data()
+            params = data.get('params', {})
             employee_id = params.get('employee_id')
 
             if not employee_id:
@@ -470,8 +471,16 @@ class EmployeeAPI(http.Controller):
                     'status': 'error',
                     'message': 'Employee ID is required'
                 }
-            
-            employee = request.env['hr.employee'].browse(int(employee_id))
+                
+            try:
+                employee_id = int(employee_id)
+            except (ValueError, TypeError):
+                return {
+                    'status': 'error',
+                    'message': 'Invalid employee ID format'
+                }
+                
+            employee = request.env['hr.employee'].browse(employee_id)
             if not employee.exists():
                 return {
                     'status': 'error',
@@ -485,7 +494,7 @@ class EmployeeAPI(http.Controller):
                 'status': 'success',
                 'message': 'Employee archived successfully'
             }
-            
+                
         except Exception as e:
             _logger.error(f"Error in delete_employee: {str(e)}", exc_info=True)
             return {

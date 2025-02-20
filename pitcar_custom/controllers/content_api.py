@@ -13,6 +13,11 @@ class ContentManagementAPI(http.Controller):
     def content_projects(self, **kw):
         try:
             operation = kw.get('operation', 'create')
+
+            if operation == 'delete':
+                return self._delete_project(kw)
+            elif operation == 'update':
+                return self._update_project(kw)
             
             if operation == 'create':
                 required_fields = ['name', 'date_start', 'date_end', 'project_manager_id']
@@ -51,6 +56,103 @@ class ContentManagementAPI(http.Controller):
             return {
                 'status': 'error',
                 'message': f'An error occurred: {str(e)}'
+            }
+    
+    def _update_project(self, data):
+        """Helper method to update project"""
+        try:
+            if not data.get('project_id'):
+                return {'status': 'error', 'message': 'Project ID is required'}
+
+            project = request.env['content.project'].sudo().browse(int(data['project_id']))
+            if not project.exists():
+                return {'status': 'error', 'message': 'Project not found'}
+
+            update_values = {}
+            
+            # Update basic fields if provided
+            if data.get('name'):
+                update_values['name'] = data['name']
+            if data.get('description') is not None:  # Allow empty description
+                update_values['description'] = data['description']
+            if data.get('date_start'):
+                update_values['date_start'] = data['date_start']
+            if data.get('date_end'):
+                update_values['date_end'] = data['date_end']
+            if data.get('project_manager_id'):
+                update_values['project_manager_id'] = int(data['project_manager_id'])
+            if data.get('planned_video_count') is not None:
+                update_values['planned_video_count'] = int(data['planned_video_count'])
+            if data.get('planned_design_count') is not None:
+                update_values['planned_design_count'] = int(data['planned_design_count'])
+            if data.get('state'):
+                update_values['state'] = data['state']
+
+            # Handle team_ids update if provided
+            if data.get('team_ids'):
+                team_ids = data['team_ids'] if isinstance(data['team_ids'], list) else json.loads(data['team_ids'])
+                update_values['team_ids'] = [(6, 0, team_ids)]
+
+            # Create activity log
+            changes = [f"{field} updated to {value}" for field, value in update_values.items()]
+            if changes:
+                project.message_post(
+                    body=f"Project updated by {request.env.user.name}:\n" + "\n".join(changes),
+                    message_type='notification'
+                )
+
+            # Update the project
+            project.write(update_values)
+
+            return {
+                'status': 'success',
+                'data': self._prepare_project_data(project),
+                'message': 'Project updated successfully'
+            }
+
+        except Exception as e:
+            _logger.error('Error updating project: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error updating project: {str(e)}'
+            }
+
+    def _delete_project(self, data):
+        """Helper method to delete project"""
+        try:
+            if not data.get('project_id'):
+                return {'status': 'error', 'message': 'Project ID is required'}
+
+            project = request.env['content.project'].sudo().browse(int(data['project_id']))
+            if not project.exists():
+                return {'status': 'error', 'message': 'Project not found'}
+
+            # Check if project has tasks
+            if project.task_ids:
+                return {
+                    'status': 'error',
+                    'message': 'Cannot delete project with existing tasks. Please delete or move tasks first.'
+                }
+
+            # Create activity log before deletion
+            project.message_post(
+                body=f"Project '{project.name}' was deleted by {request.env.user.name}",
+                message_type='notification'
+            )
+
+            # Delete the project
+            project.unlink()
+
+            return {
+                'status': 'success',
+                'message': 'Project deleted successfully'
+            }
+
+        except Exception as e:
+            _logger.error('Error deleting project: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error deleting project: {str(e)}'
             }
         
     @http.route('/web/v2/content/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
@@ -121,6 +223,9 @@ class ContentManagementAPI(http.Controller):
                 return self._update_task(kw)
             elif operation == 'get':
                 return self._get_tasks(kw)
+            elif operation == 'delete':
+                return self._delete_task(kw)
+            
             else:
                 return {'status': 'error', 'message': 'Invalid operation'}
                 
@@ -318,6 +423,45 @@ class ContentManagementAPI(http.Controller):
                 'status': 'error',
                 'message': f'Error fetching tasks: {str(e)}'
             }
+        
+    def _delete_task(self, data):
+        """Helper method to delete task"""
+        try:
+            if not data.get('task_id'):
+                return {'status': 'error', 'message': 'Task ID is required'}
+
+            task = request.env['content.task'].sudo().browse(int(data['task_id']))
+            if not task.exists():
+                return {'status': 'error', 'message': 'Task not found'}
+
+            # Check if task can be deleted (e.g., not in certain states)
+            if task.state in ['completed']:
+                return {
+                    'status': 'error', 
+                    'message': 'Cannot delete a completed task. Please archive it instead.'
+                }
+
+            # Create activity log before deletion
+            task.message_post(
+                body=f"Task '{task.name}' was deleted by {request.env.user.name}",
+                message_type='notification'
+            )
+
+            # Delete the task
+            task.unlink()
+
+            return {
+                'status': 'success',
+                'message': 'Task deleted successfully'
+            }
+
+        except Exception as e:
+            _logger.error('Error deleting task: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error deleting task: {str(e)}'
+            }
+
 
     @http.route('/web/v2/content/tasks/request_revision', type='json', auth='user', methods=['POST'])
     def request_task_revision(self, **kw):

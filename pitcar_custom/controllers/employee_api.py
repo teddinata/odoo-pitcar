@@ -317,41 +317,44 @@ class EmployeeAPI(http.Controller):
     @http.route('/web/employees/create', type='json', auth='user', methods=['POST'], csrf=False)
     def create_employee(self, **kw):
         try:
-             # Get file data
-            avatar_file = request.httprequest.files.get('avatar')
             # Get params from request
-            params = request.get_json_data()
-
+            data = request.get_json_data()
+            params = data.get('params', {})  # Ambil params dari jsonrpc
+            
             Employee = request.env['hr.employee']
             required_fields = ['name']
             
             # Validate required fields
-            missing_fields = [field for field in required_fields if not params.get(field)]
-            if missing_fields:
+            if not params.get('name'):
                 return {
                     'status': 'error',
-                    'message': f"Missing required fields: {', '.join(missing_fields)}"
+                    'message': f"Missing required fields: name"
                 }
 
-             # Handle parent_id/manager
+            # Handle parent_id/manager
             if 'parent_id' in params:
                 parent_id = params.get('parent_id')
                 if parent_id:
                     params['parent_id'] = int(parent_id)
                 else:
                     params['parent_id'] = False
-            
-            # Handle avatar file
-            if avatar_file:
-                try:
-                    file_data = avatar_file.read()
-                    params['image_1920'] = base64.b64encode(file_data)
-                except Exception as e:
-                    return json.dumps({
-                        'status': 'error',
-                        'message': f"Error processing avatar: {str(e)}"
-                    })
-            
+                    
+            # Handle department_id
+            if 'department_id' in params:
+                department_id = params.get('department_id')
+                if department_id:
+                    params['department_id'] = int(department_id)
+                else:
+                    params['department_id'] = False
+                    
+            # Handle job_id
+            if 'job_id' in params:
+                job_id = params.get('job_id')
+                if job_id:
+                    params['job_id'] = int(job_id)
+                else:
+                    params['job_id'] = False
+                    
             # Process dates if provided
             if params.get('birthday'):
                 try:
@@ -361,7 +364,7 @@ class EmployeeAPI(http.Controller):
                         'status': 'error',
                         'message': "Invalid birthday format. Use YYYY-MM-DD"
                     }
-            
+
             # Create employee
             employee = Employee.create(params)
             
@@ -370,7 +373,7 @@ class EmployeeAPI(http.Controller):
                 'data': self._format_employee_data(employee),
                 'message': 'Employee created successfully'
             }
-            
+                
         except Exception as e:
             _logger.error(f"Error in create_employee: {str(e)}", exc_info=True)
             return {

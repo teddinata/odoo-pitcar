@@ -117,6 +117,8 @@ class ContentManagementAPI(http.Controller):
                 return self._create_task(kw)
             elif operation == 'update_status':
                 return self._update_task_status(kw)
+            elif operation == 'update':
+                return self._update_task(kw)
             elif operation == 'get':
                 return self._get_tasks(kw)
             else:
@@ -188,6 +190,10 @@ class ContentManagementAPI(http.Controller):
             
             if data['new_status'] == 'in_progress' and not task.actual_date_start:
                 update_values['actual_date_start'] = fields.Datetime.now()
+                update_values['progress'] = 30.0
+            elif data['new_status'] == 'review' and not task.actual_date_end:
+                update_values['actual_date_end'] = fields.Datetime.now()
+                update_values['progress'] = 70.0
             elif data['new_status'] == 'done' and not task.actual_date_end:
                 update_values['actual_date_end'] = fields.Datetime.now()
                 update_values['progress'] = 100.0
@@ -202,6 +208,51 @@ class ContentManagementAPI(http.Controller):
             return {
                 'status': 'error',
                 'message': f'Error updating task status: {str(e)}'
+            }
+    
+    def _update_task(self, data):
+        """Helper method to update task"""
+        if not data.get('task_id'):
+            return {'status': 'error', 'message': 'Missing task_id'}
+
+        try:
+            task = request.env['content.task'].sudo().browse(int(data['task_id']))
+            if not task.exists():
+                return {'status': 'error', 'message': 'Task not found'}
+
+            update_values = {}
+            if data.get('name'):
+                update_values['name'] = data['name']
+            if data.get('content_type'):
+                update_values['content_type'] = data['content_type']
+            if data.get('assigned_to'):
+                # Pastikan assigned_to adalah list
+                assigned_to = data['assigned_to'] if isinstance(data['assigned_to'], list) else json.loads(data['assigned_to'])
+                update_values['assigned_to'] = [(6, 0, assigned_to)]
+            if data.get('reviewer_id'):
+                update_values['reviewer_id'] = int(data['reviewer_id'])
+            if data.get('planned_date_start'):
+                update_values['planned_date_start'] = data['planned_date_start']
+            if data.get('planned_date_end'):
+                update_values['planned_date_end'] = data['planned_date_end']
+            if data.get('planned_hours'):
+                update_values['planned_hours'] = float(data['planned_hours'])
+            if data.get('description'):
+                update_values['description'] = data['description']
+            # update progress
+            if data.get('progress'):
+                update_values['progress'] = float(data['progress'])
+
+            task.write(update_values)
+            return {
+                'status': 'success',
+                'data': self._prepare_task_data(task)
+            }
+
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': f'Error updating task: {str(e)}'
             }
 
     def _get_tasks(self, data):

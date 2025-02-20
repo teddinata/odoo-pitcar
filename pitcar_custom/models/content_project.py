@@ -14,8 +14,9 @@ class ContentProject(models.Model):
     
     # Project Details
     description = fields.Html('Description')
-    project_manager_id = fields.Many2one('res.users', 'Project Manager', required=True)
-    team_ids = fields.Many2many('res.users', string='Team Members')
+    # Ubah ke hr.employee
+    project_manager_id = fields.Many2one('hr.employee', 'Project Manager', required=True)
+    team_ids = fields.Many2many('hr.employee', string='Team Members')
     
     # Content Plan
     planned_video_count = fields.Integer('Planned Video Content')
@@ -115,8 +116,17 @@ class ContentTask(models.Model):
         ('design', 'Design Content')
     ], string='Content Type', required=True)
     
-    assigned_to = fields.Many2one('res.users', 'Assigned To', required=True)
-    reviewer_id = fields.Many2one('res.users', 'Reviewer')
+    # Ubah ke hr.employee
+    assigned_to = fields.Many2many(
+        'hr.employee', 
+        'task_employee_rel',
+        'task_id',
+        'employee_id',
+        string='Assigned To',
+        required=True,
+        tracking=True
+    )
+    reviewer_id = fields.Many2one('hr.employee', 'Reviewer')
     
     # Dates and Duration
     planned_date_start = fields.Datetime('Planned Start')
@@ -143,6 +153,8 @@ class ContentTask(models.Model):
         ('done', 'Done'),
         ('cancelled', 'Cancelled')
     ], string='Status', default='draft', tracking=True)
+
+    description = fields.Text('Task Description')
     
     @api.depends('revision_count')
     def _compute_excessive_revisions(self):
@@ -165,7 +177,7 @@ class ContentRevision(models.Model):
     
     task_id = fields.Many2one('content.task', 'Task', required=True)
     revision_number = fields.Integer('Revision #', required=True)
-    requested_by = fields.Many2one('res.users', 'Requested By')
+    requested_by = fields.Many2one('hr.employee', 'Requested By')
     date_requested = fields.Datetime('Date Requested')
     
     description = fields.Text('Revision Notes')
@@ -181,7 +193,8 @@ class ContentBAU(models.Model):
     
     name = fields.Char('Activity Name', required=True)
     project_id = fields.Many2one('content.project', 'Related Project')
-    creator_id = fields.Many2one('res.users', 'Creator', required=True)
+     # Ubah ke hr.employee
+    creator_id = fields.Many2one('hr.employee', 'Creator', required=True)
     
     date = fields.Date('Date', required=True)
     hours_spent = fields.Float('Hours Spent')

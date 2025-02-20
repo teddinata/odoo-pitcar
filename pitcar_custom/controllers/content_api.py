@@ -136,28 +136,31 @@ class ContentManagementAPI(http.Controller):
             return {'status': 'error', 'message': 'Missing required fields'}
 
         try:
-            assigned_to = data['assigned_to']
-            if isinstance(assigned_to, list):
-                assigned_to = assigned_to[0] if assigned_to else None
+            # Pastikan assigned_to adalah list
+            assigned_to = data.get('assigned_to')
+            if not isinstance(assigned_to, list):
+                assigned_to = [assigned_to]
+
             values = {
                 'name': data['name'],
                 'project_id': int(data['project_id']),
                 'content_type': data['content_type'],
-                # 'assigned_to': int(data['assigned_to']),
-                'assigned_to': int(assigned_to),
+                'assigned_to': [(6, 0, assigned_to)],  # Format Many2many untuk Odoo
                 'state': 'draft',
                 'progress': 0.0
             }
 
-            # Optional fields
+            # Tambahkan optional fields
+            if data.get('reviewer_id'):
+                values['reviewer_id'] = int(data['reviewer_id'])
             if data.get('planned_date_start'):
                 values['planned_date_start'] = data['planned_date_start']
             if data.get('planned_date_end'):
                 values['planned_date_end'] = data['planned_date_end']
             if data.get('planned_hours'):
                 values['planned_hours'] = float(data['planned_hours'])
-            if data.get('reviewer_id'):
-                values['reviewer_id'] = int(data['reviewer_id'])
+            if data.get('description'):
+                values['description'] = data['description']
 
             task = request.env['content.task'].sudo().create(values)
             return {
@@ -287,11 +290,13 @@ class ContentManagementAPI(http.Controller):
             'team': {
                 'manager': {
                     'id': project.project_manager_id.id,
-                    'name': project.project_manager_id.name
+                    'name': project.project_manager_id.name,
+                    'position': project.project_manager_id.job_id.name,
                 },
                 'members': [{
                     'id': member.id,
-                    'name': member.name
+                    'name': member.name,
+                    'position': member.job_id.name,
                 } for member in project.team_ids]
             },
             'content_plan': {
@@ -320,13 +325,15 @@ class ContentManagementAPI(http.Controller):
                 'name': task.project_id.name
             },
             'content_type': task.content_type,
-            'assigned_to': {
-                'id': task.assigned_to.id,
-                'name': task.assigned_to.name
-            },
+            'assigned_to': [{
+                'id': member.id,
+                'name': member.name,
+                'position': member.job_id.name,
+            } for member in task.assigned_to],
             'reviewer': {
                 'id': task.reviewer_id.id,
-                'name': task.reviewer_id.name
+                'name': task.reviewer_id.name,
+                'position': task.reviewer_id.job_id.name,
             } if task.reviewer_id else None,
             'dates': {
                 'planned_start': task.planned_date_start,
@@ -359,7 +366,8 @@ class ContentManagementAPI(http.Controller):
             'name': bau.name,
             'creator': {
                 'id': bau.creator_id.id,
-                'name': bau.creator_id.name
+                'name': bau.creator_id.name,
+                'position': bau.creator_id.job_id.name,
             },
             'date': bau.date,
             'activity_type': bau.activity_type,

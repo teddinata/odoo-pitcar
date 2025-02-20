@@ -187,7 +187,45 @@ class ContentManagementAPI(http.Controller):
                 return {'status': 'error', 'message': 'Task not found'}
 
             update_values = {'state': data['new_status']}
-            
+
+            # Handle revision status
+            if data['new_status'] == 'revision':
+                if data.get('is_drag', False):
+                    # Jika dari drag, return early dengan status need_revision_form
+                    return {
+                        'status': 'need_revision_form',
+                        'data': self._prepare_task_data(task)
+                    }
+                
+                # Jika dengan feedback, create revision
+                if not data.get('feedback'):
+                    return {'status': 'error', 'message': 'Feedback is required for revision'}
+                
+                # Create revision record
+                revision = request.env['content.revision'].sudo().create({
+                    'task_id': task.id,
+                    'revision_number': task.revision_count + 1,
+                    'requested_by': request.env.user.employee_id.id,
+                    'feedback': data['feedback'],
+                    'revision_points': data.get('revision_points'),
+                    'deadline': data.get('deadline')
+                })
+                
+                # Update task progress and state
+                update_values.update({
+                    'progress': max(task.progress - 20, 0),
+                    'state': 'revision'
+                })
+
+                # Create activity log message
+                task.message_post(
+                    body=f"Task set to revision #{task.revision_count + 1}\n" + 
+                        f"Feedback: {data['feedback']}\n" +
+                        (f"Points: {data['revision_points']}\n" if data.get('revision_points') else "") +
+                        (f"Deadline: {data['deadline']}" if data.get('deadline') else ""),
+                    message_type='notification'
+                )
+    
             if data['new_status'] == 'in_progress' and not task.actual_date_start:
                 update_values['actual_date_start'] = fields.Datetime.now()
                 update_values['progress'] = 30.0
@@ -280,6 +318,42 @@ class ContentManagementAPI(http.Controller):
                 'status': 'error',
                 'message': f'Error fetching tasks: {str(e)}'
             }
+
+    @http.route('/web/v2/content/tasks/request_revision', type='json', auth='user', methods=['POST'])
+    def request_task_revision(self, **kw):
+        try:
+            if not kw.get('task_id') or not kw.get('feedback'):
+                return {'status': 'error', 'message': 'Missing required fields'}
+
+            task = request.env['content.task'].sudo().browse(int(kw['task_id']))
+            if not task.exists():
+                return {'status': 'error', 'message': 'Task not found'}
+
+            # Create revision record
+            revision_values = {
+                'task_id': task.id,
+                'revision_number': task.revision_count + 1,
+                'requested_by': request.env.user.employee_id.id,
+                'feedback': kw['feedback'],
+                'revision_points': kw.get('revision_points'),
+                'deadline': kw.get('deadline')
+            }
+            
+            revision = request.env['content.revision'].sudo().create(revision_values)
+
+            # Update task status
+            task.write({
+                'state': 'revision',
+                'progress': max(task.progress - 20, 0)  # Kurangi progress
+            })
+
+            return {
+                'status': 'success',
+                'data': self._prepare_task_data(task)
+            }
+
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/v2/content/bau', type='json', auth='user', methods=['POST'], csrf=False)
     def content_bau(self, **kw):
@@ -406,6 +480,21 @@ class ContentManagementAPI(http.Controller):
                     'notes': rev.description
                 } for rev in task.revision_ids]
             },
+            'activity_logs': [{
+                'id': log.id,
+                'date': log.date,
+                'author': {
+                    'id': log.author_id.id,
+                    'name': log.author_id.name,
+                    'position': log.author_id.job_id.name,
+                } if log.author_id else None,
+                'message': log.body,
+                'tracking_values': [{
+                    'field': tracking.field_desc,
+                    'old_value': tracking.old_value_char,
+                    'new_value': tracking.new_value_char
+                } for tracking in log.tracking_value_ids] if log.tracking_value_ids else []
+            } for log in logs],
             'progress': task.progress,
             'state': task.state
         }
@@ -429,4 +518,82 @@ class ContentManagementAPI(http.Controller):
             } if bau.project_id else None,
             'description': bau.description,
             'impact_on_delivery': bau.impact_on_delivery
+        }
+
+    @http.route('/web/v2/content/tasks/logs', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_task_logs(self, **kw):
+        """Get task change logs"""
+        try:
+            if not kw.get('task_id'):
+                return {'status': 'error', 'message': 'Missing task_id'}
+                
+            task = request.env['content.task'].sudo().browse(int(kw['task_id']))
+            if not task.exists():
+                return {'status': 'error', 'message': 'Task not found'}
+                
+            # Get message/log history for this task
+            logs = request.env['mail.message'].sudo().search([
+                ('model', '=', 'content.task'),
+                ('res_id', '=', task.id),
+                ('message_type', 'in', ['comment', 'notification'])
+            ], order='date desc')
+            
+            return {
+                'status': 'success',
+                'data': [self._prepare_log_data(log) for log in logs]
+            }
+            
+        except Exception as e:
+            _logger.error('Error getting task logs: %s', str(e))
+            return {
+                'status': 'error', 
+                'message': f'Error getting task logs: {str(e)}'
+            }
+
+    @http.route('/web/v2/content/projects/logs', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_project_logs(self, **kw):
+        """Get project change logs"""
+        try:
+            if not kw.get('project_id'):
+                return {'status': 'error', 'message': 'Missing project_id'}
+                
+            project = request.env['content.project'].sudo().browse(int(kw['project_id']))
+            if not project.exists():
+                return {'status': 'error', 'message': 'Project not found'}
+                
+            # Get message/log history for this project
+            logs = request.env['mail.message'].sudo().search([
+                ('model', '=', 'content.project'),
+                ('res_id', '=', project.id),
+                ('message_type', 'in', ['comment', 'notification'])
+            ], order='date desc')
+            
+            return {
+                'status': 'success',
+                'data': [self._prepare_log_data(log) for log in logs]
+            }
+            
+        except Exception as e:
+            _logger.error('Error getting project logs: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error getting project logs: {str(e)}'
+            }
+
+    def _prepare_log_data(self, log):
+        """Helper method to prepare log data"""
+        return {
+            'id': log.id,
+            'date': log.date,
+            'author': {
+                'id': log.author_id.id,
+                'name': log.author_id.name,
+                'position': log.author_id.job_id.name,
+            } if log.author_id else None,
+            'message': log.body,
+            'tracking_values': [{
+                'field': tracking.field_desc,
+                'old_value': tracking.old_value_char,
+                'new_value': tracking.new_value_char
+            } for tracking in log.tracking_value_ids] if log.tracking_value_ids else []
         }

@@ -645,7 +645,7 @@ class KPIOverview(http.Controller):
                         ])
                         total_samples = len(samplings)
                         passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
-                        actual = (passed_samples / total_samples * 100) if total_samples else 0
+                        actual = (passed_samples / total_samples * 100) if total_samples else 100
                         kpi['measurement'] = f"Sesuai SOP: {passed_samples} dari {total_samples} sampel"
 
                     elif kpi['type'] == 'discipline':
@@ -1077,7 +1077,7 @@ class KPIOverview(http.Controller):
                         sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
                         
                         # Hitung actual score
-                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
+                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 100
                         
                         # Format measurement message
                         if total_samplings > 0:
@@ -1274,7 +1274,7 @@ class KPIOverview(http.Controller):
                         ])
                         total_samples = len(samplings)
                         passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
-                        actual = (passed_samples / total_samples * 100) if total_samples else 0
+                        actual = (passed_samples / total_samples * 100) if total_samples else 100
                         kpi['measurement'] = f'Sesuai SOP: {passed_samples} dari {total_samples} sampel'
 
                     # Perhitungan baru: weighted_score langsung dari actual × weight/100
@@ -1352,7 +1352,7 @@ class KPIOverview(http.Controller):
                         ])
                         total_samples = len(samplings)
                         passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
-                        actual = (passed_samples / total_samples * 100) if total_samples else 0
+                        actual = (passed_samples / total_samples * 100) if total_samples else 100
                         kpi['measurement'] = f'Sesuai SOP: {passed_samples} dari {total_samples} sampel'
 
                     # Perhitungan baru: weighted_score langsung dari actual × weight/100
@@ -2074,7 +2074,8 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
 
                     achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    weighted_score = achievement * (kpi['weight'] / 100)
+                    # weighted_score = achievement * (kpi['weight'] / 100)
+                    weighted_score = achievement 
                     
                     kpi_scores.append({
                         'no': kpi['no'],

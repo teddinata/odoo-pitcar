@@ -894,7 +894,8 @@ class SOPController(http.Controller):
             if not sampling_id or not result:
                 return {'status': 'error', 'message': 'Sampling ID and result are required'}
 
-            sampling = request.env['pitcar.sop.sampling'].browse(sampling_id)
+            # Use sudo() to avoid access right issues
+            sampling = request.env['pitcar.sop.sampling'].sudo().browse(sampling_id)
             if not sampling.exists():
                 return {'status': 'error', 'message': 'Sampling not found'}
 

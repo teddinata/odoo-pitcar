@@ -2073,9 +2073,12 @@ class KPIOverview(http.Controller):
                         actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
                         kpi['measurement'] = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
 
-                    achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
+                    # achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
                     # weighted_score = achievement * (kpi['weight'] / 100)
-                    weighted_score = achievement 
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement sama dengan weighted_score untuk kompatibilitas frontend
+                    achievement = weighted_score
                     
                     kpi_scores.append({
                         'no': kpi['no'],

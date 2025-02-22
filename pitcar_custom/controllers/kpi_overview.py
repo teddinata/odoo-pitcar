@@ -7,99 +7,114 @@ import pytz
 
 _logger = logging.getLogger(__name__)
 
-def calculate_productive_hours(self, attendances, start_date, end_date):
-    """Helper function untuk menghitung productive hours"""
-    tz = pytz.timezone('Asia/Jakarta')
-    total_productive_hours = 0
-    
-    for att in attendances:
-        if not att.check_out:
-            continue
+def calculate_attendance_hours(self, check_in, check_out):
+        """
+        Menghitung jam kerja efektif berdasarkan check-in/out real
+        """
+        try:
+            # Convert string to datetime dan set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            check_in_dt = fields.Datetime.from_string(check_in)
+            check_out_dt = fields.Datetime.from_string(check_out)
             
-        check_in = pytz.utc.localize(att.check_in).astimezone(tz)
-        check_out = pytz.utc.localize(att.check_out).astimezone(tz)
-        
-        current_date = check_in.date()
-        while current_date <= check_out.date():
-            day_start = max(
-                check_in if current_date == check_in.date() else datetime.combine(current_date, time(8, 0)),
-                datetime.combine(current_date, time(8, 0))
-            )
-            day_end = min(
-                check_out if current_date == check_out.date() else datetime.combine(current_date, time(17, 0)),
-                datetime.combine(current_date, time(17, 0))
-            )
+            # Convert dari UTC ke local time
+            check_in_local = pytz.utc.localize(check_in_dt).astimezone(tz)
+            check_out_local = pytz.utc.localize(check_out_dt).astimezone(tz)
             
-            # Convert to timezone aware
-            day_start = tz.localize(day_start) if not day_start.tzinfo else day_start
-            day_end = tz.localize(day_end) if not day_end.tzinfo else day_end
+            total_hours = 0
+            current_date = check_in_local.date()
+            end_date = check_out_local.date()
             
-            if day_end > day_start:
+            while current_date <= end_date:
+                # Set jam istirahat untuk hari ini
                 break_start = tz.localize(datetime.combine(current_date, time(12, 0)))
                 break_end = tz.localize(datetime.combine(current_date, time(13, 0)))
                 
-                if day_start < break_end and day_end > break_start:
-                    morning = (min(break_start, day_end) - day_start).total_seconds() / 3600
-                    afternoon = (day_end - max(break_end, day_start)).total_seconds() / 3600
-                    total_productive_hours += max(0, morning + afternoon)
-                else:
-                    total_productive_hours += (day_end - day_start).total_seconds() / 3600
+                # Tentukan effective start & end untuk hari ini
+                day_start = check_in_local if current_date == check_in_local.date() else \
+                           tz.localize(datetime.combine(current_date, time(0, 0)))
+                day_end = check_out_local if current_date == check_out_local.date() else \
+                         tz.localize(datetime.combine(current_date, time(23, 59, 59)))
+                
+                # Hitung total durasi
+                if day_end > day_start:
+                    # Jika ada overlap dengan jam istirahat
+                    if day_start < break_end and day_end > break_start:
+                        morning_hours = (min(break_start, day_end) - day_start).total_seconds() / 3600
+                        afternoon_hours = (day_end - max(break_end, day_start)).total_seconds() / 3600
+                        day_hours = max(0, morning_hours) + max(0, afternoon_hours)
+                    else:
+                        day_hours = (day_end - day_start).total_seconds() / 3600
                     
-            current_date += timedelta(days=1)
-            
-    return total_productive_hours
-
-def calculate_sold_hours(self, orders, mechanic_id):
-    """Helper function untuk menghitung sold hours"""
-    total_sold_hours = 0
-    tz = pytz.timezone('Asia/Jakarta')
-    
-    for order in orders:
-        if not (order.controller_mulai_servis and order.controller_selesai):
-            continue
-        
-        if mechanic_id not in order.car_mechanic_id_new.ids:
-            continue
-            
-        start_servis = pytz.utc.localize(order.controller_mulai_servis).astimezone(tz)
-        end_servis = pytz.utc.localize(order.controller_selesai).astimezone(tz)
-        
-        current_date = start_servis.date()
-        order_hours = 0
-        
-        while current_date <= end_servis.date():
-            day_start = max(
-                start_servis if current_date == start_servis.date() else datetime.combine(current_date, time(8, 0)),
-                datetime.combine(current_date, time(8, 0))
-            )
-            day_end = min(
-                end_servis if current_date == end_servis.date() else datetime.combine(current_date, time(17, 0)),
-                datetime.combine(current_date, time(17, 0))
-            )
-            
-            day_start = tz.localize(day_start) if not day_start.tzinfo else day_start
-            day_end = tz.localize(day_end) if not day_end.tzinfo else day_end
-            
-            if day_end > day_start:
-                break_start = tz.localize(datetime.combine(current_date, time(12, 0)))
-                break_end = tz.localize(datetime.combine(current_date, time(13, 0)))
+                    total_hours += max(0, day_hours)
                 
+                current_date += timedelta(days=1)
+                
+            return total_hours
+
+        except Exception as e:
+            _logger.error(f"Error in calculate_attendance_hours: {str(e)}")
+            return 0.0
+
+def calculate_productive_hours(self, start_time, end_time, attendance_start, attendance_out):
+    """
+    Menghitung jam produktif antara waktu servis dan attendance
+    """
+    try:
+        # Convert to datetime if string
+        start_dt = fields.Datetime.from_string(start_time)
+        end_dt = fields.Datetime.from_string(end_time)
+        check_in_dt = fields.Datetime.from_string(attendance_start)
+        check_out_dt = fields.Datetime.from_string(attendance_out)
+
+        # Set timezone
+        tz = pytz.timezone('Asia/Jakarta')
+        start_local = pytz.utc.localize(start_dt).astimezone(tz)
+        end_local = pytz.utc.localize(end_dt).astimezone(tz)
+        check_in_local = pytz.utc.localize(check_in_dt).astimezone(tz)
+        check_out_local = pytz.utc.localize(check_out_dt).astimezone(tz)
+
+        # Ambil intersection dari waktu servis dan attendance
+        effective_start = max(start_local, check_in_local)
+        effective_end = min(end_local, check_out_local)
+
+        if effective_end <= effective_start:
+            return 0
+
+        total_productive_hours = 0
+        current_date = effective_start.date()
+        end_date = effective_end.date()
+
+        while current_date <= end_date:
+            # Set jam istirahat untuk hari ini
+            break_start = tz.localize(datetime.combine(current_date, time(12, 0)))
+            break_end = tz.localize(datetime.combine(current_date, time(13, 0)))
+
+            # Set waktu mulai dan selesai untuk hari ini
+            day_start = effective_start if current_date == effective_start.date() else \
+                        tz.localize(datetime.combine(current_date, time(0, 0)))
+            day_end = effective_end if current_date == effective_end.date() else \
+                        tz.localize(datetime.combine(current_date, time(23, 59, 59)))
+
+            if day_end > day_start:
+                # Jika ada overlap dengan jam istirahat
                 if day_start < break_end and day_end > break_start:
-                    morning = (min(break_start, day_end) - day_start).total_seconds() / 3600
-                    afternoon = (day_end - max(break_end, day_start)).total_seconds() / 3600
-                    day_hours = max(0, morning + afternoon)
+                    morning_hours = (min(break_start, day_end) - day_start).total_seconds() / 3600
+                    afternoon_hours = (day_end - max(break_end, day_start)).total_seconds() / 3600
+                    day_hours = max(0, morning_hours) + max(0, afternoon_hours)
                 else:
                     day_hours = (day_end - day_start).total_seconds() / 3600
-                
-                order_hours += day_hours
-                
+
+                total_productive_hours += max(0, day_hours)
+
             current_date += timedelta(days=1)
-        
-        mechanic_count = len(order.car_mechanic_id_new)
-        order_sold_hours = order_hours / mechanic_count
-        total_sold_hours += order_sold_hours
-        
-    return total_sold_hours
+
+        return total_productive_hours
+
+    except Exception as e:
+        _logger.error(f"Error calculating productive hours: {str(e)}")
+        return 0
+
 
 class KPIOverview(http.Controller):
     @http.route('/web/v2/hr/departments', type='json', auth='user', methods=['POST'], csrf=False)
@@ -1805,8 +1820,8 @@ class KPIOverview(http.Controller):
 
                     elif kpi['type'] == 'flat_rate':
                         try:
-                            # Get attendance records untuk mechanic
-                            attendances = request.env['hr.attendance'].sudo().search([
+                            # Get attendance records
+                            all_attendances = request.env['hr.attendance'].sudo().search([
                                 ('employee_id', '=', employee.id),
                                 ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
                                 ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
@@ -1814,58 +1829,108 @@ class KPIOverview(http.Controller):
                             ])
 
                             total_attendance_hours = 0
-                            total_sold_hours = 0
+                            total_productive_hours = 0
 
-                            # Group attendance by date
-                            attendance_by_date = {}
-                            for att in attendances:
-                                att_date = fields.Datetime.from_string(att.check_in).date()
-                                if att_date not in attendance_by_date:
-                                    attendance_by_date[att_date] = []
-                                attendance_by_date[att_date].append(att)
+                            # Calculate attendance hours
+                            for att in all_attendances:
+                                # Calculate effective working hours (8:00-17:00)
+                                attendance_hours = calculate_attendance_hours(att.check_in, att.check_out)
+                                total_attendance_hours += attendance_hours
 
-                            # Get orders untuk mechanic ini
+                            # Get mechanic's orders
                             mechanic_orders = orders.filtered(lambda o: mechanic.id in o.car_mechanic_id_new.ids)
 
-                            # Calculate seperti UT Labor
+                            # Calculate productive hours
                             for order in mechanic_orders:
                                 if order.controller_mulai_servis and order.controller_selesai:
-                                    order_date = fields.Datetime.from_string(order.controller_mulai_servis).date()
-                                    day_attendances = attendance_by_date.get(order_date, [])
+                                    for att in all_attendances:
+                                        productive_duration = calculate_productive_hours(
+                                            order.controller_mulai_servis,
+                                            order.controller_selesai,
+                                            att.check_in,
+                                            att.check_out
+                                        )
+                                        # Tidak perlu dibagi jumlah mekanik untuk waktu pengerjaan
+                                        total_productive_hours += productive_duration
 
-                                    if day_attendances:
-                                        for att in day_attendances:
-                                            sold_hours = calculate_productive_hours(
-                                                order.controller_mulai_servis,
-                                                order.controller_selesai,
-                                                att.check_in,
-                                                att.check_out
-                                            )
-                                            total_sold_hours += sold_hours
-
-                                            att_hours = calculate_productive_hours(
-                                                att.check_in,
-                                                att.check_out,
-                                                att.check_in,
-                                                att.check_out
-                                            )
-                                            total_attendance_hours += att_hours
-
-                            # Calculate flat rate untuk mechanic
-                            flat_rate = (total_sold_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0
-                            actual = min(flat_rate, 100)
+                            # Calculate flat rate
+                            actual = (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0
+                            actual = min(actual, 100)
 
                             kpi['measurement'] = (
                                 f"Jam Kerja: {total_attendance_hours:.1f} jam\n"
-                                f"Jam Terjual: {total_sold_hours:.1f} jam\n"
+                                f"Jam Terjual: {total_productive_hours:.1f} jam\n"
                                 f"Flat Rate: {actual:.1f}%"
                             )
-
 
                         except Exception as e:
                             _logger.error(f"Error calculating flat rate for mechanic: {str(e)}")
                             actual = 0
                             kpi['measurement'] = f"Error: {str(e)}"
+
+                    # elif kpi['type'] == 'flat_rate':
+                    #     try:
+                    #         # Get attendance records untuk mechanic
+                    #         attendances = request.env['hr.attendance'].sudo().search([
+                    #             ('employee_id', '=', employee.id),
+                    #             ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                    #             ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                    #             ('check_out', '!=', False)
+                    #         ])
+
+                    #         total_attendance_hours = 0
+                    #         total_sold_hours = 0
+
+                    #         # Group attendance by date
+                    #         attendance_by_date = {}
+                    #         for att in attendances:
+                    #             att_date = fields.Datetime.from_string(att.check_in).date()
+                    #             if att_date not in attendance_by_date:
+                    #                 attendance_by_date[att_date] = []
+                    #             attendance_by_date[att_date].append(att)
+
+                    #         # Get orders untuk mechanic ini
+                    #         mechanic_orders = orders.filtered(lambda o: mechanic.id in o.car_mechanic_id_new.ids)
+
+                    #         # Calculate seperti UT Labor
+                    #         for order in mechanic_orders:
+                    #             if order.controller_mulai_servis and order.controller_selesai:
+                    #                 order_date = fields.Datetime.from_string(order.controller_mulai_servis).date()
+                    #                 day_attendances = attendance_by_date.get(order_date, [])
+
+                    #                 if day_attendances:
+                    #                     for att in day_attendances:
+                    #                         sold_hours = calculate_productive_hours(
+                    #                             order.controller_mulai_servis,
+                    #                             order.controller_selesai,
+                    #                             att.check_in,
+                    #                             att.check_out
+                    #                         )
+                    #                         total_sold_hours += sold_hours
+
+                    #                         att_hours = calculate_productive_hours(
+                    #                             att.check_in,
+                    #                             att.check_out,
+                    #                             att.check_in,
+                    #                             att.check_out
+                    #                         )
+                    #                         total_attendance_hours += att_hours
+
+                    #         # Calculate flat rate untuk mechanic
+                    #         flat_rate = (total_sold_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0
+                    #         actual = min(flat_rate, 100)
+
+                    #         kpi['measurement'] = (
+                    #             f"Jam Kerja: {total_attendance_hours:.1f} jam\n"
+                    #             f"Jam Terjual: {total_sold_hours:.1f} jam\n"
+                    #             f"Flat Rate: {actual:.1f}%"
+                    #         )
+
+
+                    #     except Exception as e:
+                    #         _logger.error(f"Error calculating flat rate for mechanic: {str(e)}")
+                    #         actual = 0
+                    #         kpi['measurement'] = f"Error: {str(e)}"
 
 
                     elif kpi['type'] == 'service_efficiency':
@@ -2029,71 +2094,21 @@ class KPIOverview(http.Controller):
                     #     formatted_productive = f"{productive_hours:.1f}"
                     #     kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
 
-                    elif kpi['type'] == 'flat_rate':
+                    if kpi['type'] == 'flat_rate':
                         try:
+                            # Get team members
                             team_members = request.env['pitcar.mechanic.new'].sudo().search([
                                 ('leader_id', '=', mechanic.id)
                             ])
+                            all_mechanics = team_members + mechanic  # Include leader
 
-                            # 1. Hitung metrics untuk leader
-                            leader_attendances = request.env['hr.attendance'].sudo().search([
-                                ('employee_id', '=', employee.id),
-                                ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                                ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
-                                ('check_out', '!=', False)
-                            ])
+                            team_results = []
+                            team_total_attendance = 0
+                            team_total_productive = 0
 
-                            # Fungsi helper untuk menghitung metrics per orang
-                            def calculate_member_metrics(attendances, mechanic_id):
-                                attendance_by_date = {}
-                                total_attendance = 0
-                                total_sold = 0
-
-                                # Group attendance
-                                for att in attendances:
-                                    att_date = fields.Datetime.from_string(att.check_in).date()
-                                    if att_date not in attendance_by_date:
-                                        attendance_by_date[att_date] = []
-                                    attendance_by_date[att_date].append(att)
-
-                                # Get orders untuk mechanic ini
-                                member_orders = orders.filtered(lambda o: mechanic_id in o.car_mechanic_id_new.ids)
-
-                                for order in member_orders:
-                                    if order.controller_mulai_servis and order.controller_selesai:
-                                        order_date = fields.Datetime.from_string(order.controller_mulai_servis).date()
-                                        day_attendances = attendance_by_date.get(order_date, [])
-
-                                        if day_attendances:
-                                            for att in day_attendances:
-                                                sold_hours = calculate_productive_hours(
-                                                    order.controller_mulai_servis,
-                                                    order.controller_selesai,
-                                                    att.check_in,
-                                                    att.check_out
-                                                )
-                                                total_sold += sold_hours
-
-                                                att_hours = calculate_productive_hours(
-                                                    att.check_in,
-                                                    att.check_out,
-                                                    att.check_in,
-                                                    att.check_out
-                                                )
-                                                total_attendance += att_hours
-
-                                return total_attendance, total_sold
-
-                            # Calculate leader metrics
-                            leader_attendance, leader_sold = calculate_member_metrics(leader_attendances, mechanic.id)
-                            leader_flat_rate = min((leader_sold / leader_attendance * 100) if leader_attendance > 0 else 0, 100)
-
-                            # Calculate team metrics
-                            team_attendance = leader_attendance
-                            team_sold = leader_sold
-                            member_details = []
-
-                            for member in team_members:
+                            # Calculate for each team member including leader
+                            for member in all_mechanics:
+                                # Get attendance records
                                 member_attendances = request.env['hr.attendance'].sudo().search([
                                     ('employee_id', '=', member.employee_id.id),
                                     ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
@@ -2101,43 +2116,178 @@ class KPIOverview(http.Controller):
                                     ('check_out', '!=', False)
                                 ])
 
-                                member_attendance, member_sold = calculate_member_metrics(member_attendances, member.id)
-                                member_flat_rate = min((member_sold / member_attendance * 100) if member_attendance > 0 else 0, 100)
+                                member_attendance_hours = 0
+                                member_productive_hours = 0
 
-                                team_attendance += member_attendance
-                                team_sold += member_sold
+                                # Calculate attendance hours
+                                for att in member_attendances:
+                                    attendance_hours = calculate_attendance_hours(att.check_in, att.check_out)
+                                    member_attendance_hours += attendance_hours
 
-                                member_details.append({
+                                # Get member's orders
+                                member_orders = orders.filtered(lambda o: member.id in o.car_mechanic_id_new.ids)
+
+                                # Calculate productive hours
+                                for order in member_orders:
+                                    if order.controller_mulai_servis and order.controller_selesai:
+                                        for att in member_attendances:
+                                            productive_duration = calculate_productive_hours(
+                                                order.controller_mulai_servis,
+                                                order.controller_selesai,
+                                                att.check_in,
+                                                att.check_out
+                                            )
+                                            # Tidak perlu dibagi jumlah mekanik
+                                            member_productive_hours += productive_duration
+
+                                # Calculate member's flat rate
+                                member_flat_rate = (member_productive_hours / member_attendance_hours * 100) if member_attendance_hours > 0 else 0
+                                member_flat_rate = min(member_flat_rate, 100)
+
+                                # Add to team totals
+                                team_total_attendance += member_attendance_hours
+                                team_total_productive += member_productive_hours
+
+                                # Store member results
+                                team_results.append({
                                     'name': member.name,
-                                    'attendance_hours': member_attendance,
-                                    'sold_hours': member_sold,
+                                    'is_leader': member.id == mechanic.id,
+                                    'attendance_hours': member_attendance_hours,
+                                    'productive_hours': member_productive_hours,
                                     'flat_rate': member_flat_rate
                                 })
 
-                            # Calculate team totals
-                            team_flat_rate = min((team_sold / team_attendance * 100) if team_attendance > 0 else 0, 100)
-                            actual = team_flat_rate
+                            # Calculate team's overall flat rate
+                            actual = (team_total_productive / team_total_attendance * 100) if team_total_attendance > 0 else 0
+                            actual = min(actual, 100)
 
+                            # Format measurement text
                             kpi['measurement'] = f"""
                 Tim Total ({len(team_members)} anggota + 1 leader):
-                - Total Jam Kerja Tim: {team_attendance:.1f} jam
-                - Total Jam Terjual Tim: {team_sold:.1f} jam
-                - Flat Rate Tim: {team_flat_rate:.1f}%
+                - Total Jam Kerja Tim: {team_total_attendance:.1f} jam
+                - Total Jam Terjual Tim: {team_total_productive:.1f} jam
+                - Flat Rate Tim: {actual:.1f}%
 
-                Leader ({mechanic.name}):
-                - Jam Kerja: {leader_attendance:.1f} jam
-                - Jam Terjual: {leader_sold:.1f} jam
-                - Flat Rate: {leader_flat_rate:.1f}%
-
-                Detail Anggota Tim:
-                {chr(10).join(f"• {m['name']}: {m['flat_rate']:.1f}% ({m['sold_hours']:.1f}/{m['attendance_hours']:.1f} jam)" for m in member_details)}
-                """
-
+                Detail Per Anggota:
+                {chr(10).join(f"• {'(Leader) ' if r['is_leader'] else ''}{r['name']}: {r['flat_rate']:.1f}% ({r['productive_hours']:.1f}/{r['attendance_hours']:.1f} jam)" for r in team_results)}
+                """.strip()
 
                         except Exception as e:
                             _logger.error(f"Error calculating flat rate for team leader: {str(e)}")
                             actual = 0
                             kpi['measurement'] = f"Error: {str(e)}"
+
+
+
+                #     elif kpi['type'] == 'flat_rate':
+                #         try:
+                #             team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                #                 ('leader_id', '=', mechanic.id)
+                #             ])
+
+                #             # 1. Hitung metrics untuk leader
+                #             leader_attendances = request.env['hr.attendance'].sudo().search([
+                #                 ('employee_id', '=', employee.id),
+                #                 ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                #                 ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                #                 ('check_out', '!=', False)
+                #             ])
+
+                #             # Fungsi helper untuk menghitung metrics per orang
+                #             def calculate_member_metrics(attendances, mechanic_id):
+                #                 attendance_by_date = {}
+                #                 total_attendance = 0
+                #                 total_sold = 0
+
+                #                 # Group attendance
+                #                 for att in attendances:
+                #                     att_date = fields.Datetime.from_string(att.check_in).date()
+                #                     if att_date not in attendance_by_date:
+                #                         attendance_by_date[att_date] = []
+                #                     attendance_by_date[att_date].append(att)
+
+                #                 # Get orders untuk mechanic ini
+                #                 member_orders = orders.filtered(lambda o: mechanic_id in o.car_mechanic_id_new.ids)
+
+                #                 for order in member_orders:
+                #                     if order.controller_mulai_servis and order.controller_selesai:
+                #                         order_date = fields.Datetime.from_string(order.controller_mulai_servis).date()
+                #                         day_attendances = attendance_by_date.get(order_date, [])
+
+                #                         if day_attendances:
+                #                             for att in day_attendances:
+                #                                 sold_hours = calculate_productive_hours(
+                #                                     order.controller_mulai_servis,
+                #                                     order.controller_selesai,
+                #                                     att.check_in,
+                #                                     att.check_out
+                #                                 )
+                #                                 total_sold += sold_hours
+
+                #                                 att_hours = calculate_productive_hours(
+                #                                     att.check_in,
+                #                                     att.check_out,
+                #                                     att.check_in,
+                #                                     att.check_out
+                #                                 )
+                #                                 total_attendance += att_hours
+
+                #                 return total_attendance, total_sold
+
+                #             # Calculate leader metrics
+                #             leader_attendance, leader_sold = calculate_member_metrics(leader_attendances, mechanic.id)
+                #             leader_flat_rate = min((leader_sold / leader_attendance * 100) if leader_attendance > 0 else 0, 100)
+
+                #             # Calculate team metrics
+                #             team_attendance = leader_attendance
+                #             team_sold = leader_sold
+                #             member_details = []
+
+                #             for member in team_members:
+                #                 member_attendances = request.env['hr.attendance'].sudo().search([
+                #                     ('employee_id', '=', member.employee_id.id),
+                #                     ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                #                     ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                #                     ('check_out', '!=', False)
+                #                 ])
+
+                #                 member_attendance, member_sold = calculate_member_metrics(member_attendances, member.id)
+                #                 member_flat_rate = min((member_sold / member_attendance * 100) if member_attendance > 0 else 0, 100)
+
+                #                 team_attendance += member_attendance
+                #                 team_sold += member_sold
+
+                #                 member_details.append({
+                #                     'name': member.name,
+                #                     'attendance_hours': member_attendance,
+                #                     'sold_hours': member_sold,
+                #                     'flat_rate': member_flat_rate
+                #                 })
+
+                #             # Calculate team totals
+                #             team_flat_rate = min((team_sold / team_attendance * 100) if team_attendance > 0 else 0, 100)
+                #             actual = team_flat_rate
+
+                #             kpi['measurement'] = f"""
+                # Tim Total ({len(team_members)} anggota + 1 leader):
+                # - Total Jam Kerja Tim: {team_attendance:.1f} jam
+                # - Total Jam Terjual Tim: {team_sold:.1f} jam
+                # - Flat Rate Tim: {team_flat_rate:.1f}%
+
+                # Leader ({mechanic.name}):
+                # - Jam Kerja: {leader_attendance:.1f} jam
+                # - Jam Terjual: {leader_sold:.1f} jam
+                # - Flat Rate: {leader_flat_rate:.1f}%
+
+                # Detail Anggota Tim:
+                # {chr(10).join(f"• {m['name']}: {m['flat_rate']:.1f}% ({m['sold_hours']:.1f}/{m['attendance_hours']:.1f} jam)" for m in member_details)}
+                # """
+
+
+                        # except Exception as e:
+                        #     _logger.error(f"Error calculating flat rate for team leader: {str(e)}")
+                        #     actual = 0
+                        #     kpi['measurement'] = f"Error: {str(e)}"
 
 
                     # Perbaikan perhitungan mechanic efficiency

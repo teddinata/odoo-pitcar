@@ -801,17 +801,24 @@ class KPIController(http.Controller):
                         attendance_duration = (check_out_local - check_in_local).total_seconds() / 3600
                         total_attendance_hours += attendance_duration
 
-                        # Calculate productive hours untuk setiap order
+                        # Calculate productive hours from orders dengan mempertimbangkan attendance
                         mechanic_orders = orders.filtered(lambda o: mechanic['id'] in o.car_mechanic_id_new.ids)
+                        total_productive_hours = 0
+
                         for order in mechanic_orders:
                             if order.controller_mulai_servis and order.controller_selesai:
-                                productive_hours = calculate_productive_hours(
-                                    order.controller_mulai_servis,
-                                    order.controller_selesai,
-                                    att.check_in,
-                                    att.check_out
-                                )
-                                total_productive_hours += productive_hours
+                                order_date = fields.Datetime.from_string(order.controller_mulai_servis).date()
+                                day_attendances = attendance_by_date.get(order_date, [])
+                                
+                                if day_attendances:  # Only count if there's attendance that day
+                                    for att in day_attendances:
+                                        productive_duration = calculate_productive_hours(
+                                            order.controller_mulai_servis,
+                                            order.controller_selesai,
+                                            att.check_in,
+                                            att.check_out
+                                        )
+                                        total_productive_hours += productive_duration  # Hapus pembagian dengan mechanic_count
 
 
                 
@@ -855,6 +862,7 @@ class KPIController(http.Controller):
                 }
 
             # Juga update perhitungan utilization di trends
+            # Di dalam method get_mechanic_kpi_dashboard, pada bagian trends
             for trend in trends:
                 trend_date = datetime.strptime(trend['date'], '%Y-%m-%d').date()
                 
@@ -872,11 +880,24 @@ class KPIController(http.Controller):
                 # Calculate attendance dan productive hours
                 for att in day_attendances:
                     if att.check_out:
-                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in))
-                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out))
-                        attendance_duration = (check_out_local - check_in_local).total_seconds() / 3600
+                        tz = pytz.timezone('Asia/Jakarta')
+                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                        
+                        # Handle jam istirahat untuk attendance
+                        break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
+                        break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
+                        
+                        if check_in_local < break_end and check_out_local > break_start:
+                            morning_hours = (min(break_start, check_out_local) - check_in_local).total_seconds() / 3600
+                            afternoon_hours = (check_out_local - max(break_end, check_in_local)).total_seconds() / 3600
+                            attendance_duration = max(0, morning_hours) + max(0, afternoon_hours)
+                        else:
+                            attendance_duration = (check_out_local - check_in_local).total_seconds() / 3600
+                        
                         attendance_hours += attendance_duration
 
+                # Calculate productive hours
                 day_orders = request.env['sale.order'].sudo().search([
                     ('date_completed', '>=', f"{trend['date']} 00:00:00"),
                     ('date_completed', '<', f"{trend['date']} 23:59:59"),
@@ -894,14 +915,35 @@ class KPIController(http.Controller):
                                                 if att.employee_id.id == mechanic.employee_id.id]
                             
                             for att in mechanic_attendances:
-                                productive_duration = calculate_productive_hours(
-                                    order.controller_mulai_servis,
-                                    order.controller_selesai,
-                                    att.check_in,
-                                    att.check_out
-                                )
-                                productive_hours += productive_duration
-                                # productive_hours += productive_duration / mechanic_count
+                                # Hitung productive hours tanpa dibagi jumlah mekanik
+                                start_dt = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis))
+                                end_dt = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai))
+                                check_in_dt = pytz.utc.localize(fields.Datetime.from_string(att.check_in))
+                                check_out_dt = pytz.utc.localize(fields.Datetime.from_string(att.check_out))
+
+                                # Convert ke local time
+                                start_local = start_dt.astimezone(tz)
+                                end_local = end_dt.astimezone(tz)
+                                check_in_local = check_in_dt.astimezone(tz)
+                                check_out_local = check_out_dt.astimezone(tz)
+
+                                # Ambil intersection
+                                effective_start = max(start_local, check_in_local)
+                                effective_end = min(end_local, check_out_local)
+
+                                if effective_end > effective_start:
+                                    # Handle jam istirahat
+                                    break_start = tz.localize(datetime.combine(effective_start.date(), time(12, 0)))
+                                    break_end = tz.localize(datetime.combine(effective_start.date(), time(13, 0)))
+
+                                    if effective_start < break_end and effective_end > break_start:
+                                        morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
+                                        afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
+                                        productive_duration = max(0, morning_hours) + max(0, afternoon_hours)
+                                    else:
+                                        productive_duration = (effective_end - effective_start).total_seconds() / 3600
+
+                                    productive_hours += productive_duration  # Tidak dibagi jumlah mekanik
                 
                 trend['metrics']['utilization'] = {
                     'attendance_hours': attendance_hours,
@@ -1717,11 +1759,12 @@ class KPIController(http.Controller):
                     break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
                     
                     if check_in_local < break_end and check_out_local > break_start:
-                        break_duration = min(1.0, (min(check_out_local, break_end) - 
-                                                max(check_in_local, break_start)).total_seconds() / 3600)
-                        total_duration = max(0, total_duration - break_duration)
-                    
+                        morning_hours = (min(break_start, check_out_local) - check_in_local).total_seconds() / 3600
+                        afternoon_hours = (check_out_local - max(break_end, check_in_local)).total_seconds() / 3600
+                        total_duration = max(0, morning_hours) + max(0, afternoon_hours)
+                        
                     total_attendance_hours += total_duration
+
 
 
             # 4. Helper function untuk calculate productive hours
@@ -1924,24 +1967,42 @@ class KPIController(http.Controller):
             #             mechanic_count = len(order.car_mechanic_id_new)
             #             total_productive_hours += productive_duration
                         # total_productive_hours += productive_duration / mechanic_count
+            # Calculate productive hours
+            total_productive_hours = 0
             for att in all_attendances:
                 if att.check_out:
-                    check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in))
-                    check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out))
-                    
-                    attendance_duration = (check_out_local - check_in_local).total_seconds() / 3600
-                    total_attendance_hours += attendance_duration
-
                     # Calculate untuk setiap order
                     for order in mechanic_orders:
                         if order.controller_mulai_servis and order.controller_selesai:
-                            productive_hours = calculate_productive_hours(
-                                order.controller_mulai_servis,
-                                order.controller_selesai,
-                                att.check_in,
-                                att.check_out
-                            )
-                            total_productive_hours += productive_hours
+                            start_dt = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis))
+                            end_dt = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai))
+                            check_in_dt = pytz.utc.localize(fields.Datetime.from_string(att.check_in))
+                            check_out_dt = pytz.utc.localize(fields.Datetime.from_string(att.check_out))
+
+                            # Convert ke local time
+                            start_local = start_dt.astimezone(tz)
+                            end_local = end_dt.astimezone(tz)
+                            check_in_local = check_in_dt.astimezone(tz)
+                            check_out_local = check_out_dt.astimezone(tz)
+
+                            # Ambil intersection
+                            effective_start = max(start_local, check_in_local)
+                            effective_end = min(end_local, check_out_local)
+
+                            if effective_end > effective_start:
+                                # Handle jam istirahat
+                                break_start = tz.localize(datetime.combine(effective_start.date(), time(12, 0)))
+                                break_end = tz.localize(datetime.combine(effective_start.date(), time(13, 0)))
+
+                                if effective_start < break_end and effective_end > break_start:
+                                    morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
+                                    afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
+                                    productive_duration = max(0, morning_hours) + max(0, afternoon_hours)
+                                else:
+                                    productive_duration = (effective_end - effective_start).total_seconds() / 3600
+
+                                total_productive_hours += productive_duration  # Tidak perlu dibagi jumlah mekanik
+
 
             # 6. Update metrics with utilization data
             metrics['utilization'] = {
@@ -1953,29 +2014,54 @@ class KPIController(http.Controller):
 
             # 7. Update trends dengan daily utilization
             # 7. Update trends dengan daily utilization
+            # Dan pada bagian trends, sesuaikan perhitungan attendance_hours:
             for trend in trends:
                 trend_date = datetime.strptime(trend['date'], '%Y-%m-%d').date()
                 day_attendances = attendance_by_date.get(trend_date, [])
-                
+                            
                 # Calculate attendance hours for the day
-                attendance_hours = sum(att.worked_hours for att in day_attendances if att.check_out)
-                
-                # Calculate productive hours for the day
+                attendance_hours = 0
                 day_productive_hours = 0
-                day_orders = orders_by_date.get(trend_date, [])
                 
-                for order in day_orders:
-                    if order.controller_mulai_servis and order.controller_selesai:
-                        # Iterate through each attendance record for the day
-                        for att in day_attendances:
-                            if att.check_out:  # Only process complete attendance records
-                                productive_duration = calculate_productive_hours(
-                                    order.controller_mulai_servis,
-                                    order.controller_selesai,
-                                    att.check_in,
-                                    att.check_out
-                                )
-                                day_productive_hours += productive_duration
+                for att in day_attendances:
+                    if att.check_out:  
+                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                        
+                        # Handle jam istirahat untuk attendance
+                        break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
+                        break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
+                        
+                        if check_in_local < break_end and check_out_local > break_start:
+                            morning_hours = (min(break_start, check_out_local) - check_in_local).total_seconds() / 3600
+                            afternoon_hours = (check_out_local - max(break_end, check_in_local)).total_seconds() / 3600
+                            attendance_duration = max(0, morning_hours) + max(0, afternoon_hours)
+                        else:
+                            attendance_duration = (check_out_local - check_in_local).total_seconds() / 3600
+                            
+                        attendance_hours += attendance_duration
+
+                        # Calculate productive hours untuk setiap order di hari tersebut
+                        day_orders = orders_by_date.get(trend_date, [])
+                        for order in day_orders:
+                            if order.controller_mulai_servis and order.controller_selesai:
+                                start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
+                                end_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
+                                
+                                # Ambil intersection
+                                start_overlap = max(start_local, check_in_local)
+                                end_overlap = min(end_local, check_out_local)
+                                
+                                if end_overlap > start_overlap:
+                                    # Handle jam istirahat untuk productive hours
+                                    if start_overlap < break_end and end_overlap > break_start:
+                                        morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
+                                        afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
+                                        productive_duration = max(0, morning_prod) + max(0, afternoon_prod)
+                                    else:
+                                        productive_duration = (end_overlap - start_overlap).total_seconds() / 3600
+                                        
+                                    day_productive_hours += productive_duration
                 
                 trend['metrics']['utilization'] = {
                     'attendance_hours': attendance_hours,

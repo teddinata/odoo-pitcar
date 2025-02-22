@@ -1,11 +1,105 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from dateutil.relativedelta import relativedelta
 from odoo import http
 from odoo.http import request
 import pytz
 
 _logger = logging.getLogger(__name__)
+
+def calculate_productive_hours(self, attendances, start_date, end_date):
+    """Helper function untuk menghitung productive hours"""
+    tz = pytz.timezone('Asia/Jakarta')
+    total_productive_hours = 0
+    
+    for att in attendances:
+        if not att.check_out:
+            continue
+            
+        check_in = pytz.utc.localize(att.check_in).astimezone(tz)
+        check_out = pytz.utc.localize(att.check_out).astimezone(tz)
+        
+        current_date = check_in.date()
+        while current_date <= check_out.date():
+            day_start = max(
+                check_in if current_date == check_in.date() else datetime.combine(current_date, time(8, 0)),
+                datetime.combine(current_date, time(8, 0))
+            )
+            day_end = min(
+                check_out if current_date == check_out.date() else datetime.combine(current_date, time(17, 0)),
+                datetime.combine(current_date, time(17, 0))
+            )
+            
+            # Convert to timezone aware
+            day_start = tz.localize(day_start) if not day_start.tzinfo else day_start
+            day_end = tz.localize(day_end) if not day_end.tzinfo else day_end
+            
+            if day_end > day_start:
+                break_start = tz.localize(datetime.combine(current_date, time(12, 0)))
+                break_end = tz.localize(datetime.combine(current_date, time(13, 0)))
+                
+                if day_start < break_end and day_end > break_start:
+                    morning = (min(break_start, day_end) - day_start).total_seconds() / 3600
+                    afternoon = (day_end - max(break_end, day_start)).total_seconds() / 3600
+                    total_productive_hours += max(0, morning + afternoon)
+                else:
+                    total_productive_hours += (day_end - day_start).total_seconds() / 3600
+                    
+            current_date += timedelta(days=1)
+            
+    return total_productive_hours
+
+def calculate_sold_hours(self, orders, mechanic_id):
+    """Helper function untuk menghitung sold hours"""
+    total_sold_hours = 0
+    tz = pytz.timezone('Asia/Jakarta')
+    
+    for order in orders:
+        if not (order.controller_mulai_servis and order.controller_selesai):
+            continue
+        
+        if mechanic_id not in order.car_mechanic_id_new.ids:
+            continue
+            
+        start_servis = pytz.utc.localize(order.controller_mulai_servis).astimezone(tz)
+        end_servis = pytz.utc.localize(order.controller_selesai).astimezone(tz)
+        
+        current_date = start_servis.date()
+        order_hours = 0
+        
+        while current_date <= end_servis.date():
+            day_start = max(
+                start_servis if current_date == start_servis.date() else datetime.combine(current_date, time(8, 0)),
+                datetime.combine(current_date, time(8, 0))
+            )
+            day_end = min(
+                end_servis if current_date == end_servis.date() else datetime.combine(current_date, time(17, 0)),
+                datetime.combine(current_date, time(17, 0))
+            )
+            
+            day_start = tz.localize(day_start) if not day_start.tzinfo else day_start
+            day_end = tz.localize(day_end) if not day_end.tzinfo else day_end
+            
+            if day_end > day_start:
+                break_start = tz.localize(datetime.combine(current_date, time(12, 0)))
+                break_end = tz.localize(datetime.combine(current_date, time(13, 0)))
+                
+                if day_start < break_end and day_end > break_start:
+                    morning = (min(break_start, day_end) - day_start).total_seconds() / 3600
+                    afternoon = (day_end - max(break_end, day_start)).total_seconds() / 3600
+                    day_hours = max(0, morning + afternoon)
+                else:
+                    day_hours = (day_end - day_start).total_seconds() / 3600
+                
+                order_hours += day_hours
+                
+            current_date += timedelta(days=1)
+        
+        mechanic_count = len(order.car_mechanic_id_new)
+        order_sold_hours = order_hours / mechanic_count
+        total_sold_hours += order_sold_hours
+        
+    return total_sold_hours
 
 class KPIOverview(http.Controller):
     @http.route('/web/v2/hr/departments', type='json', auth='user', methods=['POST'], csrf=False)
@@ -1681,33 +1775,118 @@ class KPIOverview(http.Controller):
                         formatted_target = "{:,.0f}".format(monthly_target)
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
 
-                    elif kpi['type'] == 'flat_rate':
-                        # Hitung productive hours dari absensi
-                        attendances = request.env['hr.attendance'].sudo().search([
-                            ('employee_id', '=', employee.id),
-                            ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                            ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
-                        ])
+                    # elif kpi['type'] == 'flat_rate':
+                    #     # Hitung productive hours dari absensi
+                    #     attendances = request.env['hr.attendance'].sudo().search([
+                    #         ('employee_id', '=', employee.id),
+                    #         ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                    #         ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+                    #     ])
                         
-                        productive_hours = 0
-                        for attendance in attendances:
-                            if attendance.check_out:
-                                worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
-                                # Kurangi waktu istirahat (1 jam) jika bekerja lebih dari 6 jam
-                                if worked_hours > 6:
-                                    worked_hours -= 1
-                                productive_hours += worked_hours
+                    #     productive_hours = 0
+                    #     for attendance in attendances:
+                    #         if attendance.check_out:
+                    #             worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
+                    #             # Kurangi waktu istirahat (1 jam) jika bekerja lebih dari 6 jam
+                    #             if worked_hours > 6:
+                    #                 worked_hours -= 1
+                    #             productive_hours += worked_hours
 
-                        # Hitung jam terjual dari order yang selesai
-                        completed_orders = orders.filtered(lambda o: o.controller_selesai)
-                        sold_hours = sum(order.lead_time_servis for order in completed_orders)
+                    #     # Hitung jam terjual dari order yang selesai
+                    #     completed_orders = orders.filtered(lambda o: o.controller_selesai)
+                    #     sold_hours = sum(order.lead_time_servis for order in completed_orders)
                         
-                        # Hitung flat rate (dalam persentase)
-                        actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
+                    #     # Hitung flat rate (dalam persentase)
+                    #     actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
                         
-                        formatted_sold = f"{sold_hours:.1f}"
-                        formatted_productive = f"{productive_hours:.1f}"
-                        kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
+                    #     formatted_sold = f"{sold_hours:.1f}"
+                    #     formatted_productive = f"{productive_hours:.1f}"
+                    #     kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
+
+                    elif kpi['type'] == 'flat_rate':
+                        try:
+                            # Get attendance records
+                            attendances = request.env['hr.attendance'].sudo().search([
+                                ('employee_id', '=', mechanic.employee_id.id),
+                                ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+                            ])
+
+                            if mechanic.position_code == 'leader':
+                                # Get team members
+                                team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                    ('leader_id', '=', mechanic.id)
+                                ])
+                                
+                                # Leader metrics
+                                leader_productive_hours = calculate_productive_hours(self, attendances, start_date, end_date)
+                                leader_sold_hours = calculate_sold_hours(self, orders, mechanic.id)
+                                leader_flat_rate = (leader_sold_hours / leader_productive_hours * 100) if leader_productive_hours > 0 else 0
+                                
+                                # Team metrics
+                                team_productive_hours = leader_productive_hours
+                                team_sold_hours = leader_sold_hours
+                                member_details = []
+                                
+                                for member in team_members:
+                                    member_attendances = request.env['hr.attendance'].sudo().search([
+                                        ('employee_id', '=', member.employee_id.id),
+                                        ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                        ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+                                    ])
+                                    
+                                    member_prod_hours = calculate_productive_hours(self, member_attendances, start_date, end_date)
+                                    member_sold_hours = calculate_sold_hours(self, orders, member.id)
+                                    member_flat_rate = (member_sold_hours / member_prod_hours * 100) if member_prod_hours > 0 else 0
+                                    
+                                    team_productive_hours += member_prod_hours
+                                    team_sold_hours += member_sold_hours
+                                    
+                                    member_details.append({
+                                        'name': member.name,
+                                        'productive_hours': member_prod_hours,
+                                        'sold_hours': member_sold_hours,
+                                        'flat_rate': member_flat_rate
+                                    })
+                                
+                                # Calculate team totals
+                                team_flat_rate = (team_sold_hours / team_productive_hours * 100) if team_productive_hours > 0 else 0
+                                members_avg_flat_rate = sum(m['flat_rate'] for m in member_details) / len(member_details) if member_details else 0
+                                
+                                actual = team_flat_rate  # Overall team performance
+                                
+                                # Detailed measurement string
+                                kpi['measurement'] = f"""
+                    Tim Total ({len(member_details)} anggota + 1 leader):
+                    - Total Jam Produktif Tim: {team_productive_hours:.1f} jam
+                    - Total Jam Terjual Tim: {team_sold_hours:.1f} jam
+                    - Flat Rate Tim: {team_flat_rate:.1f}%
+
+                    Leader ({mechanic.name}):
+                    - Jam Produktif: {leader_productive_hours:.1f} jam
+                    - Jam Terjual: {leader_sold_hours:.1f} jam
+                    - Flat Rate: {leader_flat_rate:.1f}%
+
+                    Anggota Tim (Rata-rata: {members_avg_flat_rate:.1f}%):
+                    {chr(10).join(f"• {m['name']}: {m['flat_rate']:.1f}% ({m['sold_hours']:.1f}/{m['productive_hours']:.1f} jam)" for m in member_details)}
+                    """
+
+                            else:
+                                # Regular mechanic calculation
+                                productive_hours = calculate_productive_hours(self, attendances, start_date, end_date)
+                                sold_hours = calculate_sold_hours(self, orders, mechanic.id)
+                                
+                                actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
+                                kpi['measurement'] = (
+                                    f"Jam Produktif: {productive_hours:.1f} jam\n"
+                                    f"Jam Terjual: {sold_hours:.1f} jam\n"
+                                    f"Flat Rate: {actual:.1f}%"
+                                )
+                                
+                        except Exception as e:
+                            _logger.error(f"Error calculating flat rate: {str(e)}")
+                            actual = 0
+                            kpi['measurement'] = f"Error: {str(e)}"
 
                     elif kpi['type'] == 'service_efficiency':
                         orders_with_duration = orders.filtered(lambda o: o.duration_deviation is not False)
@@ -1833,42 +2012,127 @@ class KPIOverview(http.Controller):
                         actual = (total_units / target_units * 100) if target_units else 0
                         kpi['measurement'] = f"Berhasil handle {total_units} PKB dari target {target_units} PKB/bulan"
                     
+                    # elif kpi['type'] == 'flat_rate':
+                    #     # Hitung jam terjual dari order yang selesai
+                    #     completed_orders = team_orders.filtered(lambda o: o.controller_selesai)  # Gunakan team_orders bukan orders
+                    #     sold_hours = sum(order.lead_time_servis for order in completed_orders)
+                    #     # Get orders for the mechanic team first
+                    #     team_orders = request.env['sale.order'].sudo().search([
+                    #         *base_domain,
+                    #         ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])  # Include leader
+                    #     ])
+
+                    #     # Hitung productive hours dari absensi
+                    #     attendances = request.env['hr.attendance'].sudo().search([
+                    #         ('employee_id', '=', employee.id),
+                    #         ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                    #         ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+                    #     ])
+                        
+                    #     productive_hours = 0
+                    #     for attendance in attendances:
+                    #         if attendance.check_out:
+                    #             worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
+                    #             # Kurangi waktu istirahat (1 jam) jika bekerja lebih dari 6 jam
+                    #             if worked_hours > 6:
+                    #                 worked_hours -= 1
+                    #             productive_hours += worked_hours
+
+                    #     # Hitung jam terjual dari order yang selesai
+                    #     completed_orders = orders.filtered(lambda o: o.controller_selesai)
+                    #     sold_hours = sum(order.lead_time_servis for order in completed_orders)
+                        
+                    #     # Hitung flat rate (dalam persentase)
+                    #     actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
+                        
+                    #     formatted_sold = f"{sold_hours:.1f}"
+                    #     formatted_productive = f"{productive_hours:.1f}"
+                    #     kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
+
                     elif kpi['type'] == 'flat_rate':
-                        # Hitung jam terjual dari order yang selesai
-                        completed_orders = team_orders.filtered(lambda o: o.controller_selesai)  # Gunakan team_orders bukan orders
-                        sold_hours = sum(order.lead_time_servis for order in completed_orders)
-                        # Get orders for the mechanic team first
-                        team_orders = request.env['sale.order'].sudo().search([
-                            *base_domain,
-                            ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])  # Include leader
-                        ])
+                        try:
+                            # Get attendance records
+                            attendances = request.env['hr.attendance'].sudo().search([
+                                ('employee_id', '=', mechanic.employee_id.id),
+                                ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+                            ])
 
-                        # Hitung productive hours dari absensi
-                        attendances = request.env['hr.attendance'].sudo().search([
-                            ('employee_id', '=', employee.id),
-                            ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                            ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
-                        ])
-                        
-                        productive_hours = 0
-                        for attendance in attendances:
-                            if attendance.check_out:
-                                worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
-                                # Kurangi waktu istirahat (1 jam) jika bekerja lebih dari 6 jam
-                                if worked_hours > 6:
-                                    worked_hours -= 1
-                                productive_hours += worked_hours
+                            if mechanic.position_code == 'leader':
+                                # Get team members
+                                team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                    ('leader_id', '=', mechanic.id)
+                                ])
+                                
+                                # Leader metrics
+                                leader_productive_hours = calculate_productive_hours(self, attendances, start_date, end_date)
+                                leader_sold_hours = calculate_sold_hours(self, orders, mechanic.id)
+                                leader_flat_rate = (leader_sold_hours / leader_productive_hours * 100) if leader_productive_hours > 0 else 0
+                                
+                                # Team metrics
+                                team_productive_hours = leader_productive_hours
+                                team_sold_hours = leader_sold_hours
+                                member_details = []
+                                
+                                for member in team_members:
+                                    member_attendances = request.env['hr.attendance'].sudo().search([
+                                        ('employee_id', '=', member.employee_id.id),
+                                        ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                        ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+                                    ])
+                                    
+                                    member_prod_hours = calculate_productive_hours(self, member_attendances, start_date, end_date)
+                                    member_sold_hours = calculate_sold_hours(self, orders, member.id)
+                                    member_flat_rate = (member_sold_hours / member_prod_hours * 100) if member_prod_hours > 0 else 0
+                                    
+                                    team_productive_hours += member_prod_hours
+                                    team_sold_hours += member_sold_hours
+                                    
+                                    member_details.append({
+                                        'name': member.name,
+                                        'productive_hours': member_prod_hours,
+                                        'sold_hours': member_sold_hours,
+                                        'flat_rate': member_flat_rate
+                                    })
+                                
+                                # Calculate team totals
+                                team_flat_rate = (team_sold_hours / team_productive_hours * 100) if team_productive_hours > 0 else 0
+                                members_avg_flat_rate = sum(m['flat_rate'] for m in member_details) / len(member_details) if member_details else 0
+                                
+                                actual = team_flat_rate  # Overall team performance
+                                
+                                # Detailed measurement string
+                                kpi['measurement'] = f"""
+                    Tim Total ({len(member_details)} anggota + 1 leader):
+                    - Total Jam Produktif Tim: {team_productive_hours:.1f} jam
+                    - Total Jam Terjual Tim: {team_sold_hours:.1f} jam
+                    - Flat Rate Tim: {team_flat_rate:.1f}%
 
-                        # Hitung jam terjual dari order yang selesai
-                        completed_orders = orders.filtered(lambda o: o.controller_selesai)
-                        sold_hours = sum(order.lead_time_servis for order in completed_orders)
-                        
-                        # Hitung flat rate (dalam persentase)
-                        actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
-                        
-                        formatted_sold = f"{sold_hours:.1f}"
-                        formatted_productive = f"{productive_hours:.1f}"
-                        kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
+                    Leader ({mechanic.name}):
+                    - Jam Produktif: {leader_productive_hours:.1f} jam
+                    - Jam Terjual: {leader_sold_hours:.1f} jam
+                    - Flat Rate: {leader_flat_rate:.1f}%
+
+                    Anggota Tim (Rata-rata: {members_avg_flat_rate:.1f}%):
+                    {chr(10).join(f"• {m['name']}: {m['flat_rate']:.1f}% ({m['sold_hours']:.1f}/{m['productive_hours']:.1f} jam)" for m in member_details)}
+                    """
+
+                            else:
+                                # Regular mechanic calculation
+                                productive_hours = calculate_productive_hours(self, attendances, start_date, end_date)
+                                sold_hours = calculate_sold_hours(self, orders, mechanic.id)
+                                
+                                actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
+                                kpi['measurement'] = (
+                                    f"Jam Produktif: {productive_hours:.1f} jam\n"
+                                    f"Jam Terjual: {sold_hours:.1f} jam\n"
+                                    f"Flat Rate: {actual:.1f}%"
+                                )
+                                
+                        except Exception as e:
+                            _logger.error(f"Error calculating flat rate: {str(e)}")
+                            actual = 0
+                            kpi['measurement'] = f"Error: {str(e)}"
 
                     # Perbaikan perhitungan mechanic efficiency
                     elif kpi['type'] == 'mechanic_efficiency':

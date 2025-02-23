@@ -875,97 +875,146 @@ class KPIController(http.Controller):
 
             # Juga update perhitungan utilization di trends
             # Di dalam method get_mechanic_kpi_dashboard, pada bagian trends
-            for trend in trends:
-                trend_date = datetime.strptime(trend['date'], '%Y-%m-%d').date()
-                
-                # Get attendance untuk tanggal ini
-                day_attendances = request.env['hr.attendance'].sudo().search([
-                    ('employee_id', '=', mechanic.employee_id.id),
-                    ('check_in', '>=', f"{trend['date']} 00:00:00"),
-                    ('check_in', '<', f"{trend['date']} 23:59:59"),
-                    ('check_out', '!=', False)
-                ])
-                
-                attendance_hours = 0
-                productive_hours = 0
-                tz = pytz.timezone('Asia/Jakarta')
-                
-                # Calculate attendance hours
-                for att in day_attendances:
-                    check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
-                    check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
-                    
-                    # Set waktu kerja
-                    work_start = tz.localize(datetime.combine(check_in_local.date(), time(8, 0)))
-                    work_end = tz.localize(datetime.combine(check_in_local.date(), time(17, 0)))
-                    
-                    effective_start = max(check_in_local, work_start)
-                    effective_end = min(check_out_local, work_end)
-                    
-                    if effective_end > effective_start:
-                        # Handle istirahat
-                        break_start = tz.localize(datetime.combine(effective_start.date(), time(12, 0)))
-                        break_end = tz.localize(datetime.combine(effective_start.date(), time(13, 0)))
-                        
-                        if effective_start < break_end and effective_end > break_start:
-                            morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
-                            afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
-                            attendance_duration = max(0, morning_hours) + max(0, afternoon_hours)
-                        else:
-                            attendance_duration = (effective_end - effective_start).total_seconds() / 3600
-                        
-                        attendance_hours += attendance_duration
+            # Di dalam get_mechanic_kpi_dashboard, bagian trends - ganti dengan:
 
-                # Get orders untuk tanggal ini
-                day_orders = request.env['sale.order'].sudo().search([
-                    ('date_completed', '>=', f"{trend['date']} 00:00:00"),
-                    ('date_completed', '<', f"{trend['date']} 23:59:59"),
-                    ('state', '=', 'sale'),
-                    ('car_mechanic_id_new', 'in', [mechanic.id])
-                ])
+            # Ambil attendance untuk semua mekanik
+            all_attendances = request.env['hr.attendance'].sudo().search([
+                ('employee_id.mechanic_id', '!=', False),  # Ambil attendance untuk semua mekanik
+                ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('check_out', '!=', False)
+            ])
 
-                # Calculate productive hours
-                for order in day_orders:
-                    if order.controller_mulai_servis and order.controller_selesai:
-                        start_dt = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis))
-                        end_dt = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai))
+            # Calculate daily trends
+            trends = []
+            current = start
+            while current <= end:
+                try:
+                    current_end = min(current.replace(hour=23, minute=59, second=59), end)
+                    current_start = current.replace(hour=0, minute=0, second=0)
+                    
+                    current_start_utc = current_start.astimezone(pytz.UTC)
+                    current_end_utc = current_end.astimezone(pytz.UTC)
+                    trend_date = current.date()
+                    
+                    # Get orders untuk tanggal ini
+                    day_domain = [
+                        ('date_completed', '>=', current_start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                        ('date_completed', '<=', current_end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                        ('state', '=', 'sale')
+                    ]
+                    day_orders = request.env['sale.order'].sudo().search(day_domain)
+                    
+                    if day_orders:
+                        # Metrik dasar
+                        daily_completions = sum(1 for order in day_orders if order.controller_selesai)
+                        daily_early_completions = sum(1 for order in day_orders 
+                                                if order.controller_selesai and order.controller_estimasi_selesai
+                                                and order.controller_selesai <= order.controller_estimasi_selesai)
+
+                        daily_revenue = sum(order.amount_total for order in day_orders)
+                        daily_rated_orders = day_orders.filtered(lambda o: o.customer_rating)
+                        daily_rating = (
+                            sum(float(order.customer_rating) for order in daily_rated_orders) / len(daily_rated_orders)
+                            if daily_rated_orders else 0
+                        )
                         
+                        # Calculate utilization metrics
+                        attendance_hours = 0
+                        productive_hours = 0
+                        tz = pytz.timezone('Asia/Jakarta')
+                        
+                        # Get attendance untuk tanggal ini
+                        day_attendances = all_attendances.filtered(
+                            lambda a: a.check_in.date() == trend_date
+                        )
+                        
+                        # Calculate attendance hours
                         for att in day_attendances:
-                            check_in_dt = pytz.utc.localize(fields.Datetime.from_string(att.check_in))
-                            check_out_dt = pytz.utc.localize(fields.Datetime.from_string(att.check_out))
+                            check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                            check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                             
-                            # Convert ke waktu lokal
-                            start_local = start_dt.astimezone(tz)
-                            end_local = end_dt.astimezone(tz)
-                            check_in_local = check_in_dt.astimezone(tz)
-                            check_out_local = check_out_dt.astimezone(tz)
-                            
-                            # Calculate overlap dengan work hours
+                            # Set waktu kerja
                             work_start = tz.localize(datetime.combine(check_in_local.date(), time(8, 0)))
                             work_end = tz.localize(datetime.combine(check_in_local.date(), time(17, 0)))
                             
-                            start_overlap = max(start_local, check_in_local, work_start)
-                            end_overlap = min(end_local, check_out_local, work_end)
+                            effective_start = max(check_in_local, work_start)
+                            effective_end = min(check_out_local, work_end)
                             
-                            if end_overlap > start_overlap:
+                            if effective_end > effective_start:
                                 # Handle istirahat
-                                break_start = tz.localize(datetime.combine(start_overlap.date(), time(12, 0)))
-                                break_end = tz.localize(datetime.combine(start_overlap.date(), time(13, 0)))
+                                break_start = tz.localize(datetime.combine(effective_start.date(), time(12, 0)))
+                                break_end = tz.localize(datetime.combine(effective_start.date(), time(13, 0)))
                                 
-                                if start_overlap < break_end and end_overlap > break_start:
-                                    morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
-                                    afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
-                                    prod_duration = max(0, morning_prod) + max(0, afternoon_prod)
+                                if effective_start < break_end and effective_end > break_start:
+                                    morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
+                                    afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
+                                    attendance_duration = max(0, morning_hours) + max(0, afternoon_hours)
                                 else:
-                                    prod_duration = (end_overlap - start_overlap).total_seconds() / 3600
+                                    attendance_duration = (effective_end - effective_start).total_seconds() / 3600
                                 
-                                productive_hours += prod_duration  # Tidak dibagi jumlah mekanik
+                                attendance_hours += attendance_duration
 
-                trend['metrics']['utilization'] = {
-                    'attendance_hours': attendance_hours,
-                    'productive_hours': productive_hours,
-                    'rate': (productive_hours / attendance_hours * 100) if attendance_hours > 0 else 0
-                }
+                        # Calculate productive hours
+                        for order in day_orders:
+                            if order.controller_mulai_servis and order.controller_selesai:
+                                start_dt = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis))
+                                end_dt = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai))
+                                
+                                for mechanic in order.car_mechanic_id_new:
+                                    # Get attendance records untuk mechanic ini
+                                    mechanic_attendances = day_attendances.filtered(
+                                        lambda a: a.employee_id.id == mechanic.employee_id.id
+                                    )
+                                    
+                                    for att in mechanic_attendances:
+                                        # Convert ke waktu lokal
+                                        start_local = start_dt.astimezone(tz)
+                                        end_local = end_dt.astimezone(tz)
+                                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                                        
+                                        # Calculate overlap dengan work hours
+                                        work_start = tz.localize(datetime.combine(check_in_local.date(), time(8, 0)))
+                                        work_end = tz.localize(datetime.combine(check_in_local.date(), time(17, 0)))
+                                        
+                                        start_overlap = max(start_local, check_in_local, work_start)
+                                        end_overlap = min(end_local, check_out_local, work_end)
+                                        
+                                        if end_overlap > start_overlap:
+                                            # Handle istirahat
+                                            break_start = tz.localize(datetime.combine(start_overlap.date(), time(12, 0)))
+                                            break_end = tz.localize(datetime.combine(start_overlap.date(), time(13, 0)))
+                                            
+                                            if start_overlap < break_end and end_overlap > break_start:
+                                                morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
+                                                afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
+                                                prod_duration = max(0, morning_prod) + max(0, afternoon_prod)
+                                            else:
+                                                prod_duration = (end_overlap - start_overlap).total_seconds() / 3600
+                                            
+                                            productive_hours += prod_duration
+
+                        # Append trend data
+                        trends.append({
+                            'date': current.strftime('%Y-%m-%d'),
+                            'metrics': {
+                                'revenue': daily_revenue,
+                                'orders': len(day_orders),
+                                'on_time_rate': (daily_early_completions / daily_completions * 100) if daily_completions else 0,
+                                'rating': daily_rating,
+                                'utilization': {
+                                    'attendance_hours': attendance_hours,
+                                    'productive_hours': productive_hours,
+                                    'rate': (productive_hours / attendance_hours * 100) if attendance_hours > 0 else 0
+                                }
+                            }
+                        })
+                    
+                    current += timedelta(days=1)
+                except Exception as e:
+                    _logger.error(f"Error calculating trends for {current.strftime('%Y-%m-%d')}: {str(e)}")
+                    continue
 
 
             return {

@@ -378,7 +378,15 @@ class KPIController(http.Controller):
                             'late_starts': 0,
                             'early_completions': 0,
                             'late_completions': 0,
-                            'total_completions': 0
+                            'total_completions': 0,
+                            'metrics': {  # Tambahkan metrics di sini
+                                'utilization': {
+                                    'attendance_hours': 0,
+                                    'productive_hours': 0,
+                                    'utilization_rate': 0,
+                                    'target_rate': 85.0
+                                }
+                            }
                         }
                     
                     mechanic_count = len(order.car_mechanic_id_new)
@@ -529,7 +537,8 @@ class KPIController(http.Controller):
                             'late_start_rate': (data['late_starts'] / data['total_completions'] * 100) if data['total_completions'] else 0,
                             'early_completion_rate': (data['early_completions'] / data['total_completions'] * 100) if data['total_completions'] else 0,
                             'late_completion_rate': (data['late_completions'] / data['total_completions'] * 100) if data['total_completions'] else 0
-                        }
+                        },
+                        'utilization': data['metrics']['utilization']  # Copy utilization metrics
                     }
                     
                     active_mechanics.append({

@@ -429,6 +429,92 @@ class KPIController(http.Controller):
                 mechanic = mechanic_dict.get(mechanic_id)
                 if not mechanic:
                     continue
+
+                # Get attendance records
+                all_attendances = request.env['hr.attendance'].sudo().search([
+                    ('employee_id', '=', mechanic_obj.employee_id.id),
+                    ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('check_in', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('check_out', '!=', False)
+                ])
+
+                # Calculate attendance hours
+                total_attendance_hours = 0
+                for att in all_attendances:
+                    check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                    check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                    
+                    # Set waktu kerja
+                    work_start = tz.localize(datetime.combine(check_in_local.date(), time(8, 0)))
+                    work_end = tz.localize(datetime.combine(check_in_local.date(), time(17, 0)))
+                    
+                    effective_start = max(check_in_local, work_start)
+                    effective_end = min(check_out_local, work_end)
+                    
+                    if effective_end > effective_start:
+                        # Handle istirahat
+                        break_start = tz.localize(datetime.combine(effective_start.date(), time(12, 0)))
+                        break_end = tz.localize(datetime.combine(effective_start.date(), time(13, 0)))
+                        
+                        if effective_start < break_end and effective_end > break_start:
+                            morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
+                            afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
+                            attendance_duration = max(0, morning_hours) + max(0, afternoon_hours)
+                        else:
+                            attendance_duration = (effective_end - effective_start).total_seconds() / 3600
+                        
+                        total_attendance_hours += attendance_duration
+
+                # Get orders untuk mechanic ini
+                mechanic_orders = orders.filtered(lambda o: mechanic_id in o.car_mechanic_id_new.ids)
+                total_productive_hours = 0
+
+                # Calculate productive hours
+                for order in mechanic_orders:
+                    if order.controller_mulai_servis and order.controller_selesai:
+                        start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
+                        end_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
+                        
+                        for att in all_attendances:
+                            check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                            check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                            
+                            # Calculate overlap dengan work hours
+                            work_start = tz.localize(datetime.combine(check_in_local.date(), time(8, 0)))
+                            work_end = tz.localize(datetime.combine(check_in_local.date(), time(17, 0)))
+                            
+                            start_overlap = max(start_local, check_in_local, work_start)
+                            end_overlap = min(end_local, check_out_local, work_end)
+                            
+                            if end_overlap > start_overlap:
+                                # Handle istirahat
+                                break_start = tz.localize(datetime.combine(start_overlap.date(), time(12, 0)))
+                                break_end = tz.localize(datetime.combine(start_overlap.date(), time(13, 0)))
+                                
+                                if start_overlap < break_end and end_overlap > break_start:
+                                    morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
+                                    afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
+                                    productive_duration = max(0, morning_prod) + max(0, afternoon_prod)
+                                else:
+                                    productive_duration = (end_overlap - start_overlap).total_seconds() / 3600
+                                
+                                total_productive_hours += productive_duration
+
+                # Update metrics
+                mechanics_data[mechanic_id]['metrics']['utilization'] = {
+                    'attendance_hours': total_attendance_hours,
+                    'productive_hours': total_productive_hours,
+                    'utilization_rate': (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0,
+                    'target_rate': 85.0
+                }
+
+                _logger.info(f"""
+                    Mechanic: {data['name']}
+                    ID: {mechanic_id}
+                    Attendance Hours: {total_attendance_hours:.2f}
+                    Productive Hours: {total_productive_hours:.2f}
+                    Rate: {(total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0:.2f}%
+                """)
                     
                 leader_id = mechanic.leader_id.id if mechanic.leader_id else (mechanic_id if mechanic.position_code == 'leader' else None)
                 
@@ -520,6 +606,10 @@ class KPIController(http.Controller):
                             'name': mechanic.leader_id.name
                         }
 
+                    # Verify utilization data
+                    utilization_data = data['metrics']['utilization']
+                    _logger.info(f"Adding mechanic {data['name']} to active_mechanics with utilization: {utilization_data}")
+
                     metrics = {
                         'revenue': {
                             'total': data['revenue'],
@@ -538,7 +628,7 @@ class KPIController(http.Controller):
                             'early_completion_rate': (data['early_completions'] / data['total_completions'] * 100) if data['total_completions'] else 0,
                             'late_completion_rate': (data['late_completions'] / data['total_completions'] * 100) if data['total_completions'] else 0
                         },
-                        'utilization': data['metrics']['utilization']  # Copy utilization metrics
+                        'utilization': utilization_data
                     }
                     
                     active_mechanics.append({

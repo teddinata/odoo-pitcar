@@ -1820,20 +1820,29 @@ class KPIOverview(http.Controller):
 
                     elif kpi['type'] == 'flat_rate':
                         try:
-                            all_attendances = request.env['hr.attendance'].sudo().search([
+                            tz = pytz.timezone('Asia/Jakarta')
+                            total_attendance_hours = 0
+                            total_productive_hours = 0
+
+                            # Get attendance records
+                            attendances = request.env['hr.attendance'].sudo().search([
                                 ('employee_id', '=', employee.id),
                                 ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
                                 ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
                                 ('check_out', '!=', False)
                             ])
 
-                            total_attendance_hours = 0
-                            total_productive_hours = 0
+                            # Get mechanic orders
+                            mechanic_orders = request.env['sale.order'].sudo().search([
+                                ('date_completed', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('date_completed', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('state', '=', 'sale'),
+                                ('car_mechanic_id_new', 'in', [mechanic.id])
+                            ])
 
                             # Calculate attendance hours
-                            for att in all_attendances:
+                            for att in attendances:
                                 if att.check_out:
-                                    tz = pytz.timezone('Asia/Jakarta')
                                     check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                                     check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                                     
@@ -1851,14 +1860,12 @@ class KPIOverview(http.Controller):
                                     total_attendance_hours += max(0, attendance_duration)
 
                             # Calculate productive hours
-                            mechanic_orders = orders.filtered(lambda o: mechanic.id in o.car_mechanic_id_new.ids)
-                            
                             for order in mechanic_orders:
                                 if order.controller_mulai_servis and order.controller_selesai:
                                     start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
                                     end_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
                                     
-                                    for att in all_attendances:
+                                    for att in attendances:
                                         check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                                         check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                                         
@@ -1867,6 +1874,9 @@ class KPIOverview(http.Controller):
                                         
                                         if end_overlap > start_overlap:
                                             # Handle jam istirahat untuk productive hours
+                                            break_start = tz.localize(datetime.combine(start_overlap.date(), time(12, 0)))
+                                            break_end = tz.localize(datetime.combine(start_overlap.date(), time(13, 0)))
+                                            
                                             if start_overlap < break_end and end_overlap > break_start:
                                                 morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
                                                 afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
@@ -1874,20 +1884,19 @@ class KPIOverview(http.Controller):
                                             else:
                                                 productive_hours = (end_overlap - start_overlap).total_seconds() / 3600
                                                 
-                                            total_productive_hours += max(0, productive_hours)  # Tidak dibagi mekanik
+                                            total_productive_hours += max(0, productive_hours)
 
                             # Calculate flat rate
                             actual = (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0
                             actual = min(actual, 100)
 
-                            kpi['measurement'] = (
-                                f"Jam Kerja: {total_attendance_hours:.1f} jam\n"
-                                f"Jam Terjual: {total_productive_hours:.1f} jam\n"
-                                f"Flat Rate: {actual:.1f}%"
-                            )
+                            kpi['measurement'] = f"""Statistik Kerja Mekanik:
+                    Jam Kerja: {total_attendance_hours:.1f} jam
+                    Jam Terjual: {total_productive_hours:.1f} jam
+                    Flat Rate: {actual:.1f}%""".strip()
 
                         except Exception as e:
-                            _logger.error(f"Error calculating flat rate: {str(e)}")
+                            _logger.error(f"Error calculating flat rate for mechanic: {str(e)}")
                             actual = 0
                             kpi['measurement'] = f"Error: {str(e)}"
 
@@ -2119,17 +2128,14 @@ class KPIOverview(http.Controller):
 
                     elif kpi['type'] == 'flat_rate':
                         try:
-                            # Get team members
-                            team_members = request.env['pitcar.mechanic.new'].sudo().search([
-                                ('leader_id', '=', mechanic.id)
-                            ])
+                            tz = pytz.timezone('Asia/Jakarta')
                             all_mechanics = team_members + mechanic  # Include leader
-
-                            team_results = []
+                            
                             team_total_attendance = 0
                             team_total_productive = 0
+                            team_results = []
 
-                            # Calculate untuk setiap anggota tim termasuk leader
+                            # Calculate untuk setiap anggota tim
                             for member in all_mechanics:
                                 member_attendances = request.env['hr.attendance'].sudo().search([
                                     ('employee_id', '=', member.employee_id.id),
@@ -2144,11 +2150,10 @@ class KPIOverview(http.Controller):
                                 # Calculate attendance hours
                                 for att in member_attendances:
                                     if att.check_out:
-                                        tz = pytz.timezone('Asia/Jakarta')
                                         check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                                         check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                                         
-                                        # Handle jam istirahat untuk attendance
+                                        # Handle jam istirahat
                                         break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
                                         break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
                                         
@@ -2162,8 +2167,7 @@ class KPIOverview(http.Controller):
                                         member_attendance_hours += max(0, attendance_duration)
 
                                 # Calculate productive hours
-                                member_orders = orders.filtered(lambda o: member.id in o.car_mechanic_id_new.ids)
-                                
+                                member_orders = team_orders.filtered(lambda o: member.id in o.car_mechanic_id_new.ids)
                                 for order in member_orders:
                                     if order.controller_mulai_servis and order.controller_selesai:
                                         start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
@@ -2178,6 +2182,9 @@ class KPIOverview(http.Controller):
                                             
                                             if end_overlap > start_overlap:
                                                 # Handle jam istirahat untuk productive hours
+                                                break_start = tz.localize(datetime.combine(start_overlap.date(), time(12, 0)))
+                                                break_end = tz.localize(datetime.combine(start_overlap.date(), time(13, 0)))
+                                                
                                                 if start_overlap < break_end and end_overlap > break_start:
                                                     morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
                                                     afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
@@ -2185,17 +2192,15 @@ class KPIOverview(http.Controller):
                                                 else:
                                                     productive_hours = (end_overlap - start_overlap).total_seconds() / 3600
                                                     
-                                                member_productive_hours += max(0, productive_hours)  # Tidak dibagi mekanik
+                                                member_productive_hours += max(0, productive_hours)
 
                                 # Calculate member's flat rate
                                 member_flat_rate = (member_productive_hours / member_attendance_hours * 100) if member_attendance_hours > 0 else 0
                                 member_flat_rate = min(member_flat_rate, 100)
-
-                                # Add to team totals
+                                
                                 team_total_attendance += member_attendance_hours
                                 team_total_productive += member_productive_hours
-
-                                # Store member results
+                                
                                 team_results.append({
                                     'name': member.name,
                                     'is_leader': member.id == mechanic.id,
@@ -2208,16 +2213,13 @@ class KPIOverview(http.Controller):
                             actual = (team_total_productive / team_total_attendance * 100) if team_total_attendance > 0 else 0
                             actual = min(actual, 100)
 
-                            # Format measurement text
-                            kpi['measurement'] = f"""
-                Tim Total ({len(team_members)} anggota + 1 leader):
-                - Total Jam Kerja Tim: {team_total_attendance:.1f} jam
-                - Total Jam Terjual Tim: {team_total_productive:.1f} jam
-                - Flat Rate Tim: {actual:.1f}%
+                            kpi['measurement'] = f"""Tim Total ({len(team_members)} anggota + 1 leader):
+            - Total Jam Kerja Tim: {team_total_attendance:.1f} jam
+            - Total Jam Terjual Tim: {team_total_productive:.1f} jam
+            - Flat Rate Tim: {actual:.1f}%
 
-                Detail Per Anggota:
-                {chr(10).join(f"• {'(Leader) ' if r['is_leader'] else ''}{r['name']}: {r['flat_rate']:.1f}% ({r['productive_hours']:.1f}/{r['attendance_hours']:.1f} jam)" for r in team_results)}
-                """.strip()
+            Detail Per Anggota:
+            {chr(10).join(f"• {'(Leader) ' if r['is_leader'] else ''}{r['name']}: {r['flat_rate']:.1f}% ({r['productive_hours']:.1f}/{r['attendance_hours']:.1f} jam)" for r in team_results)}""".strip()
 
                         except Exception as e:
                             _logger.error(f"Error calculating flat rate for team leader: {str(e)}")

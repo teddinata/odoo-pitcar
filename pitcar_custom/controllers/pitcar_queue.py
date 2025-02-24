@@ -1,10 +1,12 @@
 from odoo import http, fields, api, SUPERUSER_ID
 from odoo.http import request, Response
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import odoo
+import logging
 from .cors import cors_handler
 
+_logger = logging.getLogger(__name__)
 class PitCarQueue(http.Controller):
     @http.route('/web/sale_orders/create', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def create_sale_order(self, **kwargs):
@@ -188,10 +190,16 @@ class PitCarQueue(http.Controller):
                 }
             }
 
+            next_queue = queue_record.get_next_queue()
+            current_number = None
+
             # Get next waiting number if any
             next_queue = queue_record.get_next_queue()
             if next_queue:
+                current_number = f"P{next_queue.queue_number:03d}" if next_queue.is_priority else f"{next_queue.queue_number:03d}"
                 stats['next_number'] = f"P{next_queue.queue_number:03d}" if next_queue.is_priority else f"{next_queue.queue_number:03d}"
+
+                stats['next_number'] = current_number or '-'
             else:
                 stats['next_number'] = '-'
 
@@ -201,6 +209,113 @@ class PitCarQueue(http.Controller):
             }
 
         except Exception as e:
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+        
+    @http.route('/web/queue/dashboard', type='json', auth='user', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    def get_queue_dashboard(self, **kwargs):
+        """Get comprehensive queue dashboard data"""
+        try:
+            if request.httprequest.method == 'OPTIONS':
+                headers = {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                    'Access-Control-Allow-Credentials': 'true'
+                }
+                return Response(status=200, headers=headers)
+
+            queue_mgmt = request.env['queue.management'].search([
+                ('date', '=', fields.Date.today())
+            ], limit=1)
+            
+            if not queue_mgmt:
+                return {
+                    'status': 'error',
+                    'message': 'No queue data for today'
+                }
+
+            # Get next queue
+            next_queue = queue_mgmt.get_next_queue()
+            next_number = next_queue.display_number if next_queue else '-'
+            
+            # Get current active queue
+            current_queue = queue_mgmt.queue_line_ids.filtered(
+                lambda l: l.status == 'in_progress'
+            )
+            current_display = current_queue.display_number if current_queue else '-'
+
+            # Get service performance metrics
+            completed_queues = queue_mgmt.queue_line_ids.filtered(
+                lambda l: l.status == 'completed'
+            )
+            avg_service_time = 0
+            if completed_queues:
+                avg_service_time = sum(completed_queues.mapped('service_duration')) / len(completed_queues)
+
+            # Prepare queue statistics
+            waiting_lines = queue_mgmt.queue_line_ids.filtered(lambda l: l.status == 'waiting')
+            priority_waiting = waiting_lines.filtered(lambda l: l.is_priority)
+            regular_waiting = waiting_lines.filtered(lambda l: not l.is_priority)
+
+            dashboard_data = {
+                'summary': {
+                    'title': 'Dashboard Summary',
+                    'date': fields.Date.today().strftime('%d %B %Y'),
+                    'avg_service_time': round(avg_service_time, 1),
+                    'total_served_today': len(completed_queues),
+                    'last_update': fields.Datetime.now().strftime('%H:%M:%S')
+                },
+                'current_service': {
+                    'number': current_display,
+                    'start_time': current_queue.start_time.strftime('%H:%M:%S') if current_queue and current_queue.start_time else '-',
+                    'type': 'Priority' if current_queue and current_queue.is_priority else 'Regular',
+                    'service_duration': round(current_queue.service_duration, 1) if current_queue else 0
+                },
+                'next_queue': {
+                    'number': next_number,
+                    'type': 'Priority' if next_queue and next_queue.is_priority else 'Regular',
+                    'estimated_time': next_queue.estimated_service_time.strftime('%H:%M:%S') if next_queue else '-'
+                },
+                'waiting_status': {
+                    'total_waiting': len(waiting_lines),
+                    'priority_waiting': len(priority_waiting),
+                    'regular_waiting': len(regular_waiting),
+                    'estimated_completion': fields.Datetime.now() + timedelta(minutes=len(waiting_lines) * queue_mgmt.average_service_time)
+                },
+                'queue_distribution': {
+                    'priority': {
+                        'total': queue_mgmt.last_priority_number,
+                        'waiting': len(priority_waiting),
+                        'in_service': len(current_queue.filtered(lambda l: l.is_priority)),
+                        'completed': len(completed_queues.filtered(lambda l: l.is_priority)),
+                        'last_number': f"P{queue_mgmt.last_priority_number:03d}"
+                    },
+                    'regular': {
+                        'total': queue_mgmt.last_number,
+                        'waiting': len(regular_waiting),
+                        'in_service': len(current_queue.filtered(lambda l: not l.is_priority)),
+                        'completed': len(completed_queues.filtered(lambda l: not l.is_priority)),
+                        'last_number': f"{queue_mgmt.last_number:03d}"
+                    }
+                },
+                'service_metrics': {
+                    'avg_service_time': round(avg_service_time, 1),
+                    'min_service_time': round(min(completed_queues.mapped('service_duration') or [0]), 1),
+                    'max_service_time': round(max(completed_queues.mapped('service_duration') or [0]), 1),
+                    'total_service_time': round(sum(completed_queues.mapped('service_duration') or [0]), 1)
+                }
+            }
+
+            return {
+                'status': 'success',
+                'data': dashboard_data
+            }
+
+        except Exception as e:
+            _logger.error("Dashboard error: %s", str(e))
             return {
                 'status': 'error',
                 'message': str(e)

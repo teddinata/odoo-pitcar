@@ -117,8 +117,16 @@ class QueueManagement(models.Model):
         """Prepare queue information considering priority"""
         self.ensure_one()
         
-        if not self.current_number:
-            self.current_number = 1
+        next_queue = self.get_next_queue()
+        if next_queue:
+            self.current_number = next_queue.queue_number
+            self.is_current_priority = next_queue.is_priority
+        else:
+            self.current_number = 0
+            self.is_current_priority = False
+            
+        # if not self.current_number:
+        #     self.current_number = 1
 
         # Get all waiting queue lines in service order
         waiting_lines = self.queue_line_ids.filtered(
@@ -160,10 +168,22 @@ class QueueManagement(models.Model):
         """Get next queue number considering priority"""
         self.ensure_one()
         
-        # Get waiting queue lines ordered by priority and number
-        waiting_lines = self.queue_line_ids.filtered(
-            lambda l: l.status == 'waiting'
-        ).sorted(lambda l: (not l.is_priority, l.queue_number))
+        # Pisahkan antrian priority dan regular yang sedang menunggu
+        waiting_priority = self.queue_line_ids.filtered(
+            lambda l: l.status == 'waiting' and l.is_priority
+        ).sorted('queue_number')
+        
+        waiting_regular = self.queue_line_ids.filtered(
+            lambda l: l.status == 'waiting' and not l.is_priority
+        ).sorted('queue_number')
+        
+        # Jika ada antrian priority yang menunggu, ambil itu dulu
+        if waiting_priority:
+            return waiting_priority[0]
+        # Jika tidak ada priority, ambil regular
+        elif waiting_regular:
+            return waiting_regular[0]
+        return False
         
         return waiting_lines[0] if waiting_lines else False
 

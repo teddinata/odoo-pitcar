@@ -120,10 +120,8 @@ class QueueManagement(models.Model):
         next_queue = self.get_next_queue()
         if next_queue:
             self.current_number = next_queue.queue_number
-            self.is_current_priority = next_queue.is_priority
         else:
             self.current_number = 0
-            self.is_current_priority = False
             
         # if not self.current_number:
         #     self.current_number = 1

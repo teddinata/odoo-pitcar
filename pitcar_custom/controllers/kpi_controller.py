@@ -423,6 +423,7 @@ class KPIController(http.Controller):
                         mech_data['rated_orders'] += 1
 
             # Calculate utilization for all mechanics
+            # Bagian perhitungan utilization
             for mechanic_id, mech_data in mechanics_data.items():
                 mechanic = mechanic_dict.get(mechanic_id)
                 if not mechanic or not mechanic.employee_id:
@@ -439,20 +440,20 @@ class KPIController(http.Controller):
                 total_attendance_hours = 0
                 total_productive_hours = 0
 
-                # Calculate attendance hours
+                # Calculate attendance hours - PERLU DIUBAH
                 for att in all_attendances:
                     check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                     check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                     
-                    # Set work hours (8 AM - 5 PM)
-                    day_start = check_in_local.replace(hour=8, minute=0, second=0)
-                    day_end = check_in_local.replace(hour=17, minute=0, second=0)
+                    # Set work hours
+                    work_start = check_in_local.replace(hour=8, minute=0, second=0)
                     
-                    effective_start = max(check_in_local, day_start)
-                    effective_end = min(check_out_local, day_end)
+                    # Tidak perlu batasi sampai 17:00 jika ada overtime
+                    effective_start = max(check_in_local, work_start)  # Tetap mulai jam 8 jika datang lebih awal
+                    effective_end = check_out_local  # Gunakan actual check out untuk overtime
                     
                     if effective_end > effective_start:
-                        # Handle break time (12 PM - 1 PM)
+                        # Handle break time
                         break_start = effective_start.replace(hour=12, minute=0, second=0)
                         break_end = effective_start.replace(hour=13, minute=0, second=0)
                         
@@ -463,46 +464,33 @@ class KPIController(http.Controller):
                         else:
                             total_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
 
-                # Calculate productive hours
+                # Calculate productive hours - PERLU DIUBAH 
                 mechanic_orders = orders.filtered(lambda o: mechanic_id in o.car_mechanic_id_new.ids)
                 for order in mechanic_orders:
-                    if not (order.controller_mulai_servis and order.controller_selesai):
-                        continue
+                    if order.controller_mulai_servis and order.controller_selesai:
+                        start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
+                        end_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
                         
-                    start_servis = fields.Datetime.from_string(order.controller_mulai_servis)
-                    end_servis = fields.Datetime.from_string(order.controller_selesai)
-                    
-                    # Convert to local time
-                    start_local = pytz.utc.localize(start_servis).astimezone(tz)
-                    end_local = pytz.utc.localize(end_servis).astimezone(tz)
-                    
-                    # Calculate productive hours for this order
-                    for att in all_attendances:
-                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
-                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
-                        
-                        # Only count if service time overlaps with attendance
-                        if start_local < check_out_local and end_local > check_in_local:
-                            # Get effective work period
+                        for att in all_attendances:
+                            check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                            check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                            
+                            # Set work hours with overtime handling
                             work_start = check_in_local.replace(hour=8, minute=0, second=0)
-                            work_end = check_in_local.replace(hour=17, minute=0, second=0)
                             
-                            service_start = max(start_local, check_in_local, work_start)
-                            service_end = min(end_local, check_out_local, work_end)
+                            start_overlap = max(start_local, check_in_local, work_start)
+                            end_overlap = min(end_local, check_out_local)  # Allow overtime
                             
-                            if service_end > service_start:
-                                # Handle break time
-                                break_start = service_start.replace(hour=12, minute=0, second=0)
-                                break_end = service_start.replace(hour=13, minute=0, second=0)
+                            if end_overlap > start_overlap:
+                                break_start = start_overlap.replace(hour=12, minute=0, second=0)
+                                break_end = start_overlap.replace(hour=13, minute=0, second=0)
                                 
-                                if service_start < break_end and service_end > break_start:
-                                    morning_prod = (min(break_start, service_end) - service_start).total_seconds() / 3600
-                                    afternoon_prod = (service_end - max(break_end, service_start)).total_seconds() / 3600
-                                    productive_duration = max(0, morning_prod) + max(0, afternoon_prod)
+                                if start_overlap < break_end and end_overlap > break_start:
+                                    morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
+                                    afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
+                                    total_productive_hours += max(0, morning_prod) + max(0, afternoon_prod)
                                 else:
-                                    productive_duration = (service_end - service_start).total_seconds() / 3600
-                                
-                                total_productive_hours += productive_duration
+                                    total_productive_hours += (end_overlap - start_overlap).total_seconds() / 3600
 
                 # Update utilization metrics
                 mech_data['metrics']['utilization'] = {
@@ -1405,23 +1393,27 @@ class KPIController(http.Controller):
                 ('check_out', '!=', False)
             ])
 
+            # Filter orders for this mechanic - ini juga sudah ada 
+            mechanic_orders = all_orders.filtered(lambda o: mechanic_id in o.car_mechanic_id_new.ids)
+
+            # Kemudian baru perhitungan utilization
             total_attendance_hours = 0
             total_productive_hours = 0
 
-            # Calculate attendance hours
+            # Attendance calculation
             for att in attendance_records:
                 check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                 check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                 
-                # Set work hours (8 AM - 5 PM)
+                # Set work start (minimal jam 8) 
                 work_start = check_in_local.replace(hour=8, minute=0, second=0)
-                work_end = check_in_local.replace(hour=17, minute=0, second=0)
                 
+                # Effective time calculation
                 effective_start = max(check_in_local, work_start)
-                effective_end = min(check_out_local, work_end)
+                effective_end = check_out_local  # Allow overtime
                 
                 if effective_end > effective_start:
-                    # Handle break time (12 PM - 1 PM)
+                    # Handle istirahat
                     break_start = effective_start.replace(hour=12, minute=0, second=0)
                     break_end = effective_start.replace(hour=13, minute=0, second=0)
                     
@@ -1432,41 +1424,40 @@ class KPIController(http.Controller):
                     else:
                         total_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
 
-            # Calculate productive hours
-            for att in attendance_records:
-                check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
-                check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
-                att_date = check_in_local.date()
-                
-                # Get orders for this attendance date
-                day_orders = [order for order in mechanic_orders if 
-                            pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz).date() == att_date]
-                
-                for order in day_orders:
-                    if not (order.controller_mulai_servis and order.controller_selesai):
-                        continue
-
-                    service_start = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
-                    service_end = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
+            # Productive hours calculation - menggunakan mechanic_orders yang sudah didefinisikan
+            for order in mechanic_orders:
+                if order.controller_mulai_servis and order.controller_selesai:
+                    start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
+                    end_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
                     
-                    # Limit to work hours
-                    work_start = check_in_local.replace(hour=8, minute=0, second=0)
-                    work_end = check_in_local.replace(hour=17, minute=0, second=0)
-                    
-                    start_overlap = max(service_start, check_in_local, work_start)
-                    end_overlap = min(service_end, check_out_local, work_end)
-                    
-                    if end_overlap > start_overlap:
-                        # Handle break time
-                        break_start = start_overlap.replace(hour=12, minute=0, second=0)
-                        break_end = start_overlap.replace(hour=13, minute=0, second=0)
+                    for att in attendance_records:
+                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                         
-                        if start_overlap < break_end and end_overlap > break_start:
-                            morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
-                            afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
-                            total_productive_hours += max(0, morning_prod) + max(0, afternoon_prod)
-                        else:
-                            total_productive_hours += (end_overlap - start_overlap).total_seconds() / 3600
+                        work_start = check_in_local.replace(hour=8, minute=0, second=0)
+                        
+                        start_overlap = max(start_local, check_in_local, work_start)
+                        end_overlap = min(end_local, check_out_local)
+                        
+                        if end_overlap > start_overlap:
+                            break_start = start_overlap.replace(hour=12, minute=0, second=0)
+                            break_end = start_overlap.replace(hour=13, minute=0, second=0)
+                            
+                            if start_overlap < break_end and end_overlap > break_start:
+                                morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
+                                afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
+                                total_productive_hours += max(0, morning_prod) + max(0, afternoon_prod)
+                            else:
+                                total_productive_hours += (end_overlap - start_overlap).total_seconds() / 3600
+
+            # Update metrics
+            metrics['utilization'] = {
+                'attendance_hours': total_attendance_hours,
+                'productive_hours': total_productive_hours,
+                'utilization_rate': (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0,
+                'target_rate': 85.0
+            }
+
 
             # Calculate team data if mechanic is a leader
             team_data = None

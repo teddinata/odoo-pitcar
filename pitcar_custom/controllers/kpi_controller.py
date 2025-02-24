@@ -1322,7 +1322,7 @@ class KPIController(http.Controller):
                     orders_by_date[order_date] = []
                 orders_by_date[order_date].append(order)
 
-            # Calculate metrics in a single pass
+            # 1. Calculate basic metrics first
             total_revenue = 0
             total_orders = len(mechanic_orders)
             total_starts = 0
@@ -1385,7 +1385,29 @@ class KPIController(http.Controller):
                     total_rated_orders += 1
                     total_rating += float(order.customer_rating)
 
-            # Calculate utilization metrics
+            # 2. Initialize metrics dictionary with basic metrics
+            metrics = {
+                'revenue': {
+                    'total': total_revenue,
+                    'target': mechanic.monthly_target,
+                    'achievement': (total_revenue / mechanic.monthly_target * 100) if mechanic.monthly_target else 0
+                },
+                'orders': {
+                    'total': total_orders,
+                    'average_value': total_revenue / total_orders if total_orders else 0
+                },
+                'performance': {
+                    'duration_accuracy': total_duration_accuracy / total_duration_orders if total_duration_orders else 0,
+                    'rating': total_rating / total_rated_orders if total_rated_orders else 0,
+                    'early_start_rate': (early_starts / total_starts * 100) if total_starts else 0,
+                    'ontime_start_rate': (ontime_starts / total_starts * 100) if total_starts else 0,
+                    'late_start_rate': (late_starts / total_starts * 100) if total_starts else 0,
+                    'early_completion_rate': (early_completions / total_completions * 100) if total_completions else 0,
+                    'late_completion_rate': (late_completions / total_completions * 100) if total_completions else 0
+                }
+            }
+
+            # 3. Calculate utilization metrics
             attendance_records = request.env['hr.attendance'].sudo().search([
                 ('employee_id', '=', mechanic.employee_id.id),
                 ('check_in', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
@@ -1393,19 +1415,15 @@ class KPIController(http.Controller):
                 ('check_out', '!=', False)
             ])
 
-            # Filter orders for this mechanic - ini juga sudah ada 
-            mechanic_orders = all_orders.filtered(lambda o: mechanic_id in o.car_mechanic_id_new.ids)
-
-            # Kemudian baru perhitungan utilization
             total_attendance_hours = 0
             total_productive_hours = 0
 
-            # Attendance calculation
+            # Calculate attendance hours
             for att in attendance_records:
                 check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                 check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                 
-                # Set work start (minimal jam 8) 
+                # Set work start (minimal jam 8)
                 work_start = check_in_local.replace(hour=8, minute=0, second=0)
                 
                 # Effective time calculation
@@ -1413,7 +1431,6 @@ class KPIController(http.Controller):
                 effective_end = check_out_local  # Allow overtime
                 
                 if effective_end > effective_start:
-                    # Handle istirahat
                     break_start = effective_start.replace(hour=12, minute=0, second=0)
                     break_end = effective_start.replace(hour=13, minute=0, second=0)
                     
@@ -1424,7 +1441,7 @@ class KPIController(http.Controller):
                     else:
                         total_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
 
-            # Productive hours calculation - menggunakan mechanic_orders yang sudah didefinisikan
+            # Calculate productive hours
             for order in mechanic_orders:
                 if order.controller_mulai_servis and order.controller_selesai:
                     start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
@@ -1437,7 +1454,7 @@ class KPIController(http.Controller):
                         work_start = check_in_local.replace(hour=8, minute=0, second=0)
                         
                         start_overlap = max(start_local, check_in_local, work_start)
-                        end_overlap = min(end_local, check_out_local)
+                        end_overlap = min(end_local, check_out_local)  # Allow overtime
                         
                         if end_overlap > start_overlap:
                             break_start = start_overlap.replace(hour=12, minute=0, second=0)
@@ -1450,7 +1467,7 @@ class KPIController(http.Controller):
                             else:
                                 total_productive_hours += (end_overlap - start_overlap).total_seconds() / 3600
 
-            # Update metrics
+            # 4. Update metrics with utilization data
             metrics['utilization'] = {
                 'attendance_hours': total_attendance_hours,
                 'productive_hours': total_productive_hours,
@@ -1458,8 +1475,7 @@ class KPIController(http.Controller):
                 'target_rate': 85.0
             }
 
-
-            # Calculate team data if mechanic is a leader
+            # 5. Calculate team data if mechanic is a leader
             team_data = None
             if mechanic.position_code == 'leader':
                 team_members = request.env['pitcar.mechanic.new'].sudo().search([
@@ -1484,10 +1500,10 @@ class KPIController(http.Controller):
                             'late_completion_rate': 0
                         }
                     }
-                    
-                    # Team metrics calculation code remains the same...
 
-            # Calculate trends
+                    # Add team metrics calculation here if needed...
+
+            # 6. Calculate trends
             trends = []
             current = start
             while current <= end:
@@ -1496,23 +1512,21 @@ class KPIController(http.Controller):
                     day_orders = orders_by_date.get(trend_date, [])
                     
                     if day_orders:
-                        # Calculate daily attendance and productive hours
                         day_attendance = [att for att in attendance_records if 
                                         pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz).date() == trend_date]
                         
                         day_attendance_hours = 0
                         day_productive_hours = 0
                         
-                        # Calculate attendance hours for the day
+                        # Calculate daily attendance hours
                         for att in day_attendance:
                             check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                             check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                             
                             work_start = check_in_local.replace(hour=8, minute=0, second=0)
-                            work_end = check_in_local.replace(hour=17, minute=0, second=0)
                             
                             effective_start = max(check_in_local, work_start)
-                            effective_end = min(check_out_local, work_end)
+                            effective_end = check_out_local  # Allow overtime
                             
                             if effective_end > effective_start:
                                 break_start = effective_start.replace(hour=12, minute=0, second=0)
@@ -1525,21 +1539,20 @@ class KPIController(http.Controller):
                                 else:
                                     day_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
                         
-                        # Calculate productive hours for the day
+                        # Calculate daily productive hours
                         for order in day_orders:
                             if order.controller_mulai_servis and order.controller_selesai:
+                                service_start = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
+                                service_end = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
+                                
                                 for att in day_attendance:
                                     check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                                     check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                                     
-                                    service_start = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
-                                    service_end = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
-                                    
                                     work_start = check_in_local.replace(hour=8, minute=0, second=0)
-                                    work_end = check_in_local.replace(hour=17, minute=0, second=0)
                                     
                                     start_overlap = max(service_start, check_in_local, work_start)
-                                    end_overlap = min(service_end, check_out_local, work_end)
+                                    end_overlap = min(service_end, check_out_local)  # Allow overtime
                                     
                                     if end_overlap > start_overlap:
                                         break_start = start_overlap.replace(hour=12, minute=0, second=0)
@@ -1604,34 +1617,7 @@ class KPIController(http.Controller):
                     'name': prev_mech.name
                 }
 
-            # Compile final metrics
-            metrics = {
-                'revenue': {
-                    'total': total_revenue,
-                    'target': mechanic.monthly_target,
-                    'achievement': (total_revenue / mechanic.monthly_target * 100) if mechanic.monthly_target else 0
-                },
-                'orders': {
-                    'total': total_orders,
-                    'average_value': total_revenue / total_orders if total_orders else 0
-                },
-                'performance': {
-                    'duration_accuracy': total_duration_accuracy / total_duration_orders if total_duration_orders else 0,
-                    'rating': total_rating / total_rated_orders if total_rated_orders else 0,
-                    'early_start_rate': (early_starts / total_starts * 100) if total_starts else 0,
-                    'ontime_start_rate': (ontime_starts / total_starts * 100) if total_starts else 0,
-                    'late_start_rate': (late_starts / total_starts * 100) if total_starts else 0,
-                    'early_completion_rate': (early_completions / total_completions * 100) if total_completions else 0,
-                    'late_completion_rate': (late_completions / total_completions * 100) if total_completions else 0
-                },
-                'utilization': {
-                    'attendance_hours': total_attendance_hours,
-                    'productive_hours': total_productive_hours,
-                    'utilization_rate': (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0,
-                    'target_rate': 85.0
-                }
-            }
-
+            # Return final response
             return {
                 'status': 'success',
                 'data': {

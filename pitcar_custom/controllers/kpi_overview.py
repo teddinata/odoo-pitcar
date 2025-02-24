@@ -1842,24 +1842,28 @@ class KPIOverview(http.Controller):
 
                             # Calculate attendance hours
                             for att in attendances:
-                                if att.check_out:
-                                    check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
-                                    check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                                check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                                check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                                
+                                # Set work start (minimal jam 8)
+                                work_start = check_in_local.replace(hour=8, minute=0, second=0)
+                                
+                                # Effective time calculation - allow overtime
+                                effective_start = max(check_in_local, work_start)
+                                effective_end = check_out_local
+                                
+                                if effective_end > effective_start:
+                                    break_start = effective_start.replace(hour=12, minute=0, second=0)
+                                    break_end = effective_start.replace(hour=13, minute=0, second=0)
                                     
-                                    # Handle jam istirahat untuk attendance
-                                    break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
-                                    break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
-                                    
-                                    if check_in_local < break_end and check_out_local > break_start:
-                                        morning_hours = (min(break_start, check_out_local) - check_in_local).total_seconds() / 3600
-                                        afternoon_hours = (check_out_local - max(break_end, check_in_local)).total_seconds() / 3600
-                                        attendance_duration = max(0, morning_hours) + max(0, afternoon_hours)
+                                    if effective_start < break_end and effective_end > break_start:
+                                        morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
+                                        afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
+                                        total_attendance_hours += max(0, morning_hours) + max(0, afternoon_hours)
                                     else:
-                                        attendance_duration = (check_out_local - check_in_local).total_seconds() / 3600
-                                        
-                                    total_attendance_hours += max(0, attendance_duration)
+                                        total_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
 
-                            # Calculate productive hours
+                            # Calculate productive hours - without dividing by mechanic count
                             for order in mechanic_orders:
                                 if order.controller_mulai_servis and order.controller_selesai:
                                     start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
@@ -1869,26 +1873,25 @@ class KPIOverview(http.Controller):
                                         check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                                         check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                                         
-                                        start_overlap = max(start_local, check_in_local)
+                                        work_start = check_in_local.replace(hour=8, minute=0, second=0)
+                                        
+                                        start_overlap = max(start_local, check_in_local, work_start)
                                         end_overlap = min(end_local, check_out_local)
                                         
                                         if end_overlap > start_overlap:
-                                            # Handle jam istirahat untuk productive hours
-                                            break_start = tz.localize(datetime.combine(start_overlap.date(), time(12, 0)))
-                                            break_end = tz.localize(datetime.combine(start_overlap.date(), time(13, 0)))
+                                            break_start = start_overlap.replace(hour=12, minute=0, second=0)
+                                            break_end = start_overlap.replace(hour=13, minute=0, second=0)
                                             
                                             if start_overlap < break_end and end_overlap > break_start:
                                                 morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
                                                 afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
-                                                productive_hours = max(0, morning_prod) + max(0, afternoon_prod)
+                                                total_productive_hours += max(0, morning_prod) + max(0, afternoon_prod)
                                             else:
-                                                productive_hours = (end_overlap - start_overlap).total_seconds() / 3600
-                                                
-                                            total_productive_hours += max(0, productive_hours)
+                                                total_productive_hours += (end_overlap - start_overlap).total_seconds() / 3600
 
                             # Calculate flat rate
                             actual = (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0
-                            actual = min(actual, 100)
+                            actual = min(actual, 100)  # Cap at 100%
 
                             kpi['measurement'] = f"""Statistik Kerja Mekanik:
                     Jam Kerja: {total_attendance_hours:.1f} jam
@@ -2149,22 +2152,26 @@ class KPIOverview(http.Controller):
 
                                 # Calculate attendance hours
                                 for att in member_attendances:
-                                    if att.check_out:
-                                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
-                                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                                    check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                                    check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                                    
+                                    # Set work start (minimal jam 8)
+                                    work_start = check_in_local.replace(hour=8, minute=0, second=0)
+                                    
+                                    # Effective time calculation - allow overtime
+                                    effective_start = max(check_in_local, work_start)
+                                    effective_end = check_out_local
+                                    
+                                    if effective_end > effective_start:
+                                        break_start = effective_start.replace(hour=12, minute=0, second=0)
+                                        break_end = effective_start.replace(hour=13, minute=0, second=0)
                                         
-                                        # Handle jam istirahat
-                                        break_start = tz.localize(datetime.combine(check_in_local.date(), time(12, 0)))
-                                        break_end = tz.localize(datetime.combine(check_in_local.date(), time(13, 0)))
-                                        
-                                        if check_in_local < break_end and check_out_local > break_start:
-                                            morning_hours = (min(break_start, check_out_local) - check_in_local).total_seconds() / 3600
-                                            afternoon_hours = (check_out_local - max(break_end, check_in_local)).total_seconds() / 3600
-                                            attendance_duration = max(0, morning_hours) + max(0, afternoon_hours)
+                                        if effective_start < break_end and effective_end > break_start:
+                                            morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
+                                            afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
+                                            member_attendance_hours += max(0, morning_hours) + max(0, afternoon_hours)
                                         else:
-                                            attendance_duration = (check_out_local - check_in_local).total_seconds() / 3600
-                                            
-                                        member_attendance_hours += max(0, attendance_duration)
+                                            member_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
 
                                 # Calculate productive hours
                                 member_orders = team_orders.filtered(lambda o: member.id in o.car_mechanic_id_new.ids)
@@ -2177,13 +2184,14 @@ class KPIOverview(http.Controller):
                                             check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
                                             check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
                                             
-                                            start_overlap = max(start_local, check_in_local)
+                                            work_start = check_in_local.replace(hour=8, minute=0, second=0)
+                                            
+                                            start_overlap = max(start_local, check_in_local, work_start)
                                             end_overlap = min(end_local, check_out_local)
                                             
                                             if end_overlap > start_overlap:
-                                                # Handle jam istirahat untuk productive hours
-                                                break_start = tz.localize(datetime.combine(start_overlap.date(), time(12, 0)))
-                                                break_end = tz.localize(datetime.combine(start_overlap.date(), time(13, 0)))
+                                                break_start = start_overlap.replace(hour=12, minute=0, second=0)
+                                                break_end = start_overlap.replace(hour=13, minute=0, second=0)
                                                 
                                                 if start_overlap < break_end and end_overlap > break_start:
                                                     morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
@@ -2192,11 +2200,11 @@ class KPIOverview(http.Controller):
                                                 else:
                                                     productive_hours = (end_overlap - start_overlap).total_seconds() / 3600
                                                     
-                                                member_productive_hours += max(0, productive_hours)
+                                                member_productive_hours += productive_hours  # Tidak dibagi jumlah mekanik
 
                                 # Calculate member's flat rate
                                 member_flat_rate = (member_productive_hours / member_attendance_hours * 100) if member_attendance_hours > 0 else 0
-                                member_flat_rate = min(member_flat_rate, 100)
+                                member_flat_rate = min(member_flat_rate, 100)  # Cap at 100%
                                 
                                 team_total_attendance += member_attendance_hours
                                 team_total_productive += member_productive_hours
@@ -2211,23 +2219,20 @@ class KPIOverview(http.Controller):
 
                             # Calculate team's overall flat rate
                             actual = (team_total_productive / team_total_attendance * 100) if team_total_attendance > 0 else 0
-                            actual = min(actual, 100)
+                            actual = min(actual, 100)  # Cap at 100%
 
                             kpi['measurement'] = f"""Tim Total ({len(team_members)} anggota + 1 leader):
-            - Total Jam Kerja Tim: {team_total_attendance:.1f} jam
-            - Total Jam Terjual Tim: {team_total_productive:.1f} jam
-            - Flat Rate Tim: {actual:.1f}%
+                    - Total Jam Kerja Tim: {team_total_attendance:.1f} jam
+                    - Total Jam Terjual Tim: {team_total_productive:.1f} jam
+                    - Flat Rate Tim: {actual:.1f}%
 
-            Detail Per Anggota:
-            {chr(10).join(f"• {'(Leader) ' if r['is_leader'] else ''}{r['name']}: {r['flat_rate']:.1f}% ({r['productive_hours']:.1f}/{r['attendance_hours']:.1f} jam)" for r in team_results)}""".strip()
+                    Detail Per Anggota:
+                    {chr(10).join(f"• {'(Leader) ' if r['is_leader'] else ''}{r['name']}: {r['flat_rate']:.1f}% ({r['productive_hours']:.1f}/{r['attendance_hours']:.1f} jam)" for r in team_results)}""".strip()
 
                         except Exception as e:
                             _logger.error(f"Error calculating flat rate for team leader: {str(e)}")
                             actual = 0
                             kpi['measurement'] = f"Error: {str(e)}"
-
-
-
 
                 #     elif kpi['type'] == 'flat_rate':
                 #         try:

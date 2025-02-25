@@ -7,7 +7,7 @@ from odoo.tools import date_utils
 _logger = logging.getLogger(__name__)
 
 class MentorRequestController(http.Controller):
-    @http.route('/api/mentor/request/create', type='json', auth='user', methods=['POST'])
+    @http.route('/web/mentor/request/create', type='json', auth='user', methods=['POST'])
     def create_request(self, **kw):
         """Create new mentor request"""
         try:
@@ -63,7 +63,7 @@ class MentorRequestController(http.Controller):
                 "message": str(e)
             }
 
-    @http.route('/api/mentor/request/search', type='json', auth='user', methods=['POST'])
+    @http.route('/web/mentor/request/search', type='json', auth='user', methods=['POST'])
     def search_requests(self, **kw):
         """Search mentor requests"""
         try:
@@ -116,7 +116,7 @@ class MentorRequestController(http.Controller):
                 "message": str(e)
             }
 
-    @http.route('/api/mentor/mechanics', type='json', auth='user', methods=['POST'])
+    @http.route('/web/mentor/mechanics', type='json', auth='user', methods=['POST'])
     def get_mechanics(self, **kw):
         """Get all mechanics without any filters"""
         try:
@@ -149,7 +149,7 @@ class MentorRequestController(http.Controller):
                 "message": str(e)
             }
 
-    @http.route('/api/mentor/request/<int:request_id>/action', type='json', auth='user', methods=['POST'])
+    @http.route('/web/mentor/request/<int:request_id>/action', type='json', auth='user', methods=['POST'])
     def handle_request_action(self, request_id, **kw):
         """Handle request actions"""
         try:
@@ -222,7 +222,7 @@ class MentorRequestController(http.Controller):
                 "message": str(e)
             }
 
-    @http.route('/api/mentor/dashboard', type='json', auth='user', methods=['POST'])
+    @http.route('/web/mentor/dashboard', type='json', auth='user', methods=['POST'])
     def get_dashboard_data(self, **kw):
         """Get dashboard statistics"""
         try:
@@ -295,7 +295,7 @@ class MentorRequestController(http.Controller):
             }
         }
     
-    @http.route('/api/mentor/request/notify', type='json', auth='user', methods=['POST'])
+    @http.route('/web/mentor/request/notify', type='json', auth='user', methods=['POST'])
     def notify_mentors(self, **kw):
         """Send notification to specified mentors about a request"""
         try:
@@ -367,7 +367,7 @@ class MentorRequestController(http.Controller):
                 "message": str(e)
             }
         
-    # EO@http.route('/api/mentor/notifications/list', type='json', auth='user', methods=['POST'])
+    # EO@http.route('/web/mentor/notifications/list', type='json', auth='user', methods=['POST'])
     def list_notifications(self, **kw):
         """Get list of notifications for a mentor"""
         try:
@@ -422,7 +422,7 @@ class MentorRequestController(http.Controller):
             'request_details': self._get_request_details(req)
         }
     
-    @http.route('/api/mentor/notifications/count', type='json', auth='user', methods=['POST'])
+    @http.route('/web/mentor/notifications/count', type='json', auth='user', methods=['POST'])
     def get_notification_count(self, **kw):
         """Get count of unread notifications"""
         try:

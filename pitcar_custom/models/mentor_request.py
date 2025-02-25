@@ -32,7 +32,8 @@ class MentorRequest(models.Model):
     problem_description = fields.Text('Problem Description', required=True, tracking=True)
     priority = fields.Selection([
         ('normal', 'Normal'),
-        ('urgent', 'Urgent')
+        ('high', 'High'),
+        ('urgent', 'Urgent'),
     ], string='Priority', default='normal', required=True, tracking=True)
 
     # Status & Flow

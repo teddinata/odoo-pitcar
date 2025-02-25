@@ -9,8 +9,8 @@ _logger = logging.getLogger(__name__)
 class MentorRequestController(http.Controller):
     @http.route('/web/mentor/request/create', type='json', auth='user', methods=['POST'])
     def create_request(self, **kw):
+        """Create new mentor request (Step 1: Daftar kenapa perlu bantuan)"""
         try:
-            # Validate required fields 
             required_fields = ['sale_order_id', 'mechanic_ids', 'problem_category', 'problem_description']
             missing = [field for field in required_fields if field not in kw]
             if missing:
@@ -19,7 +19,6 @@ class MentorRequestController(http.Controller):
                     "message": f"Missing required field(s): {', '.join(missing)}"
                 }
 
-            # Pastikan mechanic_ids adalah list
             mechanic_ids = kw['mechanic_ids'] if isinstance(kw['mechanic_ids'], list) else [kw['mechanic_ids']]
             if not mechanic_ids:
                 return {
@@ -27,15 +26,13 @@ class MentorRequestController(http.Controller):
                     "message": "At least one mechanic must be specified"
                 }
 
-            # Verify that mechanic_ids exist
             mechanics = request.env['pitcar.mechanic.new'].sudo().browse(mechanic_ids)
             if not mechanics.exists() or len(mechanics) != len(mechanic_ids):
                 return {
                     "status": "error",
                     "message": "One or more mechanic IDs do not exist"
                 }
-                
-            # Verify that sale_order_id exists
+            
             sale_order = request.env['sale.order'].sudo().browse(kw['sale_order_id'])
             if not sale_order.exists():
                 return {
@@ -43,24 +40,21 @@ class MentorRequestController(http.Controller):
                     "message": f"Sale Order with ID {kw['sale_order_id']} does not exist"
                 }
 
-            # Create request
             values = {
                 'sale_order_id': kw['sale_order_id'],
                 'mechanic_ids': [(6, 0, mechanic_ids)],
                 'problem_category': kw['problem_category'],
                 'problem_description': kw['problem_description'],
-                'priority': kw.get('priority', 'normal')
+                'priority': kw.get('priority', 'normal'),
+                'state': 'draft'
             }
 
             mentor_request = request.env['pitcar.mentor.request'].sudo().create(values)
-            
-            # Submit request if created successfully
-            if mentor_request:
-                mentor_request.sudo().action_submit_request()
 
             return {
                 "status": "success",
-                "data": self._get_request_details(mentor_request)
+                "data": self._get_request_details(mentor_request),
+                "message": "Permintaan bantuan berhasil dibuat, silakan pilih mentor pada langkah berikutnya"
             }
 
         except Exception as e:
@@ -75,15 +69,13 @@ class MentorRequestController(http.Controller):
         """Search mentor requests"""
         try:
             domain = []
-            
-            # Build search domain
             if kw.get('state'):
                 domain.append(('state', '=', kw['state']))
             if kw.get('priority'):
                 domain.append(('priority', '=', kw['priority']))
             if kw.get('category'):
                 domain.append(('problem_category', '=', kw['category']))
-            if kw.get('mechanic_ids'):  # Ganti mechanic_id ke mechanic_ids
+            if kw.get('mechanic_ids'):
                 mechanic_ids = kw['mechanic_ids'] if isinstance(kw['mechanic_ids'], list) else [kw['mechanic_ids']]
                 domain.append(('mechanic_ids', 'in', mechanic_ids))
             if kw.get('mentor_id'):
@@ -91,18 +83,15 @@ class MentorRequestController(http.Controller):
             if kw.get('sale_order_id'):
                 domain.append(('sale_order_id', '=', kw['sale_order_id']))
 
-            # Date range
             if kw.get('date_from'):
                 domain.append(('create_date', '>=', kw['date_from']))
             if kw.get('date_to'):
                 domain.append(('create_date', '<=', kw['date_to']))
 
-            # Pagination
             page = int(kw.get('page', 1))
             limit = int(kw.get('limit', 20))
             offset = (page - 1) * limit
 
-            # Search
             MentorRequest = request.env['pitcar.mentor.request'].sudo()
             total_count = MentorRequest.search_count(domain)
             requests = MentorRequest.search(domain, limit=limit, offset=offset)
@@ -178,7 +167,7 @@ class MentorRequestController(http.Controller):
                         "status": "error", 
                         "message": "Mentor ID required"
                     }
-                    
+                
                 mentor = request.env['pitcar.mechanic.new'].sudo().browse(kw['mentor_id'])
                 if not mentor.exists():
                     return {
@@ -187,7 +176,13 @@ class MentorRequestController(http.Controller):
                     }
                 
                 req.sudo().write({'mentor_id': kw['mentor_id']})
-                req.sudo().action_start_mentoring()
+                req.sudo().action_submit_request()
+
+                return {
+                    "status": "success",
+                    "data": self._get_request_details(req),
+                    "message": "Permintaan bantuan telah dikirim ke mentor"
+                }
 
             elif action == 'solve':
                 if not kw.get('resolution_notes'):
@@ -204,19 +199,25 @@ class MentorRequestController(http.Controller):
                 req.sudo().write(values)
                 req.sudo().action_mark_solved()
 
+                return {
+                    "status": "success",
+                    "data": self._get_request_details(req),
+                    "message": "Permintaan telah diselesaikan"
+                }
+
             elif action == 'cancel':
                 req.sudo().action_cancel_request()
-                
+                return {
+                    "status": "success",
+                    "data": self._get_request_details(req),
+                    "message": "Permintaan telah dibatalkan"
+                }
+            
             else:
                 return {
                     "status": "error",
                     "message": "Invalid action specified"
                 }
-
-            return {
-                "status": "success",
-                "data": self._get_request_details(req)
-            }
 
         except Exception as e:
             _logger.error(f"Error handling request action: {str(e)}")
@@ -320,8 +321,7 @@ class MentorRequestController(http.Controller):
                     "message": "No valid mentors found to notify"
                 }
             
-            # Prepare notification message
-            mechanic_names = ", ".join(mentor_request.mechanic_ids.mapped('name'))  # Gunakan mechanic_ids
+            mechanic_names = ", ".join(mentor_request.mechanic_ids.mapped('name'))
             message = f"""
                 <p><strong>Permintaan Bantuan Baru</strong></p>
                 <ul>
@@ -395,7 +395,7 @@ class MentorRequestController(http.Controller):
             
     def _get_notification_data(self, req):
         """Format notification data"""
-        mechanic_names = ", ".join(req.mechanic_ids.mapped('name'))  # Gunakan mechanic_ids
+        mechanic_names = ", ".join(req.mechanic_ids.mapped('name'))
         return {
             'id': req.id,
             'name': req.name,

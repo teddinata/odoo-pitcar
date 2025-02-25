@@ -7,61 +7,40 @@ from odoo.tools import date_utils
 _logger = logging.getLogger(__name__)
 
 class MentorRequestController(http.Controller):
-    @http.route('/web/mentor/request/create', type='json', auth='user', methods=['POST'])
+    @http.route('/api/mentor/request/create', type='json', auth='user', methods=['POST'])
     def create_request(self, **kw):
-        """Create new mentor request"""
         try:
-            # Validate required fields 
-            required_fields = ['sale_order_id', 'mechanic_id', 'problem_category', 'problem_description']
+            required_fields = ['sale_order_id', 'mechanic_ids', 'problem_category', 'problem_description']
             missing = [field for field in required_fields if field not in kw]
             if missing:
-                return {
-                    "status": "error",
-                    "message": f"Missing required field(s): {', '.join(missing)}"
-                }
+                return {"status": "error", "message": f"Missing required field(s): {', '.join(missing)}"}
 
-            # Verify that mechanic_id exists
-            mechanic = request.env['pitcar.mechanic.new'].sudo().browse(kw['mechanic_id'])
-            if not mechanic.exists():
-                return {
-                    "status": "error",
-                    "message": f"Mechanic with ID {kw['mechanic_id']} does not exist"
-                }
-                
-            # Verify that sale_order_id exists
+            mechanic_ids = kw['mechanic_ids'] if isinstance(kw['mechanic_ids'], list) else [kw['mechanic_ids']]
+            mechanics = request.env['pitcar.mechanic.new'].sudo().browse(mechanic_ids)
+            if not mechanics.exists() or len(mechanics) != len(mechanic_ids):
+                return {"status": "error", "message": "One or more mechanic IDs do not exist"}
+
             sale_order = request.env['sale.order'].sudo().browse(kw['sale_order_id'])
             if not sale_order.exists():
-                return {
-                    "status": "error",
-                    "message": f"Sale Order with ID {kw['sale_order_id']} does not exist"
-                }
+                return {"status": "error", "message": f"Sale Order with ID {kw['sale_order_id']} does not exist"}
 
-            # Create request
             values = {
                 'sale_order_id': kw['sale_order_id'],
-                'mechanic_id': kw['mechanic_id'],
+                'mechanic_ids': [(6, 0, mechanic_ids)],  # Untuk many2many
                 'problem_category': kw['problem_category'],
                 'problem_description': kw['problem_description'],
                 'priority': kw.get('priority', 'normal')
             }
 
             mentor_request = request.env['pitcar.mentor.request'].sudo().create(values)
-            
-            # Submit request if created successfully
             if mentor_request:
                 mentor_request.sudo().action_submit_request()
 
-            return {
-                "status": "success",
-                "data": self._get_request_details(mentor_request)
-            }
+            return {"status": "success", "data": self._get_request_details(mentor_request)}
 
         except Exception as e:
             _logger.error(f"Error creating mentor request: {str(e)}")
-            return {
-                "status": "error",
-                "message": str(e)
-            }
+            return {"status": "error", "message": str(e)}
 
     @http.route('/web/mentor/request/search', type='json', auth='user', methods=['POST'])
     def search_requests(self, **kw):

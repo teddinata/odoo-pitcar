@@ -6,7 +6,8 @@ from odoo.exceptions import ValidationError, UserError
 import json
 import math
 import logging
-from odoo.osv import expression  # Menambahkan import expression
+from odoo.osv import expression  # Menambahkan import 
+import traceback
 
 _logger = logging.getLogger(__name__)
 
@@ -395,9 +396,13 @@ class LeadTimeAPIController(http.Controller):
             
             rows = []
             start_number = offset + 1
+            MentorRequest = request.env['pitcar.mentor.request'].sudo()
             for order in orders:            
                 # Get proper status
                 status = get_order_status(order)
+
+                # Cek apakah sale order ini memiliki mentor request
+                has_mentor_request = MentorRequest.search_count([('sale_order_id', '=', order.id)]) > 0
                 
                 rows.append({
                     'id': order.id,
@@ -469,7 +474,8 @@ class LeadTimeAPIController(http.Controller):
                             'end': format_timestamp(order.controller_tunggu_sublet_selesai),
                             'completed': bool(order.controller_tunggu_sublet_selesai)
                         }
-                    }
+                    },
+                    'has_mentor_request': has_mentor_request  # Tambahkan field ini
                 })
 
             # Prepare summary

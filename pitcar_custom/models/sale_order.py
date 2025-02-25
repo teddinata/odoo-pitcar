@@ -2904,3 +2904,23 @@ class SaleOrder(models.Model):
                 order.total_recommendations = 0
                 order.realized_recommendations = 0
                 order.recommendation_realization_rate = 0
+
+    has_mentor_request = fields.Boolean(
+        string='Has Mentor Request',
+        compute='_compute_has_mentor_request',
+        store=True,
+        help="Indicates if this sale order has an associated mentor request."
+    )
+    mentor_request_count = fields.Integer(
+        string='Mentor Request Count',
+        compute='_compute_has_mentor_request',
+        store=True,
+        help="Number of mentor requests associated with this sale order."
+    )
+
+    @api.depends('id')  # Depend on 'id' to recompute when related records change
+    def _compute_has_mentor_request(self):
+        for order in self:
+            requests = self.env['pitcar.mentor.request'].search([('sale_order_id', '=', order.id)])
+            order.has_mentor_request = bool(requests)
+            order.mentor_request_count = len(requests)

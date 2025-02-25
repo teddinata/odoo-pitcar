@@ -7,7 +7,7 @@ from odoo.tools import date_utils
 _logger = logging.getLogger(__name__)
 
 class MentorRequestController(http.Controller):
-    @http.route('/api/mentor/request/create', type='json', auth='user', methods=['POST'])
+    @http.route('/web/mentor/request/create', type='json', auth='user', methods=['POST'])
     def create_request(self, **kw):
         try:
             required_fields = ['sale_order_id', 'mechanic_ids', 'problem_category', 'problem_description']

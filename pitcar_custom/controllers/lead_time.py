@@ -396,14 +396,8 @@ class LeadTimeAPIController(http.Controller):
             
             rows = []
             start_number = offset + 1
-            MentorRequest = request.env['pitcar.mentor.request'].sudo()
-            for order in orders:            
-                # Get proper status
+            for order in orders:
                 status = get_order_status(order)
-
-                # Cek apakah sale order ini memiliki mentor request
-                has_mentor_request = MentorRequest.search_count([('sale_order_id', '=', order.id)]) > 0
-                
                 rows.append({
                     'id': order.id,
                     'no': start_number + len(rows),
@@ -425,7 +419,7 @@ class LeadTimeAPIController(http.Controller):
                             'code': order.service_subcategory,
                             'text': dict(order._fields['service_subcategory'].selection).get(order.service_subcategory, '-')
                         },
-                        'details': self._get_service_details(order)  # Add service details
+                        'details': self._get_service_details(order)
                     },
                     'timestamps': {
                         'mulai_servis': format_timestamp(order.controller_mulai_servis),
@@ -475,7 +469,7 @@ class LeadTimeAPIController(http.Controller):
                             'completed': bool(order.controller_tunggu_sublet_selesai)
                         }
                     },
-                    'has_mentor_request': has_mentor_request  # Tambahkan field ini
+                    'has_mentor_request': order.has_mentor_request  # Gunakan field baru dari model
                 })
 
             # Prepare summary

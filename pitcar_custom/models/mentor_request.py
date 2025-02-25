@@ -5,7 +5,6 @@ from odoo.exceptions import UserError
 import logging
 _logger = logging.getLogger(__name__)
 
-
 # Model untuk Request Bantuan Mentor
 class MentorRequest(models.Model):
     _name = 'pitcar.mentor.request'
@@ -18,8 +17,7 @@ class MentorRequest(models.Model):
     # Core Relations
     sale_order_id = fields.Many2one('sale.order', string='Service Order', required=True, tracking=True)
     mentor_id = fields.Many2one('pitcar.mechanic.new', string='Mentor', tracking=True)
-    mechanic_id = fields.Many2one('pitcar.mechanic.new', string='Mechanic', required=True, tracking=True)
-    # mechanic_ids = fields.Many2many('pitcar.mechanic.new', string='Mechanics', required=True, tracking=True)
+    mechanic_ids = fields.Many2many('pitcar.mechanic.new', string='Mechanics', required=True, tracking=True)
 
     # Request Details
     problem_category = fields.Selection([
@@ -144,18 +142,18 @@ class MentorRequest(models.Model):
             return
             
         # Prepare message
+        mechanic_names = ", ".join(self.mechanic_ids.mapped('name'))  # Gunakan mechanic_ids
         message = f"""
             <p><strong>Permintaan Bantuan Baru</strong></p>
             <ul>
-                <li>Dari: {self.mechanic_id.name}</li>
+                <li>Dari: {mechanic_names}</li>
                 <li>Work Order: {self.sale_order_id.name}</li>
                 <li>Kategori: {dict(self._fields['problem_category'].selection).get(self.problem_category)}</li>
                 <li>Prioritas: {dict(self._fields['priority'].selection).get(self.priority)}</li>
                 <li>Deskripsi: {self.problem_description}</li>
             </ul>
         """
-        
-        # Send notification
+        # Send notification (uncomment jika ingin digunakan)
         # partner_ids = mentors.mapped('partner_id.id')
         # if partner_ids:
         #     self.message_post(
@@ -170,7 +168,8 @@ class MechanicInherit(models.Model):
 
     is_mentor = fields.Boolean('Is Mentor', default=False)
     mentor_request_ids = fields.One2many('pitcar.mentor.request', 'mentor_id', string='Mentor Requests')
-    help_request_ids = fields.One2many('pitcar.mentor.request', 'mechanic_id', string='Help Requests')
+    # help_request_ids masih merujuk ke mechanic_id, tapi field ini sudah dihapus
+    help_request_ids = fields.Many2many('pitcar.mentor.request', 'pitcar_mechanic_request_rel', 'mechanic_id', 'request_id', string='Help Requests')
 
     # Statistics
     total_mentor_requests = fields.Integer('Total Requests', compute='_compute_mentor_stats')
@@ -188,12 +187,9 @@ class MechanicInherit(models.Model):
         for record in self:
             total = len(record.mentor_request_ids)
             solved = len(record.mentor_request_ids.filtered(lambda r: r.state == 'solved'))
-            
             record.total_mentor_requests = total
             record.solved_requests = solved
             record.success_rate = (solved / total * 100) if total > 0 else 0
-            
-            # Calculate average response time
             response_times = record.mentor_request_ids.mapped('response_time')
             record.avg_response_time = sum(response_times) / len(response_times) if response_times else 0
 
@@ -203,18 +199,13 @@ class MechanicInherit(models.Model):
             requests = record.help_request_ids
             total = len(requests)
             record.total_help_requests = total
-
-            # Calculate average rating
             ratings = [int(r.mechanic_rating) for r in requests if r.mechanic_rating]
             record.avg_rating = sum(ratings) / len(ratings) if ratings else 0
-
-            # Calculate learning progress (improvement in ratings over time)
             if len(ratings) >= 2:
-                initial_ratings = ratings[:2]  # First 2 ratings
-                recent_ratings = ratings[-2:]   # Last 2 ratings
+                initial_ratings = ratings[:2]
+                recent_ratings = ratings[-2:]
                 initial_avg = sum(initial_ratings) / len(initial_ratings)
                 recent_avg = sum(recent_ratings) / len(recent_ratings)
-                
                 if initial_avg > 0:
                     improvement = ((recent_avg - initial_avg) / initial_avg) * 100
                     record.learning_progress = max(0, min(100, improvement))

@@ -2905,22 +2905,27 @@ class SaleOrder(models.Model):
                 order.realized_recommendations = 0
                 order.recommendation_realization_rate = 0
 
+    mentor_request_ids = fields.One2many(
+        'pitcar.mentor.request', 
+        'sale_order_id', 
+        string='Mentor Requests',
+        readonly=True
+    )
     has_mentor_request = fields.Boolean(
         string='Has Mentor Request',
-        compute='_compute_has_mentor_request',
+        compute='_compute_mentor_requests',
         store=True,
         help="Indicates if this sale order has an associated mentor request."
     )
     mentor_request_count = fields.Integer(
         string='Mentor Request Count',
-        compute='_compute_has_mentor_request',
+        compute='_compute_mentor_requests',
         store=True,
         help="Number of mentor requests associated with this sale order."
     )
 
-    @api.depends('id')  # Depend on 'id' to recompute when related records change
-    def _compute_has_mentor_request(self):
+    @api.depends('mentor_request_ids')
+    def _compute_mentor_requests(self):
         for order in self:
-            requests = self.env['pitcar.mentor.request'].search([('sale_order_id', '=', order.id)])
-            order.has_mentor_request = bool(requests)
-            order.mentor_request_count = len(requests)
+            order.has_mentor_request = bool(order.mentor_request_ids)
+            order.mentor_request_count = len(order.mentor_request_ids)

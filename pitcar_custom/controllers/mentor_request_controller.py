@@ -10,37 +10,65 @@ class MentorRequestController(http.Controller):
     @http.route('/web/mentor/request/create', type='json', auth='user', methods=['POST'])
     def create_request(self, **kw):
         try:
+            # Validate required fields 
             required_fields = ['sale_order_id', 'mechanic_ids', 'problem_category', 'problem_description']
             missing = [field for field in required_fields if field not in kw]
             if missing:
-                return {"status": "error", "message": f"Missing required field(s): {', '.join(missing)}"}
+                return {
+                    "status": "error",
+                    "message": f"Missing required field(s): {', '.join(missing)}"
+                }
 
+            # Pastikan mechanic_ids adalah list
             mechanic_ids = kw['mechanic_ids'] if isinstance(kw['mechanic_ids'], list) else [kw['mechanic_ids']]
+            if not mechanic_ids:
+                return {
+                    "status": "error",
+                    "message": "At least one mechanic must be specified"
+                }
+
+            # Verify that mechanic_ids exist
             mechanics = request.env['pitcar.mechanic.new'].sudo().browse(mechanic_ids)
             if not mechanics.exists() or len(mechanics) != len(mechanic_ids):
-                return {"status": "error", "message": "One or more mechanic IDs do not exist"}
-
+                return {
+                    "status": "error",
+                    "message": "One or more mechanic IDs do not exist"
+                }
+                
+            # Verify that sale_order_id exists
             sale_order = request.env['sale.order'].sudo().browse(kw['sale_order_id'])
             if not sale_order.exists():
-                return {"status": "error", "message": f"Sale Order with ID {kw['sale_order_id']} does not exist"}
+                return {
+                    "status": "error",
+                    "message": f"Sale Order with ID {kw['sale_order_id']} does not exist"
+                }
 
+            # Create request
             values = {
                 'sale_order_id': kw['sale_order_id'],
-                'mechanic_ids': [(6, 0, mechanic_ids)],  # Untuk many2many
+                'mechanic_ids': [(6, 0, mechanic_ids)],
                 'problem_category': kw['problem_category'],
                 'problem_description': kw['problem_description'],
                 'priority': kw.get('priority', 'normal')
             }
 
             mentor_request = request.env['pitcar.mentor.request'].sudo().create(values)
+            
+            # Submit request if created successfully
             if mentor_request:
                 mentor_request.sudo().action_submit_request()
 
-            return {"status": "success", "data": self._get_request_details(mentor_request)}
+            return {
+                "status": "success",
+                "data": self._get_request_details(mentor_request)
+            }
 
         except Exception as e:
             _logger.error(f"Error creating mentor request: {str(e)}")
-            return {"status": "error", "message": str(e)}
+            return {
+                "status": "error",
+                "message": str(e)
+            }
 
     @http.route('/web/mentor/request/search', type='json', auth='user', methods=['POST'])
     def search_requests(self, **kw):
@@ -55,8 +83,9 @@ class MentorRequestController(http.Controller):
                 domain.append(('priority', '=', kw['priority']))
             if kw.get('category'):
                 domain.append(('problem_category', '=', kw['category']))
-            if kw.get('mechanic_id'):
-                domain.append(('mechanic_id', '=', kw['mechanic_id']))
+            if kw.get('mechanic_ids'):  # Ganti mechanic_id ke mechanic_ids
+                mechanic_ids = kw['mechanic_ids'] if isinstance(kw['mechanic_ids'], list) else [kw['mechanic_ids']]
+                domain.append(('mechanic_ids', 'in', mechanic_ids))
             if kw.get('mentor_id'):
                 domain.append(('mentor_id', '=', kw['mentor_id']))
             if kw.get('sale_order_id'):
@@ -99,10 +128,7 @@ class MentorRequestController(http.Controller):
     def get_mechanics(self, **kw):
         """Get all mechanics without any filters"""
         try:
-            # Empty domain - get all mechanics
             domain = []
-            
-            # Add search if provided, otherwise return all
             if kw.get('search'):
                 domain.append(('name', 'ilike', kw['search']))
 
@@ -132,7 +158,6 @@ class MentorRequestController(http.Controller):
     def handle_request_action(self, request_id, **kw):
         """Handle request actions"""
         try:
-            # Check for action
             if 'action' not in kw:
                 return {
                     "status": "error",
@@ -154,7 +179,6 @@ class MentorRequestController(http.Controller):
                         "message": "Mentor ID required"
                     }
                     
-                # Verify mentor exists
                 mentor = request.env['pitcar.mechanic.new'].sudo().browse(kw['mentor_id'])
                 if not mentor.exists():
                     return {
@@ -212,12 +236,9 @@ class MentorRequestController(http.Controller):
                 domain.append(('create_date', '<=', kw['date_to']))
 
             MentorRequest = request.env['pitcar.mentor.request'].sudo()
-            
-            # Base metrics
             total_requests = MentorRequest.search_count(domain)
             solved_requests = MentorRequest.search_count(domain + [('state', '=', 'solved')])
             
-            # Calculate metrics
             data = {
                 'overview': {
                     'total_requests': total_requests,
@@ -250,10 +271,7 @@ class MentorRequestController(http.Controller):
             'priority': req.priority,
             'category': req.problem_category,
             'description': req.problem_description,
-            'mechanic': {
-                'id': req.mechanic_id.id,
-                'name': req.mechanic_id.name
-            } if req.mechanic_id else {},
+            'mechanics': [{'id': m.id, 'name': m.name} for m in req.mechanic_ids],
             'mentor': {
                 'id': req.mentor_id.id,
                 'name': req.mentor_id.name
@@ -278,7 +296,6 @@ class MentorRequestController(http.Controller):
     def notify_mentors(self, **kw):
         """Send notification to specified mentors about a request"""
         try:
-            # Validate required fields
             required_fields = ['request_id', 'mentor_ids']
             missing = [field for field in required_fields if field not in kw]
             if missing:
@@ -287,7 +304,6 @@ class MentorRequestController(http.Controller):
                     "message": f"Missing required field(s): {', '.join(missing)}"
                 }
             
-            # Get the request
             mentor_request = request.env['pitcar.mentor.request'].sudo().browse(kw['request_id'])
             if not mentor_request.exists():
                 return {
@@ -295,7 +311,6 @@ class MentorRequestController(http.Controller):
                     "message": f"Request with ID {kw['request_id']} does not exist"
                 }
                 
-            # Get mentors
             mentors = request.env['pitcar.mechanic.new'].sudo().browse(kw['mentor_ids'])
             valid_mentors = mentors.filtered(lambda m: m.exists() and m.user_id and m.user_id.partner_id)
             
@@ -306,10 +321,11 @@ class MentorRequestController(http.Controller):
                 }
             
             # Prepare notification message
+            mechanic_names = ", ".join(mentor_request.mechanic_ids.mapped('name'))  # Gunakan mechanic_ids
             message = f"""
                 <p><strong>Permintaan Bantuan Baru</strong></p>
                 <ul>
-                    <li>Dari: {mentor_request.mechanic_id.name}</li>
+                    <li>Dari: {mechanic_names}</li>
                     <li>Work Order: {mentor_request.sale_order_id.name}</li>
                     <li>Kategori: {dict(mentor_request._fields['problem_category'].selection).get(mentor_request.problem_category)}</li>
                     <li>Prioritas: {dict(mentor_request._fields['priority'].selection).get(mentor_request.priority)}</li>
@@ -317,7 +333,6 @@ class MentorRequestController(http.Controller):
                 </ul>
             """
             
-            # Send notifications
             partner_ids = valid_mentors.mapped('user_id.partner_id.id')
             if partner_ids:
                 mentor_request.message_post(
@@ -346,29 +361,20 @@ class MentorRequestController(http.Controller):
                 "message": str(e)
             }
         
-    # EO@http.route('/web/mentor/notifications/list', type='json', auth='user', methods=['POST'])
+    @http.route('/web/mentor/notifications/list', type='json', auth='user', methods=['POST'])
     def list_notifications(self, **kw):
         """Get list of notifications for a mentor"""
         try:
-            # Get parameters
             mentor_id = kw.get('mentor_id')
             if not mentor_id:
                 return {"status": "error", "message": "mentor_id is required"}
                 
-            # Pagination
             page = int(kw.get('page', 1))
             limit = int(kw.get('limit', 10))
             offset = (page - 1) * limit
-            
-            # Status filter (default: requested)
             state = kw.get('state', 'requested')
             
-            # Build domain
-            domain = [
-                ('state', '=', state)
-            ]
-                
-            # Get requests that need mentor attention
+            domain = [('state', '=', state)]
             MentorRequest = request.env['pitcar.mentor.request'].sudo()
             total_count = MentorRequest.search_count(domain)
             requests = MentorRequest.search(domain, limit=limit, offset=offset)
@@ -389,15 +395,16 @@ class MentorRequestController(http.Controller):
             
     def _get_notification_data(self, req):
         """Format notification data"""
+        mechanic_names = ", ".join(req.mechanic_ids.mapped('name'))  # Gunakan mechanic_ids
         return {
             'id': req.id,
             'name': req.name,
             'type': 'mentor_request',
             'title': f"Request: {req.name}",
-            'message': f"Mechanic {req.mechanic_id.name} needs help with {dict(req._fields['problem_category'].selection).get(req.problem_category)}",
+            'message': f"Mechanics {mechanic_names} need help with {dict(req._fields['problem_category'].selection).get(req.problem_category)}",
             'priority': req.priority,
             'timestamp': date_utils.json_default(req.create_date),
-            'read': False,  # Placeholder - implement read status if needed
+            'read': False,
             'request_details': self._get_request_details(req)
         }
     
@@ -409,11 +416,7 @@ class MentorRequestController(http.Controller):
             if not mentor_id:
                 return {"status": "error", "message": "mentor_id is required"}
                 
-            # Count pending requests
-            domain = [
-                ('state', '=', 'requested')
-            ]
-                
+            domain = [('state', '=', 'requested')]
             count = request.env['pitcar.mentor.request'].sudo().search_count(domain)
             
             return {

@@ -17,8 +17,9 @@ class MentorRequest(models.Model):
     
     # Core Relations
     sale_order_id = fields.Many2one('sale.order', string='Service Order', required=True, tracking=True)
-    mechanic_id = fields.Many2one('pitcar.mechanic.new', string='Mechanic', required=True, tracking=True)
     mentor_id = fields.Many2one('pitcar.mechanic.new', string='Mentor', tracking=True)
+    # mechanic_id = fields.Many2one('pitcar.mechanic.new', string='Mechanic', required=True, tracking=True)
+    mechanic_ids = fields.Many2many('pitcar.mechanic.new', string='Mechanics', required=True, tracking=True)
 
     # Request Details
     problem_category = fields.Selection([
@@ -143,10 +144,11 @@ class MentorRequest(models.Model):
             return
             
         # Prepare message
+        mechanic_names = ", ".join(self.mechanic_ids.mapped('name'))
         message = f"""
             <p><strong>Permintaan Bantuan Baru</strong></p>
             <ul>
-                <li>Dari: {self.mechanic_id.name}</li>
+                <li>Dari: {mechanic_names}</li>
                 <li>Work Order: {self.sale_order_id.name}</li>
                 <li>Kategori: {dict(self._fields['problem_category'].selection).get(self.problem_category)}</li>
                 <li>Prioritas: {dict(self._fields['priority'].selection).get(self.priority)}</li>

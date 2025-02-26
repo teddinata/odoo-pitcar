@@ -1419,12 +1419,75 @@ class LeadTimePartController(http.Controller):
         
         return Response(generate_notifications(), headers=headers)
 
+    @http.route('/web/part-purchase/observer', type='json', auth='user')
+    def observe_part_requests(self, last_checked=None):
+        """Poll untuk new part requests sejak last check"""
+        try:
+            if not last_checked:
+                # First check, just return current timestamp
+                return {
+                    'status': 'success',
+                    'data': {
+                        'timestamp': fields.Datetime.now().isoformat(),
+                        'new_requests': []
+                    }
+                }
+            
+            # Parse the last checked time
+            check_time = fields.Datetime.from_string(last_checked)
+            
+            # Find orders with part requests after last check
+            SaleOrder = request.env['sale.order']
+            new_requests = SaleOrder.search([
+                ('need_part_purchase', '=', 'yes'),
+                ('part_request_time', '>=', check_time)
+            ], limit=20)
+            
+            # Format the new requests
+            result = []
+            for order in new_requests:
+                result.append({
+                    'id': order.id,
+                    'name': order.name,
+                    'request_time': order.part_request_time.isoformat() if order.part_request_time else fields.Datetime.now().isoformat(),
+                    'total_items': order.total_requested_items or 0
+                })
+            
+            # Publish notifications for new requests
+            for order in new_requests:
+                self._publish_notification(
+                    'request',
+                    'Request Part Baru',
+                    f"Order #{order.name} memerlukan part",
+                    {
+                        'order_id': order.id,
+                        'order_name': order.name,
+                        'request_time': order.part_request_time.isoformat() if order.part_request_time else fields.Datetime.now().isoformat(),
+                        'total_items': order.total_requested_items or 0
+                    }
+                )
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'timestamp': fields.Datetime.now().isoformat(),
+                    'new_requests': result
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in observe_part_requests: {str(e)}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+    
     def _publish_notification(self, notification_type, title, message, data=None):
-        """Publish a notification to the SSE channel"""
+        """Helper to publish a notification through the bus system"""
         try:
             # Create notification payload
             payload = {
-                'type': notification_type,  # 'request', 'purchase_update', etc.
+                'type': notification_type,
                 'title': title,
                 'message': message,
                 'timestamp': fields.Datetime.now().isoformat(),
@@ -1436,9 +1499,10 @@ class LeadTimePartController(http.Controller):
                 
             # Convert to JSON and publish
             message_json = json.dumps(payload)
+            _logger.info(f"Publishing notification: {title}")
             request.env['bus.bus'].sendone('part_purchase_notifications', message_json)
-            _logger.info(f"Published notification: {title}")
             return True
         except Exception as e:
             _logger.error(f"Error publishing notification: {str(e)}")
             return False
+

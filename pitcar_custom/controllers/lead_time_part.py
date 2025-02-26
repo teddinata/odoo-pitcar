@@ -1348,24 +1348,28 @@ class LeadTimePartController(http.Controller):
         _logger.info("SSE connection initiated for user: %s", request.env.user.name)
         
         def generate_notifications():
-            # Send initial connection message
+            # Send initial connection message ONCE
             yield "data: {\"type\": \"connected\", \"message\": \"SSE connection established\"}\n\n"
             
-            # Define channel and message tracking
+            # Set up channel and tracking
             channel = 'part_purchase_notifications'
             last_id = 0
             
-            # Set a reasonable timeout for the connection
-            timeout = time.time() + 3600  # 1 hour timeout
+            # Use a session-specific identifier to track this specific connection
+            session_id = request.session.sid
+            _logger.info(f"Starting SSE stream for session: {session_id}")
             
-            # Keep connection alive with proper error handling
-            while time.time() < timeout:
-                try:
-                    # Create a new cursor for each iteration to avoid transaction issues
-                    with request.env.registry.cursor() as cr:
-                        env = api.Environment(cr, request.env.uid, request.env.context)
-                        
-                        # Get new messages
+            # Create a new Environment with a dedicated cursor that will not be closed
+            # This is crucial to fix the "object unbound" error
+            registry = request.env.registry
+            cr = registry.cursor()
+            env = api.Environment(cr, request.env.uid, request.env.context)
+            
+            try:
+                # Main event loop
+                while True:
+                    try:
+                        # Get new messages using the dedicated cursor
                         messages = env['bus.bus'].sudo().search([
                             ('channel', '=', json.dumps(channel)),
                             ('id', '>', last_id)
@@ -1373,17 +1377,32 @@ class LeadTimePartController(http.Controller):
                         
                         if messages:
                             for message in messages:
-                                last_id = message.id
+                                last_id = max(last_id, message.id)
                                 _logger.info(f"Sending SSE event: {message.message}")
                                 yield f"data: {message.message}\n\n"
                         else:
-                            # Send heartbeat comment
+                            # Send a comment as heartbeat (not a data message)
                             yield ":\n\n"
-                            time.sleep(3)
-                except Exception as e:
-                    _logger.error(f"Error in SSE stream: {str(e)}", exc_info=True)
-                    yield f"data: {{\"type\": \"error\", \"message\": \"{str(e)}\"}}\n\n"
-                    time.sleep(5)
+                            
+                        # Commit the cursor to release locks
+                        cr.commit()
+                        
+                        # Sleep to prevent high CPU usage
+                        time.sleep(3)
+                        
+                    except Exception as e:
+                        _logger.error(f"Error in SSE stream: {str(e)}", exc_info=True)
+                        yield f"data: {{\"type\": \"error\", \"message\": \"{str(e)}\"}}\n\n"
+                        time.sleep(5)
+                        # Rollback transaction on error
+                        cr.rollback()
+            except GeneratorExit:
+                # Clean up when the client disconnects
+                _logger.info(f"SSE connection closed for session: {session_id}")
+                cr.close()
+            except Exception as e:
+                _logger.error(f"Unexpected error in SSE stream: {str(e)}", exc_info=True)
+                cr.close()
         
         # Set proper headers
         headers = [

@@ -616,7 +616,7 @@ class LeadTimePartController(http.Controller):
             }
 
     @http.route('/web/part-purchase/create', type='json', auth='user', methods=['POST'])
-    def create_purchase(self, **kw):
+    def create_part_request(self, order_id, items, notes=None, **kw):
         """Create new part purchase record"""
         try:
             # Ambil params langsung dari kw karena kita pakai type='json'
@@ -678,6 +678,22 @@ class LeadTimePartController(http.Controller):
             }
 
             purchase = request.env['part.purchase.leadtime'].create(values)
+
+            # After successfully creating the request, send a notification
+            order = request.env['sale.order'].browse(int(order_id))
+            
+            # Call the notification method
+            self._publish_notification(
+                'request',
+                'Request Part Baru',
+                f"Order #{order.name} memerlukan part",
+                {
+                    'order_id': order.id,
+                    'order_name': order.name,
+                    'request_time': fields.Datetime.now().isoformat(),
+                    'item_count': len(items)
+                }
+            )
             
             return {
                 'status': 'success',
@@ -1348,19 +1364,14 @@ class LeadTimePartController(http.Controller):
         _logger.info("SSE connection initiated for user: %s", request.env.user.name)
         
         def generate_notifications():
-            # Send initial connection message ONCE
+            # Send initial connection message
             yield "data: {\"type\": \"connected\", \"message\": \"SSE connection established\"}\n\n"
             
-            # Set up channel and tracking
+            # Define channel and message tracking
             channel = 'part_purchase_notifications'
             last_id = 0
             
-            # Use a session-specific identifier to track this specific connection
-            session_id = request.session.sid
-            _logger.info(f"Starting SSE stream for session: {session_id}")
-            
-            # Create a new Environment with a dedicated cursor that will not be closed
-            # This is crucial to fix the "object unbound" error
+            # Create a dedicated cursor that won't be closed between iterations
             registry = request.env.registry
             cr = registry.cursor()
             env = api.Environment(cr, request.env.uid, request.env.context)
@@ -1369,7 +1380,7 @@ class LeadTimePartController(http.Controller):
                 # Main event loop
                 while True:
                     try:
-                        # Get new messages using the dedicated cursor
+                        # Get new messages
                         messages = env['bus.bus'].sudo().search([
                             ('channel', '=', json.dumps(channel)),
                             ('id', '>', last_id)
@@ -1377,31 +1388,25 @@ class LeadTimePartController(http.Controller):
                         
                         if messages:
                             for message in messages:
-                                last_id = max(last_id, message.id)
+                                last_id = message.id
                                 _logger.info(f"Sending SSE event: {message.message}")
                                 yield f"data: {message.message}\n\n"
                         else:
-                            # Send a comment as heartbeat (not a data message)
+                            # Send heartbeat comment to keep connection alive
                             yield ":\n\n"
-                            
-                        # Commit the cursor to release locks
-                        cr.commit()
                         
-                        # Sleep to prevent high CPU usage
-                        time.sleep(3)
+                        # Commit to release locks
+                        cr.commit()
+                        time.sleep(2)
                         
                     except Exception as e:
                         _logger.error(f"Error in SSE stream: {str(e)}", exc_info=True)
                         yield f"data: {{\"type\": \"error\", \"message\": \"{str(e)}\"}}\n\n"
-                        time.sleep(5)
-                        # Rollback transaction on error
                         cr.rollback()
-            except GeneratorExit:
-                # Clean up when the client disconnects
-                _logger.info(f"SSE connection closed for session: {session_id}")
-                cr.close()
-            except Exception as e:
-                _logger.error(f"Unexpected error in SSE stream: {str(e)}", exc_info=True)
+                        time.sleep(5)
+            except (GeneratorExit, Exception) as e:
+                # Clean up when the generator is closed or there's an error
+                _logger.info(f"Closing SSE connection: {str(e)}")
                 cr.close()
         
         # Set proper headers
@@ -1413,3 +1418,27 @@ class LeadTimePartController(http.Controller):
         ]
         
         return Response(generate_notifications(), headers=headers)
+
+    def _publish_notification(self, notification_type, title, message, data=None):
+        """Publish a notification to the SSE channel"""
+        try:
+            # Create notification payload
+            payload = {
+                'type': notification_type,  # 'request', 'purchase_update', etc.
+                'title': title,
+                'message': message,
+                'timestamp': fields.Datetime.now().isoformat(),
+            }
+            
+            # Add additional data if provided
+            if data:
+                payload['data'] = data
+                
+            # Convert to JSON and publish
+            message_json = json.dumps(payload)
+            request.env['bus.bus'].sendone('part_purchase_notifications', message_json)
+            _logger.info(f"Published notification: {title}")
+            return True
+        except Exception as e:
+            _logger.error(f"Error publishing notification: {str(e)}")
+            return False

@@ -1345,18 +1345,15 @@ class LeadTimePartController(http.Controller):
 
     @http.route('/web/part-purchase/notifications', type='http', auth='user', cors='*', methods=['GET'])
     def sse_notifications(self, **kw):
-        """Endpoint SSE untuk mengirimkan notifikasi real-time"""
+        _logger.info("SSE connection initiated for user: %s", request.env.user.name)
         def generate_notifications():
-            # Pesan awal untuk mengonfirmasi koneksi
             yield "data: {\"type\": \"connected\", \"message\": \"SSE connection established\"}\n\n"
 
-            # Channel untuk mendengarkan notifikasi
             channel = 'part_purchase_notifications'
             last_id = 0
 
             while True:
                 try:
-                    # Cari pesan baru di bus.bus
                     messages = request.env['bus.bus'].sudo().search([
                         ('channel', '=', json.dumps(channel)),
                         ('id', '>', last_id)
@@ -1368,18 +1365,17 @@ class LeadTimePartController(http.Controller):
                             _logger.info(f"Sending SSE event: {message.message}")
                             yield f"data: {message.message}\n\n"
                     else:
-                        # Jeda kecil jika tidak ada pesan baru
-                        yield ":\n\n"  # Heartbeat untuk menjaga koneksi
-                        time.sleep(1)
+                        yield ":\n\n"  # Heartbeat
+                        time.sleep(5)  # Tingkatkan interval untuk stabilitas
                 except Exception as e:
-                    _logger.error(f"Error in SSE stream: {str(e)}")
+                    _logger.error(f"Error in SSE stream: {str(e)}", exc_info=True)
                     yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-                    time.sleep(5)
+                    time.sleep(10)  # Tunggu lebih lama saat error
 
         headers = [
             ('Content-Type', 'text/event-stream'),
             ('Cache-Control', 'no-cache'),
             ('Connection', 'keep-alive'),
-            ('X-Accel-Buffering', 'no')  # Untuk Nginx
+            ('X-Accel-Buffering', 'no')
         ]
         return Response(generate_notifications(), headers=headers)

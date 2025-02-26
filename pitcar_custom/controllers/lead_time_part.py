@@ -1423,10 +1423,14 @@ class LeadTimePartController(http.Controller):
     def observe_part_requests(self, last_checked=None, seen_ids=None):
         """Endpoint to check for new part requests since last check, with tracking of seen notifications"""
         try:
+            # Log parameter masuk untuk debugging
+            _logger.info(f"Observer called with last_checked: {last_checked}, seen_ids count: {len(seen_ids) if seen_ids else 0}")
+            
             seen_ids = seen_ids or []
             
             if not last_checked:
                 # First check, just return current timestamp and no requests
+                _logger.info("First observer call, returning timestamp only")
                 return {
                     'status': 'success',
                     'data': {
@@ -1453,8 +1457,14 @@ class LeadTimePartController(http.Controller):
                 except Exception as e:
                     _logger.warning(f"Could not parse last_checked time: {e}")
             
+            # Log domain untuk debugging
+            _logger.info(f"Observer search domain: {domain}")
+            
             # Order by ID for consistent pagination and fetch only latest
             new_requests = SaleOrder.search(domain, limit=5, order='id desc')
+            
+            # Log jumlah hasil
+            _logger.info(f"Observer found {len(new_requests)} new requests")
             
             # Format the new requests
             result = []
@@ -1462,16 +1472,20 @@ class LeadTimePartController(http.Controller):
             
             for order in new_requests:
                 max_id = max(max_id, order.id)
-                result.append({
+                # Pastikan format data konsisten
+                request_data = {
                     'id': order.id,
                     'name': order.name,
                     'request_time': fields.Datetime.now().isoformat(),
                     'total_items': order.total_requested_items or 0
-                })
+                }
+                result.append(request_data)
+                _logger.info(f"Adding new request to result: {request_data}")
             
             # Only publish notifications if there's something new
             # This prevents re-notification on page reload
             if result:
+                _logger.info(f"Publishing notifications for {len(result)} new requests")
                 # Publish notifications for new requests
                 for order in new_requests:
                     self._publish_notification(
@@ -1486,7 +1500,8 @@ class LeadTimePartController(http.Controller):
                         }
                     )
             
-            return {
+            # Buat response
+            response_data = {
                 'status': 'success',
                 'data': {
                     'timestamp': fields.Datetime.now().isoformat(),
@@ -1495,13 +1510,19 @@ class LeadTimePartController(http.Controller):
                 }
             }
             
+            # Log response untuk debugging
+            _logger.info(f"Observer returning response: {response_data}")
+            
+            return response_data
+            
         except Exception as e:
-            _logger.error(f"Error in observe_part_requests: {str(e)}")
+            _logger.error(f"Error in observe_part_requests: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)
             }
-    
+
+    # 2. Perbaiki helper untuk publikasi notifikasi:
     def _publish_notification(self, notification_type, title, message, data=None):
         """Helper to publish a notification through the bus system"""
         try:
@@ -1519,10 +1540,14 @@ class LeadTimePartController(http.Controller):
                 
             # Convert to JSON and publish
             message_json = json.dumps(payload)
-            _logger.info(f"Publishing notification: {title}")
-            request.env['bus.bus'].sendone('part_purchase_notifications', message_json)
+            _logger.info(f"Publishing notification: {title} with data: {data}")
+            
+            # Bus notifications perlu disetup dengan benar
+            # Pastikan channel name sudah didaftarkan di odoo
+            bus_service = request.env['bus.bus']
+            bus_service.sendone('part_purchase_notifications', message_json)
+            
             return True
         except Exception as e:
-            _logger.error(f"Error publishing notification: {str(e)}")
+            _logger.error(f"Error publishing notification: {str(e)}", exc_info=True)
             return False
-

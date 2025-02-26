@@ -1420,20 +1420,45 @@ class LeadTimePartController(http.Controller):
         return Response(generate_notifications(), headers=headers)
 
     @http.route('/web/part-purchase/observer', type='json', auth='user')
-    def observe_part_requests(self, last_id=None):
-        """Endpoint to check for new part requests using ID instead of timestamp"""
+    def observe_part_requests(self, last_checked=None, seen_ids=None):
+        """Endpoint to check for new part requests since last check, with tracking of seen notifications"""
         try:
-            # Query berdasarkan ID, bukan timestamp
-            domain = [('need_part_purchase', '=', 'yes')]
-            if last_id:
-                domain.append(('id', '>', int(last_id)))
+            seen_ids = seen_ids or []
             
+            if not last_checked:
+                # First check, just return current timestamp and no requests
+                return {
+                    'status': 'success',
+                    'data': {
+                        'timestamp': fields.Datetime.now().isoformat(),
+                        'new_requests': [],
+                        'last_id': max(seen_ids) if seen_ids else 0
+                    }
+                }
+            
+            # Find newest orders with part requests that haven't been seen yet
             SaleOrder = request.env['sale.order']
-            new_requests = SaleOrder.search(domain, limit=20, order='id desc')
+            domain = [
+                ('need_part_purchase', '=', 'yes'),
+                ('id', 'not in', seen_ids)  # Exclude already seen requests
+            ]
             
-            # Format response
+            # Try to limit to recent requests (last 24 hours)
+            if last_checked:
+                try:
+                    # Parse datetime and subtract 24 hours as safety margin
+                    check_time = fields.Datetime.from_string(last_checked)
+                    # Add time filter as a preference, not a hard requirement
+                    domain.append(('write_date', '>=', check_time - timedelta(hours=24)))
+                except Exception as e:
+                    _logger.warning(f"Could not parse last_checked time: {e}")
+            
+            # Order by ID for consistent pagination and fetch only latest
+            new_requests = SaleOrder.search(domain, limit=5, order='id desc')
+            
+            # Format the new requests
             result = []
-            max_id = last_id or 0
+            max_id = max(seen_ids) if seen_ids else 0
             
             for order in new_requests:
                 max_id = max(max_id, order.id)
@@ -1443,27 +1468,30 @@ class LeadTimePartController(http.Controller):
                     'request_time': fields.Datetime.now().isoformat(),
                     'total_items': order.total_requested_items or 0
                 })
-
             
-            # Publish notifications for new requests
-            for order in new_requests:
-                self._publish_notification(
-                    'request',
-                    'Request Part Baru',
-                    f"Order #{order.name} memerlukan part",
-                    {
-                        'order_id': order.id,
-                        'order_name': order.name,
-                        'request_time': order.part_request_time.isoformat() if order.part_request_time else fields.Datetime.now().isoformat(),
-                        'total_items': order.total_requested_items or 0
-                    }
-                )
+            # Only publish notifications if there's something new
+            # This prevents re-notification on page reload
+            if result:
+                # Publish notifications for new requests
+                for order in new_requests:
+                    self._publish_notification(
+                        'request',
+                        'Request Part Baru',
+                        f"Order #{order.name} memerlukan part",
+                        {
+                            'order_id': order.id,
+                            'order_name': order.name,
+                            'timestamp': fields.Datetime.now().isoformat(),
+                            'notif_id': f"request_{order.id}"  # Add unique notif ID
+                        }
+                    )
             
             return {
                 'status': 'success',
                 'data': {
-                    'last_id': max_id,  # Return ID instead of timestamp
-                    'new_requests': result
+                    'timestamp': fields.Datetime.now().isoformat(),
+                    'new_requests': result,
+                    'last_id': max_id
                 }
             }
             

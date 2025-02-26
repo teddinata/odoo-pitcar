@@ -1,4 +1,4 @@
-from odoo import http, fields
+from odoo import http, fields, api
 from odoo.http import request, Response
 import json
 import pytz
@@ -1346,36 +1346,51 @@ class LeadTimePartController(http.Controller):
     @http.route('/web/part-purchase/notifications', type='http', auth='user', cors='*', methods=['GET'])
     def sse_notifications(self, **kw):
         _logger.info("SSE connection initiated for user: %s", request.env.user.name)
+        
         def generate_notifications():
+            # Send initial connection message
             yield "data: {\"type\": \"connected\", \"message\": \"SSE connection established\"}\n\n"
-
+            
+            # Define channel and message tracking
             channel = 'part_purchase_notifications'
             last_id = 0
-
-            while True:
+            
+            # Set a reasonable timeout for the connection
+            timeout = time.time() + 3600  # 1 hour timeout
+            
+            # Keep connection alive with proper error handling
+            while time.time() < timeout:
                 try:
-                    messages = request.env['bus.bus'].sudo().search([
-                        ('channel', '=', json.dumps(channel)),
-                        ('id', '>', last_id)
-                    ], order='id asc', limit=10)
-
-                    if messages:
-                        for message in messages:
-                            last_id = message.id
-                            _logger.info(f"Sending SSE event: {message.message}")
-                            yield f"data: {message.message}\n\n"
-                    else:
-                        yield ":\n\n"  # Heartbeat
-                        time.sleep(5)  # Tingkatkan interval untuk stabilitas
+                    # Create a new cursor for each iteration to avoid transaction issues
+                    with request.env.registry.cursor() as cr:
+                        env = api.Environment(cr, request.env.uid, request.env.context)
+                        
+                        # Get new messages
+                        messages = env['bus.bus'].sudo().search([
+                            ('channel', '=', json.dumps(channel)),
+                            ('id', '>', last_id)
+                        ], order='id asc', limit=10)
+                        
+                        if messages:
+                            for message in messages:
+                                last_id = message.id
+                                _logger.info(f"Sending SSE event: {message.message}")
+                                yield f"data: {message.message}\n\n"
+                        else:
+                            # Send heartbeat comment
+                            yield ":\n\n"
+                            time.sleep(3)
                 except Exception as e:
                     _logger.error(f"Error in SSE stream: {str(e)}", exc_info=True)
-                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-                    time.sleep(10)  # Tunggu lebih lama saat error
-
+                    yield f"data: {{\"type\": \"error\", \"message\": \"{str(e)}\"}}\n\n"
+                    time.sleep(5)
+        
+        # Set proper headers
         headers = [
             ('Content-Type', 'text/event-stream'),
             ('Cache-Control', 'no-cache'),
             ('Connection', 'keep-alive'),
             ('X-Accel-Buffering', 'no')
         ]
+        
         return Response(generate_notifications(), headers=headers)

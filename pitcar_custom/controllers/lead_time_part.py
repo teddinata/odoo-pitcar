@@ -1420,38 +1420,30 @@ class LeadTimePartController(http.Controller):
         return Response(generate_notifications(), headers=headers)
 
     @http.route('/web/part-purchase/observer', type='json', auth='user')
-    def observe_part_requests(self, last_checked=None):
-        """Poll untuk new part requests sejak last check"""
+    def observe_part_requests(self, last_id=None):
+        """Endpoint to check for new part requests using ID instead of timestamp"""
         try:
-            if not last_checked:
-                # First check, just return current timestamp
-                return {
-                    'status': 'success',
-                    'data': {
-                        'timestamp': fields.Datetime.now().isoformat(),
-                        'new_requests': []
-                    }
-                }
+            # Query berdasarkan ID, bukan timestamp
+            domain = [('need_part_purchase', '=', 'yes')]
+            if last_id:
+                domain.append(('id', '>', int(last_id)))
             
-            # Parse the last checked time
-            check_time = fields.Datetime.from_string(last_checked)
-            
-            # Find orders with part requests after last check
             SaleOrder = request.env['sale.order']
-            new_requests = SaleOrder.search([
-                ('need_part_purchase', '=', 'yes'),
-                ('part_request_time', '>=', check_time)
-            ], limit=20)
+            new_requests = SaleOrder.search(domain, limit=20, order='id desc')
             
-            # Format the new requests
+            # Format response
             result = []
+            max_id = last_id or 0
+            
             for order in new_requests:
+                max_id = max(max_id, order.id)
                 result.append({
                     'id': order.id,
                     'name': order.name,
-                    'request_time': order.part_request_time.isoformat() if order.part_request_time else fields.Datetime.now().isoformat(),
+                    'request_time': fields.Datetime.now().isoformat(),
                     'total_items': order.total_requested_items or 0
                 })
+
             
             # Publish notifications for new requests
             for order in new_requests:
@@ -1470,7 +1462,7 @@ class LeadTimePartController(http.Controller):
             return {
                 'status': 'success',
                 'data': {
-                    'timestamp': fields.Datetime.now().isoformat(),
+                    'last_id': max_id,  # Return ID instead of timestamp
                     'new_requests': result
                 }
             }

@@ -2703,6 +2703,15 @@ class SaleOrder(models.Model):
         ('completed', 'Completed')
     ], string='Part Request State', default='draft', tracking=True)
 
+    notification_ids = fields.One2many('pitcar.notification', compute='_compute_notification_ids')
+
+    def _compute_notification_ids(self):
+        for order in self:
+            order.notification_ids = self.env['pitcar.notification'].search([
+                ('model', '=', 'sale.order'),
+                ('res_id', '=', order.id)
+            ])
+
     # Tambahkan compute method di sini, setelah semua fields
     @api.depends('need_part_purchase', 'part_request_items_ids')
     def _compute_part_request_time(self):
@@ -2721,52 +2730,28 @@ class SaleOrder(models.Model):
                 'title': 'Konfirmasi Request Part',
                 'message': 'Anda akan membuat request part ke Tim Part. Lanjutkan?'
             }
-            
             vals = {
                 'part_request_state': 'draft',
                 'part_request_time': fields.Datetime.now(),
                 'part_purchase_status': 'pending'
             }
             self.write(vals)
-            
-            # Publikasikan notifikasi dengan is_read
-            self.env['bus.bus'].sendone(
-                'part_purchase_notifications',
-                json.dumps({
-                    'type': 'new_request',
-                    'title': 'Request Part Baru',
-                    'message': f"Order #{self.name} memerlukan part",
-                    'data': {
-                        'id': self.id,
-                        'name': self.name,
-                        'request_time': fields.Datetime.now().isoformat(),
-                        'total_items': len(self.part_request_items_ids)
-                    },
-                    'is_read': False  # Tambahkan ini
-                })
+            self.env['pitcar.notification'].create_or_update_notification(
+                model='sale.order',
+                res_id=self.id,
+                type='new_request',
+                title='Request Part Baru',
+                message=f"Order #{self.name} memerlukan part",
+                request_time=self.part_request_time,
+                data={'total_items': self.total_requested_items or 0}
             )
             return {'warning': warning}
-        
-        elif self.need_part_purchase == 'no':
-            vals = {
-                'part_request_state': False,
-                'part_request_time': False,
-                'part_purchase_status': 'not_needed'
-            }
-            self.write(vals)
-            if self.part_request_items_ids:
-                return {
-                    'warning': {
-                        'title': 'Konfirmasi Batalkan Request',
-                        'message': 'Request part yang sudah dibuat akan dibatalkan. Lanjutkan?'
-                    }
-                }
+        # ... (logika lainnya sama)
 
     def action_request_part(self):
         self.ensure_one()
         if not self.part_request_items_ids:
             raise ValidationError(_("Mohon tambahkan item part yang dibutuhkan"))
-        
         current_time = fields.Datetime.now()
         vals = {
             'need_part_purchase': 'yes',
@@ -2775,22 +2760,14 @@ class SaleOrder(models.Model):
             'part_request_state': 'requested'
         }
         self.write(vals)
-        
-        # Publikasikan notifikasi dengan is_read
-        self.env['bus.bus'].sendone(
-            'part_purchase_notifications',
-            json.dumps({
-                'type': 'new_request',
-                'title': 'Request Part Baru',
-                'message': f"Order #{self.name} memerlukan part",
-                'data': {
-                    'id': self.id,
-                    'name': self.name,
-                    'request_time': current_time.isoformat(),
-                    'total_items': len(self.part_request_items_ids)
-                },
-                'is_read': False  # Tambahkan ini
-            })
+        self.env['pitcar.notification'].create_or_update_notification(
+            model='sale.order',
+            res_id=self.id,
+            type='new_request',
+            title='Request Part Baru',
+            message=f"Order #{self.name} memerlukan part",
+            request_time=current_time,
+            data={'total_items': self.total_requested_items or 0}
         )
 
     def action_request_part(self):

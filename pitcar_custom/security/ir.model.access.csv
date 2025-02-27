@@ -98,3 +98,7 @@ pitcar_custom.access_content_bau_user,content.bau.user,pitcar_custom.model_conte
 pitcar_custom.access_content_bau_manager,content.bau.manager,pitcar_custom.model_content_bau,base.group_system,1,1,1,1
 pitcar_custom.access_mentor_request_user,mentor.request.user,model_pitcar_mentor_request,base.group_user,1,1,1,0
 pitcar_custom.access_mentor_request_manager,mentor.request.manager,model_pitcar_mentor_request,base.group_system,1,1,1,1
+pitcar_custom.access_pitcar_notification_user,access.pitcar.notification.user,pitcar_custom.model_pitcar_notification,base.group_user,1,1,1,0
+pitcar_custom.access_pitcar_notification_manager,access.pitcar.notification.manager,pitcar_custom.model_pitcar_notification,base.group_system,1,1,1,1
+pitcar_custom.access_pitcar_notification_service_advisor,access.pitcar.notification.service.advisor,pitcar_custom.model_pitcar_notification,pitcar_custom.group_service_advisor,1,1,1,0
+pitcar_custom.access_pitcar_notification_controller,access.pitcar.notification.controller,pitcar_custom.model_pitcar_notification,pitcar_custom.group_controller,1,1,1,0

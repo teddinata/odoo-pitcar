@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_pitcar_notification_tree" model="ir.ui.view">
+        <field name="name">pitcar.notification.tree</field>
+        <field name="model">pitcar.notification</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="model"/>
+                <field name="res_id"/>
+                <field name="type"/>
+                <field name="title"/>
+                <field name="message"/>
+                <field name="request_time"/>
+                <field name="is_read"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_pitcar_notification" model="ir.actions.act_window">
+        <field name="name">Notifications</field>
+        <field name="res_model">pitcar.notification</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_pitcar_notification" name="Notifications" parent="sale.menu_sale_config" action="action_pitcar_notification"/>
+</odoo>

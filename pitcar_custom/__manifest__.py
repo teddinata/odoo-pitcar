@@ -98,6 +98,7 @@
         'views/work_location_views.xml',
         'views/hr_attendance_views.xml',
         'views/utm_menu.xml',
+        'views/notification_views.xml',
         'views/menu.xml',
     ],
     'installable': True,
@@ -105,5 +106,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.91'
+    'version':'16.0.99'
 }

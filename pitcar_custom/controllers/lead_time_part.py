@@ -1433,28 +1433,45 @@ class LeadTimePartController(http.Controller):
                 try:
                     check_time = fields.Datetime.from_string(last_checked)
                     domain.append(('request_time', '>', check_time))
+                    _logger.info(f"Filtering with request_time > {check_time}")
                 except Exception as e:
                     _logger.warning(f"Could not parse last_checked: {e}")
             
             notifications = Notification.search(domain, order='request_time desc', limit=10)
             _logger.info(f"Found {len(notifications)} notifications")
             
+            # Zona waktu Jakarta (UTC+7)
+            jakarta_tz = pytz.timezone('Asia/Jakarta')
+            
             result = []
             for notif in notifications:
+                # Konversi request_time dari UTC ke Jakarta
+                utc_time = notif.request_time  # Waktu disimpan sebagai UTC di Odoo
+                if utc_time:
+                    utc_dt = pytz.UTC.localize(utc_time)
+                    jakarta_dt = utc_dt.astimezone(jakarta_tz)
+                    request_time_str = jakarta_dt.isoformat()
+                else:
+                    request_time_str = fields.Datetime.now().isoformat()
+                
                 data = json.loads(notif.data) if notif.data else {}
                 request_data = {
                     'id': notif.res_id,
                     'name': notif.name,
-                    'request_time': notif.request_time.isoformat(),
+                    'request_time': request_time_str,  # Waktu Jakarta
                     'total_items': data.get('total_items', 0),
                     'is_read': notif.is_read
                 }
                 result.append(request_data)
             
+            # Konversi timestamp respons ke Jakarta juga
+            utc_now = fields.Datetime.now()
+            jakarta_now = pytz.UTC.localize(utc_now).astimezone(jakarta_tz)
+            
             response_data = {
                 'status': 'success',
                 'data': {
-                    'timestamp': fields.Datetime.now().isoformat(),
+                    'timestamp': jakarta_now.isoformat(),
                     'notifications': result
                 }
             }

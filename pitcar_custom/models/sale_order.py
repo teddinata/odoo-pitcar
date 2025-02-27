@@ -2704,6 +2704,7 @@ class SaleOrder(models.Model):
     ], string='Part Request State', default='draft', tracking=True)
 
     notification_ids = fields.One2many('pitcar.notification', compute='_compute_notification_ids')
+    part_request_items_ids = fields.One2many('sale.order.part.item', 'sale_order_id', string='Items yang Diminta')
 
     def _compute_notification_ids(self):
         for order in self:
@@ -2746,7 +2747,20 @@ class SaleOrder(models.Model):
                 data={'total_items': self.total_requested_items or 0}
             )
             return {'warning': warning}
-        # ... (logika lainnya sama)
+        elif self.need_part_purchase == 'no':
+            vals = {
+                'part_request_state': False,
+                'part_request_time': False,
+                'part_purchase_status': 'not_needed'
+            }
+            self.write(vals)
+            if self.part_request_items_ids:
+                return {
+                    'warning': {
+                        'title': 'Konfirmasi Batalkan Request',
+                        'message': 'Request part yang sudah dibuat akan dibatalkan. Lanjutkan?'
+                    }
+                }
 
     def action_request_part(self):
         self.ensure_one()
@@ -2770,28 +2784,79 @@ class SaleOrder(models.Model):
             data={'total_items': self.total_requested_items or 0}
         )
 
-    def action_request_part(self):
-        """SA memulai request part"""
-        _logger.info("action_request_part called")
+    # Pantau perubahan pada part_request_items_ids
+    @api.onchange('part_request_items_ids')
+    def _onchange_part_request_items(self):
+        if self.need_part_purchase == 'yes' and self.part_request_items_ids:
+            current_time = fields.Datetime.now()
+            self.env['pitcar.notification'].create_or_update_notification(
+                model='sale.order',
+                res_id=self.id,
+                type='new_request',
+                title='Request Part Baru',
+                message=f"Order #{self.name} memerlukan part (Item diperbarui)",
+                request_time=current_time,
+                data={
+                    'total_items': len(self.part_request_items_ids),
+                    'updated_items': [
+                        {
+                            'product_name': item.part_name or item.product_id.name,
+                            'quantity': item.quantity,
+                            'notes': item.notes or ''
+                        } for item in self.part_request_items_ids
+                    ]
+                }
+            )
+            _logger.info(f"Notification created/updated for order {self.name} due to item change")
+
+    # Override write untuk mendeteksi perubahan setelah simpan
+    def write(self, vals):
+        res = super(SaleOrder, self).write(vals)
+        if 'part_request_items_ids' in vals and self.need_part_purchase == 'yes':
+            current_time = fields.Datetime.now()
+            self.env['pitcar.notification'].create_or_update_notification(
+                model='sale.order',
+                res_id=self.id,
+                type='new_request',
+                title='Request Part Baru',
+                message=f"Order #{self.name} memerlukan part (Item diperbarui)",
+                request_time=current_time,
+                data={
+                    'total_items': len(self.part_request_items_ids),
+                    'updated_items': [
+                        {
+                            'product_name': item.part_name or item.product_id.name,
+                            'quantity': item.quantity,
+                            'notes': item.notes or ''
+                        } for item in self.part_request_items_ids
+                    ]
+                }
+            )
+            _logger.info(f"Notification created/updated for order {self.name} after write")
+        return res
+
+    # def action_request_part(self):
+    #     """SA memulai request part"""
+    #     _logger.info("action_request_part called")
         
-        self.ensure_one()
-        if not self.part_request_items_ids:
-            raise ValidationError(_("Mohon tambahkan item part yang dibutuhkan"))
+    #     self.ensure_one()
+    #     if not self.part_request_items_ids:
+    #         raise ValidationError(_("Mohon tambahkan item part yang dibutuhkan"))
         
-        current_time = fields.Datetime.now()
-        _logger.info(f"Setting values: need_part_purchase=yes, part_request_time={current_time}")
+    #     current_time = fields.Datetime.now()
+    #     _logger.info(f"Setting values: need_part_purchase=yes, part_request_time={current_time}")
         
-        vals = {
-            'need_part_purchase': 'yes',
-            'part_purchase_status': 'pending',
-            'part_request_time': current_time,
-            'part_request_state': 'requested'
-        }
-        self.write(vals)
+    #     vals = {
+    #         'need_part_purchase': 'yes',
+    #         'part_purchase_status': 'pending',
+    #         'part_request_time': current_time,
+    #         'part_request_state': 'requested'
+    #     }
+    #     self.write(vals)
         
         # Verify after write
-        self.invalidate_cache()
-        _logger.info(f"After write - part_request_time: {self.part_request_time}")
+        # self.invalidate_cache()
+        # _logger.info(f"After write - part_request_time: {self.part_request_time}")
 
     @api.depends('part_request_items_ids', 'part_request_items_ids.is_fulfilled')
     def _compute_items_status(self):

@@ -1427,8 +1427,8 @@ class LeadTimePartController(http.Controller):
             Notification = request.env['pitcar.notification']
             domain = [
                 ('request_time', '>=', fields.Datetime.now() - timedelta(days=30)),
-                ('res_id', '!=', 0),  # Pastikan res_id tidak 0
-                ('name', '!=', 'Unknown')  # Hindari entri Unknown
+                ('res_id', '!=', 0),
+                ('name', '!=', 'Unknown')
             ]
             
             if last_checked:
@@ -1452,7 +1452,8 @@ class LeadTimePartController(http.Controller):
                     'name': notif.name,
                     'request_time': jakarta_dt.isoformat(),
                     'total_items': data.get('total_items', 0),
-                    'is_read': notif.is_read
+                    'is_read': notif.is_read,
+                    'type': notif.type  # Pastikan tipe dikirim ke frontend
                 }
                 result.append(request_data)
             

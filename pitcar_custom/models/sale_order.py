@@ -2784,7 +2784,6 @@ class SaleOrder(models.Model):
             data={'total_items': self.total_requested_items or 0}
         )
 
-    # Pantau perubahan pada part_request_items_ids
     @api.onchange('part_request_items_ids')
     def _onchange_part_request_items(self):
         if self.need_part_purchase == 'yes' and self.part_request_items_ids:
@@ -2807,9 +2806,8 @@ class SaleOrder(models.Model):
                     ]
                 }
             )
-            _logger.info(f"Notification created/updated for order {self.name} due to item change")
+            _logger.info(f"Notification updated for order {self.name} due to item change")
 
-    # Override write untuk mendeteksi perubahan setelah simpan
     def write(self, vals):
         res = super(SaleOrder, self).write(vals)
         if 'part_request_items_ids' in vals and self.need_part_purchase == 'yes':
@@ -2832,7 +2830,7 @@ class SaleOrder(models.Model):
                     ]
                 }
             )
-            _logger.info(f"Notification created/updated for order {self.name} after write")
+            _logger.info(f"Notification updated for order {self.name} after write")
         return res
 
     # def action_request_part(self):

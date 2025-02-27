@@ -9,38 +9,38 @@ _logger = logging.getLogger(__name__)
 class Notification(models.Model):
     _name = 'pitcar.notification'
     _description = 'Global Notification'
-    _order = 'create_date desc'
+    _order = 'request_time desc'
 
-    # Field generik untuk referensi ke model apa pun
-    model = fields.Char(string='Model', required=True)  # Nama model, misalnya 'sale.order'
-    res_id = fields.Integer(string='Record ID', required=True)  # ID record di model tersebut
-    name = fields.Char(string='Name', compute='_compute_name', store=True)  # Nama record terkait
-    
-    # Field notifikasi
-    type = fields.Char(string='Type', required=True)  # Jenis notifikasi, misalnya 'new_request'
+    model = fields.Char(string='Model', required=True)
+    res_id = fields.Integer(string='Record ID', required=True)
+    name = fields.Char(string='Name', compute='_compute_name', store=True)
+    type = fields.Char(string='Type', required=True)
     title = fields.Char(string='Title', required=True)
     message = fields.Char(string='Message', required=True)
-    data = fields.Text(string='Data', help='Additional data in JSON format')  # Untuk menyimpan informasi spesifik
+    data = fields.Text(string='Data')
     is_read = fields.Boolean(string='Is Read', default=False)
     create_date = fields.Datetime(string='Created On', readonly=True)
-    request_time = fields.Datetime(string='Request Time', required=True)  # Waktu kejadian
+    request_time = fields.Datetime(string='Request Time', required=True)
 
     @api.depends('model', 'res_id')
     def _compute_name(self):
         for record in self:
             if record.model and record.res_id:
                 try:
-                    model_obj = self.env[record.model].browse(record.res_id)
-                    record.name = model_obj.name if model_obj.exists() else 'Record Not Found'
+                    model_obj = self.env[record.model].sudo().browse(record.res_id)
+                    if model_obj.exists() and hasattr(model_obj, 'name'):
+                        record.name = model_obj.name
+                    else:
+                        record.name = f"{record.model} #{record.res_id} (Not Found)"
                 except Exception as e:
                     _logger.warning(f"Error computing name for {record.model}/{record.res_id}: {e}")
-                    record.name = 'Unknown'
+                    record.name = f"{record.model} #{record.res_id} (Error)"
             else:
                 record.name = 'Unknown'
 
     @api.model
     def create_or_update_notification(self, model, res_id, type, title, message, request_time=None, data=None):
-        """Create or update a notification for any model"""
+        # Cari notifikasi yang sudah ada untuk model dan res_id tertentu
         existing = self.search([('model', '=', model), ('res_id', '=', res_id), ('type', '=', type)], limit=1)
         values = {
             'model': model,
@@ -50,9 +50,12 @@ class Notification(models.Model):
             'message': message,
             'request_time': request_time or fields.Datetime.now(),
             'data': json.dumps(data) if data else False,
-            'is_read': False if not existing else existing.is_read
+            'is_read': False if not existing else existing.is_read  
         }
         if existing:
             existing.write(values)
+            _logger.info(f"Updated existing notification for {model}/{res_id}")
             return existing
-        return self.create(values)
+        new_notif = self.create(values)
+        _logger.info(f"Created new notification for {model}/{res_id}")
+        return new_notif

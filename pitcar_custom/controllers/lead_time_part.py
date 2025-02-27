@@ -1426,48 +1426,38 @@ class LeadTimePartController(http.Controller):
             
             Notification = request.env['pitcar.notification']
             domain = [
-                ('request_time', '>=', fields.Datetime.now() - timedelta(days=30))
+                ('request_time', '>=', fields.Datetime.now() - timedelta(days=30)),
+                ('res_id', '!=', 0),  # Pastikan res_id tidak 0
+                ('name', '!=', 'Unknown')  # Hindari entri Unknown
             ]
             
             if last_checked:
                 try:
                     check_time = fields.Datetime.from_string(last_checked)
                     domain.append(('request_time', '>', check_time))
-                    _logger.info(f"Filtering with request_time > {check_time}")
                 except Exception as e:
                     _logger.warning(f"Could not parse last_checked: {e}")
             
             notifications = Notification.search(domain, order='request_time desc', limit=10)
             _logger.info(f"Found {len(notifications)} notifications")
             
-            # Zona waktu Jakarta (UTC+7)
             jakarta_tz = pytz.timezone('Asia/Jakarta')
-            
             result = []
             for notif in notifications:
-                # Konversi request_time dari UTC ke Jakarta
-                utc_time = notif.request_time  # Waktu disimpan sebagai UTC di Odoo
-                if utc_time:
-                    utc_dt = pytz.UTC.localize(utc_time)
-                    jakarta_dt = utc_dt.astimezone(jakarta_tz)
-                    request_time_str = jakarta_dt.isoformat()
-                else:
-                    request_time_str = fields.Datetime.now().isoformat()
-                
+                utc_time = notif.request_time
+                jakarta_dt = pytz.UTC.localize(utc_time).astimezone(jakarta_tz)
                 data = json.loads(notif.data) if notif.data else {}
                 request_data = {
                     'id': notif.res_id,
                     'name': notif.name,
-                    'request_time': request_time_str,  # Waktu Jakarta
+                    'request_time': jakarta_dt.isoformat(),
                     'total_items': data.get('total_items', 0),
                     'is_read': notif.is_read
                 }
                 result.append(request_data)
             
-            # Konversi timestamp respons ke Jakarta juga
             utc_now = fields.Datetime.now()
             jakarta_now = pytz.UTC.localize(utc_now).astimezone(jakarta_tz)
-            
             response_data = {
                 'status': 'success',
                 'data': {

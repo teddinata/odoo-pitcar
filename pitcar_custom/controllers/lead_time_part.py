@@ -1420,62 +1420,42 @@ class LeadTimePartController(http.Controller):
         return Response(generate_notifications(), headers=headers)
 
     @http.route('/web/part-purchase/observer', type='json', auth='user')
-    def observe_part_requests(self, last_checked=None, seen_ids=None):
+    def observe_part_requests(self, last_checked=None):
         try:
-            _logger.info(f"Observer called with last_checked: {last_checked}, seen_ids: {seen_ids}")
-            seen_ids = seen_ids or []
+            _logger.info(f"Observer called with last_checked: {last_checked}")
             
-            SaleOrder = request.env['sale.order']
+            Notification = request.env['pitcar.notification']
             domain = [
-                ('need_part_purchase', '=', 'yes'),
-                ('id', 'not in', seen_ids),
-                ('part_request_time', '!=', False)
+                ('request_time', '>=', fields.Datetime.now() - timedelta(days=30))
             ]
             
             if last_checked:
                 try:
                     check_time = fields.Datetime.from_string(last_checked)
-                    domain.append(('part_request_time', '>', check_time))
+                    domain.append(('request_time', '>', check_time))
                 except Exception as e:
                     _logger.warning(f"Could not parse last_checked: {e}")
-                    # Jika parsing gagal, tetap lanjutkan tanpa filter waktu
             
-            new_requests = SaleOrder.search(domain, order='part_request_time asc', limit=10)
-            _logger.info(f"Found {len(new_requests)} new requests")
+            notifications = Notification.search(domain, order='request_time desc', limit=10)
+            _logger.info(f"Found {len(notifications)} notifications")
             
             result = []
-            for order in new_requests:
+            for notif in notifications:
+                data = json.loads(notif.data) if notif.data else {}
                 request_data = {
-                    'id': order.id,
-                    'name': order.name,
-                    'request_time': order.part_request_time.isoformat() if order.part_request_time else fields.Datetime.now().isoformat(),
-                    'total_items': order.total_requested_items or 0,
-                    'is_read': False  # Konsisten dengan model, default False untuk permintaan baru
+                    'id': notif.res_id,
+                    'name': notif.name,
+                    'request_time': notif.request_time.isoformat(),
+                    'total_items': data.get('total_items', 0),
+                    'is_read': notif.is_read
                 }
                 result.append(request_data)
-                
-                # Opsional: Publikasikan notifikasi jika diperlukan
-                # Uncomment blok berikut jika Anda ingin endpoint ini juga mempublish notifikasi
-                """
-                self._publish_notification(
-                    'new_request',
-                    'Request Part Baru',
-                    f"Order #{order.name} memerlukan part",
-                    {
-                        'id': order.id,
-                        'name': order.name,
-                        'request_time': order.part_request_time.isoformat() if order.part_request_time else fields.Datetime.now().isoformat(),
-                        'total_items': order.total_requested_items or 0,
-                        'is_read': False
-                    }
-                )
-                """
             
             response_data = {
                 'status': 'success',
                 'data': {
                     'timestamp': fields.Datetime.now().isoformat(),
-                    'new_requests': result
+                    'notifications': result
                 }
             }
             _logger.info(f"Observer response: {response_data}")
@@ -1483,6 +1463,28 @@ class LeadTimePartController(http.Controller):
         
         except Exception as e:
             _logger.error(f"Error in observe_part_requests: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+        
+    @http.route('/web/part-purchase/notification/mark-read', type='json', auth='user')
+    def mark_notification_read(self, res_ids=None, model='sale.order'):
+        try:
+            if not res_ids or not isinstance(res_ids, list):
+                return {'status': 'error', 'message': 'res_ids must be a list'}
+            
+            Notification = request.env['pitcar.notification']
+            notifications = Notification.search([('model', '=', model), ('res_id', 'in', res_ids)])
+            notifications.write({'is_read': True})
+            
+            _logger.info(f"Marked {len(notifications)} notifications as read for {model} res_ids: {res_ids}")
+            return {
+                'status': 'success',
+                'data': {'updated': len(notifications)}
+            }
+        except Exception as e:
+            _logger.error(f"Error in mark_notification_read: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)

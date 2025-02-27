@@ -42,3 +42,4 @@ from . import cs_leads
 from . import cs_leads_analytics
 from . import content_project
 from . import mentor_request
+from . import notification

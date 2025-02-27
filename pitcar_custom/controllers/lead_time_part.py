@@ -1421,100 +1421,66 @@ class LeadTimePartController(http.Controller):
 
     @http.route('/web/part-purchase/observer', type='json', auth='user')
     def observe_part_requests(self, last_checked=None, seen_ids=None):
-        """Endpoint to check for new part requests since last check, with tracking of seen notifications"""
         try:
-            # Log parameter masuk untuk debugging
-            _logger.info(f"Observer called with last_checked: {last_checked}, seen_ids count: {len(seen_ids) if seen_ids else 0}")
-            
+            _logger.info(f"Observer called with last_checked: {last_checked}, seen_ids: {seen_ids}")
             seen_ids = seen_ids or []
             
-            if not last_checked:
-                # First check, just return current timestamp and no requests
-                _logger.info("First observer call, returning timestamp only")
-                return {
-                    'status': 'success',
-                    'data': {
-                        'timestamp': fields.Datetime.now().isoformat(),
-                        'new_requests': [],
-                        'last_id': max(seen_ids) if seen_ids else 0
-                    }
-                }
-            
-            # Find newest orders with part requests that haven't been seen yet
             SaleOrder = request.env['sale.order']
             domain = [
                 ('need_part_purchase', '=', 'yes'),
-                ('id', 'not in', seen_ids)  # Exclude already seen requests
+                ('id', 'not in', seen_ids),
+                ('part_request_time', '!=', False)
             ]
             
-            # Try to limit to recent requests (last 24 hours)
             if last_checked:
                 try:
-                    # Parse datetime and subtract 24 hours as safety margin
                     check_time = fields.Datetime.from_string(last_checked)
-                    # Add time filter as a preference, not a hard requirement
-                    domain.append(('write_date', '>=', check_time - timedelta(hours=24)))
+                    domain.append(('part_request_time', '>', check_time))
                 except Exception as e:
-                    _logger.warning(f"Could not parse last_checked time: {e}")
+                    _logger.warning(f"Could not parse last_checked: {e}")
+                    # Jika parsing gagal, tetap lanjutkan tanpa filter waktu
             
-            # Log domain untuk debugging
-            _logger.info(f"Observer search domain: {domain}")
+            new_requests = SaleOrder.search(domain, order='part_request_time asc', limit=10)
+            _logger.info(f"Found {len(new_requests)} new requests")
             
-            # Order by ID for consistent pagination and fetch only latest
-            new_requests = SaleOrder.search(domain, limit=5, order='id desc')
-            
-            # Log jumlah hasil
-            _logger.info(f"Observer found {len(new_requests)} new requests")
-            
-            # Format the new requests
             result = []
-            max_id = max(seen_ids) if seen_ids else 0
-            
             for order in new_requests:
-                max_id = max(max_id, order.id)
-                # Pastikan format data konsisten
                 request_data = {
                     'id': order.id,
                     'name': order.name,
-                    'request_time': fields.Datetime.now().isoformat(),
-                    'total_items': order.total_requested_items or 0
+                    'request_time': order.part_request_time.isoformat() if order.part_request_time else fields.Datetime.now().isoformat(),
+                    'total_items': order.total_requested_items or 0,
+                    'is_read': False  # Konsisten dengan model, default False untuk permintaan baru
                 }
                 result.append(request_data)
-                _logger.info(f"Adding new request to result: {request_data}")
+                
+                # Opsional: Publikasikan notifikasi jika diperlukan
+                # Uncomment blok berikut jika Anda ingin endpoint ini juga mempublish notifikasi
+                """
+                self._publish_notification(
+                    'new_request',
+                    'Request Part Baru',
+                    f"Order #{order.name} memerlukan part",
+                    {
+                        'id': order.id,
+                        'name': order.name,
+                        'request_time': order.part_request_time.isoformat() if order.part_request_time else fields.Datetime.now().isoformat(),
+                        'total_items': order.total_requested_items or 0,
+                        'is_read': False
+                    }
+                )
+                """
             
-            # Only publish notifications if there's something new
-            # This prevents re-notification on page reload
-            if result:
-                _logger.info(f"Publishing notifications for {len(result)} new requests")
-                # Publish notifications for new requests
-                for order in new_requests:
-                    self._publish_notification(
-                        'request',
-                        'Request Part Baru',
-                        f"Order #{order.name} memerlukan part",
-                        {
-                            'order_id': order.id,
-                            'order_name': order.name,
-                            'timestamp': fields.Datetime.now().isoformat(),
-                            'notif_id': f"request_{order.id}"  # Add unique notif ID
-                        }
-                    )
-            
-            # Buat response
             response_data = {
                 'status': 'success',
                 'data': {
                     'timestamp': fields.Datetime.now().isoformat(),
-                    'new_requests': result,
-                    'last_id': max_id
+                    'new_requests': result
                 }
             }
-            
-            # Log response untuk debugging
-            _logger.info(f"Observer returning response: {response_data}")
-            
+            _logger.info(f"Observer response: {response_data}")
             return response_data
-            
+        
         except Exception as e:
             _logger.error(f"Error in observe_part_requests: {str(e)}", exc_info=True)
             return {
@@ -1522,28 +1488,24 @@ class LeadTimePartController(http.Controller):
                 'message': str(e)
             }
 
-    # 2. Perbaiki helper untuk publikasi notifikasi:
+    # Helper untuk publikasi notifikasi (tetap sama, hanya diperbarui untuk konsistensi)
     def _publish_notification(self, notification_type, title, message, data=None):
         """Helper to publish a notification through the bus system"""
         try:
-            # Create notification payload
             payload = {
                 'type': notification_type,
                 'title': title,
                 'message': message,
                 'timestamp': fields.Datetime.now().isoformat(),
+                'is_read': False  # Tambahkan is_read default False
             }
             
-            # Add additional data if provided
             if data:
                 payload['data'] = data
-                
-            # Convert to JSON and publish
+            
             message_json = json.dumps(payload)
             _logger.info(f"Publishing notification: {title} with data: {data}")
             
-            # Bus notifications perlu disetup dengan benar
-            # Pastikan channel name sudah didaftarkan di odoo
             bus_service = request.env['bus.bus']
             bus_service.sendone('part_purchase_notifications', message_json)
             

@@ -4,6 +4,7 @@ from odoo.tools import split_every
 import pytz
 from datetime import timedelta, date, datetime, time
 import logging
+import json
 
 _logger = logging.getLogger(__name__)
 
@@ -2715,15 +2716,12 @@ class SaleOrder(models.Model):
     # Di model sale.order
     @api.onchange('need_part_purchase')
     def _onchange_need_part_purchase(self):
-        """Handle konfirmasi saat radio button diubah"""
         if self.need_part_purchase == 'yes':
-            # Generate warning message dulu
             warning = {
                 'title': 'Konfirmasi Request Part',
                 'message': 'Anda akan membuat request part ke Tim Part. Lanjutkan?'
             }
             
-            # Set values dan write ke database
             vals = {
                 'part_request_state': 'draft',
                 'part_request_time': fields.Datetime.now(),
@@ -2731,17 +2729,31 @@ class SaleOrder(models.Model):
             }
             self.write(vals)
             
+            # Publikasikan notifikasi dengan is_read
+            self.env['bus.bus'].sendone(
+                'part_purchase_notifications',
+                json.dumps({
+                    'type': 'new_request',
+                    'title': 'Request Part Baru',
+                    'message': f"Order #{self.name} memerlukan part",
+                    'data': {
+                        'id': self.id,
+                        'name': self.name,
+                        'request_time': fields.Datetime.now().isoformat(),
+                        'total_items': len(self.part_request_items_ids)
+                    },
+                    'is_read': False  # Tambahkan ini
+                })
+            )
             return {'warning': warning}
-            
+        
         elif self.need_part_purchase == 'no':
-            # Reset values
             vals = {
                 'part_request_state': False,
                 'part_request_time': False,
                 'part_purchase_status': 'not_needed'
             }
             self.write(vals)
-            
             if self.part_request_items_ids:
                 return {
                     'warning': {
@@ -2749,6 +2761,37 @@ class SaleOrder(models.Model):
                         'message': 'Request part yang sudah dibuat akan dibatalkan. Lanjutkan?'
                     }
                 }
+
+    def action_request_part(self):
+        self.ensure_one()
+        if not self.part_request_items_ids:
+            raise ValidationError(_("Mohon tambahkan item part yang dibutuhkan"))
+        
+        current_time = fields.Datetime.now()
+        vals = {
+            'need_part_purchase': 'yes',
+            'part_purchase_status': 'pending',
+            'part_request_time': current_time,
+            'part_request_state': 'requested'
+        }
+        self.write(vals)
+        
+        # Publikasikan notifikasi dengan is_read
+        self.env['bus.bus'].sendone(
+            'part_purchase_notifications',
+            json.dumps({
+                'type': 'new_request',
+                'title': 'Request Part Baru',
+                'message': f"Order #{self.name} memerlukan part",
+                'data': {
+                    'id': self.id,
+                    'name': self.name,
+                    'request_time': current_time.isoformat(),
+                    'total_items': len(self.part_request_items_ids)
+                },
+                'is_read': False  # Tambahkan ini
+            })
+        )
 
     def action_request_part(self):
         """SA memulai request part"""

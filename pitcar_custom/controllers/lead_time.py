@@ -1908,6 +1908,327 @@ class LeadTimeAPIController(http.Controller):
         except Exception as e:
             _logger.error(f"Error building date domain: {str(e)}", exc_info=True)
             return []
+        
+    def _calculate_lead_time_summary(self, orders):
+        """Calculate summary statistics for various lead time metrics"""
+        try:
+            if not orders:
+                return {}
+                
+            # Initialize counters and accumulators
+            summary = {
+                'tunggu_penerimaan': {
+                    'total_hours': 0,
+                    'count': 0,
+                    'avg_hours': 0,
+                    'max_hours': 0,
+                    'min_hours': float('inf'),
+                    'standard_hours': 0.25,  # 15 minutes in hours
+                    'exceeded_count': 0,
+                    'exceeded_percentage': 0
+                },
+                'penerimaan': {
+                    'total_hours': 0,
+                    'count': 0,
+                    'avg_hours': 0,
+                    'max_hours': 0,
+                    'min_hours': float('inf'),
+                    'standard_hours': 0.25,  # 15 minutes in hours
+                    'exceeded_count': 0,
+                    'exceeded_percentage': 0
+                },
+                'tunggu_servis': {
+                    'total_hours': 0,
+                    'count': 0,
+                    'avg_hours': 0,
+                    'max_hours': 0,
+                    'min_hours': float('inf'),
+                    'standard_hours': 0.25,  # 15 minutes in hours
+                    'exceeded_count': 0,
+                    'exceeded_percentage': 0
+                },
+                'tunggu_konfirmasi': {
+                    'total_hours': 0,
+                    'count': 0,
+                    'avg_hours': 0,
+                    'max_hours': 0,
+                    'min_hours': float('inf'),
+                    'standard_hours': 0.67,  # 40 minutes in hours
+                    'exceeded_count': 0,
+                    'exceeded_percentage': 0
+                },
+                'tunggu_part': {
+                    'total_hours': 0,
+                    'count': 0,
+                    'avg_hours': 0,
+                    'max_hours': 0,
+                    'min_hours': float('inf'),
+                    'standard_hours': 0.75,  # 45 minutes in hours
+                    'exceeded_count': 0,
+                    'exceeded_percentage': 0
+                },
+                'servis_aktif': {
+                    'total_hours': 0,
+                    'count': 0,
+                    'avg_hours': 0,
+                    'max_hours': 0,
+                    'min_hours': float('inf'),
+                    'distribution': {
+                        'under_1_hour': 0,
+                        '1_to_2_hours': 0,
+                        '2_to_3_hours': 0,
+                        '3_to_4_hours': 0,
+                        'over_4_hours': 0
+                    }
+                },
+                'total_servis': {
+                    'total_hours': 0,
+                    'count': 0,
+                    'avg_hours': 0,
+                    'max_hours': 0,
+                    'min_hours': float('inf'),
+                    'distribution': {
+                        'under_2_hours': 0,
+                        '2_to_4_hours': 0,
+                        '4_to_6_hours': 0,
+                        '6_to_8_hours': 0,
+                        'over_8_hours': 0
+                    }
+                }
+            }
+            
+            # Process each order to collect lead time data
+            for order in orders:
+                # Tunggu penerimaan (from sa_jam_masuk to sa_mulai_penerimaan)
+                if order.lead_time_tunggu_penerimaan > 0:
+                    lead_time = order.lead_time_tunggu_penerimaan
+                    summary['tunggu_penerimaan']['total_hours'] += lead_time
+                    summary['tunggu_penerimaan']['count'] += 1
+                    summary['tunggu_penerimaan']['max_hours'] = max(summary['tunggu_penerimaan']['max_hours'], lead_time)
+                    summary['tunggu_penerimaan']['min_hours'] = min(summary['tunggu_penerimaan']['min_hours'], lead_time)
+                    if lead_time > summary['tunggu_penerimaan']['standard_hours']:
+                        summary['tunggu_penerimaan']['exceeded_count'] += 1
+                
+                # Penerimaan (from sa_mulai_penerimaan to sa_cetak_pkb)
+                if order.lead_time_penerimaan > 0:
+                    lead_time = order.lead_time_penerimaan
+                    summary['penerimaan']['total_hours'] += lead_time
+                    summary['penerimaan']['count'] += 1
+                    summary['penerimaan']['max_hours'] = max(summary['penerimaan']['max_hours'], lead_time)
+                    summary['penerimaan']['min_hours'] = min(summary['penerimaan']['min_hours'], lead_time)
+                    if lead_time > summary['penerimaan']['standard_hours']:
+                        summary['penerimaan']['exceeded_count'] += 1
+                
+                # Tunggu servis (from sa_cetak_pkb to controller_mulai_servis)
+                if order.lead_time_tunggu_servis > 0:
+                    lead_time = order.lead_time_tunggu_servis
+                    summary['tunggu_servis']['total_hours'] += lead_time
+                    summary['tunggu_servis']['count'] += 1
+                    summary['tunggu_servis']['max_hours'] = max(summary['tunggu_servis']['max_hours'], lead_time)
+                    summary['tunggu_servis']['min_hours'] = min(summary['tunggu_servis']['min_hours'], lead_time)
+                    if lead_time > summary['tunggu_servis']['standard_hours']:
+                        summary['tunggu_servis']['exceeded_count'] += 1
+                
+                # Tunggu konfirmasi
+                if order.lead_time_tunggu_konfirmasi > 0:
+                    lead_time = order.lead_time_tunggu_konfirmasi
+                    summary['tunggu_konfirmasi']['total_hours'] += lead_time
+                    summary['tunggu_konfirmasi']['count'] += 1
+                    summary['tunggu_konfirmasi']['max_hours'] = max(summary['tunggu_konfirmasi']['max_hours'], lead_time)
+                    summary['tunggu_konfirmasi']['min_hours'] = min(summary['tunggu_konfirmasi']['min_hours'], lead_time)
+                    if lead_time > summary['tunggu_konfirmasi']['standard_hours']:
+                        summary['tunggu_konfirmasi']['exceeded_count'] += 1
+                
+                # Tunggu part (combining part1 and part2)
+                part_lead_time = (order.lead_time_tunggu_part1 or 0) + (order.lead_time_tunggu_part2 or 0)
+                if part_lead_time > 0:
+                    summary['tunggu_part']['total_hours'] += part_lead_time
+                    summary['tunggu_part']['count'] += 1
+                    summary['tunggu_part']['max_hours'] = max(summary['tunggu_part']['max_hours'], part_lead_time)
+                    summary['tunggu_part']['min_hours'] = min(summary['tunggu_part']['min_hours'], part_lead_time)
+                    if part_lead_time > summary['tunggu_part']['standard_hours']:
+                        summary['tunggu_part']['exceeded_count'] += 1
+                
+                # Servis aktif (using lead_time_servis)
+                if order.lead_time_servis > 0:
+                    lead_time = order.lead_time_servis
+                    summary['servis_aktif']['total_hours'] += lead_time
+                    summary['servis_aktif']['count'] += 1
+                    summary['servis_aktif']['max_hours'] = max(summary['servis_aktif']['max_hours'], lead_time)
+                    summary['servis_aktif']['min_hours'] = min(summary['servis_aktif']['min_hours'], lead_time)
+                    
+                    # Update distribution
+                    if lead_time < 1:
+                        summary['servis_aktif']['distribution']['under_1_hour'] += 1
+                    elif lead_time < 2:
+                        summary['servis_aktif']['distribution']['1_to_2_hours'] += 1
+                    elif lead_time < 3:
+                        summary['servis_aktif']['distribution']['2_to_3_hours'] += 1
+                    elif lead_time < 4:
+                        summary['servis_aktif']['distribution']['3_to_4_hours'] += 1
+                    else:
+                        summary['servis_aktif']['distribution']['over_4_hours'] += 1
+                
+                # Total servis (using total_lead_time_servis)
+                if order.total_lead_time_servis > 0:
+                    lead_time = order.total_lead_time_servis
+                    summary['total_servis']['total_hours'] += lead_time
+                    summary['total_servis']['count'] += 1
+                    summary['total_servis']['max_hours'] = max(summary['total_servis']['max_hours'], lead_time)
+                    summary['total_servis']['min_hours'] = min(summary['total_servis']['min_hours'], lead_time)
+                    
+                    # Update distribution
+                    if lead_time < 2:
+                        summary['total_servis']['distribution']['under_2_hours'] += 1
+                    elif lead_time < 4:
+                        summary['total_servis']['distribution']['2_to_4_hours'] += 1
+                    elif lead_time < 6:
+                        summary['total_servis']['distribution']['4_to_6_hours'] += 1
+                    elif lead_time < 8:
+                        summary['total_servis']['distribution']['6_to_8_hours'] += 1
+                    else:
+                        summary['total_servis']['distribution']['over_8_hours'] += 1
+            
+            # Calculate averages and percentages
+            for key in summary:
+                if summary[key]['count'] > 0:
+                    summary[key]['avg_hours'] = summary[key]['total_hours'] / summary[key]['count']
+                    if 'exceeded_count' in summary[key]:
+                        summary[key]['exceeded_percentage'] = (summary[key]['exceeded_count'] / summary[key]['count']) * 100
+                
+                # Set min to 0 if no data was found
+                if summary[key]['min_hours'] == float('inf'):
+                    summary[key]['min_hours'] = 0
+                    
+                # Format hours to readable format
+                for time_key in ['avg_hours', 'max_hours', 'min_hours', 'standard_hours']:
+                    if time_key in summary[key]:
+                        hours = summary[key][time_key]
+                        hours_int = int(hours)
+                        minutes = int((hours - hours_int) * 60)
+                        summary[key][f'{time_key}_formatted'] = f"{hours_int}j {minutes}m"
+            
+            return summary
+            
+        except Exception as e:
+            _logger.error(f"Error calculating lead time summary: {str(e)}", exc_info=True)
+            return {}
+
+    def _get_lead_time_status(self, order):
+        """Determine lead time status based on standards and actual values"""
+        try:
+            status = {
+                'overall': 'on_time',
+                'details': {
+                    'tunggu_penerimaan': 'on_time',
+                    'penerimaan': 'on_time',
+                    'tunggu_servis': 'on_time',
+                    'tunggu_konfirmasi': 'on_time',
+                    'tunggu_part': 'on_time'
+                },
+                'has_delays': False,
+                'most_significant_delay': None,
+                'delay_reasons': []
+            }
+            
+            # Standards in hours (from duration_standards in _build_service_timeline)
+            standards = {
+                'tunggu_penerimaan': 0.25,  # 15 minutes
+                'penerimaan': 0.25,         # 15 minutes
+                'tunggu_servis': 0.25,      # 15 minutes
+                'tunggu_konfirmasi': 0.67,  # 40 minutes
+                'tunggu_part': 0.75         # 45 minutes (for each part wait)
+            }
+            
+            # Check tunggu penerimaan
+            if order.lead_time_tunggu_penerimaan > standards['tunggu_penerimaan']:
+                status['details']['tunggu_penerimaan'] = 'delayed'
+                status['has_delays'] = True
+                status['delay_reasons'].append({
+                    'reason': 'tunggu_penerimaan',
+                    'excess_hours': order.lead_time_tunggu_penerimaan - standards['tunggu_penerimaan'],
+                    'name': 'Tunggu Penerimaan'
+                })
+            
+            # Check penerimaan
+            if order.lead_time_penerimaan > standards['penerimaan']:
+                status['details']['penerimaan'] = 'delayed'
+                status['has_delays'] = True
+                status['delay_reasons'].append({
+                    'reason': 'penerimaan',
+                    'excess_hours': order.lead_time_penerimaan - standards['penerimaan'],
+                    'name': 'Proses Penerimaan'
+                })
+            
+            # Check tunggu servis
+            if order.lead_time_tunggu_servis > standards['tunggu_servis']:
+                status['details']['tunggu_servis'] = 'delayed'
+                status['has_delays'] = True
+                status['delay_reasons'].append({
+                    'reason': 'tunggu_servis',
+                    'excess_hours': order.lead_time_tunggu_servis - standards['tunggu_servis'],
+                    'name': 'Tunggu Servis'
+                })
+            
+            # Check tunggu konfirmasi
+            if order.lead_time_tunggu_konfirmasi > standards['tunggu_konfirmasi']:
+                status['details']['tunggu_konfirmasi'] = 'delayed'
+                status['has_delays'] = True
+                status['delay_reasons'].append({
+                    'reason': 'tunggu_konfirmasi',
+                    'excess_hours': order.lead_time_tunggu_konfirmasi - standards['tunggu_konfirmasi'],
+                    'name': 'Tunggu Konfirmasi'
+                })
+            
+            # Check tunggu part (combining part1 and part2)
+            part1_delay = max(0, order.lead_time_tunggu_part1 - standards['tunggu_part']) if order.lead_time_tunggu_part1 else 0
+            part2_delay = max(0, order.lead_time_tunggu_part2 - standards['tunggu_part']) if order.lead_time_tunggu_part2 else 0
+            
+            if part1_delay > 0 or part2_delay > 0:
+                status['details']['tunggu_part'] = 'delayed'
+                status['has_delays'] = True
+                
+                if part1_delay > 0:
+                    status['delay_reasons'].append({
+                        'reason': 'tunggu_part1',
+                        'excess_hours': part1_delay,
+                        'name': 'Tunggu Part 1'
+                    })
+                
+                if part2_delay > 0:
+                    status['delay_reasons'].append({
+                        'reason': 'tunggu_part2',
+                        'excess_hours': part2_delay,
+                        'name': 'Tunggu Part 2'
+                    })
+            
+            # Set overall status
+            if status['has_delays']:
+                status['overall'] = 'delayed'
+                # Sort delay reasons by excess hours to find most significant
+                if status['delay_reasons']:
+                    sorted_delays = sorted(status['delay_reasons'], key=lambda x: x['excess_hours'], reverse=True)
+                    status['most_significant_delay'] = sorted_delays[0]['reason']
+            
+            # Check if service is on time according to estimated completion time
+            if (order.controller_estimasi_selesai and order.controller_selesai and 
+                order.controller_selesai > order.controller_estimasi_selesai):
+                status['completion_on_time'] = False
+                status['overall'] = 'delayed'
+                estimated_vs_actual = (order.controller_selesai - order.controller_estimasi_selesai).total_seconds() / 3600
+                status['delay_reasons'].append({
+                    'reason': 'completion_delay',
+                    'excess_hours': estimated_vs_actual,
+                    'name': 'Melebihi Estimasi Selesai'
+                })
+            else:
+                status['completion_on_time'] = True
+            
+            return status
+            
+        except Exception as e:
+            _logger.error(f"Error getting lead time status: {str(e)}", exc_info=True)
+            return {'overall': 'unknown', 'details': {}, 'has_delays': False}
 
     @http.route('/web/service-report/table', type='json', auth='user', methods=['POST'], csrf=False)
     def get_report_table(self, **kw):
@@ -1975,6 +2296,10 @@ class LeadTimeAPIController(http.Controller):
             # Calculate statistics
             stats = self._calculate_service_statistics(all_matching_orders, date_range)
             
+            # Add additional lead time summary stats
+            lead_time_summary = self._calculate_lead_time_summary(all_matching_orders)
+            stats['lead_time_summary'] = lead_time_summary
+            
             # Get paginated data with selected fields
             total_count = len(all_matching_orders)
             offset = (page - 1) * limit
@@ -2018,8 +2343,49 @@ class LeadTimeAPIController(http.Controller):
                     'tunggu_sublet': {
                         'duration': order.lead_time_tunggu_sublet or 0,
                         'formatted': format_duration(order.lead_time_tunggu_sublet)
+                    },
+                    'job_stop_lain': {
+                        'duration': order.lead_time_job_stop_lain or 0,
+                        'formatted': format_duration(order.lead_time_job_stop_lain)
                     }
                 }
+
+                # Calculate total job stops duration
+                total_job_stops_duration = (
+                    (order.lead_time_tunggu_konfirmasi or 0) +
+                    (order.lead_time_tunggu_part1 or 0) +
+                    (order.lead_time_tunggu_part2 or 0) +
+                    (order.lead_time_istirahat or 0) +
+                    (order.lead_time_tunggu_sublet or 0) +
+                    (order.lead_time_job_stop_lain or 0)
+                )
+
+                # Add detailed lead time information
+                detailed_lead_times = {
+                    'tunggu_penerimaan': {
+                        'duration': order.lead_time_tunggu_penerimaan or 0,
+                        'formatted': format_duration(order.lead_time_tunggu_penerimaan)
+                    },
+                    'penerimaan': {
+                        'duration': order.lead_time_penerimaan or 0,
+                        'formatted': format_duration(order.lead_time_penerimaan)
+                    },
+                    'tunggu_servis': {
+                        'duration': order.lead_time_tunggu_servis or 0,
+                        'formatted': format_duration(order.lead_time_tunggu_servis)
+                    },
+                    'estimasi_pengerjaan': {
+                        'duration': order.estimasi_durasi_pengerjaan or 0,
+                        'formatted': format_duration(order.estimasi_durasi_pengerjaan)
+                    },
+                    'overall': {
+                        'duration': order.overall_lead_time or 0,
+                        'formatted': format_duration(order.overall_lead_time)
+                    }
+                }
+
+                # Get lead time status based on comparison with standards
+                lead_time_status = self._get_lead_time_status(order)
 
                 rows.append({
                     'id': order.id,
@@ -2039,14 +2405,24 @@ class LeadTimeAPIController(http.Controller):
                     'lead_times': {
                         'service': order.lead_time_servis or 0,
                         'total': order.total_lead_time_servis or 0,
+                        'total_job_stops': total_job_stops_duration,
                         'formatted_service': format_duration(order.lead_time_servis),
-                        'formatted_total': format_duration(order.total_lead_time_servis)
+                        'formatted_total': format_duration(order.total_lead_time_servis),
+                        'formatted_total_job_stops': format_duration(total_job_stops_duration),
+                        'detailed': detailed_lead_times,
+                        'status': lead_time_status
                     },
                     'job_stops': job_stops,
                     'timestamps': {
                         'start': self._format_local_datetime(order.controller_mulai_servis),
-                        'end': self._format_local_datetime(order.controller_selesai)
-                    }
+                        'end': self._format_local_datetime(order.controller_selesai),
+                        'sa_jam_masuk': self._format_local_datetime(order.sa_jam_masuk),
+                        'sa_mulai_penerimaan': self._format_local_datetime(order.sa_mulai_penerimaan),
+                        'sa_cetak_pkb': self._format_local_datetime(order.sa_cetak_pkb),
+                        'fo_unit_keluar': self._format_local_datetime(order.fo_unit_keluar)
+                    },
+                    'lead_time_stage': order.lead_time_stage,
+                    'lead_time_progress': order.lead_time_progress
                 })
 
             return {

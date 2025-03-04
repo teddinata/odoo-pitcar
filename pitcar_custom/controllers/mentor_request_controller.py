@@ -222,7 +222,7 @@ class MentorRequestController(http.Controller):
                 "status": "error",
                 "message": str(e)
             }
-    
+
     def _handle_start_action(self, req, kw):
         """Handler untuk action start"""
         if not kw.get('mentor_id'):
@@ -238,15 +238,25 @@ class MentorRequestController(http.Controller):
                 "message": f"Mechanic with ID {kw['mentor_id']} does not exist"
             }
         
-        # Gunakan dengan transaction handling yang tepat
-        req.sudo().write({'mentor_id': kw['mentor_id']})
-        req.sudo().action_start_mentoring()
-
-        return {
-            "status": "success",
-            "data": self._get_request_details(req),
-            "message": "Permintaan bantuan telah dimulai oleh mentor"
-        }
+        # PERBAIKAN: Hanya atur mentor_id dan submit request, bukan langsung start mentoring
+        try:
+            # Pertama atur mentor_id
+            req.sudo().write({'mentor_id': kw['mentor_id']})
+            
+            # Kemudian submit request jika masih dalam state draft
+            if req.state == 'draft':
+                req.sudo().action_submit_request()
+            
+            return {
+                "status": "success",
+                "data": self._get_request_details(req),
+                "message": "Permintaan bantuan telah dikirim ke mentor"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": str(e)
+            }
         
     def _handle_solve_action(self, req, kw):
         """Handler untuk action solve"""

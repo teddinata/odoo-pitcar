@@ -1,11 +1,12 @@
 from odoo import models, fields, api
-from datetime import datetime
-import pytz
 from odoo.exceptions import UserError
+from datetime import datetime
+import json
 import logging
+import pytz
+
 _logger = logging.getLogger(__name__)
 
-# Model untuk Request Bantuan Mentor
 class MentorRequest(models.Model):
     _name = 'pitcar.mentor.request'
     _description = 'Mentor Request'
@@ -69,51 +70,60 @@ class MentorRequest(models.Model):
 
     @api.model
     def create(self, vals):
+        """Override create untuk mengatur sequence nomor referensi"""
         if vals.get('name', 'New') == 'New':
             vals['name'] = self.env['ir.sequence'].next_by_code('mentor.request') or 'New'
         return super(MentorRequest, self).create(vals)
 
     def action_submit_request(self):
-        """Mekanik submit request bantuan"""
-        self.ensure_one()
-        if not self.problem_description:
-            raise UserError('Harap isi deskripsi masalah')
-            
+        """Mekanik submit request bantuan - sudah dioptimalkan untuk support batch"""
+        for record in self:
+            if not record.problem_description:
+                raise UserError('Harap isi deskripsi masalah')
+        
+        # Batch update semua records
         self.write({
             'state': 'requested',
             'request_datetime': fields.Datetime.now()
         })
         
-        # Notify available mentors
-        self._notify_mentors()
+        return True
 
     def action_start_mentoring(self):
-        """Mentor mulai menangani request"""
-        self.ensure_one()
-        if not self.mentor_id:
-            raise UserError('Mentor harus ditentukan sebelum memulai')
-            
+        """Mentor mulai menangani request - sudah dioptimalkan untuk support batch"""
+        for record in self:
+            if not record.mentor_id:
+                raise UserError('Mentor harus ditentukan sebelum memulai')
+        
+        # Batch update semua records
         self.write({
             'state': 'in_progress',
             'start_datetime': fields.Datetime.now()
         })
+        
+        return True
 
     def action_mark_solved(self):
-        """Mentor menandai request selesai"""
-        self.ensure_one()
-        if not self.resolution_notes:
-            raise UserError('Harap isi catatan penyelesaian masalah')
-            
+        """Mentor menandai request selesai - sudah dioptimalkan untuk support batch"""
+        for record in self:
+            if not record.resolution_notes:
+                raise UserError('Harap isi catatan penyelesaian masalah')
+        
+        # Batch update semua records
         self.write({
             'state': 'solved',
             'end_datetime': fields.Datetime.now()
         })
+        
+        return True
 
     def action_cancel_request(self):
-        """Cancel request"""
+        """Cancel request - sudah dioptimalkan untuk support batch"""
         self.write({
             'state': 'cancelled'
         })
+        
+        return True
 
     @api.depends('request_datetime', 'start_datetime')
     def _compute_response_time(self):
@@ -135,33 +145,326 @@ class MentorRequest(models.Model):
             else:
                 record.resolution_time = 0
 
-    def _notify_mentors(self):
-        """Kirim notifikasi ke mentor yang tersedia"""
-        mentors = self.env['pitcar.mechanic.new'].search([])
-        
-        if not mentors:
-            return
-            
-        # Prepare message
-        mechanic_names = ", ".join(self.mechanic_ids.mapped('name'))  # Gunakan mechanic_ids
-        message = f"""
-            <p><strong>Permintaan Bantuan Baru</strong></p>
-            <ul>
-                <li>Dari: {mechanic_names}</li>
-                <li>Work Order: {self.sale_order_id.name}</li>
-                <li>Kategori: {dict(self._fields['problem_category'].selection).get(self.problem_category)}</li>
-                <li>Prioritas: {dict(self._fields['priority'].selection).get(self.priority)}</li>
-                <li>Deskripsi: {self.problem_description}</li>
-            </ul>
+
+class MentorRequestNotification(models.Model):
+    _inherit = 'pitcar.mentor.request'
+    
+    def write(self, vals):
         """
-        # Send notification (uncomment jika ingin digunakan)
-        # partner_ids = mentors.mapped('partner_id.id')
-        # if partner_ids:
-        #     self.message_post(
-        #         body=message,
-        #         message_type='notification',
-        #         partner_ids=partner_ids
-        #     )
+        Override write untuk menangani notifikasi saat status atau mentor berubah
+        Dioptimalkan untuk batch processing dan deteksi perubahan yg tepat
+        """
+        # Simpan nilai sebelumnya untuk deteksi perubahan
+        pre_states = {record.id: record.state for record in self}
+        pre_mentors = {record.id: record.mentor_id.id if record.mentor_id else False for record in self}
+        
+        # Panggil super untuk melakukan update data
+        result = super(MentorRequestNotification, self).write(vals)
+        
+        try:
+            # Proses perubahan state
+            if 'state' in vals:
+                # Kelompokkan records berdasarkan state baru untuk batch processing
+                records_by_state = {}
+                for record in self:
+                    # Hanya proses jika state benar-benar berubah
+                    if record.state != pre_states[record.id]:
+                        if record.state not in records_by_state:
+                            records_by_state[record.state] = self.env['pitcar.mentor.request']
+                        records_by_state[record.state] |= record
+                
+                # Kirim notifikasi untuk setiap grup state
+                for new_state, state_records in records_by_state.items():
+                    self._send_state_change_notifications(new_state, state_records)
+            
+            # Proses penugasan mentor
+            if 'mentor_id' in vals and vals['mentor_id']:
+                mentor_id = vals['mentor_id']
+                # Ambil records di mana mentor benar-benar berubah
+                changed_records = self.filtered(lambda r: r.mentor_id.id == mentor_id and r.mentor_id.id != pre_mentors[r.id])
+                if changed_records:
+                    self._send_mentor_assignment_notifications(mentor_id, changed_records)
+        
+        except Exception as e:
+            _logger.error(f"Error processing notifications after write: {str(e)}", exc_info=True)
+        
+        return result
+    
+    def _send_notifications(self, notification_type, title_template, message_template, recipients, data_extras=None, excluded_recipients=None):
+        """
+        Metode terpadu untuk mengirim semua jenis notifikasi dengan batch processing
+        
+        Args:
+            notification_type: Tipe notifikasi ('new_mentor_request', 'mentor_start', dll)
+            title_template: Template untuk judul notifikasi dengan {record} placeholder
+            message_template: Template untuk isi pesan dengan {record} placeholder
+            recipients: recordset dari penerima notifikasi (biasanya pitcar.mechanic.new)
+            data_extras: Dictionary dengan data tambahan untuk notifikasi
+            excluded_recipients: recordset dari penerima yang harus dikecualikan
+        
+        Returns:
+            Boolean: True jika berhasil, False jika terjadi error
+        """
+        if not self or not recipients:
+            return False
+        
+        try:
+            # Pastikan ada penerima yang valid
+            if excluded_recipients:
+                recipients = recipients - excluded_recipients
+            
+            if not recipients:
+                return False
+            
+            notification_vals_list = []
+            chatter_messages = []
+            
+            for record in self:
+                # Siapkan data untuk notifikasi
+                mechanic_names = ", ".join(record.mechanic_ids.mapped('name')) if record.mechanic_ids else 'Unknown'
+                category_name = dict(record._fields['problem_category'].selection).get(record.problem_category)
+                
+                # Format judul dan pesan
+                context = {
+                    'record': record,
+                    'name': record.name,
+                    'mechanic_names': mechanic_names,
+                    'category': category_name,
+                    'problem_description': record.problem_description,
+                    'sale_order': record.sale_order_id.name if record.sale_order_id else '',
+                }
+                
+                title = title_template.format(**context)
+                message = message_template.format(**context)
+                
+                # Buat konten HTML untuk chatter
+                html_message = f"""
+                    <p><strong>{title}</strong></p>
+                    <p>{message}</p>
+                    {'<ul>' if notification_type == 'new_mentor_request' else ''}
+                    {f'<li>Dari: {mechanic_names}</li>' if notification_type == 'new_mentor_request' else ''}
+                    {f'<li>Work Order: {record.sale_order_id.name}</li>' if notification_type == 'new_mentor_request' else ''}
+                    {f'<li>Kategori: {category_name}</li>' if notification_type == 'new_mentor_request' else ''}
+                    {f'<li>Prioritas: {dict(record._fields["priority"].selection).get(record.priority)}</li>' if notification_type == 'new_mentor_request' else ''}
+                    {f'<li>Deskripsi: {record.problem_description}</li>' if notification_type == 'new_mentor_request' else ''}
+                    {'</ul>' if notification_type == 'new_mentor_request' else ''}
+                """
+                
+                # Data tambahan untuk notifikasi
+                data = {
+                    'request_id': record.id,
+                    'state': record.state,
+                    'category': record.problem_category,
+                    'priority': record.priority,
+                    'mechanic_names': mechanic_names,
+                    'mentor_name': record.mentor_id.name if record.mentor_id else '',
+                    'problem_description': record.problem_description,
+                    'sale_order': record.sale_order_id.name if record.sale_order_id else '',
+                    'total_items': 1
+                }
+                
+                # Tambahkan data ekstra jika ada
+                if data_extras:
+                    data.update(data_extras)
+                
+                # Kirim notifikasi melalui bus untuk real-time
+                self._publish_notification_to_bus(notification_type, title, message, data)
+                
+                # Buat notifikasi database dan chatter messages
+                for recipient in recipients:
+                    # Tambahkan ke daftar notifikasi
+                    notification_vals_list.append({
+                        'model': 'pitcar.mentor.request',
+                        'res_id': record.id,
+                        'type': notification_type,
+                        'title': title,
+                        'message': message,
+                        'request_time': fields.Datetime.now(),
+                        'data': json.dumps(data),
+                        'is_read': False
+                    })
+                    
+                    # Siapkan pesan untuk chatter
+                    if recipient.user_id and recipient.user_id.partner_id:
+                        chatter_messages.append((record, recipient.user_id.partner_id.id, html_message))
+            
+            # Batch creation notifikasi dalam database
+            if notification_vals_list:
+                self.env['pitcar.notification'].sudo().create(notification_vals_list)
+            
+            # Kirim pesan chatter dalam batch dengan penundaan pengiriman email
+            for record, partner_id, html_content in chatter_messages:
+                record.with_context(mail_notify_force_send=False).message_post(
+                    body=html_content,
+                    message_type='notification',
+                    partner_ids=[partner_id],
+                    subtype_id=self.env.ref('mail.mt_note').id
+                )
+            
+            return True
+        
+        except Exception as e:
+            _logger.error(f"Error sending batch notifications: {str(e)}", exc_info=True)
+            return False
+    
+    def _send_state_change_notifications(self, state, records):
+        """Mengirim notifikasi untuk perubahan state dengan batch processing"""
+        if not records:
+            return
+        
+        # Tentukan template dan tipe berdasarkan state
+        if state == 'requested':
+            notification_type = 'new_mentor_request'
+            title_template = "Permintaan Bantuan Baru: {name}"
+            message_template = "Mekanik {mechanic_names} membutuhkan bantuan untuk {category}"
+            
+            # Untuk state requested, perlu mencari mekanik senior sebagai penerima
+            position_domain = [('position_code', 'in', ['leader', 'foreman'])]
+            recipients = self.env['pitcar.mechanic.new'].search(position_domain)
+            
+            # Exclude mechanics who are requesting help
+            excluded_recipients = records.mapped('mechanic_ids')
+            
+            return records._send_notifications(
+                notification_type, 
+                title_template, 
+                message_template,
+                recipients,
+                excluded_recipients=excluded_recipients
+            )
+        
+        elif state == 'in_progress':
+            notification_type = 'mentor_start'
+            title_template = "Bantuan Dimulai: {name}"
+            message_template = "Mentor telah mulai menangani permintaan bantuan"
+            
+            # Untuk in_progress, kirim ke mekanik yang meminta bantuan
+            recipients = records.mapped('mechanic_ids')
+            
+            return records._send_notifications(
+                notification_type, 
+                title_template, 
+                message_template,
+                recipients
+            )
+        
+        elif state == 'solved':
+            notification_type = 'mentor_solved'
+            title_template = "Permintaan Bantuan Selesai: {name}"
+            message_template = "Mentor telah menyelesaikan permintaan bantuan"
+            
+            # Untuk solved, kirim ke mekanik yang meminta bantuan
+            recipients = records.mapped('mechanic_ids')
+            
+            return records._send_notifications(
+                notification_type, 
+                title_template, 
+                message_template,
+                recipients
+            )
+        
+        elif state == 'cancelled':
+            notification_type = 'mentor_cancelled'
+            title_template = "Permintaan Bantuan Dibatalkan: {name}"
+            message_template = "Permintaan bantuan telah dibatalkan"
+            
+            # Gabungkan mekanik dan mentor sebagai penerima
+            recipients = records.mapped('mechanic_ids') | records.mapped('mentor_id')
+            recipients = recipients.filtered(lambda r: r.exists())
+            
+            return records._send_notifications(
+                notification_type, 
+                title_template, 
+                message_template,
+                recipients
+            )
+    
+    def _send_mentor_assignment_notifications(self, mentor_id, records):
+        """Mengirim notifikasi saat mentor ditugaskan dengan batch processing"""
+        if not records:
+            return
+        
+        mentor = self.env['pitcar.mechanic.new'].browse(mentor_id)
+        if not mentor.exists():
+            return
+        
+        notification_type = 'mentor_assignment'
+        title_template = "Anda Ditugaskan sebagai Mentor: {name}"
+        message_template = "Anda telah ditugaskan untuk membantu {mechanic_names} dengan {category}"
+        
+        # Hanya kirim ke mentor yang ditugaskan
+        return records._send_notifications(
+            notification_type, 
+            title_template, 
+            message_template,
+            mentor
+        )
+    
+    def _publish_notification_to_bus(self, notification_type, title, message, data=None):
+        """Helper untuk mengirim notifikasi melalui bus"""
+        try:
+            payload = {
+                'type': notification_type,
+                'title': title,
+                'message': message,
+                'timestamp': fields.Datetime.now().isoformat(),
+                'is_read': False
+            }
+            
+            if data:
+                payload['data'] = data
+            
+            message_json = json.dumps(payload)
+            
+            bus_service = self.env['bus.bus']
+            bus_service.sendone('mentor_request_notifications', message_json)
+            
+            return True
+        except Exception as e:
+            _logger.error(f"Error publishing notification to bus: {str(e)}")
+            return False
+    
+    # Override action methods
+    def action_submit_request(self):
+        """Override action_submit_request untuk support notifikasi batch"""
+        # Gunakan super dari MentorRequest untuk mengatur state
+        super(MentorRequest, self).action_submit_request()
+        
+        # Kirim notifikasi untuk state requested
+        self._send_state_change_notifications('requested', self)
+        
+        return True
+    
+    def action_start_mentoring(self):
+        """Override action_start_mentoring untuk support notifikasi batch"""
+        # Gunakan super dari MentorRequest untuk mengatur state
+        super(MentorRequest, self).action_start_mentoring()
+        
+        # Kirim notifikasi untuk state in_progress
+        self._send_state_change_notifications('in_progress', self)
+        
+        return True
+    
+    def action_mark_solved(self):
+        """Override action_mark_solved untuk support notifikasi batch"""
+        # Gunakan super dari MentorRequest untuk mengatur state
+        super(MentorRequest, self).action_mark_solved()
+        
+        # Kirim notifikasi untuk state solved
+        self._send_state_change_notifications('solved', self)
+        
+        return True
+    
+    def action_cancel_request(self):
+        """Override action_cancel_request untuk support notifikasi batch"""
+        # Gunakan super dari MentorRequest untuk mengatur state
+        super(MentorRequest, self).action_cancel_request()
+        
+        # Kirim notifikasi untuk state cancelled
+        self._send_state_change_notifications('cancelled', self)
+        
+        return True
+
 
 # Inherit Mechanic Model untuk tambah role mentor
 class MechanicInherit(models.Model):
@@ -185,28 +488,42 @@ class MechanicInherit(models.Model):
 
     @api.depends('mentor_request_ids', 'mentor_request_ids.state')
     def _compute_mentor_stats(self):
+        """Hitung statistik untuk mentor"""
         for record in self:
-            total = len(record.mentor_request_ids)
-            solved = len(record.mentor_request_ids.filtered(lambda r: r.state == 'solved'))
+            # Hindari multiple read dengan cached value
+            requests = record.mentor_request_ids
+            total = len(requests)
+            solved = len(requests.filtered(lambda r: r.state == 'solved'))
+            
             record.total_mentor_requests = total
             record.solved_requests = solved
             record.success_rate = (solved / total * 100) if total > 0 else 0
-            response_times = record.mentor_request_ids.mapped('response_time')
+            
+            # Optimasi untuk menghitung rata-rata
+            response_times = requests.mapped('response_time')
             record.avg_response_time = sum(response_times) / len(response_times) if response_times else 0
 
     @api.depends('help_request_ids', 'help_request_ids.state', 'help_request_ids.mechanic_rating')
     def _compute_mechanic_stats(self):
+        """Hitung statistik pembelajaran untuk mekanik"""
         for record in self:
+            # Hindari multiple read dengan cached value
             requests = record.help_request_ids
             total = len(requests)
             record.total_help_requests = total
+            
+            # Optimasi untuk rating
             ratings = [int(r.mechanic_rating) for r in requests if r.mechanic_rating]
             record.avg_rating = sum(ratings) / len(ratings) if ratings else 0
+            
+            # Hitung learning progress
             if len(ratings) >= 2:
+                # Bandingkan 2 rating awal dengan 2 rating terakhir
                 initial_ratings = ratings[:2]
                 recent_ratings = ratings[-2:]
                 initial_avg = sum(initial_ratings) / len(initial_ratings)
                 recent_avg = sum(recent_ratings) / len(recent_ratings)
+                
                 if initial_avg > 0:
                     improvement = ((recent_avg - initial_avg) / initial_avg) * 100
                     record.learning_progress = max(0, min(100, improvement))

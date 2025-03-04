@@ -26,5 +26,13 @@
             <field name="padding">4</field>
             <field name="company_id" eval="False"/>
         </record>
+
+        <record id="seq_mentor_request" model="ir.sequence">
+            <field name="name">Mentor Request Sequence</field>
+            <field name="code">pitcar.mentor.request</field>
+            <field name="prefix">MRQ-</field>
+            <field name="padding">4</field>
+            <field name="company_id" eval="False"/>
+        </record>
     </data>
 </odoo>

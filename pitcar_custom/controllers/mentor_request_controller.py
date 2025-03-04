@@ -224,119 +224,43 @@ class MentorRequestController(http.Controller):
             }
 
     def _handle_start_action(self, req, kw):
-        """Handler untuk action start"""
         _logger.info(f"Start action called with params: {kw}")
         
-        # PERBAIKAN UTAMA: Identifikasi jenis ID yang dikirim frontend
-        employee_id = None
         mentor_id = None
-        
-        # Jika frontend mengirim employee_id (dari model hr.employee)
         if 'employee_id' in kw and kw['employee_id']:
             employee_id = kw['employee_id']
-            _logger.info(f"Using employee_id: {employee_id}")
-            
-            # Verifikasi employee
             employee = request.env['hr.employee'].sudo().browse(employee_id)
             if not employee.exists():
-                return {
-                    "status": "error", 
-                    "message": f"Employee with ID {employee_id} not found"
-                }
-                
-            # SOLUSI: Gunakan pencarian nama sebagai alternatif jika tidak ada relasi langsung
-            # Ini bukan solusi ideal tapi bisa bekerja jika nama unik
-            mechanic = request.env['pitcar.mechanic.new'].sudo().search([
-                ('name', '=', employee.name)
-            ], limit=1)
-            
-            if mechanic:
-                mentor_id = mechanic.id
-                _logger.info(f"Found mechanic ID {mentor_id} matching employee name {employee.name}")
-            else:
-                # Buat mechanic baru jika tidak ditemukan
-                _logger.info(f"Creating new mechanic based on employee: {employee.name}")
-                try:
-                    new_mechanic = request.env['pitcar.mechanic.new'].sudo().create({
-                        'name': employee.name,
-                        'position_code': 'kaizen',  # Default position
-                        'is_mentor': True
-                    })
-                    mentor_id = new_mechanic.id
-                    _logger.info(f"Created new mechanic with ID {mentor_id}")
-                except Exception as e:
-                    _logger.error(f"Error creating mechanic: {str(e)}")
-                    return {
-                        "status": "error",
-                        "message": f"Could not create mechanic from employee: {str(e)}"
-                    }
+                return {"status": "error", "message": f"Employee with ID {employee_id} not found"}
+            mentor_id = employee_id
+        elif 'mentor_id' in kw and kw['mentor_id']:  # Kompatibilitas dengan mentor lama
+            mechanic = request.env['pitcar.mechanic.new'].sudo().browse(kw['mentor_id'])
+            if mechanic.exists() and mechanic.employee_id:
+                mentor_id = mechanic.employee_id.id
         
-        # Jika frontend mengirim mentor_id (dari model pitcar.mechanic.new)
-        elif 'mentor_id' in kw and kw['mentor_id']:
-            mentor_id = kw['mentor_id']
-            _logger.info(f"Using mentor_id: {mentor_id}")
-            
-            # Verifikasi mentor
-            mechanic = request.env['pitcar.mechanic.new'].sudo().browse(mentor_id)
-            if not mechanic.exists():
-                return {
-                    "status": "error", 
-                    "message": f"Mechanic with ID {mentor_id} not found"
-                }
+        if not mentor_id and (req.mentor_employee_id or req.mentor_id):
+            mentor_id = req.mentor_employee_id.id if req.mentor_employee_id else req.mentor_id.employee_id.id if req.mentor_id and req.mentor_id.employee_id else None
         
-        # Jika tidak ada ID, periksa request saat ini
-        if not mentor_id and req.mentor_id:
-            mentor_id = req.mentor_id.id
-            _logger.info(f"Using existing mentor_id from request: {mentor_id}")
-        
-        # Jika masih tidak ada, gunakan user saat ini
         if not mentor_id:
-            current_user_id = request.env.user.id
-            _logger.info(f"Looking for mechanic with user_id: {current_user_id}")
-            
-            mechanic = request.env['pitcar.mechanic.new'].sudo().search([('user_id', '=', current_user_id)], limit=1)
-            
-            if mechanic:
-                mentor_id = mechanic.id
-                _logger.info(f"Found mechanic with id: {mentor_id}")
-        
-        # Jika masih belum ada mentor_id, kembalikan error
-        if not mentor_id:
-            _logger.error("No valid mentor could be determined")
-            return {
-                "status": "error",
-                "message": "Mentor ID required - tidak dapat menemukan mentor yang valid"
-            }
-        
+            return {"status": "error", "message": "Mentor ID required"}
+
         try:
-            _logger.info(f"Updating request with mentor_id: {mentor_id} and current state: {req.state}")
-            
-            # Update mentor_id dan state
             values = {
-                'mentor_id': mentor_id
+                'mentor_employee_id': mentor_id  # Gunakan field baru untuk data baru
             }
-            
-            # Jika state masih draft, ubah menjadi requested
             if req.state == 'draft':
                 values.update({
                     'state': 'requested',
                     'request_datetime': fields.Datetime.now()
                 })
-            # Jika state requested, ubah menjadi in_progress dan update waktu mulai
             elif req.state == 'requested':
                 values.update({
                     'state': 'in_progress',
                     'start_datetime': fields.Datetime.now()
                 })
             
-            _logger.info(f"Will update request with values: {values}")
-            
-            # Update record
             req.sudo().write(values)
-            
-            # Buat notifikasi secara manual
-            self._create_request_notification(req)
-            
+            req._send_mentor_assignment_notifications(mentor_id, req)
             return {
                 "status": "success",
                 "data": self._get_request_details(req),
@@ -344,10 +268,7 @@ class MentorRequestController(http.Controller):
             }
         except Exception as e:
             _logger.exception(f"Error updating request: {str(e)}")
-            return {
-                "status": "error",
-                "message": str(e)
-            }
+            return {"status": "error", "message": str(e)}
 
     def _create_request_notification(self, req):
         """Buat notifikasi untuk request baru"""

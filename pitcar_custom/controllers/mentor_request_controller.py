@@ -189,20 +189,12 @@ class MentorRequestController(http.Controller):
         """Handle request actions dengan optimasi performa"""
         try:
             if 'action' not in kw:
-                return {
-                    "status": "error",
-                    "message": "Action not specified"
-                }
+                return {"status": "error", "message": "Action not specified"}
 
-            # Cek keberadaan request sekali saja
             req = request.env['pitcar.mentor.request'].sudo().browse(request_id)
             if not req.exists():
-                return {
-                    "status": "error",
-                    "message": "Request not found"
-                }
+                return {"status": "error", "message": "Request not found"}
 
-            # Handle berbagai tipe action
             action = kw.get('action')
             if action == 'start':
                 return self._handle_start_action(req, kw)
@@ -211,42 +203,31 @@ class MentorRequestController(http.Controller):
             elif action == 'cancel':
                 return self._handle_cancel_action(req)
             else:
-                return {
-                    "status": "error",
-                    "message": "Invalid action specified"
-                }
-
+                return {"status": "error", "message": "Invalid action specified"}
         except Exception as e:
             _logger.error(f"Error handling request action: {str(e)}", exc_info=True)
-            return {
-                "status": "error",
-                "message": str(e)
-            }
+            return {"status": "error", "message": str(e)}
 
     def _handle_start_action(self, req, kw):
         _logger.info(f"Start action called with params: {kw}")
         
         mentor_id = None
-        if 'employee_id' in kw and kw['employee_id']:
-            employee_id = kw['employee_id']
-            employee = request.env['hr.employee'].sudo().browse(employee_id)
-            if not employee.exists():
-                return {"status": "error", "message": f"Employee with ID {employee_id} not found"}
-            mentor_id = employee_id
-        elif 'mentor_id' in kw and kw['mentor_id']:  # Kompatibilitas dengan mentor lama
-            mechanic = request.env['pitcar.mechanic.new'].sudo().browse(kw['mentor_id'])
-            if mechanic.exists() and mechanic.employee_id:
-                mentor_id = mechanic.employee_id.id
+        if 'mentor_id' in kw and kw['mentor_id']:
+            mentor_id = kw['mentor_id']
+            mentor = request.env['hr.employee'].sudo().browse(mentor_id)
+            _logger.info(f"Received mentor_id: {mentor_id}, mentor name: {mentor.name if mentor.exists() else 'Not Found'}")
+            if not mentor.exists():
+                return {"status": "error", "message": f"Mentor with ID {mentor_id} not found"}
         
-        if not mentor_id and (req.mentor_id or req.mentor_id):
-            mentor_id = req.mentor_id.id if req.mentor_id else req.mentor_id.employee_id.id if req.mentor_id and req.mentor_id.employee_id else None
+        if not mentor_id and req.mentor_id:
+            mentor_id = req.mentor_id.id
         
         if not mentor_id:
             return {"status": "error", "message": "Mentor ID required"}
 
         try:
             values = {
-                'mentor_id': mentor_id  # Gunakan field baru untuk data baru
+                'mentor_id': mentor_id  # Simpan langsung ke mentor_id (hr.employee)
             }
             if req.state == 'draft':
                 values.update({
@@ -259,13 +240,16 @@ class MentorRequestController(http.Controller):
                     'start_datetime': fields.Datetime.now()
                 })
             
+            _logger.info(f"Writing values to request {req.id}: {values}")
             req.sudo().write(values)
             req._send_mentor_assignment_notifications(mentor_id, req)
-            return {
+            response = {
                 "status": "success",
                 "data": self._get_request_details(req),
                 "message": "Permintaan bantuan telah dimulai"
             }
+            _logger.info(f"Response: {response}")
+            return response
         except Exception as e:
             _logger.exception(f"Error updating request: {str(e)}")
             return {"status": "error", "message": str(e)}

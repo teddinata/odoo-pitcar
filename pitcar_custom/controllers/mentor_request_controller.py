@@ -238,15 +238,15 @@ class MentorRequestController(http.Controller):
             if mechanic.exists() and mechanic.employee_id:
                 mentor_id = mechanic.employee_id.id
         
-        if not mentor_id and (req.mentor_employee_id or req.mentor_id):
-            mentor_id = req.mentor_employee_id.id if req.mentor_employee_id else req.mentor_id.employee_id.id if req.mentor_id and req.mentor_id.employee_id else None
+        if not mentor_id and (req.mentor_id or req.mentor_id):
+            mentor_id = req.mentor_id.id if req.mentor_id else req.mentor_id.employee_id.id if req.mentor_id and req.mentor_id.employee_id else None
         
         if not mentor_id:
             return {"status": "error", "message": "Mentor ID required"}
 
         try:
             values = {
-                'mentor_employee_id': mentor_id  # Gunakan field baru untuk data baru
+                'mentor_id': mentor_id  # Gunakan field baru untuk data baru
             }
             if req.state == 'draft':
                 values.update({

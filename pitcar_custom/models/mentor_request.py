@@ -17,7 +17,7 @@ class MentorRequest(models.Model):
     
     # Core Relations
     sale_order_id = fields.Many2one('sale.order', string='Service Order', required=True, tracking=True)
-    mentor_id = fields.Many2one('pitcar.mechanic.new', string='Mentor', tracking=True)
+    mentor_id = fields.Many2one('hr.employee', string='Mentor', tracking=True)
     mechanic_ids = fields.Many2many('pitcar.mechanic.new', string='Mechanics', required=True, tracking=True)
 
     # Request Details

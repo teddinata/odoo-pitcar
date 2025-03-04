@@ -368,9 +368,17 @@ class MentorRequestNotification(models.Model):
             title_template = "Permintaan Bantuan Dibatalkan: {name}"
             message_template = "Permintaan bantuan telah dibatalkan"
             
-            # Gabungkan mekanik dan mentor sebagai penerima
-            recipients = records.mapped('mechanic_ids') | records.mapped('mentor_id')
-            recipients = recipients.filtered(lambda r: r.exists())
+            # Ambil mekanik dan mentor sebagai partner
+            recipients = self.env['res.partner']
+            mechanic_recipients = records.mapped('mechanic_ids')
+            mentor_recipients = records.mapped('mentor_id')
+            
+            for mechanic in mechanic_recipients:
+                if mechanic.user_id and mechanic.user_id.partner_id:
+                    recipients |= mechanic.user_id.partner_id
+            for mentor in mentor_recipients:
+                if mentor.user_id and mentor.user_id.partner_id:
+                    recipients |= mentor.user_id.partner_id
             
             return records._send_notifications(
                 notification_type, 
@@ -380,11 +388,10 @@ class MentorRequestNotification(models.Model):
             )
     
     def _send_mentor_assignment_notifications(self, mentor_id, records):
-        """Mengirim notifikasi saat mentor ditugaskan dengan batch processing"""
         if not records:
             return
         
-        mentor = self.env['pitcar.mechanic.new'].browse(mentor_id)
+        mentor = self.env['hr.employee'].browse(mentor_id)  # Ubah ke hr.employee
         if not mentor.exists():
             return
         
@@ -392,12 +399,14 @@ class MentorRequestNotification(models.Model):
         title_template = "Anda Ditugaskan sebagai Mentor: {name}"
         message_template = "Anda telah ditugaskan untuk membantu {mechanic_names} dengan {category}"
         
-        # Hanya kirim ke mentor yang ditugaskan
+        # Gunakan partner_id dari mentor untuk notifikasi
+        recipients = mentor.user_id.partner_id if mentor.user_id and mentor.user_id.partner_id else self.env['res.partner']
+        
         return records._send_notifications(
             notification_type, 
             title_template, 
             message_template,
-            mentor
+            recipients
         )
     
     def _publish_notification_to_bus(self, notification_type, title, message, data=None):
@@ -471,7 +480,7 @@ class MechanicInherit(models.Model):
     _inherit = 'pitcar.mechanic.new'
 
     is_mentor = fields.Boolean('Is Mentor', default=False)
-    mentor_request_ids = fields.One2many('pitcar.mentor.request', 'mentor_id', string='Mentor Requests')
+    # mentor_request_ids = fields.One2many('pitcar.mentor.request', 'mentor_id', string='Mentor Requests')
     # help_request_ids masih merujuk ke mechanic_id, tapi field ini sudah dihapus
     help_request_ids = fields.Many2many('pitcar.mentor.request', 'pitcar_mechanic_request_rel', 'mechanic_id', 'request_id', string='Help Requests')
 
@@ -486,22 +495,41 @@ class MechanicInherit(models.Model):
     avg_rating = fields.Float('Average Rating', compute='_compute_mechanic_stats')
     learning_progress = fields.Float('Learning Progress (%)', compute='_compute_mechanic_stats')
 
-    @api.depends('mentor_request_ids', 'mentor_request_ids.state')
+    @api.depends('employee_id')
     def _compute_mentor_stats(self):
-        """Hitung statistik untuk mentor"""
+        """Hitung statistik mentor berdasarkan employee_id"""
         for record in self:
-            # Hindari multiple read dengan cached value
-            requests = record.mentor_request_ids
-            total = len(requests)
-            solved = len(requests.filtered(lambda r: r.state == 'solved'))
+            if record.employee_id:
+                requests = self.env['pitcar.mentor.request'].search([('mentor_id', '=', record.employee_id.id)])
+                total = len(requests)
+                solved = len(requests.filtered(lambda r: r.state == 'solved'))
+                record.total_mentor_requests = total
+                record.solved_requests = solved
+                record.success_rate = (solved / total * 100) if total > 0 else 0
+                response_times = requests.mapped('response_time')
+                record.avg_response_time = sum(response_times) / len(response_times) if response_times else 0
+            else:
+                record.total_mentor_requests = 0
+                record.solved_requests = 0
+                record.success_rate = 0
+                record.avg_response_time = 0
+
+    # @api.depends('mentor_request_ids', 'mentor_request_ids.state')
+    # def _compute_mentor_stats(self):
+    #     """Hitung statistik untuk mentor"""
+    #     for record in self:
+    #         # Hindari multiple read dengan cached value
+    #         requests = record.mentor_request_ids
+    #         total = len(requests)
+    #         solved = len(requests.filtered(lambda r: r.state == 'solved'))
             
-            record.total_mentor_requests = total
-            record.solved_requests = solved
-            record.success_rate = (solved / total * 100) if total > 0 else 0
+    #         record.total_mentor_requests = total
+    #         record.solved_requests = solved
+    #         record.success_rate = (solved / total * 100) if total > 0 else 0
             
-            # Optimasi untuk menghitung rata-rata
-            response_times = requests.mapped('response_time')
-            record.avg_response_time = sum(response_times) / len(response_times) if response_times else 0
+    #         # Optimasi untuk menghitung rata-rata
+    #         response_times = requests.mapped('response_time')
+    #         record.avg_response_time = sum(response_times) / len(response_times) if response_times else 0
 
     @api.depends('help_request_ids', 'help_request_ids.state', 'help_request_ids.mechanic_rating')
     def _compute_mechanic_stats(self):

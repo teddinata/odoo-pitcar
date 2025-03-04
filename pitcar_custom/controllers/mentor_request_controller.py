@@ -225,23 +225,33 @@ class MentorRequestController(http.Controller):
 
     def _handle_start_action(self, req, kw):
         """Handler untuk action start"""
-        if not kw.get('mentor_id'):
-            return {
-                "status": "error", 
-                "message": "Mentor ID required"
-            }
-        
-        mentor = request.env['pitcar.mechanic.new'].sudo().browse(kw['mentor_id'])
+        # Cek apakah mentor_id disediakan
+        if 'mentor_id' not in kw:
+            # Jika tidak ada mentor_id, gunakan user saat ini sebagai mentor
+            current_user_id = request.env.user.id
+            mechanic = request.env['pitcar.mechanic.new'].sudo().search([('user_id', '=', current_user_id)], limit=1)
+            
+            if not mechanic:
+                return {
+                    "status": "error",
+                    "message": "Mentor ID required"
+                }
+                
+            mentor_id = mechanic.id
+        else:
+            mentor_id = kw['mentor_id']
+            
+        mentor = request.env['pitcar.mechanic.new'].sudo().browse(mentor_id)
         if not mentor.exists():
             return {
                 "status": "error",
-                "message": f"Mechanic with ID {kw['mentor_id']} does not exist"
+                "message": f"Mechanic with ID {mentor_id} does not exist"
             }
         
         try:
             # Update mentor_id dan state langsung tanpa memanggil metode model lain
             values = {
-                'mentor_id': kw['mentor_id']
+                'mentor_id': mentor_id
             }
             
             # Jika state masih draft, ubah menjadi requested
@@ -249,6 +259,12 @@ class MentorRequestController(http.Controller):
                 values.update({
                     'state': 'requested',
                     'request_datetime': fields.Datetime.now()
+                })
+            # Jika state requested, ubah menjadi in_progress dan update waktu mulai
+            elif req.state == 'requested':
+                values.update({
+                    'state': 'in_progress',
+                    'start_datetime': fields.Datetime.now()
                 })
             
             # Update record
@@ -260,7 +276,7 @@ class MentorRequestController(http.Controller):
             return {
                 "status": "success",
                 "data": self._get_request_details(req),
-                "message": "Permintaan bantuan telah dikirim ke mentor"
+                "message": "Permintaan bantuan telah dimulai"
             }
         except Exception as e:
             return {
@@ -317,31 +333,62 @@ class MentorRequestController(http.Controller):
                 "message": "Resolution notes required"
             }
         
-        values = {
-            'resolution_notes': kw['resolution_notes'],
-            'learning_points': kw.get('learning_points', False),
-            'mechanic_rating': kw.get('mechanic_rating', False)
-        }
-        
-        # Gunakan dengan transaction handling yang tepat
-        req.sudo().write(values)
-        req.sudo().action_mark_solved()
-
-        return {
-            "status": "success",
-            "data": self._get_request_details(req),
-            "message": "Permintaan telah diselesaikan"
-        }
+        try:
+            # Update data penyelesaian
+            values = {
+                'resolution_notes': kw['resolution_notes'],
+                'learning_points': kw.get('learning_points', False),
+                'mechanic_rating': kw.get('mechanic_rating', False),
+                'state': 'solved',
+                'end_datetime': fields.Datetime.now()
+            }
+            
+            # Hitung waktu penyelesaian jika ada start_datetime
+            if req.start_datetime:
+                end_time = fields.Datetime.now()
+                start_time = req.start_datetime
+                # Hitung durasi dalam menit
+                duration_minutes = (end_time - start_time).total_seconds() / 60
+                values['resolution_time'] = duration_minutes
+            
+            # Gunakan dengan transaction handling yang tepat
+            req.sudo().write(values)
+            
+            return {
+                "status": "success",
+                "data": self._get_request_details(req),
+                "message": "Permintaan telah diselesaikan"
+            }
+        except Exception as e:
+            _logger.error(f"Error solving request: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "message": str(e)
+            }
         
     def _handle_cancel_action(self, req):
         """Handler untuk action cancel"""
-        req.sudo().action_cancel_request()
-        
-        return {
-            "status": "success",
-            "data": self._get_request_details(req),
-            "message": "Permintaan telah dibatalkan"
-        }
+        try:
+            # Implementasi langsung untuk pembatalan permintaan
+            values = {
+                'state': 'cancelled',
+                'end_datetime': fields.Datetime.now()
+            }
+            
+            # Update record
+            req.sudo().write(values)
+            
+            return {
+                "status": "success",
+                "data": self._get_request_details(req),
+                "message": "Permintaan telah dibatalkan"
+            }
+        except Exception as e:
+            _logger.error(f"Error cancelling request: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "message": str(e)
+            }
 
     @http.route('/web/mentor/dashboard', type='json', auth='user', methods=['POST'])
     def get_dashboard_data(self, **kw):
@@ -395,7 +442,8 @@ class MentorRequestController(http.Controller):
                     'notes': req.resolution_notes or "",
                     'learning_points': req.learning_points or "",
                     'mechanic_rating': req.mechanic_rating or ""
-                }
+                },
+                'resolution_time': req.resolution_time if hasattr(req, 'resolution_time') else None
             }
         except Exception as e:
             _logger.error(f"Error formatting request details: {str(e)}", exc_info=True)

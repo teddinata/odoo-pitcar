@@ -356,38 +356,71 @@ class MentorRequestController(http.Controller):
             }
 
     def _get_request_details(self, req):
-        """Format request details dengan optimasi"""
+        """Format request details dengan optimasi dan UTC+7 timestamp"""
         if not req:
             return {}
             
         # Format fields dengan metode yang lebih efisien
-        return {
-            'id': req.id,
-            'name': req.name,
-            'state': req.state,
-            'priority': req.priority,
-            'category': req.problem_category,
-            'description': req.problem_description,
-            'mechanics': [{'id': m.id, 'name': m.name} for m in req.mechanic_ids],
-            'mentor': {
-                'id': req.mentor_id.id,
-                'name': req.mentor_id.name
-            } if req.mentor_id else {},
-            'sale_order': {
-                'id': req.sale_order_id.id,
-                'name': req.sale_order_id.name
-            } if req.sale_order_id else {},
-            'timestamps': {
-                'request': date_utils.json_default(req.request_datetime) if req.request_datetime else None,
-                'start': date_utils.json_default(req.start_datetime) if req.start_datetime else None,
-                'end': date_utils.json_default(req.end_datetime) if req.end_datetime else None
-            },
-            'resolution': {
-                'notes': req.resolution_notes or "",
-                'learning_points': req.learning_points or "",
-                'mechanic_rating': req.mechanic_rating or ""
+        try:
+            # Timezone Jakarta (UTC+7)
+            jakarta_tz = pytz.timezone('Asia/Jakarta')
+            
+            # Format timestamps with Jakarta timezone
+            request_time = self._format_to_jakarta_time(req.request_datetime) if req.request_datetime else None
+            start_time = self._format_to_jakarta_time(req.start_datetime) if req.start_datetime else None
+            end_time = self._format_to_jakarta_time(req.end_datetime) if req.end_datetime else None
+            
+            return {
+                'id': req.id,
+                'name': req.name,
+                'state': req.state,
+                'priority': req.priority,
+                'category': req.problem_category,
+                'description': req.problem_description,
+                'mechanics': [{'id': m.id, 'name': m.name} for m in req.mechanic_ids],
+                'mentor': {
+                    'id': req.mentor_id.id,
+                    'name': req.mentor_id.name
+                } if req.mentor_id else {},
+                'sale_order': {
+                    'id': req.sale_order_id.id,
+                    'name': req.sale_order_id.name
+                } if req.sale_order_id else {},
+                'timestamps': {
+                    'request': request_time,
+                    'start': start_time,
+                    'end': end_time
+                },
+                'resolution': {
+                    'notes': req.resolution_notes or "",
+                    'learning_points': req.learning_points or "",
+                    'mechanic_rating': req.mechanic_rating or ""
+                }
             }
-        }
+        except Exception as e:
+            _logger.error(f"Error formatting request details: {str(e)}", exc_info=True)
+            # Return minimal data if error occurs
+            return {
+                'id': req.id,
+                'name': req.name,
+                'state': req.state
+            }
+        
+    def _format_to_jakarta_time(self, dt):
+        """Convert UTC datetime to Jakarta timezone (UTC+7) and format to string"""
+        if not dt:
+            return None
+        
+        # Ensure the datetime has timezone info
+        if not dt.tzinfo:
+            dt = pytz.UTC.localize(dt)
+        
+        # Convert to Jakarta timezone
+        jakarta_tz = pytz.timezone('Asia/Jakarta')
+        jakarta_dt = dt.astimezone(jakarta_tz)
+        
+        # Format to ISO string
+        return jakarta_dt.isoformat()
     
     @http.route('/web/mentor/request/notify', type='json', auth='user', methods=['POST'])
     def notify_mentors(self, **kw):
@@ -741,18 +774,21 @@ class MentorRequestController(http.Controller):
             inprogress_requests = MentorRequest.search_count(domain + [('state', '=', 'in_progress')])
             
             # Calculate average resolution time
-            solved_reqs = MentorRequest.search(domain + [('state', '=', 'solved'), 
-                                                        ('start_datetime', '!=', False),
-                                                        ('end_datetime', '!=', False)])
+            solved_query = MentorRequest.search(domain + [
+                ('state', '=', 'solved'),
+                ('start_datetime', '!=', False),
+                ('end_datetime', '!=', False)
+            ])
+            
             total_duration = 0
-            for req in solved_reqs:
+            for req in solved_query:
                 if req.start_datetime and req.end_datetime:
                     duration = (req.end_datetime - req.start_datetime).total_seconds() / 3600  # in hours
                     total_duration += duration
             
-            avg_resolution_time = total_duration / len(solved_reqs) if solved_reqs else 0
+            avg_resolution_time = total_duration / len(solved_query) if solved_query else 0
             
-            # PERBAIKAN: Dapatkan top categories dengan cara manual, bukan dengan read_group
+            # Dapatkan top categories dengan cara manual
             categories_count = {}
             all_requests = MentorRequest.search(domain)
             for req in all_requests:
@@ -775,13 +811,13 @@ class MentorRequestController(http.Controller):
             
             # Get top mentors dengan cara yang sama
             mentors_count = {}
-            solved_requests = MentorRequest.search(domain + [('state', '=', 'solved')])
-            for req in solved_requests:
+            solved_reqs = MentorRequest.search(domain + [('state', '=', 'solved')])
+            for req in solved_reqs:
                 if req.mentor_id:
                     mentor_id = req.mentor_id.id
                     mentor_name = req.mentor_id.name
                     if mentor_id in mentors_count:
-                        mentors_count[mentor_id]['count'] += 1
+                        mentors_count[mentor_id]['solved_count'] += 1
                     else:
                         mentors_count[mentor_id] = {
                             'id': mentor_id,
@@ -807,7 +843,7 @@ class MentorRequestController(http.Controller):
                             'count': 1
                         }
             
-            top_mechanics = sorted(mechanics_count.values(), key=lambda x: x['count'], reverse=True)[:5]
+            top_mechanics = sorted(list(mechanics_count.values()), key=lambda x: x['count'], reverse=True)[:5]
             
             # Get trend data (jika diminta)
             trend = []
@@ -843,11 +879,10 @@ class MentorRequestController(http.Controller):
                         date_label = current.strftime('%b %Y')
                     
                     # Hitung jumlah request untuk interval ini
-                    interval_domain = domain.copy()
-                    interval_domain.extend([
+                    interval_domain = [
                         ('create_date', '>=', current.strftime('%Y-%m-%d')),
                         ('create_date', '<', next_date.strftime('%Y-%m-%d'))
-                    ])
+                    ]
                     interval_count = MentorRequest.search_count(interval_domain)
                     
                     trend.append({
@@ -865,7 +900,7 @@ class MentorRequestController(http.Controller):
                     'pending_requests': pending_requests,
                     'inprogress_requests': inprogress_requests,
                     'cancelled_requests': cancelled_requests,
-                    'success_rate': round((solved_requests / total_requests * 100), 2) if total_requests else 0,
+                    'success_rate': round((solved_requests / total_requests * 100), 2) if total_requests > 0 else 0,
                     'avg_resolution_time': round(avg_resolution_time, 2)  # in hours
                 },
                 'top_categories': categories,

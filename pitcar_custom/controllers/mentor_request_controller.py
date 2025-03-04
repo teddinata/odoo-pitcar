@@ -238,14 +238,24 @@ class MentorRequestController(http.Controller):
                 "message": f"Mechanic with ID {kw['mentor_id']} does not exist"
             }
         
-        # PERBAIKAN: Hanya atur mentor_id dan submit request, bukan langsung start mentoring
         try:
-            # Pertama atur mentor_id
-            req.sudo().write({'mentor_id': kw['mentor_id']})
+            # Update mentor_id dan state langsung tanpa memanggil metode model lain
+            values = {
+                'mentor_id': kw['mentor_id']
+            }
             
-            # Kemudian submit request jika masih dalam state draft
+            # Jika state masih draft, ubah menjadi requested
             if req.state == 'draft':
-                req.sudo().action_submit_request()
+                values.update({
+                    'state': 'requested',
+                    'request_datetime': fields.Datetime.now()
+                })
+            
+            # Update record
+            req.sudo().write(values)
+            
+            # Buat notifikasi secara manual
+            self._create_request_notification(req)
             
             return {
                 "status": "success",
@@ -257,6 +267,47 @@ class MentorRequestController(http.Controller):
                 "status": "error",
                 "message": str(e)
             }
+
+    def _create_request_notification(self, req):
+        """Buat notifikasi untuk request baru"""
+        try:
+            # Cek apakah model notification ada
+            Notification = request.env['pitcar.notification'].sudo()
+            if not Notification:
+                return False
+                
+            # Data untuk notifikasi
+            mechanic_names = ", ".join(req.mechanic_ids.mapped('name')) if req.mechanic_ids else 'Unknown'
+            title = f"Permintaan Bantuan Baru: {req.name}"
+            message = f"Mekanik {mechanic_names} membutuhkan bantuan untuk {dict(req._fields['problem_category'].selection).get(req.problem_category)}"
+            
+            # Data tambahan
+            data = {
+                'request_id': req.id,
+                'state': req.state,
+                'category': req.problem_category,
+                'priority': req.priority,
+                'mechanic_names': mechanic_names,
+                'problem_description': req.problem_description,
+                'sale_order': req.sale_order_id.name if req.sale_order_id else '',
+                'total_items': 1
+            }
+            
+            # Buat notifikasi
+            notification = Notification.create_or_update_notification(
+                model='pitcar.mentor.request',
+                res_id=req.id,
+                type='new_mentor_request',
+                title=title,
+                message=message,
+                request_time=fields.Datetime.now(),
+                data=data
+            )
+            
+            return True
+        except Exception as e:
+            _logger.error(f"Error creating notification: {str(e)}", exc_info=True)
+            return False
         
     def _handle_solve_action(self, req, kw):
         """Handler untuk action solve"""

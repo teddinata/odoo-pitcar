@@ -721,49 +721,141 @@ class MentorRequestController(http.Controller):
     
     @http.route('/web/mentor/dashboard/stats', type='json', auth='user')
     def get_dashboard_stats(self, **kw):
-        """Get dashboard statistics dengan optimasi batch dan caching"""
+        """Get dashboard statistics for mentor requests"""
         try:
-            # Get date range dengan default values
             date_from = kw.get('date_from', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
             date_to = kw.get('date_to', datetime.now().strftime('%Y-%m-%d'))
             
-            # Base domain untuk semua queries
-            base_domain = [
+            domain = [
                 ('create_date', '>=', date_from),
                 ('create_date', '<=', date_to)
             ]
             
-            # Gunakan ORM cache dengan menggunakan env.cache.get
             MentorRequest = request.env['pitcar.mentor.request'].sudo()
             
-            # Batch process semua state counts
-            state_counts = {}
-            states = ['requested', 'in_progress', 'solved', 'cancelled', 'draft']
-            for state in states:
-                count = MentorRequest.search_count(base_domain + [('state', '=', state)])
-                state_counts[state] = count
+            # Get overall stats
+            total_requests = MentorRequest.search_count(domain)
+            solved_requests = MentorRequest.search_count(domain + [('state', '=', 'solved')])
+            cancelled_requests = MentorRequest.search_count(domain + [('state', '=', 'cancelled')])
+            pending_requests = MentorRequest.search_count(domain + [('state', 'in', ['draft', 'requested'])])
+            inprogress_requests = MentorRequest.search_count(domain + [('state', '=', 'in_progress')])
             
-            # Compute derived stats
-            total_requests = sum(state_counts.values())
-            solved_requests = state_counts.get('solved', 0)
-            pending_requests = state_counts.get('draft', 0) + state_counts.get('requested', 0)
-            inprogress_requests = state_counts.get('in_progress', 0)
-            cancelled_requests = state_counts.get('cancelled', 0)
+            # Calculate average resolution time
+            solved_reqs = MentorRequest.search(domain + [('state', '=', 'solved'), 
+                                                        ('start_datetime', '!=', False),
+                                                        ('end_datetime', '!=', False)])
+            total_duration = 0
+            for req in solved_reqs:
+                if req.start_datetime and req.end_datetime:
+                    duration = (req.end_datetime - req.start_datetime).total_seconds() / 3600  # in hours
+                    total_duration += duration
             
-            # Calculate resolution time hanya untuk solved requests
-            avg_resolution_time = self._calculate_avg_resolution_time(MentorRequest, base_domain)
+            avg_resolution_time = total_duration / len(solved_reqs) if solved_reqs else 0
             
-            # Process top categories dengan batch
-            categories = self._get_top_categories(MentorRequest, base_domain)
+            # PERBAIKAN: Dapatkan top categories dengan cara manual, bukan dengan read_group
+            categories_count = {}
+            all_requests = MentorRequest.search(domain)
+            for req in all_requests:
+                category = req.problem_category
+                if category in categories_count:
+                    categories_count[category] += 1
+                else:
+                    categories_count[category] = 1
             
-            # Process top mentors dan mechanics
-            top_mentors = self._get_top_mentors(MentorRequest, base_domain)
-            top_mechanics = self._get_top_mechanics(MentorRequest, base_domain)
+            # Konversi hitungan kategori ke format yang diharapkan
+            categories = []
+            category_mapping = dict(MentorRequest._fields['problem_category'].selection)
+            for category, count in categories_count.items():
+                categories.append({
+                    'name': category_mapping.get(category, category),
+                    'count': count
+                })
+            # Urutkan berdasarkan count (descending)
+            categories = sorted(categories, key=lambda x: x['count'], reverse=True)
             
-            # Get trend data if needed
+            # Get top mentors dengan cara yang sama
+            mentors_count = {}
+            solved_requests = MentorRequest.search(domain + [('state', '=', 'solved')])
+            for req in solved_requests:
+                if req.mentor_id:
+                    mentor_id = req.mentor_id.id
+                    mentor_name = req.mentor_id.name
+                    if mentor_id in mentors_count:
+                        mentors_count[mentor_id]['count'] += 1
+                    else:
+                        mentors_count[mentor_id] = {
+                            'id': mentor_id,
+                            'name': mentor_name,
+                            'solved_count': 1
+                        }
+            
+            # Konversi ke list dan urutkan
+            top_mentors = list(mentors_count.values())
+            top_mentors = sorted(top_mentors, key=lambda x: x.get('solved_count', 0), reverse=True)[:5]
+            
+            # Get top mechanics requesting help
+            mechanics_count = {}
+            requests = MentorRequest.search(domain)
+            for req in requests:
+                for mechanic in req.mechanic_ids:
+                    if mechanic.id in mechanics_count:
+                        mechanics_count[mechanic.id]['count'] += 1
+                    else:
+                        mechanics_count[mechanic.id] = {
+                            'id': mechanic.id,
+                            'name': mechanic.name,
+                            'count': 1
+                        }
+            
+            top_mechanics = sorted(mechanics_count.values(), key=lambda x: x['count'], reverse=True)[:5]
+            
+            # Get trend data (jika diminta)
             trend = []
             if kw.get('show_trend', True):
-                trend = self._get_trend_data(MentorRequest, date_from, date_to)
+                date_start = datetime.strptime(date_from, '%Y-%m-%d')
+                date_end = datetime.strptime(date_to, '%Y-%m-%d')
+                delta = (date_end - date_start).days
+                
+                # Tentukan interval berdasarkan rentang waktu
+                interval = 'day'
+                if delta > 60:
+                    interval = 'week'
+                elif delta > 365:
+                    interval = 'month'
+                
+                # Buat bin untuk setiap interval
+                current = date_start
+                while current <= date_end:
+                    next_date = None
+                    date_label = None
+                    
+                    if interval == 'day':
+                        next_date = current + timedelta(days=1)
+                        date_label = current.strftime('%d %b')
+                    elif interval == 'week':
+                        next_date = current + timedelta(days=7)
+                        date_label = f"{current.strftime('%d %b')} - {(current + timedelta(days=6)).strftime('%d %b')}"
+                    elif interval == 'month':
+                        if current.month == 12:
+                            next_date = datetime(current.year + 1, 1, 1)
+                        else:
+                            next_date = datetime(current.year, current.month + 1, 1)
+                        date_label = current.strftime('%b %Y')
+                    
+                    # Hitung jumlah request untuk interval ini
+                    interval_domain = domain.copy()
+                    interval_domain.extend([
+                        ('create_date', '>=', current.strftime('%Y-%m-%d')),
+                        ('create_date', '<', next_date.strftime('%Y-%m-%d'))
+                    ])
+                    interval_count = MentorRequest.search_count(interval_domain)
+                    
+                    trend.append({
+                        'date': date_label,
+                        'count': interval_count
+                    })
+                    
+                    current = next_date
             
             # Compile hasil
             result = {

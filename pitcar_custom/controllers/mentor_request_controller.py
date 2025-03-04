@@ -224,88 +224,87 @@ class MentorRequestController(http.Controller):
             }
 
     def _handle_start_action(self, req, kw):
-        """Handler untuk action start yang menerima employee_id atau mentor_id"""
+        """Handler untuk action start dengan penanganan khusus untuk employee_id"""
         _logger.info(f"Start action called with params: {kw}")
         
         mentor_id = None
         
-        # Coba beberapa strategi untuk mendapatkan mentor_id
-        
-        # Strategi 1: Gunakan mentor_id yang disediakan langsung
-        if 'mentor_id' in kw and kw['mentor_id']:
-            mentor_id_param = kw['mentor_id']
-            # Verifikasi bahwa ini adalah mechanic (mentor) ID
-            mentor = request.env['pitcar.mechanic.new'].sudo().browse(mentor_id_param)
-            if mentor.exists():
-                mentor_id = mentor_id_param
-                _logger.info(f"Using provided mentor_id: {mentor_id}")
-            else:
-                _logger.info(f"Provided mentor_id {mentor_id_param} is not a valid mechanic ID")
-                # Mungkin ini adalah employee_id - coba cari mechanic terkait
-                mechanic = request.env['pitcar.mechanic.new'].sudo().search([
-                    ('employee_id', '=', mentor_id_param)
+        # Periksa apakah kita memiliki employee_id yang eksplisit
+        # Gunakan format khusus 'emp_123' untuk membedakan dari mechanic IDs
+        if 'mentor_id' in kw and kw['mentor_id'] and isinstance(kw['mentor_id'], str) and kw['mentor_id'].startswith('emp_'):
+            # Extract employee ID dari format emp_123
+            try:
+                employee_id = int(kw['mentor_id'].split('_')[1])
+                _logger.info(f"Extracted employee_id {employee_id} from mentor_id parameter")
+                
+                # Cari mechanic berdasarkan employee_id
+                employee = request.env['hr.employee'].sudo().browse(employee_id)
+                if not employee.exists():
+                    _logger.error(f"Employee with ID {employee_id} not found")
+                    return {
+                        "status": "error", 
+                        "message": f"Employee with ID {employee_id} not found"
+                    }
+                    
+                # Cari mechanic berdasarkan nama employee (ini pendekatan alternatif, bisa disesuaikan)
+                # Idenya adalah mencari mechanic berdasarkan properti employee
+                mechanics = request.env['pitcar.mechanic.new'].sudo().search([
+                    ('name', '=', employee.name)
                 ], limit=1)
-                if mechanic:
-                    mentor_id = mechanic.id
-                    _logger.info(f"Found mechanic id {mentor_id} for employee_id {mentor_id_param}")
+                
+                if mechanics:
+                    mentor_id = mechanics[0].id
+                    _logger.info(f"Found mechanic ID {mentor_id} with name matching employee {employee.name}")
+                else:
+                    _logger.warning(f"No mechanic found with name matching employee {employee.name}")
+                    # Buat mechanic baru jika tidak ditemukan mechanic yang cocok
+                    new_mechanic = request.env['pitcar.mechanic.new'].sudo().create({
+                        'name': employee.name,
+                        'position_code': 'kaizen',  # Default position
+                    })
+                    mentor_id = new_mechanic.id
+                    _logger.info(f"Created new mechanic with ID {mentor_id} based on employee {employee.name}")
+            except Exception as e:
+                _logger.error(f"Error processing employee ID: {str(e)}")
         
-        # Strategi 2: Gunakan employee_id jika disediakan
-        if not mentor_id and 'employee_id' in kw and kw['employee_id']:
-            employee_id = kw['employee_id']
-            _logger.info(f"Looking for mechanic with employee_id: {employee_id}")
-            
-            # Cari mechanic berdasarkan employee_id
-            mechanic = request.env['pitcar.mechanic.new'].sudo().search([
-                ('employee_id', '=', employee_id)
-            ], limit=1)
-            
-            if mechanic:
-                mentor_id = mechanic.id
-                _logger.info(f"Found mechanic id {mentor_id} for employee_id {employee_id}")
-            else:
-                # Jika mechanic tidak ditemukan, buat mechanic baru dari employee
-                try:
-                    employee = request.env['hr.employee'].sudo().browse(employee_id)
-                    if employee.exists():
-                        # Cek apakah employee punya job title yang sesuai sebagai mentor
-                        is_mentor_role = False
-                        if employee.job_id:
-                            job_title = employee.job_id.name.lower()
-                            if ('kaizen' in job_title or 'lead' in job_title or 
-                                'head' in job_title or 'chief' in job_title or 
-                                'manager' in job_title or 'supervisor' in job_title):
-                                is_mentor_role = True
-                        
-                        if is_mentor_role:
-                            # Buat mechanic baru dari employee
-                            new_mechanic = request.env['pitcar.mechanic.new'].sudo().create({
-                                'name': employee.name,
-                                'employee_id': employee.id,
-                                'position_code': 'kaizen',  # Default sebagai kaizen
-                                'user_id': employee.user_id.id if employee.user_id else False
-                            })
-                            mentor_id = new_mechanic.id
-                            _logger.info(f"Created new mechanic with id {mentor_id} from employee {employee_id}")
-                except Exception as e:
-                    _logger.error(f"Failed to create mechanic from employee: {str(e)}")
+        # Jika tidak ada employee ID khusus, gunakan mentor_id normal
+        if not mentor_id and 'mentor_id' in kw and kw['mentor_id']:
+            # Pastikan mentor_id adalah integer sebelum digunakan
+            try:
+                if isinstance(kw['mentor_id'], str) and kw['mentor_id'].isdigit():
+                    mentor_id = int(kw['mentor_id'])
+                elif isinstance(kw['mentor_id'], int):
+                    mentor_id = kw['mentor_id']
+                
+                if mentor_id:
+                    # Verifikasi mentor ada di database
+                    mentor = request.env['pitcar.mechanic.new'].sudo().browse(mentor_id)
+                    if mentor.exists():
+                        _logger.info(f"Using provided mentor_id {mentor_id}")
+                    else:
+                        _logger.warning(f"Mentor with ID {mentor_id} not found")
+                        mentor_id = None
+            except Exception as e:
+                _logger.error(f"Error validating mentor_id: {str(e)}")
+                mentor_id = None
         
-        # Strategi 3: Gunakan mentor yang sudah terkait dengan request
+        # Coba gunakan mentor yang sudah ada di request
         if not mentor_id and req.mentor_id:
             mentor_id = req.mentor_id.id
-            _logger.info(f"Using existing mentor_id from request: {mentor_id}")
+            _logger.info(f"Using existing mentor_id {mentor_id} from request")
         
-        # Strategi 4: Gunakan user saat ini
+        # Sebagai fallback, gunakan user saat ini
         if not mentor_id:
             current_user_id = request.env.user.id
-            _logger.info(f"Looking for mechanic with user_id: {current_user_id}")
+            _logger.info(f"Looking for mechanic with user_id {current_user_id}")
             
             mechanic = request.env['pitcar.mechanic.new'].sudo().search([('user_id', '=', current_user_id)], limit=1)
             
             if mechanic:
                 mentor_id = mechanic.id
-                _logger.info(f"Found mechanic with id: {mentor_id}")
+                _logger.info(f"Found mechanic with id {mentor_id} for current user")
         
-        # Jika masih belum ada mentor_id, kembalikan error
+        # Jika masih tidak ada mentor_id, kembalikan error
         if not mentor_id:
             _logger.error("No valid mentor could be determined")
             return {
@@ -313,19 +312,10 @@ class MentorRequestController(http.Controller):
                 "message": "Mentor ID required - tidak dapat menemukan mentor yang valid"
             }
         
-        # Verifikasi mentor existens
-        mentor = request.env['pitcar.mechanic.new'].sudo().browse(mentor_id)
-        if not mentor.exists():
-            _logger.error(f"Mechanic with ID {mentor_id} does not exist")
-            return {
-                "status": "error",
-                "message": f"Mechanic with ID {mentor_id} does not exist"
-            }
-        
         try:
             _logger.info(f"Updating request with mentor_id: {mentor_id} and current state: {req.state}")
             
-            # Update mentor_id dan state langsung tanpa memanggil metode model lain
+            # Update mentor_id dan state
             values = {
                 'mentor_id': mentor_id
             }

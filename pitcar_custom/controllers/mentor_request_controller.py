@@ -31,34 +31,39 @@ class MentorRequestController(http.Controller):
                     "message": "At least one mechanic must be specified"
                 }
 
-            # Validasi keberadaan mechanic
-            mechanics = request.env['pitcar.mechanic.new'].sudo().browse(mechanic_ids)
-            if not mechanics.exists() or len(mechanics) != len(mechanic_ids):
-                return {
-                    "status": "error",
-                    "message": "One or more mechanic IDs do not exist"
-                }
-            
-            # Validasi keberadaan sale order
-            sale_order = request.env['sale.order'].sudo().browse(kw['sale_order_id'])
-            if not sale_order.exists():
-                return {
-                    "status": "error",
-                    "message": f"Sale Order with ID {kw['sale_order_id']} does not exist"
+            # Begin a new savepoint to allow rollback on error
+            with request.env.cr.savepoint():
+                # Validasi keberadaan mechanic
+                mechanics = request.env['pitcar.mechanic.new'].sudo().browse(mechanic_ids)
+                if not mechanics.exists() or len(mechanics) != len(mechanic_ids):
+                    return {
+                        "status": "error",
+                        "message": "One or more mechanic IDs do not exist"
+                    }
+                
+                # Validasi keberadaan sale order
+                sale_order = request.env['sale.order'].sudo().browse(kw['sale_order_id'])
+                if not sale_order.exists():
+                    return {
+                        "status": "error",
+                        "message": f"Sale Order with ID {kw['sale_order_id']} does not exist"
+                    }
+
+                # Persiapkan values untuk create
+                values = {
+                    'sale_order_id': kw['sale_order_id'],
+                    'mechanic_ids': [(6, 0, mechanic_ids)],
+                    'problem_category': kw['problem_category'],
+                    'problem_description': kw['problem_description'],
+                    'priority': kw.get('priority', 'normal'),
+                    'state': 'draft'
                 }
 
-            # Persiapkan values untuk create
-            values = {
-                'sale_order_id': kw['sale_order_id'],
-                'mechanic_ids': [(6, 0, mechanic_ids)],
-                'problem_category': kw['problem_category'],
-                'problem_description': kw['problem_description'],
-                'priority': kw.get('priority', 'normal'),
-                'state': 'draft'
-            }
-
-            # Create request dengan transaction handling yang tepat
-            mentor_request = request.env['pitcar.mentor.request'].sudo().create(values)
+                # Create request
+                mentor_request = request.env['pitcar.mentor.request'].sudo().create(values)
+                
+                # Explicitly flush the changes to the database
+                request.env.cr.flush()
 
             return {
                 "status": "success",
@@ -67,6 +72,7 @@ class MentorRequestController(http.Controller):
             }
 
         except Exception as e:
+            # Log the error but ensure we don't break the transaction for other operations
             _logger.error(f"Error creating mentor request: {str(e)}", exc_info=True)
             return {
                 "status": "error",

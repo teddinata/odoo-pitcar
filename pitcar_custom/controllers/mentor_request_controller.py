@@ -241,30 +241,39 @@ class MentorRequestController(http.Controller):
             return {"status": "error", "message": "Mentor ID required"}
 
         try:
-            values = {
-                'mentor_id': mentor_id  # Simpan langsung ke mentor_id (hr.employee)
-            }
-            if req.state == 'draft':
-                values.update({
-                    'state': 'requested',
-                    'request_datetime': fields.Datetime.now()
-                })
-            elif req.state == 'requested':
-                values.update({
-                    'state': 'in_progress',
-                    'start_datetime': fields.Datetime.now()
-                })
-            
-            _logger.info(f"Writing values to request {req.id}: {values}")
-            req.sudo().write(values)
-            req._send_mentor_assignment_notifications(mentor_id, req)
-            response = {
-                "status": "success",
-                "data": self._get_request_details(req),
-                "message": "Permintaan bantuan telah dimulai"
-            }
-            _logger.info(f"Response: {response}")
-            return response
+            # Gunakan savepoint untuk transaksi
+            with request.env.cr.savepoint():
+                values = {
+                    'mentor_id': mentor_id  # Simpan langsung ke mentor_id (hr.employee)
+                }
+                if req.state == 'draft':
+                    values.update({
+                        'state': 'requested',
+                        'request_datetime': fields.Datetime.now()
+                    })
+                elif req.state == 'requested':
+                    values.update({
+                        'state': 'in_progress',
+                        'start_datetime': fields.Datetime.now()
+                    })
+                
+                _logger.info(f"Writing values to request {req.id}: {values}")
+                req.sudo().write(values)
+                
+                # Gunakan context untuk mencegah auto-subscription
+                req = req.with_context(mail_create_nosubscribe=True, mail_auto_subscribe_no_notify=True)
+                req._send_mentor_assignment_notifications(mentor_id, req)
+                
+                # Flush perubahan
+                request.env.cr.flush()
+                
+                response = {
+                    "status": "success",
+                    "data": self._get_request_details(req),
+                    "message": "Permintaan bantuan telah dimulai"
+                }
+                _logger.info(f"Response: {response}")
+                return response
         except Exception as e:
             _logger.exception(f"Error updating request: {str(e)}")
             return {"status": "error", "message": str(e)}

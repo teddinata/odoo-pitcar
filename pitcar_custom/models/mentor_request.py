@@ -135,33 +135,15 @@ class MentorRequest(models.Model):
             return False
         
         try:
-            # Set context untuk mencegah auto-subscription
-            self = self.with_context(mail_create_nosubscribe=True, mail_auto_subscribe_no_notify=True)
-            
             if excluded_recipients:
                 recipients = recipients - excluded_recipients
             if not recipients:
                 return False
             
+            # Untuk mencegah duplikat follower, gunakan context berikut
+            self = self.with_context(mail_create_nosubscribe=True)
+            
             notification_vals_list = []
-            chatter_messages = []
-            
-            # Kumpulkan semua partner_ids terlebih dahulu untuk efisiensi query
-            partner_ids = []
-            for recipient in recipients:
-                if recipient.user_id and recipient.user_id.partner_id:
-                    partner_ids.append(recipient.user_id.partner_id.id)
-            
-            # Dapatkan existing followers untuk semua records sekaligus (lebih efisien)
-            existing_followers = {}
-            if partner_ids:
-                for record in self:
-                    followers = self.env['mail.followers'].sudo().search([
-                        ('res_model', '=', 'pitcar.mentor.request'),
-                        ('res_id', '=', record.id),
-                        ('partner_id', 'in', partner_ids)
-                    ])
-                    existing_followers[record.id] = followers.mapped('partner_id.id')
             
             for record in self:
                 mechanic_names = ", ".join(record.mechanic_ids.mapped('name')) if record.mechanic_ids else 'Unknown'
@@ -179,18 +161,6 @@ class MentorRequest(models.Model):
                 title = title_template.format(**context)
                 message = message_template.format(**context)
                 
-                html_message = f"""
-                    <p><strong>{title}</strong></p>
-                    <p>{message}</p>
-                    {'<ul>' if notification_type == 'new_mentor_request' else ''}
-                    {f'<li>Dari: {mechanic_names}</li>' if notification_type == 'new_mentor_request' else ''}
-                    {f'<li>Work Order: {record.sale_order_id.name}</li>' if notification_type == 'new_mentor_request' else ''}
-                    {f'<li>Kategori: {category_name}</li>' if notification_type == 'new_mentor_request' else ''}
-                    {f'<li>Prioritas: {dict(record._fields["priority"].selection).get(record.priority)}</li>' if notification_type == 'new_mentor_request' else ''}
-                    {f'<li>Deskripsi: {record.problem_description}</li>' if notification_type == 'new_mentor_request' else ''}
-                    {'</ul>' if notification_type == 'new_mentor_request' else ''}
-                """
-                
                 data = {
                     'request_id': record.id,
                     'state': record.state,
@@ -205,53 +175,27 @@ class MentorRequest(models.Model):
                 if data_extras:
                     data.update(data_extras)
                 
+                # Kirim notifikasi ke bus
                 self._publish_notification_to_bus(notification_type, title, message, data)
                 
-                record_existing_partners = existing_followers.get(record.id, [])
-                
+                # Buat notifikasi dalam sistem tanpa membuat follower
+                # Di dalam method _send_notifications, ganti bagian pembuatan notifikasi
                 for recipient in recipients:
-                    notification_vals_list.append({
-                        'model': 'pitcar.mentor.request',
-                        'res_id': record.id,
-                        'type': notification_type,
-                        'title': title,
-                        'message': message,
-                        'request_time': fields.Datetime.now(),
-                        'data': json.dumps(data),
-                        'is_read': False
-                    })
-                    
-                    if recipient.user_id and recipient.user_id.partner_id:
-                        partner_id = recipient.user_id.partner_id.id
-                        # Hanya kirim chatter message ke partner yang belum menjadi follower
-                        if partner_id not in record_existing_partners:
-                            chatter_messages.append((record, partner_id, html_message))
+                    if recipient.user_id:
+                        self.env['pitcar.notification'].sudo().create_or_update_notification(
+                            model='pitcar.mentor.request',
+                            res_id=record.id,
+                            type=notification_type,
+                            title=title,
+                            message=message,
+                            request_time=fields.Datetime.now(),
+                            data=data
+                        )
             
+            # Buat notifikasi dalam database
             if notification_vals_list:
                 self.env['pitcar.notification'].sudo().create(notification_vals_list)
-            
-            # Gunakan context mail_create_nosubscribe untuk mencegah auto-subscription
-            # dan juga disable notifications untuk menghindari pengiriman email duplikat
-            for record, partner_id, html_content in chatter_messages:
-                # Periksa sekali lagi followers untuk konfirmasi
-                follower_exists = self.env['mail.followers'].sudo().search_count([
-                    ('res_model', '=', 'pitcar.mentor.request'),
-                    ('res_id', '=', record.id),
-                    ('partner_id', '=', partner_id)
-                ])
                 
-                if not follower_exists:
-                    record.with_context(
-                        mail_notify_force_send=False, 
-                        mail_create_nosubscribe=True,
-                        mail_auto_subscribe_no_notify=True
-                    ).message_post(
-                        body=html_content,
-                        message_type='notification',
-                        partner_ids=[partner_id],
-                        subtype_id=self.env.ref('mail.mt_note').id
-                    )
-            
             return True
         except Exception as e:
             _logger.error(f"Error sending batch notifications: {str(e)}", exc_info=True)
@@ -283,8 +227,8 @@ class MentorRequest(models.Model):
         if not records:
             return
         
-        # Default excluded_recipients kosong
-        excluded_recipients = self.env['pitcar.mechanic.new']
+        # Gunakan context untuk mencegah auto-subscription
+        records = records.with_context(mail_create_nosubscribe=True)
         
         if state == 'requested':
             notification_type = 'new_mentor_request'
@@ -293,54 +237,57 @@ class MentorRequest(models.Model):
             position_domain = [('position_code', 'in', ['leader', 'foreman'])]
             recipients = self.env['pitcar.mechanic.new'].search(position_domain)
             excluded_recipients = records.mapped('mechanic_ids')
+            return records._send_notifications(
+                notification_type, title_template, message_template, recipients, excluded_recipients=excluded_recipients
+            )
         
         elif state == 'in_progress':
             notification_type = 'mentor_start'
             title_template = "Bantuan Dimulai: {name}"
             message_template = "Mentor telah mulai menangani permintaan bantuan"
             recipients = records.mapped('mechanic_ids')
+            return records._send_notifications(notification_type, title_template, message_template, recipients)
         
         elif state == 'solved':
             notification_type = 'mentor_solved'
             title_template = "Permintaan Bantuan Selesai: {name}"
             message_template = "Mentor telah menyelesaikan permintaan bantuan"
             recipients = records.mapped('mechanic_ids')
+            return records._send_notifications(notification_type, title_template, message_template, recipients)
         
         elif state == 'cancelled':
             notification_type = 'mentor_cancelled'
             title_template = "Permintaan Bantuan Dibatalkan: {name}"
             message_template = "Permintaan bantuan telah dibatalkan"
-            recipients = self.env['res.partner']
-            mechanic_recipients = records.mapped('mechanic_ids')
-            mentor_recipients = records.mapped('mentor_id')
             
-            for mechanic in mechanic_recipients:
-                if mechanic.user_id and mechanic.user_id.partner_id:
-                    recipients |= mechanic.user_id.partner_id
-            for mentor in mentor_recipients:
-                if mentor.user_id and mentor.user_id.partner_id:
-                    recipients |= mentor.user_id.partner_id
-        else:
-            return False
-        
-        # Gunakan context mail_create_nosubscribe untuk semua notifikasi
-        return records.with_context(mail_create_nosubscribe=True, mail_auto_subscribe_no_notify=True)._send_notifications(
-            notification_type, title_template, message_template, recipients, excluded_recipients=excluded_recipients
-        )
+            # Dapatkan semua mechanics dan mentor terkait
+            mechanics = records.mapped('mechanic_ids')
+            
+            # Hanya gunakan recipients yang sudah memiliki user dan partner
+            recipients = mechanics.filtered(lambda m: m.user_id and m.user_id.partner_id)
+            return records._send_notifications(notification_type, title_template, message_template, recipients)
 
     def _send_mentor_assignment_notifications(self, mentor_id, records):
         if not records:
             return
         
         mentor = self.env['hr.employee'].browse(mentor_id)
-        if not mentor.exists():
+        if not mentor.exists() or not mentor.user_id or not mentor.user_id.partner_id:
             return
+        
+        # Gunakan context untuk mencegah auto-subscription
+        records = records.with_context(mail_create_nosubscribe=True)
         
         notification_type = 'mentor_assignment'
         title_template = "Anda Ditugaskan sebagai Mentor: {name}"
         message_template = "Anda telah ditugaskan untuk membantu {mechanic_names} dengan {category}"
-        recipients = mentor.user_id.partner_id if mentor.user_id and mentor.user_id.partner_id else self.env['res.partner']
-        return records._send_notifications(notification_type, title_template, message_template, recipients)
+        
+        # Gunakan model pitcar.mechanic.new untuk keseragaman tipe recipient
+        mechanics = self.env['pitcar.mechanic.new'].search([('employee_id', '=', mentor.id)], limit=1)
+        if not mechanics:
+            return False
+            
+        return records._send_notifications(notification_type, title_template, message_template, mechanics)
 
     def _publish_notification_to_bus(self, notification_type, title, message, data=None):
         try:

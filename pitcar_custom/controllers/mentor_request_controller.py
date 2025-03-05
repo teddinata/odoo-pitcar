@@ -206,7 +206,10 @@ class MentorRequestController(http.Controller):
             if 'action' not in kw:
                 return {"status": "error", "message": "Action not specified"}
 
-            req = request.env['pitcar.mentor.request'].sudo().browse(request_id)
+            # Aktifkan konteks untuk mencegah subscription
+            req = request.env['pitcar.mentor.request'].sudo().with_context(
+                mail_create_nosubscribe=True
+            ).browse(request_id)
             if not req.exists():
                 return {"status": "error", "message": "Request not found"}
 

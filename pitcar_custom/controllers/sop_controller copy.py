@@ -28,14 +28,11 @@ class SOPController(http.Controller):
             'mechanic': [],  # Using mechanic.new model
             'valet': [('job_id.name', 'ilike', 'valet')],
             'part_support': [('job_id.name', 'ilike', 'part')],
-            'cs': [('job_id.name', 'ilike', 'customer service')],
-            'lead_mechanic': [('job_id.name', 'ilike', 'lead mechanic')],
-            'lead_cs': [('job_id.name', 'ilike', 'lead customer service')],
-            'head_workshop': [('job_id.name', 'ilike', 'kepala bengkel')]
+            'cs': [('job_id.name', 'ilike', 'customer service')]  # Tambahkan domain untuk CS
         }
         return domains.get(role, [])
 
-    def _get_sop_domain(self, role=None, department=None, sampling_type=None, search=None):
+    def _get_sop_domain(self, role=None, department=None, search=None):
         """Build domain for SOP search"""
         domain = [('active', '=', True)]
         
@@ -43,12 +40,6 @@ class SOPController(http.Controller):
             domain.append(('role', '=', role))
         if department:
             domain.append(('department', '=', department))
-        if sampling_type:
-            # If sampling_type is specified, get SOPs valid for that type
-            if sampling_type == 'kaizen':
-                domain.append(('sampling_type', 'in', ['kaizen', 'both']))
-            elif sampling_type == 'lead':
-                domain.append(('sampling_type', 'in', ['lead', 'both']))
         if search:
             for term in search.split():
                 domain.extend(['|', '|',
@@ -85,23 +76,7 @@ class SOPController(http.Controller):
             'customer_service': [{
                 'id': cs.id,
                 'name': cs.name
-            } for cs in sampling.cs_id] if sampling.cs_id else [],
-            
-            # Add new leadership roles
-            'lead_mechanic': [{
-                'id': lm.id,
-                'name': lm.name
-            } for lm in sampling.lead_mechanic_id] if sampling.lead_mechanic_id else [],
-            
-            'lead_customer_service': [{
-                'id': lcs.id,
-                'name': lcs.name
-            } for lcs in sampling.lead_cs_id] if sampling.lead_cs_id else [],
-            
-            'head_workshop': [{
-                'id': hw.id,
-                'name': hw.name
-            } for hw in sampling.head_workshop_id] if sampling.head_workshop_id else [],
+            } for cs in sampling.cs_id] if sampling.cs_id else []
         }
 
     @http.route('/web/sop/master/list', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
@@ -112,7 +87,6 @@ class SOPController(http.Controller):
             limit = max(1, min(100, int(kw.get('limit', 25))))
             role = kw.get('role')
             department = kw.get('department')
-            sampling_type = kw.get('sampling_type')  # New parameter
             search = (kw.get('search') or '').strip()
             
             # Sort parameters
@@ -124,8 +98,7 @@ class SOPController(http.Controller):
                 'code': 'code',
                 'name': 'name',
                 'department': 'department',
-                'role': 'role',
-                'sampling_type': 'sampling_type'  # Add sort by sampling_type
+                'role': 'role'
             }
             
             # Pastikan sort_by valid, jika tidak gunakan default
@@ -135,7 +108,7 @@ class SOPController(http.Controller):
             order_string = f"{sort_field} {sort_order}"
 
             # Build domain
-            domain = self._get_sop_domain(role, department, sampling_type, search)
+            domain = self._get_sop_domain(role, department, search)
             
             # Get data with ordering
             SOP = request.env['pitcar.sop'].sudo()
@@ -155,10 +128,6 @@ class SOPController(http.Controller):
                     'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
                     'role': sop.role,
                     'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
-                    'sampling_type': sop.sampling_type,
-                    'sampling_type_label': dict(sop._fields['sampling_type'].selection).get(sop.sampling_type, ''),
-                    'is_lead_role': sop.is_lead_role,
-                    'is_sa': sop.is_sa,
                     'sequence': sop.sequence,
                     'active': sop.active
                 })
@@ -188,26 +157,17 @@ class SOPController(http.Controller):
                         'roles': [
                             {'value': 'sa', 'label': 'Service Advisor'},
                             {'value': 'mechanic', 'label': 'Mechanic'},
-                            {'value': 'lead_mechanic', 'label': 'Lead Mechanic'},
                             {'value': 'valet', 'label': 'Valet Parking'},
                             {'value': 'part_support', 'label': 'Part Support'},
-                            {'value': 'cs', 'label': 'Customer Service'},
-                            {'value': 'lead_cs', 'label': 'Lead Customer Service'},
-                            {'value': 'head_workshop', 'label': 'Kepala Bengkel'}
-                        ],
-                        'sampling_types': [
-                            {'value': 'kaizen', 'label': 'Kaizen Team'},
-                            {'value': 'lead', 'label': 'Leader'},
-                            {'value': 'both', 'label': 'Both'}
+                            {'value': 'cs', 'label': 'Customer Service'}  # Tambahkan role CS
                         ]
                     }
                 }
             }
 
         except Exception as e:
-            _logger.error(f"Error dalam get_sop_list: {str(e)}")
+            _logger.error(f"Error in get_sop_list: {str(e)}")
             return {'status': 'error', 'message': str(e)}
-
 
 
     @http.route('/web/sop/sampling/available-orders', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
@@ -221,7 +181,6 @@ class SOPController(http.Controller):
             is_sa = kw.get('is_sa')
             date_from = kw.get('date_from')
             date_to = kw.get('date_to')
-            sampling_type = kw.get('sampling_type')  # New parameter
 
             # Debug log
             _logger.info(f"Received parameters: {kw}")
@@ -287,16 +246,16 @@ class SOPController(http.Controller):
                     'id': mech.id,
                     'name': mech.name,
                     'sampling_count': len(order.sop_sampling_ids.filtered(
-                        lambda s: s.sop_id.role == 'mechanic' and mech.id in s.mechanic_id.ids
+                        lambda s: not s.sop_id.is_sa and mech.id in s.mechanic_id.ids
                     ))
                 } for mech in order.car_mechanic_id_new] if order.car_mechanic_id_new else []
 
-                # Format SA data - Fixed to properly count sampling for service advisors
+                # Format SA data
                 sa_data = [{
                     'id': sa.id,
                     'name': sa.name,
                     'sampling_count': len(order.sop_sampling_ids.filtered(
-                        lambda s: s.sop_id.role == 'sa' and sa.id in s.sa_id.ids
+                        lambda s: s.sop_id.is_sa and sa.id in s.sa_id.ids
                     ))
                 } for sa in order.service_advisor_id] if order.service_advisor_id else []
 
@@ -317,11 +276,7 @@ class SOPController(http.Controller):
                         'mechanic': mechanic_data,
                         'service_advisor': sa_data
                     },
-                    'sampling_count': {
-                        'total': len(order.sop_sampling_ids),
-                        'kaizen': len(order.sop_sampling_ids.filtered(lambda s: s.sampling_type == 'kaizen')),
-                        'lead': len(order.sop_sampling_ids.filtered(lambda s: s.sampling_type == 'lead'))
-                    }
+                    'sampling_count': len(order.sop_sampling_ids)
                 }
                 rows.append(row)
 
@@ -350,7 +305,6 @@ class SOPController(http.Controller):
             sop_id = kw.get('sop_id')
             employee_ids = kw.get('employee_ids', [])
             notes = kw.get('notes')
-            sampling_type = kw.get('sampling_type', 'kaizen')  # Default to kaizen if not specified
 
             if not sale_order_id or not sop_id:
                 return {
@@ -359,16 +313,9 @@ class SOPController(http.Controller):
                 }
 
             # Get SOP and validate
-            sop = request.env['pitcar.sop'].sudo().browse(sop_id)
+            sop = request.env['pitcar.sop'].browse(sop_id)
             if not sop.exists():
                 return {'status': 'error', 'message': 'SOP not found'}
-            
-            # Verifikasi compatibility sampling type
-            if sop.sampling_type not in ['both', sampling_type]:
-                return {
-                    'status': 'error',
-                    'message': f'SOP {sop.name} tidak dapat di-sampling oleh {sampling_type}, hanya oleh {sop.sampling_type}'
-                }
 
             # Base values
             values = {
@@ -376,69 +323,40 @@ class SOPController(http.Controller):
                 'sop_id': sop_id,
                 'controller_id': request.env.user.employee_id.id,
                 'notes': notes,
-                'state': 'draft',
-                'sampling_type': sampling_type
+                'state': 'draft'
             }
 
             # Role-specific employee assignment
-            sale_order = request.env['sale.order'].sudo().browse(sale_order_id)
+            sale_order = request.env['sale.order'].browse(sale_order_id)
             
-            # Penanganan Service Advisor - FIX: Pastikan data SA terbawa dengan benar
             if sop.role == 'sa':
                 if not sale_order.service_advisor_id:
-                    return {'status': 'error', 'message': 'Tidak ada Service Advisor yang ditugaskan'}
+                    return {'status': 'error', 'message': 'No Service Advisor assigned'}
                 values['sa_id'] = [(6, 0, sale_order.service_advisor_id.ids)]
-                # Tambahan log untuk debug
-                _logger.info(f"Assigning SA: {sale_order.service_advisor_id.ids} to sampling")
             
-            # Penanganan Mekanik
             elif sop.role == 'mechanic':
                 if not sale_order.car_mechanic_id_new:
-                    return {'status': 'error', 'message': 'Tidak ada Mekanik yang ditugaskan'}
+                    return {'status': 'error', 'message': 'No Mechanic assigned'}
                 values['mechanic_id'] = [(6, 0, sale_order.car_mechanic_id_new.ids)]
             
-            # Penanganan Valet Parking
             elif sop.role == 'valet':
                 if not employee_ids:
-                    return {'status': 'error', 'message': 'Staff Valet harus dipilih'}
+                    return {'status': 'error', 'message': 'Valet staff must be selected'}
                 values['valet_id'] = [(6, 0, employee_ids)]
             
-            # Penanganan Part Support
             elif sop.role == 'part_support':
                 if not employee_ids:
-                    return {'status': 'error', 'message': 'Staff Part Support harus dipilih'}
+                    return {'status': 'error', 'message': 'Part support staff must be selected'}
                 values['part_support_id'] = [(6, 0, employee_ids)]
 
-            # Penanganan Customer Service
+             # Tambahkan handler untuk CS
             elif sop.role == 'cs':
                 if not employee_ids:
-                    return {'status': 'error', 'message': 'Staff Customer Service harus dipilih'}
+                    return {'status': 'error', 'message': 'Customer Service staff must be selected'}
                 values['cs_id'] = [(6, 0, employee_ids)]
-                
-            # Penanganan Lead Mechanic
-            elif sop.role == 'lead_mechanic':
-                if not employee_ids:
-                    return {'status': 'error', 'message': 'Lead Mechanic harus dipilih'}
-                values['lead_mechanic_id'] = [(6, 0, employee_ids)]
-                
-            # Penanganan Lead Customer Service
-            elif sop.role == 'lead_cs':
-                if not employee_ids:
-                    return {'status': 'error', 'message': 'Lead Customer Service harus dipilih'}
-                values['lead_cs_id'] = [(6, 0, employee_ids)]
-                
-            # Penanganan Kepala Bengkel
-            elif sop.role == 'head_workshop':
-                if not employee_ids:
-                    return {'status': 'error', 'message': 'Kepala Bengkel harus dipilih'}
-                values['head_workshop_id'] = [(6, 0, employee_ids)]
 
-            # Create sampling dengan sudo untuk menghindari masalah hak akses
-            sampling = request.env['pitcar.sop.sampling'].sudo().create(values)
-            
-            # Verifikasi data service advisor tersimpan dengan benar
-            if sop.role == 'sa' and sampling.sa_id:
-                _logger.info(f"Verified SA assigned: {sampling.sa_id.ids}")
+            # Create sampling
+            sampling = request.env['pitcar.sop.sampling'].create(values)
 
             return {
                 'status': 'success',
@@ -447,90 +365,77 @@ class SOPController(http.Controller):
                     'name': sampling.name,
                     'sale_order_id': sampling.sale_order_id.id,
                     'sop_id': sampling.sop_id.id,
-                    'sampling_type': sampling.sampling_type,
                     'employee_info': self._format_employee_info(sampling),
                     'state': sampling.state
                 }
             }
 
         except Exception as e:
-            _logger.error(f"Error dalam create_sampling: {str(e)}")
+            _logger.error(f"Error in create_sampling: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
       
     @http.route('/web/sop/sampling/bulk-create', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def create_bulk_sampling(self, **kw):
-        """Membuat beberapa SOP sampling untuk satu sale order"""
+        """Create multiple SOP samplings for one sale order"""
         try:
             # Extract parameters
             sale_order_id = kw.get('sale_order_id')
             sampling_data = kw.get('samplings', [])  # List of SOP samplings to create
-            sampling_type = kw.get('sampling_type', 'kaizen')  # Default sampling type
 
             if not sale_order_id:
-                return {'status': 'error', 'message': 'ID Sale Order wajib diisi'}
+                return {'status': 'error', 'message': 'Sale order ID is required'}
             if not sampling_data:
-                return {'status': 'error', 'message': 'Tidak ada data sampling yang diberikan'}
+                return {'status': 'error', 'message': 'No sampling data provided'}
 
-            sale_order = request.env['sale.order'].sudo().browse(sale_order_id)
+            sale_order = request.env['sale.order'].browse(sale_order_id)
             if not sale_order.exists():
-                return {'status': 'error', 'message': 'Sale Order tidak ditemukan'}
+                return {'status': 'error', 'message': 'Sale order not found'}
 
-            # Dapatkan controller (penilai)
+            # Get controller
             controller = request.env.user.employee_id
             if not controller:
-                return {'status': 'error', 'message': 'User saat ini tidak memiliki data karyawan'}
+                return {'status': 'error', 'message': 'Current user has no employee record'}
 
             created_samplings = []
             for data in sampling_data:
                 sop_id = data.get('sop_id')
                 notes = data.get('notes')
-                data_sampling_type = data.get('sampling_type', sampling_type)  # Bisa individual per SOP
 
                 if not sop_id:
                     continue
 
-                sop = request.env['pitcar.sop'].sudo().browse(sop_id)
+                sop = request.env['pitcar.sop'].browse(sop_id)
                 if not sop.exists():
                     continue
-                    
-                # Verifikasi compatibility sampling type
-                if sop.sampling_type not in ['both', data_sampling_type]:
-                    _logger.warning(f"Skipping SOP {sop.name}: incompatible sampling type")
-                    continue
 
-                # Persiapkan nilai
+                # Prepare values
                 values = {
                     'sale_order_id': sale_order_id,
                     'sop_id': sop_id,
                     'controller_id': controller.id,
                     'notes': notes,
-                    'state': 'draft',
-                    'sampling_type': data_sampling_type
+                    'state': 'draft'
                 }
 
-                # Tangani penugasan karyawan berdasarkan role
-                if sop.role == 'sa':
+                # Set SA/Mechanic based on SOP type
+                if sop.is_sa:
                     if sale_order.service_advisor_id:
                         values['sa_id'] = [(6, 0, sale_order.service_advisor_id.ids)]
-                        _logger.info(f"Bulk create - assigning SA: {sale_order.service_advisor_id.ids}")
-                elif sop.role == 'mechanic':
+                else:
                     if sale_order.car_mechanic_id_new:
                         values['mechanic_id'] = [(6, 0, sale_order.car_mechanic_id_new.ids)]
-                # Catatan: untuk role lain perlu employee_ids dari front-end yang tidak ada dalam bulk create
 
-                # Buat sampling
-                sampling = request.env['pitcar.sop.sampling'].sudo().create(values)
-                # Verifikasi data
-                if sop.role == 'sa':
-                    _logger.info(f"Bulk create - Verified SA assigned: {sampling.sa_id.ids}")
-                    
+                # Create sampling
+                sampling = request.env['pitcar.sop.sampling'].create(values)
                 created_samplings.append({
                     'id': sampling.id,
                     'name': sampling.name,
                     'sop_id': sampling.sop_id.id,
-                    'sampling_type': sampling.sampling_type,
-                    'employee_info': self._format_employee_info(sampling)
+                    'employee_info': {
+                        'sa_id': sampling.sa_id.ids if sampling.sa_id else [],
+                        'mechanic_id': sampling.mechanic_id.ids if sampling.mechanic_id else []
+                    }
                 })
 
             return {
@@ -542,7 +447,7 @@ class SOPController(http.Controller):
             }
 
         except Exception as e:
-            _logger.error(f"Error dalam create_bulk_sampling: {str(e)}")
+            _logger.error(f"Error in create_bulk_sampling: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/sop/sampling/list', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
@@ -556,7 +461,6 @@ class SOPController(http.Controller):
             role = kw.get('role')
             state = kw.get('state')
             result = kw.get('result')
-            sampling_type = kw.get('sampling_type')  # Filter baru untuk tipe sampling
 
             domain = []
 
@@ -575,29 +479,21 @@ class SOPController(http.Controller):
             # Result filter
             if result and result != 'all':
                 domain.append(('result', '=', result))
-                
-            # Sampling type filter
-            if sampling_type and sampling_type != 'all':
-                domain.append(('sampling_type', '=', sampling_type))
 
-            # Search filter - tambahkan pencarian untuk role baru
+            # Search filter
             if search:
-                domain.extend(['|', '|', '|', '|', '|', '|', '|', '|', '|', '|',
+                domain.extend(['|', '|', '|', '|', '|', '|', '|',
                     ('name', 'ilike', search),
                     ('sale_order_id.name', 'ilike', search),
                     ('sa_id.name', 'ilike', search),
                     ('mechanic_id.name', 'ilike', search),
                     ('valet_id.name', 'ilike', search),
                     ('part_support_id.name', 'ilike', search),
-                    ('cs_id.name', 'ilike', search),
-                    ('lead_mechanic_id.name', 'ilike', search),
-                    ('lead_cs_id.name', 'ilike', search),
-                    ('head_workshop_id.name', 'ilike', search),
                     ('sop_id.name', 'ilike', search),
                     ('sop_id.code', 'ilike', search)
                 ])
 
-            # Get data dengan sudo untuk akses konsisten
+            # Get data
             Sampling = request.env['pitcar.sop.sampling'].sudo()
             total_count = Sampling.search_count(domain)
             offset = (page - 1) * limit
@@ -638,12 +534,8 @@ class SOPController(http.Controller):
                         'role': sampling.sop_id.role,
                         'role_label': dict(sampling.sop_id._fields['role'].selection).get(sampling.sop_id.role, ''),
                         'department': sampling.sop_id.department,
-                        'department_label': dict(sampling.sop_id._fields['department'].selection).get(sampling.sop_id.department, ''),
-                        'sampling_type': sampling.sop_id.sampling_type,
-                        'sampling_type_label': dict(sampling.sop_id._fields['sampling_type'].selection).get(sampling.sop_id.sampling_type, '')
+                        'department_label': dict(sampling.sop_id._fields['department'].selection).get(sampling.sop_id.department, '')
                     } if sampling.sop_id else None,
-                    'sampling_type': sampling.sampling_type,
-                    'sampling_type_label': dict(sampling._fields['sampling_type'].selection).get(sampling.sampling_type, ''),
                     'employee_info': self._format_employee_info(sampling),
                     'controller': controller_data,
                     'state': sampling.state,
@@ -668,12 +560,8 @@ class SOPController(http.Controller):
                         'roles': [
                             {'value': 'sa', 'label': 'Service Advisor'},
                             {'value': 'mechanic', 'label': 'Mechanic'},
-                            {'value': 'lead_mechanic', 'label': 'Lead Mechanic'},
                             {'value': 'valet', 'label': 'Valet Parking'},
-                            {'value': 'part_support', 'label': 'Part Support'},
-                            {'value': 'cs', 'label': 'Customer Service'},
-                            {'value': 'lead_cs', 'label': 'Lead Customer Service'},
-                            {'value': 'head_workshop', 'label': 'Kepala Bengkel'}
+                            {'value': 'part_support', 'label': 'Part Support'}
                         ],
                         'states': [
                             {'value': 'draft', 'label': 'Draft'},
@@ -683,17 +571,13 @@ class SOPController(http.Controller):
                         'results': [
                             {'value': 'pass', 'label': 'Lulus'},
                             {'value': 'fail', 'label': 'Tidak Lulus'}
-                        ],
-                        'sampling_types': [
-                            {'value': 'kaizen', 'label': 'Tim Kaizen'},
-                            {'value': 'lead', 'label': 'Leader'}
                         ]
                     }
                 }
             }
 
         except Exception as e:
-            _logger.error(f"Error dalam get_sampling_list: {str(e)}")
+            _logger.error(f"Error in get_sampling_list: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
         
@@ -705,16 +589,12 @@ class SOPController(http.Controller):
             notes = kw.get('notes')
             
             if not sampling_id or not result:
-                return {'status': 'error', 'message': 'ID Sampling dan hasil penilaian wajib diisi'}
+                return {'status': 'error', 'message': 'Sampling ID and result are required'}
 
-            # Use sudo() untuk menghindari masalah hak akses
+            # Use sudo() to avoid access right issues
             sampling = request.env['pitcar.sop.sampling'].sudo().browse(sampling_id)
             if not sampling.exists():
-                return {'status': 'error', 'message': 'Sampling tidak ditemukan'}
-
-            # Log untuk debugging Service Advisor issue
-            if sampling.sop_id.role == 'sa':
-                _logger.info(f"Validating SA sampling: {sampling.id}, Current SA IDs: {sampling.sa_id.ids}")
+                return {'status': 'error', 'message': 'Sampling not found'}
 
             values = {
                 'state': 'done',
@@ -723,16 +603,7 @@ class SOPController(http.Controller):
                 'validation_date': fields.Datetime.now()
             }
 
-            # Pastikan nilai Service Advisor masih terbawa
-            if sampling.sop_id.role == 'sa' and not sampling.sa_id and sampling.sale_order_id.service_advisor_id:
-                _logger.info(f"Fixing missing SA data during validation: {sampling.sale_order_id.service_advisor_id.ids}")
-                values['sa_id'] = [(6, 0, sampling.sale_order_id.service_advisor_id.ids)]
-
             sampling.write(values)
-            
-            # Verifikasi setelah update
-            if sampling.sop_id.role == 'sa':
-                _logger.info(f"After validation, SA IDs: {sampling.sa_id.ids}")
             
             return {
                 'status': 'success',
@@ -742,41 +613,33 @@ class SOPController(http.Controller):
                     'result': sampling.result,
                     'state': sampling.state,
                     'notes': sampling.notes,
-                    'sampling_type': sampling.sampling_type,
                     'employee_info': self._format_employee_info(sampling)
                 }
             }
 
         except Exception as e:
-            _logger.error(f"Error dalam validate_sampling: {str(e)}")
+            _logger.error(f"Error in validate_sampling: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/sop/sampling/summary', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_sampling_summary(self, **kw):
-        """Dapatkan statistik ringkasan sampling komprehensif dan statistik umum"""
+        """Get comprehensive sampling summary statistics for all roles"""
         try:
             params = self._get_request_data()
             month = kw.get('month') or params.get('month')
-            sampling_type = kw.get('sampling_type') or params.get('sampling_type')
-            include_statistics = kw.get('include_statistics') or params.get('include_statistics', False)
             
             if not month:
-                return {'status': 'error', 'message': 'Parameter bulan wajib diisi'}
+                return {'status': 'error', 'message': 'Month parameter is required'}
 
             Sampling = request.env['pitcar.sop.sampling'].sudo()
-            SOP = request.env['pitcar.sop'].sudo()
+            domain = [
+                ('month', '=', month),
+                ('state', '=', 'done')
+            ]
             
-            domain_base = [('month', '=', month)]
-            domain_done = domain_base + [('state', '=', 'done')]
+            samplings = Sampling.search(domain)
             
-            # Filter berdasarkan tipe sampling jika ada
-            if sampling_type:
-                domain_base.append(('sampling_type', '=', sampling_type))
-                domain_done.append(('sampling_type', '=', sampling_type))
-            
-            samplings = Sampling.search(domain_done)
-            
-            # Inisialisasi struktur ringkasan dengan semua peran
+            # Initialize summary structure with all roles
             summary = {
                 'total': {
                     'total': 0,
@@ -785,10 +648,8 @@ class SOPController(http.Controller):
                     'pass_rate': 0,
                     'fail_rate': 0
                 },
-                'month': month,
-                'sampling_type': sampling_type,
                 'roles': {
-                    'sa': {
+                    'service_advisor': {
                         'total': 0,
                         'pass': 0,
                         'fail': 0,
@@ -804,15 +665,6 @@ class SOPController(http.Controller):
                         'pass_rate': 0,
                         'fail_rate': 0,
                         'label': 'Mechanic',
-                        'details': []
-                    },
-                    'lead_mechanic': {
-                        'total': 0,
-                        'pass': 0,
-                        'fail': 0,
-                        'pass_rate': 0,
-                        'fail_rate': 0,
-                        'label': 'Lead Mechanic',
                         'details': []
                     },
                     'valet': {
@@ -833,7 +685,7 @@ class SOPController(http.Controller):
                         'label': 'Part Support',
                         'details': []
                     },
-                    'cs': {
+                    'customer_service': {  # Tambahkan CS stats
                         'total': 0,
                         'pass': 0,
                         'fail': 0,
@@ -841,35 +693,17 @@ class SOPController(http.Controller):
                         'fail_rate': 0,
                         'label': 'Customer Service',
                         'details': []
-                    },
-                    'lead_cs': {
-                        'total': 0,
-                        'pass': 0,
-                        'fail': 0,
-                        'pass_rate': 0,
-                        'fail_rate': 0,
-                        'label': 'Lead Customer Service',
-                        'details': []
-                    },
-                    'head_workshop': {
-                        'total': 0,
-                        'pass': 0,
-                        'fail': 0,
-                        'pass_rate': 0,
-                        'fail_rate': 0,
-                        'label': 'Kepala Bengkel',
-                        'details': []
                     }
                 }
             }
 
-            # Helper untuk memperbarui statistik
+            # Helper to update stats
             def update_stats(stats_dict, result):
                 stats_dict['total'] += 1
                 stats_dict['pass'] += 1 if result == 'pass' else 0
                 stats_dict['fail'] += 1 if result == 'fail' else 0
 
-            # Helper untuk memperbarui statistik karyawan
+            # Helper to update employee stats
             def update_employee_stats(employee_stats, employee, result):
                 if employee.id not in employee_stats:
                     employee_stats[employee.id] = {
@@ -883,19 +717,16 @@ class SOPController(http.Controller):
                     }
                 update_stats(employee_stats[employee.id], result)
 
-            # Inisialisasi kamus statistik karyawan
+            # Initialize employee stats dictionaries
             employee_stats = {
-                'sa': {},
+                'service_advisor': {},
                 'mechanic': {},
-                'lead_mechanic': {},
                 'valet': {},
                 'part_support': {},
-                'cs': {},
-                'lead_cs': {},
-                'head_workshop': {}
+                'customer_service': {}  # Tambahkan CS
             }
 
-            # Proses semua sampling
+            # Process all samplings
             for sampling in samplings:
                 role = sampling.sop_id.role
                 result = sampling.result
@@ -903,111 +734,56 @@ class SOPController(http.Controller):
                 if role not in summary['roles']:
                     continue
 
-                # Perbarui statistik total
+                # Update total stats
                 update_stats(summary['total'], result)
                 
-                # Perbarui statistik peran
+                # Update role stats
                 update_stats(summary['roles'][role], result)
                 
-                # Perbarui statistik karyawan berdasarkan peran
-                if role == 'sa' and sampling.sa_id:
+                # Update employee stats based on role
+                if role == 'service_advisor' and sampling.sa_id:
                     for employee in sampling.sa_id:
-                        update_employee_stats(employee_stats['sa'], employee, result)
+                        update_employee_stats(employee_stats['service_advisor'], employee, result)
                 elif role == 'mechanic' and sampling.mechanic_id:
                     for employee in sampling.mechanic_id:
                         update_employee_stats(employee_stats['mechanic'], employee, result)
-                elif role == 'lead_mechanic' and sampling.lead_mechanic_id:
-                    for employee in sampling.lead_mechanic_id:
-                        update_employee_stats(employee_stats['lead_mechanic'], employee, result)
                 elif role == 'valet' and sampling.valet_id:
                     for employee in sampling.valet_id:
                         update_employee_stats(employee_stats['valet'], employee, result)
                 elif role == 'part_support' and sampling.part_support_id:
                     for employee in sampling.part_support_id:
                         update_employee_stats(employee_stats['part_support'], employee, result)
-                elif role == 'cs' and sampling.cs_id:
+                elif role == 'customer_service' and sampling.cs_id:
                     for employee in sampling.cs_id:
-                        update_employee_stats(employee_stats['cs'], employee, result)
-                elif role == 'lead_cs' and sampling.lead_cs_id:
-                    for employee in sampling.lead_cs_id:
-                        update_employee_stats(employee_stats['lead_cs'], employee, result)
-                elif role == 'head_workshop' and sampling.head_workshop_id:
-                    for employee in sampling.head_workshop_id:
-                        update_employee_stats(employee_stats['head_workshop'], employee, result)
+                        update_employee_stats(employee_stats['customer_service'], employee, result)
 
-            # Hitung tingkat kelulusan dan urut detail karyawan
+            # Calculate rates and sort employee details
             def calculate_rates(stats):
                 if stats['total'] > 0:
                     stats['pass_rate'] = round((stats['pass'] / stats['total']) * 100, 2)
                     stats['fail_rate'] = round((stats['fail'] / stats['total']) * 100, 2)
 
-            # Hitung tingkat untuk total keseluruhan
+            # Calculate rates for overall totals
             calculate_rates(summary['total'])
 
-            # Proses statistik masing-masing peran
+            # Process each role's stats
             for role in summary['roles']:
-                # Hitung tingkat untuk total peran
+                # Calculate rates for role totals
                 calculate_rates(summary['roles'][role])
                 
-                # Proses detail karyawan untuk peran ini
+                # Process employee details for this role
                 details = list(employee_stats[role].values())
                 for detail in details:
                     calculate_rates(detail)
                 
-                # Urutkan berdasarkan tingkat kelulusan (menurun)
+                # Sort by pass rate (descending)
                 details.sort(key=lambda x: x['pass_rate'], reverse=True)
                 
-                # Tambahkan peringkat
+                # Add ranking
                 for i, detail in enumerate(details, 1):
                     detail['rank'] = i
                 
                 summary['roles'][role]['details'] = details
-
-            # Tambahkan statistik umum jika diminta
-            if include_statistics:
-                # Hitung total SOP aktif
-                total_sops = SOP.search_count([('active', '=', True)])
-                
-                # Hitung total samplings per tipe
-                total_samplings = Sampling.search_count(domain_base)
-                kaizen_samplings = Sampling.search_count(domain_base + [('sampling_type', '=', 'kaizen')])
-                lead_samplings = Sampling.search_count(domain_base + [('sampling_type', '=', 'lead')])
-                
-                # Hitung status
-                done_samplings = Sampling.search_count(domain_base + [('state', '=', 'done')])
-                passed_samplings = Sampling.search_count(domain_base + [('result', '=', 'pass')])
-                failed_samplings = Sampling.search_count(domain_base + [('result', '=', 'fail')])
-                
-                # Hitung samplings per departemen
-                service_samplings = Sampling.search_count(domain_base + [('sop_id.department', '=', 'service')])
-                cs_samplings = Sampling.search_count(domain_base + [('sop_id.department', '=', 'cs')])
-                sparepart_samplings = Sampling.search_count(domain_base + [('sop_id.department', '=', 'sparepart')])
-                
-                # Hitung persentase
-                completion_rate = round((done_samplings / total_samplings * 100), 2) if total_samplings > 0 else 0
-                pass_rate = round((passed_samplings / done_samplings * 100), 2) if done_samplings > 0 else 0
-                
-                # Tambahkan ke respons
-                summary['statistics'] = {
-                    'total_sops': total_sops,
-                    'sampling_counts': {
-                        'total': total_samplings,
-                        'kaizen': kaizen_samplings,
-                        'lead': lead_samplings,
-                        'done': done_samplings,
-                        'pass': passed_samplings,
-                        'fail': failed_samplings
-                    },
-                    'department_counts': {
-                        'service': service_samplings,
-                        'cs': cs_samplings,
-                        'sparepart': sparepart_samplings
-                    },
-                    'rates': {
-                        'completion': completion_rate,
-                        'pass': pass_rate
-                    }
-                }
 
             return {
                 'status': 'success',
@@ -1015,13 +791,13 @@ class SOPController(http.Controller):
             }
 
         except Exception as e:
-            _logger.error(f"Error dalam get_sampling_summary: {str(e)}")
+            _logger.error(f"Error in get_sampling_summary: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
     # CRUD MASTER
     @http.route('/web/sop/master/create', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def create_sop(self, **kw):
-        """Membuat SOP baru"""
+        """Create new SOP"""
         try:
             # Extract parameters
             name = kw.get('name')
@@ -1031,29 +807,28 @@ class SOPController(http.Controller):
             is_sa = kw.get('is_sa', False)  # Backward compatibility
             sequence = kw.get('sequence', 10)
             role = kw.get('role')  # New field
-            sampling_type = kw.get('sampling_type', 'both')  # Default ke keduanya
             
             # Determine role dari is_sa jika role tidak diberikan
             if not role and is_sa is not None:
                 role = 'sa' if is_sa else 'mechanic'
 
             # Validate required fields
-            if not all([name, code, department, role]):
+            if not all([name, code, department, role]):  # Tambahkan role ke required fields
                 return {
                     'status': 'error',
-                    'message': 'Nama, kode, departemen, dan peran wajib diisi'
+                    'message': 'Name, code, department, and role are required'
                 }
 
             # Validate role-department compatibility
             valid_combinations = {
-                'service': ['sa', 'mechanic', 'lead_mechanic', 'head_workshop'],
-                'cs': ['valet', 'part_support', 'cs', 'lead_cs'],
+                'service': ['sa', 'mechanic'],
+                'cs': ['valet', 'part_support', 'cs'],  # Tambahkan 'cs'
                 'sparepart': ['part_support']
             }
             if role not in valid_combinations.get(department, []):
                 return {
                     'status': 'error',
-                    'message': f'Peran {role} tidak valid untuk departemen {department}'
+                    'message': f'Role {role} tidak valid untuk department {department}'
                 }
 
             # Create SOP
@@ -1064,11 +839,10 @@ class SOPController(http.Controller):
                 'description': description,
                 'role': role,
                 'sequence': sequence,
-                'sampling_type': sampling_type,
                 'active': True
             }
 
-            sop = request.env['pitcar.sop'].sudo().create(values)
+            sop = request.env['pitcar.sop'].create(values)
 
             return {
                 'status': 'success',
@@ -1080,9 +854,6 @@ class SOPController(http.Controller):
                     'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
                     'role': sop.role,
                     'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
-                    'sampling_type': sop.sampling_type,
-                    'sampling_type_label': dict(sop._fields['sampling_type'].selection).get(sop.sampling_type, ''),
-                    'is_lead_role': sop.is_lead_role,
                     'is_sa': sop.is_sa,  # Backward compatibility
                     'description': sop.description,
                     'sequence': sop.sequence,
@@ -1091,17 +862,17 @@ class SOPController(http.Controller):
             }
 
         except Exception as e:
-            _logger.error(f"Error dalam create_sop: {str(e)}")
+            _logger.error(f"Error in create_sop: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
 
     @http.route('/web/sop/master/<int:sop_id>', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_sop_detail(self, sop_id, **kw):
-        """Dapatkan detail SOP berdasarkan ID"""
+        """Get SOP detail by ID"""
         try:
-            sop = request.env['pitcar.sop'].sudo().browse(sop_id)
+            sop = request.env['pitcar.sop'].browse(sop_id)
             if not sop.exists():
-                return {'status': 'error', 'message': 'SOP tidak ditemukan'}
+                return {'status': 'error', 'message': 'SOP not found'}
 
             return {
                 'status': 'success',
@@ -1110,13 +881,7 @@ class SOPController(http.Controller):
                     'name': sop.name,
                     'code': sop.code,
                     'department': sop.department,
-                    'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
-                    'role': sop.role,
-                    'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
-                    'sampling_type': sop.sampling_type,
-                    'sampling_type_label': dict(sop._fields['sampling_type'].selection).get(sop.sampling_type, ''),
-                    'is_lead_role': sop.is_lead_role,
-                    'is_sa': sop.is_sa,  # Backward compatibility
+                    'is_sa': sop.is_sa,
                     'description': sop.description,
                     'sequence': sop.sequence,
                     'active': sop.active
@@ -1124,42 +889,42 @@ class SOPController(http.Controller):
             }
 
         except Exception as e:
-            _logger.error(f"Error dalam get_sop_detail: {str(e)}")
+            _logger.error(f"Error in get_sop_detail: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
     @http.route('/web/sop/master/update', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def update_sop(self, **kw):
-        """Update SOP yang sudah ada"""
+        """Update existing SOP"""
         try:
             sop_id = kw.get('id')
             values = {}
             
             # Fields yang bisa diupdate
-            update_fields = ['name', 'code', 'department', 'description', 'role', 'sequence', 'active', 'sampling_type']
+            update_fields = ['name', 'code', 'department', 'description', 'role', 'sequence', 'active']
             for field in update_fields:
                 if field in kw:
                     values[field] = kw[field]
 
             if not sop_id:
-                return {'status': 'error', 'message': 'ID SOP wajib diisi'}
+                return {'status': 'error', 'message': 'SOP ID is required'}
 
-            sop = request.env['pitcar.sop'].sudo().browse(sop_id)
+            sop = request.env['pitcar.sop'].browse(sop_id)
             if not sop.exists():
-                return {'status': 'error', 'message': 'SOP tidak ditemukan'}
+                return {'status': 'error', 'message': 'SOP not found'}
 
             # Validate role-department compatibility jika ada perubahan
             if 'role' in values or 'department' in values:
                 department = values.get('department', sop.department)
                 role = values.get('role', sop.role)
                 valid_combinations = {
-                    'service': ['sa', 'mechanic', 'lead_mechanic', 'head_workshop'],
-                    'cs': ['valet', 'part_support', 'cs', 'lead_cs'],
+                    'service': ['sa', 'mechanic'],
+                    'cs': ['valet', 'part_support', 'cs'],
                     'sparepart': ['part_support']
                 }
                 if role not in valid_combinations.get(department, []):
                     return {
                         'status': 'error',
-                        'message': f'Peran {role} tidak valid untuk departemen {department}'
+                        'message': f'Role {role} tidak valid untuk department {department}'
                     }
 
             sop.write(values)
@@ -1174,9 +939,6 @@ class SOPController(http.Controller):
                     'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
                     'role': sop.role,
                     'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
-                    'sampling_type': sop.sampling_type,
-                    'sampling_type_label': dict(sop._fields['sampling_type'].selection).get(sop.sampling_type, ''),
-                    'is_lead_role': sop.is_lead_role,
                     'is_sa': sop.is_sa,
                     'description': sop.description,
                     'sequence': sop.sequence,
@@ -1185,81 +947,35 @@ class SOPController(http.Controller):
             }
 
         except Exception as e:
-            _logger.error(f"Error dalam update_sop: {str(e)}")
+            _logger.error(f"Error in update_sop: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/sop/master/delete/<int:sop_id>', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def delete_sop(self, sop_id, **kw):
-        """Hapus/Arsipkan SOP"""
+        """Delete/Archive SOP"""
         try:
-            sop = request.env['pitcar.sop'].sudo().browse(sop_id)
+            sop = request.env['pitcar.sop'].browse(sop_id)
             if not sop.exists():
-                return {'status': 'error', 'message': 'SOP tidak ditemukan'}
+                return {'status': 'error', 'message': 'SOP not found'}
 
-            # Periksa apakah SOP digunakan dalam sampling
-            if request.env['pitcar.sop.sampling'].sudo().search_count([('sop_id', '=', sop_id)]) > 0:
-                # Hanya arsipkan jika SOP digunakan
+            # Check if SOP is used in any sampling
+            if request.env['pitcar.sop.sampling'].search_count([('sop_id', '=', sop_id)]) > 0:
+                # Just archive if SOP is used
                 sop.write({'active': False})
                 return {
                     'status': 'success',
-                    'message': 'SOP telah diarsipkan karena digunakan dalam catatan sampling'
+                    'message': 'SOP has been archived because it is used in sampling records'
                 }
             else:
-                # Hapus jika tidak digunakan
+                # Delete if not used
                 sop.unlink()
                 return {
                     'status': 'success',
-                    'message': 'SOP berhasil dihapus'
+                    'message': 'SOP has been deleted successfully'
                 }
 
         except Exception as e:
-            _logger.error(f"Error dalam delete_sop: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-
-    @http.route('/web/sop/employees', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
-    def get_employees_by_role(self, **kw):
-        """Dapatkan daftar karyawan berdasarkan peran untuk sampling"""
-        try:
-            role = kw.get('role')
-            if not role:
-                return {'status': 'error', 'message': 'Parameter peran wajib diisi'}
-                
-            domain = self._get_employee_domain(role)
-            
-            # Penanganan khusus untuk model khusus
-            if role == 'sa':
-                # Service Advisor menggunakan model khusus
-                employees = request.env['pitcar.service.advisor'].sudo().search([])
-                rows = [{
-                    'id': sa.id,
-                    'name': sa.name
-                } for sa in employees]
-            elif role == 'mechanic':
-                # Mechanic menggunakan model khusus
-                employees = request.env['pitcar.mechanic.new'].sudo().search([])
-                rows = [{
-                    'id': mech.id,
-                    'name': mech.name
-                } for mech in employees]
-            else:
-                # Peran lain menggunakan model hr.employee dengan domain
-                employees = request.env['hr.employee'].sudo().search(domain)
-                rows = [{
-                    'id': emp.id,
-                    'name': emp.name,
-                    'job': emp.job_id.name if emp.job_id else None
-                } for emp in employees]
-                
-            return {
-                'status': 'success',
-                'data': {
-                    'role': role,
-                    'employees': rows
-                }
-            }
-        
-        except Exception as e:
-            _logger.error(f"Error dalam get_employees_by_role: {str(e)}")
+            _logger.error(f"Error in delete_sop: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
     # def get_sop_list(self, **kw):

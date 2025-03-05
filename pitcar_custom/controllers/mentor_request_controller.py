@@ -61,7 +61,16 @@ class MentorRequestController(http.Controller):
 
                 # Create request
                 mentor_request = request.env['pitcar.mentor.request'].sudo().create(values)
-                
+
+                # Setelah membuat mentor_request, periksa apakah ada followers yang duplikat
+                followers = request.env['mail.followers'].sudo().search([
+                    ('res_model', '=', 'pitcar.mentor.request'),
+                    ('res_id', '=', mentor_request.id)
+                ])
+
+                # Log followers untuk debugging
+                _logger.info(f"Followers after create: {followers.mapped('partner_id.name')}")
+                    
                 # Explicitly flush the changes to the database
                 request.env.cr.flush()
 

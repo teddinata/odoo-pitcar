@@ -187,6 +187,13 @@ class MentorRequest(models.Model):
                 
                 self._publish_notification_to_bus(notification_type, title, message, data)
                 
+                # Sebelum mengirim chatter message, periksa partner mana yang sudah menjadi follower
+                existing_partners = self.env['mail.followers'].search([
+                    ('res_model', '=', 'pitcar.mentor.request'),
+                    ('res_id', '=', record.id),
+                    ('partner_id', 'in', [r.user_id.partner_id.id for r in recipients if r.user_id and r.user_id.partner_id])
+                ]).mapped('partner_id.id')
+                
                 for recipient in recipients:
                     notification_vals_list.append({
                         'model': 'pitcar.mentor.request',
@@ -198,14 +205,17 @@ class MentorRequest(models.Model):
                         'data': json.dumps(data),
                         'is_read': False
                     })
-                    if recipient.user_id and recipient.user_id.partner_id:
+                    
+                    # Hanya kirim chatter message ke partner yang belum menjadi follower
+                    if recipient.user_id and recipient.user_id.partner_id and recipient.user_id.partner_id.id not in existing_partners:
                         chatter_messages.append((record, recipient.user_id.partner_id.id, html_message))
             
             if notification_vals_list:
                 self.env['pitcar.notification'].sudo().create(notification_vals_list)
             
+            # Gunakan mail_create_nosubscribe=True untuk mencegah auto-subscription
             for record, partner_id, html_content in chatter_messages:
-                record.with_context(mail_notify_force_send=False).message_post(
+                record.with_context(mail_notify_force_send=False, mail_create_nosubscribe=True).message_post(
                     body=html_content,
                     message_type='notification',
                     partner_ids=[partner_id],
@@ -260,7 +270,11 @@ class MentorRequest(models.Model):
                 if mentor.user_id and mentor.user_id.partner_id:
                     recipients |= mentor.user_id.partner_id
             
-            return records._send_notifications(notification_type, title_template, message_template, recipients)
+            # return records._send_notifications(notification_type, title_template, message_template, recipients)
+         # Kirim notifikasi dengan context untuk mencegah auto-subscription
+        return records.with_context(mail_create_nosubscribe=True)._send_notifications(
+            notification_type, title_template, message_template, recipients, excluded_recipients=excluded_recipients
+        )
 
     def _send_mentor_assignment_notifications(self, mentor_id, records):
         if not records:

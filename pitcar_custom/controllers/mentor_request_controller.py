@@ -535,7 +535,7 @@ class MentorRequestController(http.Controller):
         
     @http.route('/web/mentor/observer', type='json', auth='user')
     def observe_mentor_requests(self, last_checked=None):
-        """Observer untuk notifikasi mentor request dengan optimasi performa"""
+        """Observer untuk notifikasi mentor request dengan defensive coding"""
         try:
             _logger.info(f"Mentor Observer called with last_checked: {last_checked}")
             
@@ -544,8 +544,7 @@ class MentorRequestController(http.Controller):
             domain = [
                 ('model', '=', 'pitcar.mentor.request'),
                 ('request_time', '>=', datetime.now() - timedelta(days=30)),
-                ('res_id', '!=', 0),
-                ('name', '!=', 'Unknown')
+                ('is_read', '=', False)  # Hanya tampilkan yang belum dibaca
             ]
             
             # Filter berdasarkan last_checked jika ada
@@ -580,11 +579,66 @@ class MentorRequestController(http.Controller):
                 
             _logger.info(f"Found {len(notifications)} mentor notifications")
             
-            # Batch process notifications dengan optimasi
-            result = self._process_notifications(notifications)
+            # Process notifications dengan defensive coding
+            result = []
+            for notif in notifications:
+                try:
+                    # Konversi UTC ke Jakarta time
+                    utc_time = notif.request_time
+                    jakarta_dt = pytz.UTC.localize(utc_time).astimezone(pytz.timezone('Asia/Jakarta'))
+                    
+                    # Parse data JSON jika ada
+                    data = {}
+                    if notif.data:
+                        try:
+                            data = json.loads(notif.data)
+                        except:
+                            _logger.warning(f"Could not parse JSON data for notification {notif.id}")
+                    
+                    # Cek record hanya jika notif memiliki res_id yang valid
+                    record_details = {}
+                    if notif.res_id and notif.res_id > 0:
+                        try:
+                            record = request.env[notif.model].sudo().browse(notif.res_id)
+                            if record.exists():
+                                mechanic_names = ", ".join(record.mechanic_ids.mapped('name')) if hasattr(record, 'mechanic_ids') else ""
+                                state = record.state if hasattr(record, 'state') else ""
+                                category = record.problem_category if hasattr(record, 'problem_category') else ""
+                                priority = record.priority if hasattr(record, 'priority') else ""
+                                
+                                record_details = {
+                                    'id': record.id,
+                                    'name': record.name if hasattr(record, 'name') else notif.name,
+                                    'mechanics': mechanic_names,
+                                    'category': category,
+                                    'priority': priority,
+                                    'state': state,
+                                    'sale_order': record.sale_order_id.name if hasattr(record, 'sale_order_id') and record.sale_order_id else '',
+                                }
+                        except Exception as rec_error:
+                            _logger.warning(f"Error accessing record {notif.model}/{notif.res_id}: {rec_error}")
+                    
+                    # Format notifikasi untuk response
+                    notif_data = {
+                        'id': notif.id,
+                        'res_id': notif.res_id,
+                        'model': notif.model,
+                        'name': notif.name,
+                        'request_time': jakarta_dt.isoformat(),
+                        'title': notif.title,
+                        'message': notif.message,
+                        'is_read': notif.is_read,
+                        'type': notif.type,
+                        'request_details': record_details,
+                        'data': data
+                    }
+                    result.append(notif_data)
+                except Exception as notif_error:
+                    _logger.error(f"Error processing notification {notif.id}: {notif_error}")
+                    continue
             
             # Format current time untuk response
-            jakarta_time = self._get_jakarta_time(datetime.now())
+            jakarta_time = datetime.now().astimezone(pytz.timezone('Asia/Jakarta'))
             
             # Build final response
             response_data = {

@@ -789,7 +789,7 @@ class MentorRequestController(http.Controller):
         return utc_dt.astimezone(jakarta_tz)
     
     @http.route('/web/mentor/notification/mark-read', type='json', auth='user', methods=['POST'])
-    def mark_notification_read(self, notification_ids=None, res_ids=None, model='pitcar.mentor.request'):
+    def mark_notification_read_flexible(self, notification_ids=None, res_ids=None, model='pitcar.mentor.request'):
         """Mark notifications as read dengan optimasi batch"""
         try:
             if not notification_ids and not res_ids:
@@ -830,7 +830,7 @@ class MentorRequestController(http.Controller):
                 }
             
         except Exception as e:
-            _logger.error(f"Error in mark_notification_read: {str(e)}", exc_info=True)
+            _logger.error(f"Error in mark_notification_read_flexible: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)

@@ -1212,194 +1212,6 @@ class MentorRequestController(http.Controller):
         except Exception as e:
             _logger.error(f"Error generating trend data: {str(e)}", exc_info=True)
             return []
-
-    @http.route('/web/mentor/notification/center', type='json', auth='user', methods=['POST'])
-    def notification_center(self, **kw):
-        """
-        Endpoint pusat notifikasi dengan fitur lengkap:
-        - Pencarian berdasarkan keyword
-        - Filter berdasarkan tipe
-        - Filter berdasarkan status (read/unread)
-        - Paginasi
-        - Sorting berdasarkan tanggal
-        """
-        try:
-            # Extract parameters
-            page = int(kw.get('page', 1))
-            limit = int(kw.get('limit', 20))
-            offset = (page - 1) * limit
-            
-            search_query = kw.get('search', '').strip()
-            notif_type = kw.get('type')  # filter berdasarkan tipe notifikasi
-            read_status = kw.get('status')  # 'read', 'unread', atau None untuk semua
-            date_from = kw.get('date_from')
-            date_to = kw.get('date_to')
-            sort_direction = kw.get('sort', 'desc')  # 'asc' atau 'desc'
-            
-            # Build domain
-            domain = [
-                ('model', '=', 'pitcar.mentor.request')
-            ]
-            
-            # Get current user info
-            user_id = request.env.user.id
-            
-            # Cari apakah user saat ini adalah mekanik dan dapatkan role-nya
-            mechanic = request.env['pitcar.mechanic.new'].sudo().search([('user_id', '=', user_id)], limit=1)
-            
-            if mechanic:
-                domain = self._apply_mechanic_role_filters(domain, mechanic)
-                if domain is None:
-                    return self._build_empty_notification_response()
-            
-            # Apply filters
-            if search_query:
-                domain += ['|', '|', '|',
-                    ('name', 'ilike', search_query),
-                    ('title', 'ilike', search_query),
-                    ('message', 'ilike', search_query),
-                    ('data', 'ilike', search_query)
-                ]
-            
-            if notif_type:
-                domain.append(('type', '=', notif_type))
-                
-            if read_status == 'read':
-                domain.append(('is_read', '=', True))
-            elif read_status == 'unread':
-                domain.append(('is_read', '=', False))
-            
-            if date_from:
-                try:
-                    from_date = fields.Datetime.from_string(date_from)
-                    domain.append(('request_time', '>=', from_date))
-                except Exception as e:
-                    _logger.warning(f"Invalid date_from format: {e}")
-            
-            if date_to:
-                try:
-                    to_date = fields.Datetime.from_string(date_to)
-                    domain.append(('request_time', '<=', to_date))
-                except Exception as e:
-                    _logger.warning(f"Invalid date_to format: {e}")
-            
-            # Prepare order by
-            order = f"request_time {sort_direction}"
-            
-            # Get total count for pagination
-            Notification = request.env['pitcar.notification'].sudo()
-            total_count = Notification.search_count(domain)
-            
-            # Get paginated notifications
-            notifications = Notification.search(
-                domain, 
-                order=order,
-                limit=limit,
-                offset=offset
-            )
-            
-            # Process notifications
-            result = []
-            for notif in notifications:
-                try:
-                    # Konversi UTC ke Jakarta time
-                    utc_time = notif.request_time
-                    jakarta_dt = pytz.UTC.localize(utc_time).astimezone(pytz.timezone('Asia/Jakarta'))
-                    
-                    # Parse data JSON jika ada
-                    data = {}
-                    if notif.data:
-                        try:
-                            data = json.loads(notif.data)
-                        except:
-                            _logger.warning(f"Could not parse JSON data for notification {notif.id}")
-                    
-                    # Format notifikasi untuk response
-                    notif_data = {
-                        'id': notif.id,
-                        'res_id': notif.res_id,
-                        'model': notif.model,
-                        'name': notif.name,
-                        'request_time': jakarta_dt.isoformat(),
-                        'time_display': jakarta_dt.strftime('%d %b %Y %H:%M'),
-                        'title': notif.title,
-                        'message': notif.message,
-                        'is_read': notif.is_read,
-                        'type': notif.type,
-                        'data': data
-                    }
-                    
-                    # Tambahkan status record saat ini jika ada
-                    if notif.res_id:
-                        try:
-                            record = request.env[notif.model].sudo().browse(notif.res_id)
-                            if record.exists() and hasattr(record, 'state'):
-                                notif_data['current_state'] = record.state
-                        except Exception:
-                            pass
-                    
-                    result.append(notif_data)
-                except Exception as notif_error:
-                    _logger.error(f"Error processing notification {notif.id}: {notif_error}")
-                    continue
-            
-            # Get notification types for filter dropdowns
-            notification_types = Notification.read_group(
-                [('model', '=', 'pitcar.mentor.request')],
-                fields=['type'],
-                groupby=['type']
-            )
-            types_list = [{'code': t['type'], 'name': t['type'].replace('_', ' ').title()} for t in notification_types]
-            
-            # Format current time untuk response
-            jakarta_time = datetime.now().astimezone(pytz.timezone('Asia/Jakarta'))
-            
-            # Calculate pagination info
-            total_pages = math.ceil(total_count / limit) if limit else 1
-            has_next = page < total_pages
-            has_prev = page > 1
-            
-            # Build final response
-            response_data = {
-                'status': 'success',
-                'data': {
-                    'timestamp': jakarta_time.isoformat(),
-                    'notifications': result,
-                    'pagination': {
-                        'total': total_count,
-                        'page': page,
-                        'limit': limit,
-                        'pages': total_pages,
-                        'has_next': has_next,
-                        'has_prev': has_prev
-                    },
-                    'filters': {
-                        'types': types_list,
-                        'status_options': [
-                            {'code': 'all', 'name': 'Semua'},
-                            {'code': 'read', 'name': 'Sudah Dibaca'},
-                            {'code': 'unread', 'name': 'Belum Dibaca'}
-                        ]
-                    },
-                    'summary': {
-                        'total': total_count,
-                        'unread': Notification.search_count([('model', '=', 'pitcar.mentor.request'), ('is_read', '=', False)]),
-                        'today': Notification.search_count([
-                            ('model', '=', 'pitcar.mentor.request'),
-                            ('request_time', '>=', fields.Datetime.now().replace(hour=0, minute=0, second=0))
-                        ])
-                    }
-                }
-            }
-            
-            return response_data
-            
-        except Exception as e:
-            _logger.error(f"Error in notification_center: {str(e)}", exc_info=True)
-            return {
-                'status': 'error',
-                'message': str(e)
-            }
         
     @http.route('/web/mentor/notification/mark-all-read', type='json', auth='user')
     def mark_all_notifications_read(self, **kw):
@@ -1470,6 +1282,393 @@ class MentorRequestController(http.Controller):
             
         except Exception as e:
             _logger.error(f"Error in mark_all_notifications_read: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+        
+    @http.route('/web/mentor/notification/center', type='json', auth='user', methods=['POST'])
+    def notification_center(self, **kw):
+        """
+        Endpoint pusat notifikasi dengan fitur lengkap termasuk filter model:
+        - Pencarian berdasarkan keyword
+        - Filter berdasarkan tipe notifikasi
+        - Filter berdasarkan model notifikasi
+        - Filter berdasarkan status (read/unread)
+        - Paginasi dengan load more
+        - Sorting berdasarkan tanggal
+        """
+        try:
+            # Extract parameters
+            page = int(kw.get('page', 1))
+            limit = int(kw.get('limit', 20))
+            offset = (page - 1) * limit
+            last_id = kw.get('last_id')  # ID terakhir untuk load more
+            
+            search_query = kw.get('search', '').strip()
+            model_filter = kw.get('model')  # Filter berdasarkan model
+            notif_type = kw.get('type')  # Filter berdasarkan tipe notifikasi
+            read_status = kw.get('status')  # 'read', 'unread', atau None untuk semua
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            sort_direction = kw.get('sort', 'desc')  # 'asc' atau 'desc'
+            
+            # Build domain
+            domain = []
+            
+            # Apply filters
+            if search_query:
+                domain += ['|', '|', '|',
+                    ('name', 'ilike', search_query),
+                    ('title', 'ilike', search_query),
+                    ('message', 'ilike', search_query),
+                    ('data', 'ilike', search_query)
+                ]
+            
+            # Filter berdasarkan model
+            if model_filter:
+                domain.append(('model', '=', model_filter))
+            
+            # Filter berdasarkan tipe notifikasi
+            if notif_type:
+                domain.append(('type', '=', notif_type))
+                
+            # Filter berdasarkan status dibaca
+            if read_status == 'read':
+                domain.append(('is_read', '=', True))
+            elif read_status == 'unread':
+                domain.append(('is_read', '=', False))
+            
+            # Filter berdasarkan tanggal
+            if date_from:
+                try:
+                    from_date = fields.Datetime.from_string(date_from)
+                    domain.append(('request_time', '>=', from_date))
+                except Exception as e:
+                    _logger.warning(f"Invalid date_from format: {e}")
+            
+            if date_to:
+                try:
+                    to_date = fields.Datetime.from_string(date_to)
+                    domain.append(('request_time', '<=', to_date))
+                except Exception as e:
+                    _logger.warning(f"Invalid date_to format: {e}")
+            
+            # Support untuk load more dengan last_id
+            if last_id:
+                last_notif = request.env['pitcar.notification'].sudo().browse(int(last_id))
+                if last_notif.exists():
+                    if sort_direction == 'desc':
+                        domain.append(('request_time', '<', last_notif.request_time))
+                    else:
+                        domain.append(('request_time', '>', last_notif.request_time))
+            
+            # Prepare order by
+            order = f"request_time {sort_direction}"
+            
+            # Get total count for pagination
+            Notification = request.env['pitcar.notification'].sudo()
+            total_count = Notification.search_count(domain)
+            
+            # Get paginated notifications
+            notifications = Notification.search(
+                domain, 
+                order=order,
+                limit=limit
+            )
+            
+            # Process notifications
+            result = []
+            for notif in notifications:
+                try:
+                    # Konversi UTC ke Jakarta time
+                    utc_time = notif.request_time
+                    jakarta_dt = pytz.UTC.localize(utc_time).astimezone(pytz.timezone('Asia/Jakarta'))
+                    
+                    # Parse data JSON jika ada
+                    data = {}
+                    if notif.data:
+                        try:
+                            data = json.loads(notif.data)
+                        except:
+                            _logger.warning(f"Could not parse JSON data for notification {notif.id}")
+                    
+                    # Format notifikasi untuk response
+                    notif_data = {
+                        'id': notif.id,
+                        'res_id': notif.res_id,
+                        'model': notif.model,
+                        'model_display': self._get_model_display_name(notif.model),
+                        'name': notif.name,
+                        'request_time': jakarta_dt.isoformat(),
+                        'time_display': jakarta_dt.strftime('%d %b %Y %H:%M'),
+                        'title': notif.title,
+                        'message': notif.message,
+                        'is_read': notif.is_read,
+                        'type': notif.type,
+                        'data': data
+                    }
+                    
+                    # Tambahkan detail jika modelnya adalah pitcar.mentor.request
+                    if notif.model == 'pitcar.mentor.request' and notif.res_id:
+                        try:
+                            record = request.env[notif.model].sudo().browse(notif.res_id)
+                            if record.exists():
+                                mechanic_names = ", ".join(record.mechanic_ids.mapped('name')) if hasattr(record, 'mechanic_ids') else ""
+                                state = record.state if hasattr(record, 'state') else ""
+                                category = record.problem_category if hasattr(record, 'problem_category') else ""
+                                priority = record.priority if hasattr(record, 'priority') else ""
+                                
+                                notif_data['request_details'] = {
+                                    'id': record.id,
+                                    'name': record.name if hasattr(record, 'name') else notif.name,
+                                    'mechanics': mechanic_names,
+                                    'category': category,
+                                    'priority': priority,
+                                    'state': state,
+                                    'sale_order': record.sale_order_id.name if hasattr(record, 'sale_order_id') and record.sale_order_id else '',
+                                }
+                        except Exception as rec_error:
+                            _logger.warning(f"Error accessing record {notif.model}/{notif.res_id}: {rec_error}")
+                    
+                    result.append(notif_data)
+                except Exception as notif_error:
+                    _logger.error(f"Error processing notification {notif.id}: {notif_error}")
+                    continue
+            
+            # Get notification types for filter dropdowns
+            notification_types = Notification.read_group(
+                [],  # Tidak ada filter model
+                fields=['type'],
+                groupby=['type']
+            )
+            types_list = [{'code': t['type'], 'name': t['type'].replace('_', ' ').title()} for t in notification_types]
+            
+            # Get available models for filter dropdowns
+            model_groups = Notification.read_group(
+                [],
+                fields=['model'],
+                groupby=['model']
+            )
+            model_list = [{'code': m['model'], 'name': self._get_model_display_name(m['model'])} for m in model_groups]
+            
+            # Format current time untuk response
+            jakarta_time = datetime.now().astimezone(pytz.timezone('Asia/Jakarta'))
+            
+            # Information untuk load more
+            has_more = len(notifications) >= limit
+            last_id = notifications[-1].id if notifications and has_more else None
+            
+            # Build final response
+            response_data = {
+                'status': 'success',
+                'data': {
+                    'timestamp': jakarta_time.isoformat(),
+                    'notifications': result,
+                    'pagination': {
+                        'total': total_count,
+                        'limit': limit,
+                        'has_more': has_more,
+                        'last_id': last_id
+                    },
+                    'filters': {
+                        'types': types_list,
+                        'models': model_list,
+                        'status_options': [
+                            {'code': 'all', 'name': 'Semua'},
+                            {'code': 'read', 'name': 'Sudah Dibaca'},
+                            {'code': 'unread', 'name': 'Belum Dibaca'}
+                        ]
+                    },
+                    'summary': {
+                        'total': total_count,
+                        'unread': Notification.search_count([('is_read', '=', False)]),
+                        'today': Notification.search_count([
+                            ('request_time', '>=', fields.Datetime.now().replace(hour=0, minute=0, second=0))
+                        ])
+                    }
+                }
+            }
+            
+            return response_data
+            
+        except Exception as e:
+            _logger.error(f"Error in notification_center: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+            
+    def _get_model_display_name(self, model_name):
+        """Helper untuk mendapatkan nama yang lebih ramah untuk model"""
+        try:
+            if not model_name:
+                return "Unknown"
+                
+            model_mappings = {
+                'pitcar.mentor.request': 'Permintaan Mentor',
+                'sale.order': 'Order Penjualan',
+                'pitcar.mechanic.new': 'Mekanik',
+                'stock.picking': 'Pengiriman',
+                'account.move': 'Faktur',
+                'part.purchase.leadtime': 'Lead Time Pembelian',
+            }
+            
+            if model_name in model_mappings:
+                return model_mappings[model_name]
+                
+            # Jika tidak ada di mapping, coba ambil dari ir.model
+            ir_model = request.env['ir.model'].sudo().search([('model', '=', model_name)], limit=1)
+            if ir_model:
+                return ir_model.name
+                
+            # Fallback ke model name jika tidak ditemukan
+            return model_name.replace('.', ' ').title()
+        except Exception:
+            return model_name
+        
+    @http.route('/web/notification/mark-unread', type='json', auth='user', methods=['POST'])
+    def mark_notification_unread(self, **kw):
+        """
+        Menandai notifikasi sebagai belum dibaca dengan fitur fleksibel:
+        - Mendukung filter individual notification_ids
+        - Mendukung filter model dan res_ids
+        - Mendukung filter berdasarkan tipe notifikasi
+        """
+        try:
+            notification_ids = kw.get('notification_ids', [])
+            model = kw.get('model')
+            res_ids = kw.get('res_ids', [])
+            notif_type = kw.get('type')
+            
+            # Build domain untuk mencari notifikasi
+            domain = [('is_read', '=', True)]  # Hanya notifikasi yang sudah dibaca
+            
+            # Tambahkan filter spesifik
+            if notification_ids:
+                notification_ids = notification_ids if isinstance(notification_ids, list) else [notification_ids]
+                domain.append(('id', 'in', notification_ids))
+            
+            if model:
+                domain.append(('model', '=', model))
+                
+            if res_ids:
+                res_ids = res_ids if isinstance(res_ids, list) else [res_ids]
+                domain.append(('res_id', 'in', res_ids))
+                
+            if notif_type:
+                domain.append(('type', '=', notif_type))
+                
+            # Pastikan ada filter yang ditentukan
+            if not (notification_ids or (model and res_ids) or notif_type):
+                return {
+                    'status': 'error',
+                    'message': 'Mohon tentukan filter notification_ids, model/res_ids, atau type'
+                }
+            
+            # Cari notifikasi yang sesuai dengan domain
+            Notification = request.env['pitcar.notification'].sudo()
+            notifications = Notification.search(domain)
+            
+            if not notifications:
+                return {
+                    'status': 'warning',
+                    'message': 'Tidak ada notifikasi yang perlu ditandai',
+                    'data': {'updated': 0}
+                }
+            
+            # Update notifications
+            notifications.write({'is_read': False})
+            count = len(notifications)
+            
+            # Log untuk debugging
+            _logger.info(f"Marked {count} notifications as unread with domain: {domain}")
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'updated': count,
+                    'message': f"{count} notifikasi ditandai sebagai belum dibaca"
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in mark_notification_unread: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    @http.route('/web/notification/mark-read', type='json', auth='user', methods=['POST'])
+    def mark_notification_read(self, **kw):
+        """
+        Menandai notifikasi sebagai dibaca dengan fitur lebih fleksibel:
+        - Mendukung filter individual notification_ids
+        - Mendukung filter model dan res_ids
+        - Mendukung filter berdasarkan tipe notifikasi
+        - Mendukung menandai semua notifikasi sebagai dibaca
+        """
+        try:
+            notification_ids = kw.get('notification_ids', [])
+            model = kw.get('model')
+            res_ids = kw.get('res_ids', [])
+            notif_type = kw.get('type')
+            mark_all = kw.get('mark_all', False)
+            
+            # Build domain untuk mencari notifikasi
+            domain = [('is_read', '=', False)]  # Hanya notifikasi yang belum dibaca
+            
+            # Tambahkan filter spesifik
+            if notification_ids:
+                notification_ids = notification_ids if isinstance(notification_ids, list) else [notification_ids]
+                domain.append(('id', 'in', notification_ids))
+            
+            if model:
+                domain.append(('model', '=', model))
+                
+            if res_ids:
+                res_ids = res_ids if isinstance(res_ids, list) else [res_ids]
+                domain.append(('res_id', 'in', res_ids))
+                
+            if notif_type:
+                domain.append(('type', '=', notif_type))
+                
+            # Jika mark_all=True, gunakan domain yang sudah dibuat
+            # Jika mark_all=False dan tidak ada filter spesifik, kembalikan error
+            if not mark_all and not (notification_ids or (model and res_ids) or notif_type):
+                return {
+                    'status': 'error',
+                    'message': 'Mohon tentukan filter notification_ids, model/res_ids, atau type, atau gunakan mark_all=True'
+                }
+            
+            # Cari notifikasi yang sesuai dengan domain
+            Notification = request.env['pitcar.notification'].sudo()
+            notifications = Notification.search(domain)
+            
+            if not notifications:
+                return {
+                    'status': 'warning',
+                    'message': 'Tidak ada notifikasi yang perlu ditandai',
+                    'data': {'updated': 0}
+                }
+            
+            # Update notifications
+            notifications.write({'is_read': True})
+            count = len(notifications)
+            
+            # Log untuk debugging
+            _logger.info(f"Marked {count} notifications as read with domain: {domain}")
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'updated': count,
+                    'message': f"{count} notifikasi ditandai sebagai dibaca"
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in mark_notification_read: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)

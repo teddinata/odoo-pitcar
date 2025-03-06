@@ -570,6 +570,10 @@ class MentorRequestController(http.Controller):
                 ('request_time', '>=', datetime.now() - timedelta(days=30))
                 # Hapus filter is_read=False untuk menampilkan semua notifikasi
             ]
+
+            # Tambahkan filter berdasarkan parameter include_read
+            if include_read == False:  # Hanya filter is_read=False jika include_read=False
+                domain.append(('is_read', '=', False))
             
             # Filter berdasarkan last_checked jika ada
             if last_checked:
@@ -691,25 +695,10 @@ class MentorRequestController(http.Controller):
             }
     
     def _apply_mechanic_role_filters(self, domain, mechanic):
-        """Terapkan filter domain berdasarkan role mekanik"""
-        # Tentukan apakah mekanik ini memiliki posisi senior (leader/foreman)
-        is_senior = mechanic.position_code in ['leader', 'foreman']
-        
-        # Untuk mekanik senior, tampilkan semua notifikasi (tidak perlu filter tambahan)
-        if is_senior:
-            return domain
-            
-        # Untuk mekanik biasa, hanya tampilkan notifikasi yang relevan dengan mereka
-        mentor_requests = request.env['pitcar.mentor.request'].sudo().search([
-            ('mechanic_ids', 'in', [mechanic.id])
-        ])
-        
-        if not mentor_requests:
-            # Jika tidak ada permintaan yang terkait, kembalikan None (akan menghasilkan response kosong)
-            return None
-            
-        # Tambahkan filter untuk hanya menampilkan notifikasi terkait request ini
-        domain.append(('res_id', 'in', mentor_requests.ids))
+        """
+        Versi paling sederhana - tampilkan semua notifikasi tanpa filter peran
+        """
+        _logger.info(f"No role filtering applied, showing all notifications")
         return domain
     
     def _build_empty_notification_response(self):

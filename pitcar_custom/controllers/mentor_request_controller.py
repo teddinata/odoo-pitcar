@@ -788,7 +788,7 @@ class MentorRequestController(http.Controller):
         utc_dt = pytz.UTC.localize(dt) if dt.tzinfo is None else dt
         return utc_dt.astimezone(jakarta_tz)
     
-    @http.route('/web/mentor/notification/mark-read', type='json', auth='user')
+    @http.route('/web/mentor/notification/mark-read', type='json', auth='user', methods=['POST'])
     def mark_notification_read(self, notification_ids=None, res_ids=None, model='pitcar.mentor.request'):
         """Mark notifications as read dengan optimasi batch"""
         try:
@@ -836,7 +836,7 @@ class MentorRequestController(http.Controller):
                 'message': str(e)
             }
     
-    @http.route('/web/mentor/notification/count', type='json', auth='user')
+    @http.route('/web/mentor/notification/count', type='json', auth='user', methods=['POST'])
     def get_unread_notification_count(self):
         """Get count of unread notifications dengan optimasi performa"""
         try:
@@ -877,7 +877,7 @@ class MentorRequestController(http.Controller):
                 'message': str(e)
             }
     
-    @http.route('/web/mentor/dashboard/stats', type='json', auth='user')
+    @http.route('/web/mentor/dashboard/stats', type='json', auth='user', methods=['POST'])
     def get_dashboard_stats(self, **kw):
         """Get dashboard statistics for mentor requests"""
         try:
@@ -1213,7 +1213,7 @@ class MentorRequestController(http.Controller):
             _logger.error(f"Error generating trend data: {str(e)}", exc_info=True)
             return []
         
-    @http.route('/web/mentor/notification/mark-all-read', type='json', auth='user')
+    @http.route('/web/mentor/notification/mark-all-read', type='json', auth='user', methods=['POST'])
     def mark_all_notifications_read(self, **kw):
         """Mark all notifications as read dengan filter opsional"""
         try:

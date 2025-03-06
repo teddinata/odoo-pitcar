@@ -17,3 +17,4 @@ from . import cs_leads
 from . import content_api
 from . import mentor_request_controller
 from . import session_controller
+from . import tools_management

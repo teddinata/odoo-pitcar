@@ -102,3 +102,5 @@ pitcar_custom.access_pitcar_notification_user,access.pitcar.notification.user,pi
 pitcar_custom.access_pitcar_notification_manager,access.pitcar.notification.manager,pitcar_custom.model_pitcar_notification,base.group_system,1,1,1,1
 pitcar_custom.access_pitcar_notification_service_advisor,access.pitcar.notification.service.advisor,pitcar_custom.model_pitcar_notification,pitcar_custom.group_service_advisor,1,1,1,0
 pitcar_custom.access_pitcar_notification_controller,access.pitcar.notification.controller,pitcar_custom.model_pitcar_notification,pitcar_custom.group_controller,1,1,1,0
+pitcar_custom.access_pitcar_tools_status_log_user,pitcar.tools.status.log.user,model_pitcar_tools_status_log,base.group_user,1,1,1,0
+pitcar_custom.access_pitcar_tools_status_log_manager,pitcar.tools.status.log.manager,model_pitcar_tools_status_log,base.group_system,1,1,1,1

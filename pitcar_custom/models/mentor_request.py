@@ -143,7 +143,7 @@ class MentorRequest(models.Model):
             # Untuk mencegah duplikat follower, gunakan context berikut
             self = self.with_context(mail_create_nosubscribe=True)
             
-            notification_vals_list = []
+            result = True
             
             for record in self:
                 mechanic_names = ", ".join(record.mechanic_ids.mapped('name')) if record.mechanic_ids else 'Unknown'
@@ -178,25 +178,34 @@ class MentorRequest(models.Model):
                 # Kirim notifikasi ke bus
                 self._publish_notification_to_bus(notification_type, title, message, data)
                 
-                # Buat notifikasi dalam sistem tanpa membuat follower
-                # Di dalam method _send_notifications, ganti bagian pembuatan notifikasi
+                # Buat notifikasi di pitcar.notification untuk setiap recipient
                 for recipient in recipients:
                     if recipient.user_id:
-                        self.env['pitcar.notification'].sudo().create_or_update_notification(
-                            model='pitcar.mentor.request',
-                            res_id=record.id,
-                            type=notification_type,
-                            title=title,
-                            message=message,
-                            request_time=fields.Datetime.now(),
-                            data=data
-                        )
-            
-            # Buat notifikasi dalam database
-            if notification_vals_list:
-                self.env['pitcar.notification'].sudo().create(notification_vals_list)
+                        try:
+                            # Tambahkan recipient_id ke data untuk membedakan notifikasi per recipient
+                            notif_data = data.copy()
+                            notif_data['recipient_id'] = recipient.id
+                            notif_data['recipient_name'] = recipient.name
+                            
+                            # Buat atau update notifikasi
+                            notif = self.env['pitcar.notification'].sudo().create_or_update_notification(
+                                model='pitcar.mentor.request',
+                                res_id=record.id,
+                                type=notification_type,
+                                title=title,
+                                message=message,
+                                request_time=fields.Datetime.now(),
+                                data=notif_data
+                            )
+                            
+                            if not notif:
+                                _logger.warning(f"Failed to create notification for recipient {recipient.name}")
+                                result = False
+                        except Exception as e:
+                            _logger.error(f"Error creating notification for recipient {recipient.name}: {str(e)}")
+                            result = False
                 
-            return True
+            return result
         except Exception as e:
             _logger.error(f"Error sending batch notifications: {str(e)}", exc_info=True)
             return False
@@ -272,8 +281,9 @@ class MentorRequest(models.Model):
             return
         
         mentor = self.env['hr.employee'].browse(mentor_id)
-        if not mentor.exists() or not mentor.user_id or not mentor.user_id.partner_id:
-            return
+        if not mentor.exists():
+            _logger.warning(f"Mentor with ID {mentor_id} does not exist")
+            return False
         
         # Gunakan context untuk mencegah auto-subscription
         records = records.with_context(mail_create_nosubscribe=True)
@@ -282,11 +292,55 @@ class MentorRequest(models.Model):
         title_template = "Anda Ditugaskan sebagai Mentor: {name}"
         message_template = "Anda telah ditugaskan untuk membantu {mechanic_names} dengan {category}"
         
-        # Gunakan model pitcar.mechanic.new untuk keseragaman tipe recipient
+        # Coba cari mechanics berdasarkan employee_id
         mechanics = self.env['pitcar.mechanic.new'].search([('employee_id', '=', mentor.id)], limit=1)
+        
         if not mechanics:
-            return False
-            
+            # Jika tidak menemukan mechanic, buat notifikasi langsung untuk mentor partner
+            if mentor.user_id and mentor.user_id.partner_id:
+                _logger.info(f"Creating direct notification for mentor {mentor.name}")
+                for record in records:
+                    mechanic_names = ", ".join(record.mechanic_ids.mapped('name')) if record.mechanic_ids else 'Unknown'
+                    category_name = dict(record._fields['problem_category'].selection).get(record.problem_category)
+                    
+                    context = {
+                        'record': record,
+                        'name': record.name,
+                        'mechanic_names': mechanic_names,
+                        'category': category_name,
+                        'problem_description': record.problem_description,
+                        'sale_order': record.sale_order_id.name if record.sale_order_id else '',
+                    }
+                    
+                    title = title_template.format(**context)
+                    message = message_template.format(**context)
+                    
+                    data = {
+                        'request_id': record.id,
+                        'mentor_id': mentor.id,
+                        'mentor_name': mentor.name,
+                        'mechanic_names': mechanic_names,
+                        'category': record.problem_category
+                    }
+                    
+                    self.env['pitcar.notification'].sudo().create_or_update_notification(
+                        model='pitcar.mentor.request',
+                        res_id=record.id,
+                        type=notification_type,
+                        title=title,
+                        message=message,
+                        request_time=fields.Datetime.now(),
+                        data=data
+                    )
+                    
+                    # Publish to bus
+                    self._publish_notification_to_bus(notification_type, title, message, data)
+                    
+                return True
+            else:
+                _logger.warning(f"Mentor {mentor.name} has no user or partner")
+                return False
+        
         return records._send_notifications(notification_type, title_template, message_template, mechanics)
 
     def _publish_notification_to_bus(self, notification_type, title, message, data=None):

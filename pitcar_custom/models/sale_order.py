@@ -271,18 +271,26 @@ class SaleOrder(models.Model):
         return vals
 
     # Computations untuk durasi
-    @api.depends('order_line.service_duration')
-    def _compute_total_duration(self):
-        """Hitung total durasi dari semua service lines"""
-        for order in self:
-            total = sum(line.service_duration for line in order.order_line 
-                       if not line.display_type and line.sequence < 1000)  # Exclude recommendation lines
-            order.total_service_duration = total
+    # @api.depends('order_line.service_duration')
+    # def _compute_total_duration(self):
+    #     """Hitung total durasi dari semua service lines"""
+    #     for order in self:
+    #         total = sum(line.service_duration for line in order.order_line 
+    #                    if not line.display_type and line.sequence < 1000)  # Exclude recommendation lines
+    #         order.total_service_duration = total
 
+    # @api.depends('order_line.service_duration')
+    # def _compute_total_duration(self):
+    #     for order in self:
+    #         order.total_service_duration = sum(order.order_line.mapped('service_duration'))
     @api.depends('order_line.service_duration')
     def _compute_total_duration(self):
+        """Hitung total durasi dari semua service lines, kecuali display_type dan non-service"""
         for order in self:
-            order.total_service_duration = sum(order.order_line.mapped('service_duration'))
+            order.total_service_duration = sum(
+                line.service_duration for line in order.order_line 
+                if not line.display_type and line.product_id.type == 'service'
+            )
 
     @api.depends('total_service_duration')
     def _compute_formatted_duration(self):

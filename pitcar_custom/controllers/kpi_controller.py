@@ -3019,6 +3019,29 @@ class KPIController(http.Controller):
             current_orders = request.env['sale.order'].sudo().search(current_domain)
             prev_orders = request.env['sale.order'].sudo().search(prev_domain)
 
+            # Calculate flat rate statistics
+            current_flat_rate_hours = sum(order.total_service_duration for order in current_orders)
+            prev_flat_rate_hours = sum(order.total_service_duration for order in prev_orders)
+            current_order_count = len(current_orders)
+            prev_order_count = len(prev_orders)
+
+            flat_rate_metrics = {
+                'total_flat_rate_hours': {
+                    'current': round(current_flat_rate_hours, 2),
+                    'previous': round(prev_flat_rate_hours, 2),
+                    'growth': ((current_flat_rate_hours - prev_flat_rate_hours) / prev_flat_rate_hours * 100) 
+                            if prev_flat_rate_hours else 0
+                },
+                'average_flat_rate_per_order': {
+                    'current': round(current_flat_rate_hours / current_order_count, 2) if current_order_count else 0,
+                    'previous': round(prev_flat_rate_hours / prev_order_count, 2) if prev_order_count else 0,
+                    'growth': (((current_flat_rate_hours / current_order_count if current_order_count else 0) - 
+                            (prev_flat_rate_hours / prev_order_count if prev_order_count else 0)) / 
+                            (prev_flat_rate_hours / prev_order_count if prev_order_count else 1) * 100) 
+                            if prev_flat_rate_hours else 0
+                }
+            }
+
             # Calculate basic metrics
             # current_revenue = sum(order.amount_total for order in current_orders)
             # current_revenue = sum(order.amount_untaxed for order in current_orders)
@@ -3051,7 +3074,8 @@ class KPIController(http.Controller):
                             (prev_revenue / len(prev_orders) if prev_orders else 0)) / 
                             (prev_revenue / len(prev_orders) if prev_orders else 1) * 100)
                             if prev_orders else 0
-                }
+                },
+                'flat_rate': flat_rate_metrics  # Tambahkan flat rate metrics
             }
 
             # Calculate daily/monthly sales trend

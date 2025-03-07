@@ -41,11 +41,13 @@ class SessionController(http.Controller):
             jakarta_tz = pytz.timezone('Asia/Jakarta')
             now = datetime.now(jakarta_tz)
 
-            # Get unread notifications
+            # Karena tidak ada field recipient_id, kita akan mendapatkan semua notifikasi yang belum dibaca
+            # Pada kasus nyata, Anda mungkin ingin membuat JOIN untuk mengambil notifikasi yang relevan
+            # dengan pengguna saat ini berdasarkan logika bisnis Anda
             unread_notifications = request.env['pitcar.notification'].sudo().search([
-                ('is_read', '=', False),
-                ('recipient_id', '=', user.id),
-            ])
+                ('is_read', '=', False)
+            ], order='request_time desc', limit=10)  # Batasi 10 notifikasi terbaru
+            
             unread_notifications_count = len(unread_notifications)
 
             # Get user roles and permissions
@@ -56,7 +58,6 @@ class SessionController(http.Controller):
             is_admin = user.has_group('base.group_system')
 
             # Get all user groups
-            group_ids = user.groups_id.mapped('id')
             groups = [
                 {'id': group.id, 'name': group.name, 'category': group.category_id.name or 'No Category'}
                 for group in user.groups_id
@@ -113,15 +114,20 @@ class SessionController(http.Controller):
                                 'id': notif.id,
                                 'title': notif.title,
                                 'message': notif.message,
+                                'type': notif.type,
+                                'model': notif.model,
+                                'res_id': notif.res_id,
+                                'name': notif.name,
                                 'create_date': self.format_to_jakarta_time(notif.create_date),
-                            } for notif in unread_notifications[:5]
+                                'request_time': self.format_to_jakarta_time(notif.request_time),
+                            } for notif in unread_notifications
                         ],
                         'last_checked': self.format_to_jakarta_time(now),
                     },
                     'preferences': {
                         'lang': user.lang or 'en_US',
                         'tz': user.tz or 'Asia/Jakarta',
-                        'notification_type': user.notification_type or 'email',
+                        'notification_type': 'email',  # Default value karena field mungkin tidak ada
                     },
                     'timestamp': self.format_to_jakarta_time(now),
                     'server_time': now.strftime("%Y-%m-%d %H:%M:%S"),

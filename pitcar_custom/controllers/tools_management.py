@@ -1,11 +1,32 @@
-# controllers/tools_api.py
-from odoo import http
+from odoo import http, fields
 from odoo.http import request
 import logging
+from datetime import datetime, date
+import pytz
 
 _logger = logging.getLogger(__name__)
 
 class ToolsManagementAPI(http.Controller):
+    def format_to_jakarta_time(self, dt):
+        """Convert UTC datetime to Jakarta timezone (UTC+7) and format to string"""
+        if not dt:
+            return None
+        
+        # Convert date to datetime if needed
+        if isinstance(dt, date) and not isinstance(dt, datetime):
+            dt = datetime.combine(dt, datetime.min.time())
+        
+        # Ensure the datetime has timezone info
+        if not dt.tzinfo:
+            dt = pytz.UTC.localize(dt)
+        
+        # Convert to Jakarta timezone
+        jakarta_tz = pytz.timezone('Asia/Jakarta')
+        jakarta_dt = dt.astimezone(jakarta_tz)
+        
+        # Format to string: YYYY-MM-DD HH:MM:SS
+        return jakarta_dt.strftime("%Y-%m-%d %H:%M:%S")
+
     @http.route('/web/v2/tools/management', type='json', auth='user', methods=['POST'], csrf=False)
     def tools_management(self, **kw):
         """Handle tools management operations"""
@@ -59,7 +80,8 @@ class ToolsManagementAPI(http.Controller):
                 'id': tool.id,
                 'reference': tool.reference,
                 'name': tool.name,
-                'state': tool.state
+                'state': tool.state,
+                'request_date': self.format_to_jakarta_time(tool.request_date)
             }
         }
 
@@ -92,80 +114,80 @@ class ToolsManagementAPI(http.Controller):
                 'id': record.id,
                 'reference': record.reference,
                 'name': record.name,
-                'request_date': record.request_date,
+                'request_date': self.format_to_jakarta_time(record.request_date),
                 'requester_id': record.requester_id.id,
                 'requester_name': record.requester_id.name,
                 'approver_id': record.approver_id.id if record.approver_id else False,
                 'approver_name': record.approver_id.name if record.approver_id else '',
                 'tool_type': record.tool_type,
                 'expected_lifetime': record.expected_lifetime,
-                'depreciation_end_date': record.depreciation_end_date,
-                'purchase_date': record.purchase_date,
+                'depreciation_end_date': self.format_to_jakarta_time(record.depreciation_end_date),
+                'purchase_date': self.format_to_jakarta_time(record.purchase_date),
                 'purchase_price': record.purchase_price,
                 'state': record.state,
-                'broken_date': record.broken_date,
+                'broken_date': self.format_to_jakarta_time(record.broken_date),
                 'is_premature_broken': record.is_premature_broken,
                 'notes': record.notes
             } for record in tools]
         }
     
     def _update_tool(self, data):
-      """Update existing tool record"""
-      if not data.get('id'):
-          return {'status': 'error', 'message': 'Missing tool ID'}
+        """Update existing tool record"""
+        if not data.get('id'):
+            return {'status': 'error', 'message': 'Missing tool ID'}
 
-      tool = request.env['pitcar.tools'].sudo().browse(int(data['id']))
-      if not tool.exists():
-          return {'status': 'error', 'message': 'Tool not found'}
+        tool = request.env['pitcar.tools'].sudo().browse(int(data['id']))
+        if not tool.exists():
+            return {'status': 'error', 'message': 'Tool not found'}
 
-      # Check permissions - only admin can update certain states
-      is_admin = request.env.user.has_group('base.group_system')
-      current_state = tool.state
-      
-      # Prevent non-admins from updating tools in terminal states
-      if not is_admin and current_state in ['broken', 'deprecated']:
-          return {'status': 'error', 'message': 'You do not have permission to update this tool in its current state'}
+        # Check permissions - only admin can update certain states
+        is_admin = request.env.user.has_group('base.group_system')
+        current_state = tool.state
+        
+        # Prevent non-admins from updating tools in terminal states
+        if not is_admin and current_state in ['broken', 'deprecated']:
+            return {'status': 'error', 'message': 'You do not have permission to update this tool in its current state'}
 
-      update_values = {}
-      
-      # Fields that can be updated
-      if 'name' in data:
-          update_values['name'] = data['name']
-      if 'tool_type' in data:
-          update_values['tool_type'] = data['tool_type']
-      if 'expected_lifetime' in data:
-          update_values['expected_lifetime'] = int(data['expected_lifetime'])
-      if 'purchase_date' in data:
-          update_values['purchase_date'] = data['purchase_date']
-      if 'purchase_price' in data:
-          update_values['purchase_price'] = float(data['purchase_price'])
-      if 'notes' in data:
-          update_values['notes'] = data['notes']
+        update_values = {}
+        
+        # Fields that can be updated
+        if 'name' in data:
+            update_values['name'] = data['name']
+        if 'tool_type' in data:
+            update_values['tool_type'] = data['tool_type']
+        if 'expected_lifetime' in data:
+            update_values['expected_lifetime'] = int(data['expected_lifetime'])
+        if 'purchase_date' in data:
+            update_values['purchase_date'] = data['purchase_date']
+        if 'purchase_price' in data:
+            update_values['purchase_price'] = float(data['purchase_price'])
+        if 'notes' in data:
+            update_values['notes'] = data['notes']
 
-      if update_values:
-          tool.write(update_values)
+        if update_values:
+            tool.write(update_values)
 
-      # Handle state changes if requested
-      new_state = data.get('state')
-      if new_state and new_state != current_state:
-          try:
-              # Use the method that includes validation and logging
-              tool.change_state(new_state, data.get('status_notes'))
-          except Exception as e:
-              return {'status': 'error', 'message': str(e)}
+        # Handle state changes if requested
+        new_state = data.get('state')
+        if new_state and new_state != current_state:
+            try:
+                # Use the method that includes validation and logging
+                tool.change_state(new_state, data.get('status_notes'))
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}
 
-      return {
-          'status': 'success',
-          'data': {
-              'id': tool.id,
-              'reference': tool.reference,
-              'name': tool.name,
-              'state': tool.state,
-              'is_premature_broken': tool.is_premature_broken
-          }
-      }
+        return {
+            'status': 'success',
+            'data': {
+                'id': tool.id,
+                'reference': tool.reference,
+                'name': tool.name,
+                'state': tool.state,
+                'is_premature_broken': tool.is_premature_broken,
+                'request_date': self.format_to_jakarta_time(tool.request_date)
+            }
+        }
 
-    # Add a new method to get status logs
     def _get_tool_logs(self, data):
         """Get status logs for a specific tool"""
         if not data.get('tool_id'):
@@ -184,14 +206,13 @@ class ToolsManagementAPI(http.Controller):
                 'tool_name': log.tool_id.name,
                 'user_id': log.user_id.id,
                 'user_name': log.user_id.name,
-                'change_date': log.change_date,
+                'change_date': self.format_to_jakarta_time(log.change_date),
                 'old_state': log.old_state,
                 'new_state': log.new_state,
                 'notes': log.notes
             } for log in logs]
         }
 
-    # Add a new endpoint for tool logs
     @http.route('/web/v2/tools/logs', type='json', auth='user', methods=['POST'], csrf=False)
     def tools_logs(self, **kw):
         """Get tool status logs"""
@@ -253,6 +274,10 @@ class ToolsManagementAPI(http.Controller):
             for tool_type in types:
                 count = request.env['pitcar.tools'].sudo().search_count([('tool_type', '=', tool_type)])
                 tools_by_type[tool_type] = count
+                
+            # Get current time in Jakarta timezone
+            jakarta_tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(jakarta_tz)
             
             return {
                 'status': 'success',
@@ -261,7 +286,8 @@ class ToolsManagementAPI(http.Controller):
                     'premature_broken_count': len(premature_broken),
                     'premature_broken_rate': premature_broken_rate,
                     'tools_by_state': tools_by_state,
-                    'tools_by_type': tools_by_type
+                    'tools_by_type': tools_by_type,
+                    'timestamp': self.format_to_jakarta_time(now)
                 }
             }
             

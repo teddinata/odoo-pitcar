@@ -3019,97 +3019,94 @@ class KPIController(http.Controller):
             current_orders = request.env['sale.order'].sudo().search(current_domain)
             prev_orders = request.env['sale.order'].sudo().search(prev_domain)
 
-            # Calculate overall flat rate statistics
-            current_flat_rate_hours = sum(order.total_service_duration for order in current_orders)
-            prev_flat_rate_hours = sum(order.total_service_duration for order in prev_orders)
+            # Calculate overall metrics
             current_order_count = len(current_orders)
             prev_order_count = len(prev_orders)
+            current_flat_rate_hours = sum(order.total_service_duration for order in current_orders)
+            prev_flat_rate_hours = sum(order.total_service_duration for order in prev_orders)
 
-            flat_rate_metrics = {
+            # Overall flat rate metrics
+            flat_rate_overall = {
                 'total_flat_rate_hours': {
                     'current': round(current_flat_rate_hours, 2),
                     'previous': round(prev_flat_rate_hours, 2),
-                    'growth': ((current_flat_rate_hours - prev_flat_rate_hours) / prev_flat_rate_hours * 100) 
-                            if prev_flat_rate_hours else 0
+                    'growth': round(
+                        ((current_flat_rate_hours - prev_flat_rate_hours) / prev_flat_rate_hours * 100)
+                        if prev_flat_rate_hours else 0,
+                        2
+                    ),
                 },
                 'average_flat_rate_per_order': {
                     'current': round(current_flat_rate_hours / current_order_count, 2) if current_order_count else 0,
                     'previous': round(prev_flat_rate_hours / prev_order_count, 2) if prev_order_count else 0,
-                    'growth': (((current_flat_rate_hours / current_order_count if current_order_count else 0) - 
-                            (prev_flat_rate_hours / prev_order_count if prev_order_count else 0)) / 
-                            (prev_flat_rate_hours / prev_order_count if prev_order_count else 1) * 100) 
-                            if prev_flat_rate_hours else 0
-                }
+                    'growth': round(
+                        (((current_flat_rate_hours / current_order_count if current_order_count else 0) -
+                        (prev_flat_rate_hours / prev_order_count if prev_order_count else 0)) /
+                        (prev_flat_rate_hours / prev_order_count if prev_order_count else 1) * 100)
+                        if prev_flat_rate_hours else 0,
+                        2
+                    ),
+                },
             }
 
             # Calculate flat rate per mechanic
-            current_mechanic_flat_rate = {}
-            prev_mechanic_flat_rate = {}
+            def calculate_mechanic_flat_rate(orders):
+                mechanic_data = {}
+                for order in orders:
+                    if order.car_mechanic_id_new:
+                        mechanic_count = len(order.car_mechanic_id_new)
+                        if mechanic_count > 0:
+                            flat_rate_per_mechanic = order.total_service_duration / mechanic_count
+                            for mechanic in order.car_mechanic_id_new:
+                                if mechanic.id not in mechanic_data:
+                                    mechanic_data[mechanic.id] = {
+                                        'id': mechanic.id,
+                                        'name': mechanic.name,
+                                        'total_flat_rate_hours': 0.0,
+                                        'order_count': 0,
+                                    }
+                                mechanic_data[mechanic.id]['total_flat_rate_hours'] += flat_rate_per_mechanic
+                                mechanic_data[mechanic.id]['order_count'] += 1
+                return mechanic_data
 
-            # Current period
-            for order in current_orders:
-                if order.car_mechanic_id_new:
-                    mechanic_count = len(order.car_mechanic_id_new)
-                    if mechanic_count > 0:
-                        flat_rate_per_mechanic = order.total_service_duration / mechanic_count
-                        for mechanic in order.car_mechanic_id_new:
-                            if mechanic.id not in current_mechanic_flat_rate:
-                                current_mechanic_flat_rate[mechanic.id] = {
-                                    'id': mechanic.id,
-                                    'name': mechanic.name,
-                                    'total_flat_rate_hours': 0.0,
-                                    'order_count': 0
-                                }
-                            current_mechanic_flat_rate[mechanic.id]['total_flat_rate_hours'] += flat_rate_per_mechanic
-                            current_mechanic_flat_rate[mechanic.id]['order_count'] += 1
+            current_mechanic_data = calculate_mechanic_flat_rate(current_orders)
+            prev_mechanic_data = calculate_mechanic_flat_rate(prev_orders)
 
-            # Previous period
-            for order in prev_orders:
-                if order.car_mechanic_id_new:
-                    mechanic_count = len(order.car_mechanic_id_new)
-                    if mechanic_count > 0:
-                        flat_rate_per_mechanic = order.total_service_duration / mechanic_count
-                        for mechanic in order.car_mechanic_id_new:
-                            if mechanic.id not in prev_mechanic_flat_rate:
-                                prev_mechanic_flat_rate[mechanic.id] = {
-                                    'id': mechanic.id,
-                                    'name': mechanic.name,
-                                    'total_flat_rate_hours': 0.0,
-                                    'order_count': 0
-                                }
-                            prev_mechanic_flat_rate[mechanic.id]['total_flat_rate_hours'] += flat_rate_per_mechanic
-                            prev_mechanic_flat_rate[mechanic.id]['order_count'] += 1
-
-            # Combine current and previous data per mechanic
+            # Combine mechanic data for current and previous periods
             mechanic_flat_rate_data = []
-            all_mechanic_ids = set(current_mechanic_flat_rate.keys()) | set(prev_mechanic_flat_rate.keys())
+            all_mechanic_ids = set(current_mechanic_data.keys()) | set(prev_mechanic_data.keys())
             for mechanic_id in all_mechanic_ids:
-                current_data = current_mechanic_flat_rate.get(mechanic_id, {'total_flat_rate_hours': 0, 'order_count': 0})
-                prev_data = prev_mechanic_flat_rate.get(mechanic_id, {'total_flat_rate_hours': 0, 'order_count': 0})
+                current = current_mechanic_data.get(mechanic_id, {'total_flat_rate_hours': 0, 'order_count': 0, 'name': ''})
+                prev = prev_mechanic_data.get(mechanic_id, {'total_flat_rate_hours': 0, 'order_count': 0, 'name': ''})
                 mechanic_flat_rate = {
                     'id': mechanic_id,
-                    'name': current_data.get('name', prev_data.get('name', 'Unknown')),
+                    'name': current.get('name') or prev.get('name') or 'Unknown',
                     'current': {
-                        'total_flat_rate_hours': round(current_data['total_flat_rate_hours'], 2),
-                        'order_count': current_data['order_count'],
-                        'average_flat_rate': round(current_data['total_flat_rate_hours'] / current_data['order_count'], 2) 
-                                        if current_data['order_count'] else 0
+                        'total_flat_rate_hours': round(current['total_flat_rate_hours'], 2),
+                        'order_count': current['order_count'],
+                        'average_flat_rate': round(
+                            current['total_flat_rate_hours'] / current['order_count'], 2
+                        ) if current['order_count'] else 0,
                     },
                     'previous': {
-                        'total_flat_rate_hours': round(prev_data['total_flat_rate_hours'], 2),
-                        'order_count': prev_data['order_count'],
-                        'average_flat_rate': round(prev_data['total_flat_rate_hours'] / prev_data['order_count'], 2) 
-                                        if prev_data['order_count'] else 0
+                        'total_flat_rate_hours': round(prev['total_flat_rate_hours'], 2),
+                        'order_count': prev['order_count'],
+                        'average_flat_rate': round(
+                            prev['total_flat_rate_hours'] / prev['order_count'], 2
+                        ) if prev['order_count'] else 0,
                     },
                     'growth': {
-                        'total_flat_rate_hours': ((current_data['total_flat_rate_hours'] - prev_data['total_flat_rate_hours']) / 
-                                                prev_data['total_flat_rate_hours'] * 100) 
-                                                if prev_data['total_flat_rate_hours'] else 0
-                    }
+                        'total_flat_rate_hours': round(
+                            ((current['total_flat_rate_hours'] - prev['total_flat_rate_hours']) /
+                            prev['total_flat_rate_hours'] * 100)
+                            if prev['total_flat_rate_hours'] else 0,
+                            2
+                        ),
+                    },
                 }
                 mechanic_flat_rate_data.append(mechanic_flat_rate)
 
-            # Sort mechanic data by current total flat rate hours (opsional)
+            # Sort by current total flat rate hours
             mechanic_flat_rate_data.sort(key=lambda x: x['current']['total_flat_rate_hours'], reverse=True)
 
             # Calculate basic metrics
@@ -3146,9 +3143,9 @@ class KPIController(http.Controller):
                             if prev_orders else 0
                 },
                 'flat_rate': {
-                    'overall': flat_rate_metrics,
-                    'per_mechanic': mechanic_flat_rate_data  # Tambahkan flat rate per mekanik
-                }
+                    'overall': flat_rate_overall,
+                    'per_mechanic': mechanic_flat_rate_data,
+                },
             }
 
             # Calculate daily/monthly sales trend

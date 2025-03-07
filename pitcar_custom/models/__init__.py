@@ -44,3 +44,4 @@ from . import content_project
 from . import mentor_request
 from . import notification
 from . import pitcar_tools
+from . import mechanic_hand_tools

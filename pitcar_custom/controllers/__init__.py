@@ -18,3 +18,4 @@ from . import content_api
 from . import mentor_request_controller
 from . import session_controller
 from . import tools_management
+from . import mechanic_hand_tools_controller

@@ -88,6 +88,8 @@
                             <field name="color" required="True" widget="color_picker"/>
                             <field name="user_id" invisible="1"/> <!-- Tambahkan field user_id -->
                             <field name="temp_password" invisible="1"/> <!-- Tambahkan field temp_password -->
+                            <!-- is mentor true or false -->
+                            <field name="is_mentor"/>
                         </group>
                         <group string="Performance Metrics">
                             <field name="monthly_target" widget="monetary"/>

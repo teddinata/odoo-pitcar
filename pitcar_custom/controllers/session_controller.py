@@ -42,17 +42,25 @@ class SessionController(http.Controller):
             now = datetime.now(jakarta_tz)
 
             # Karena tidak ada field recipient_id, kita akan mendapatkan semua notifikasi yang belum dibaca
-            # Pada kasus nyata, Anda mungkin ingin membuat JOIN untuk mengambil notifikasi yang relevan
-            # dengan pengguna saat ini berdasarkan logika bisnis Anda
             unread_notifications = request.env['pitcar.notification'].sudo().search([
                 ('is_read', '=', False)
             ], order='request_time desc', limit=10)  # Batasi 10 notifikasi terbaru
             
             unread_notifications_count = len(unread_notifications)
 
-            # Get user roles and permissions
+            # Get employee information
+            employee = request.env['hr.employee'].sudo().search([('user_id', '=', user.id)], limit=1)
+            
+            # Get mechanic information directly
             mechanic = request.env['pitcar.mechanic.new'].sudo().search([('user_id', '=', user.id)], limit=1)
+            
+            # If no mechanic found directly by user_id, try to find by employee_id
+            if not mechanic and employee:
+                mechanic = request.env['pitcar.mechanic.new'].sudo().search([('employee_id', '=', employee.id)], limit=1)
+            
+            # Get user roles from mechanic record
             is_mechanic = bool(mechanic)
+            # Ambil is_mentor langsung dari mechanic record jika ada
             is_mentor = mechanic.is_mentor if mechanic else False
             position_code = mechanic.position_code if mechanic else False
             is_admin = user.has_group('base.group_system')
@@ -64,7 +72,6 @@ class SessionController(http.Controller):
             ]
 
             # Get employee information
-            employee = request.env['hr.employee'].sudo().search([('user_id', '=', user.id)], limit=1)
             employee_data = {
                 'id': employee.id if employee else False,
                 'name': employee.name if employee else False,

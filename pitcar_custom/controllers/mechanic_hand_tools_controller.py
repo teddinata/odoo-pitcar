@@ -656,6 +656,8 @@ class MechanicChecks(http.Controller):
                 return self._get_check_kpi(kw)
             elif operation == 'dashboard':
                 return self._get_dashboard_data(kw)
+            elif operation == 'delete':
+                return self._delete_check(kw)
             else:
                 return {
                     'status': 'error',
@@ -699,6 +701,34 @@ class MechanicChecks(http.Controller):
             
         except Exception as e:
             _logger.error(f"Error in _create_check: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    def _delete_check(self, params):
+        """Delete mechanic tool check"""
+        try:
+            check_id = params.get('id')
+            if not check_id:
+                return {
+                    'status': 'error',
+                    'message': 'Check ID is required'
+                }
+                
+            check = request.env['pitcar.mechanic.tool.check'].sudo().browse(int(check_id))
+            if not check.exists():
+                return {'status': 'error', 'message': 'Check record not found'}
+            
+            if check.state == 'done':
+                return {'status': 'error', 'message': 'Cannot delete completed check'}
+                
+            check.unlink()
+            
+            return {
+                'status': 'success',
+                'message': 'Check deleted successfully'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in _delete_check: {str(e)}")
             return {'status': 'error', 'message': str(e)}
             
     def _get_checks_list(self, params):

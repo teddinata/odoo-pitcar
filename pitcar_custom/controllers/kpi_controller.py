@@ -3364,6 +3364,124 @@ class KPIController(http.Controller):
             _logger.error(f"Error in get_dashboard_overview: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
+    def calculate_customer_cohorts(self, start_date, end_date, depth=6):
+        """
+        Menghitung analisis cohort retensi pelanggan dasar.
+        
+        Args:
+            start_date: Tanggal awal untuk analisis cohort (format: datetime UTC)
+            end_date: Tanggal akhir untuk analisis cohort (format: datetime UTC)
+            depth: Jumlah bulan yang akan dihitung untuk retensi (default: 6)
+            
+        Returns:
+            List berisi data cohort
+        """
+        try:
+            # Mengambil semua order dengan state 'sale' dalam periode yang ditentukan
+            # dan sudah selesai (date_completed)
+            all_orders = request.env['sale.order'].sudo().search([
+                ('state', '=', 'sale'),
+                ('date_completed', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+            ])
+            
+            if not all_orders:
+                return []
+                
+            # Menggunakan defaultdict untuk mengorganisir pesanan berdasarkan pelanggan dan waktu
+            from collections import defaultdict
+            import calendar
+            from dateutil.relativedelta import relativedelta
+            
+            # Dictionary untuk menyimpan bulan pertama order untuk setiap pelanggan
+            customer_first_order = {}
+            # Dictionary untuk menyimpan semua order berdasarkan pelanggan dan bulan
+            customer_orders_by_month = defaultdict(lambda: defaultdict(list))
+            
+            # Kelompokkan orders berdasarkan pelanggan dan bulan
+            for order in all_orders:
+                customer_id = order.partner_id.id
+                order_date = order.date_completed.replace(tzinfo=pytz.UTC)
+                
+                # Format bulan cohort sebagai 'YYYY-MM'
+                order_month = order_date.strftime('%Y-%m')
+                
+                # Simpan order ke dalam dictionary berdasarkan pelanggan dan bulan
+                customer_orders_by_month[customer_id][order_month].append(order)
+                
+                # Catat bulan pertama kali pelanggan order (jika belum ada)
+                if customer_id not in customer_first_order or order_date < customer_first_order[customer_id]['date']:
+                    customer_first_order[customer_id] = {
+                        'date': order_date,
+                        'month': order_month
+                    }
+            
+            # Dictionary untuk menyimpan cohort
+            cohort_data = defaultdict(lambda: defaultdict(int))
+            # Dictionary untuk menyimpan total pelanggan per cohort
+            cohort_sizes = defaultdict(int)
+            
+            # Hitung bulan tersedia dalam rentang
+            start_month_date = start_date.replace(day=1, hour=0, minute=0, second=0)
+            available_months = []
+            current_month = start_month_date
+            
+            while current_month <= end_date:
+                available_months.append(current_month.strftime('%Y-%m'))
+                current_month += relativedelta(months=1)
+            
+            # Untuk setiap pelanggan, hitung aktivitas retensi
+            for customer_id, first_order_info in customer_first_order.items():
+                first_month = first_order_info['month']
+                first_date = first_order_info['date']
+                
+                # Increment ukuran cohort
+                cohort_sizes[first_month] += 1
+                
+                # Untuk setiap bulan dalam periode, hitung retensi
+                for i, month in enumerate(available_months):
+                    # Periksa apakah bulan lebih besar atau sama dengan first_month
+                    if month >= first_month:
+                        # Hitung selisih bulan antara bulan saat ini dan bulan pertama
+                        month_date = datetime.strptime(month, '%Y-%m')
+                        first_month_date = datetime.strptime(first_month, '%Y-%m')
+                        month_diff = (month_date.year - first_month_date.year) * 12 + (month_date.month - first_month_date.month)
+                        
+                        # Jika pelanggan memiliki order di bulan ini, tandai sebagai retensi
+                        if month in customer_orders_by_month[customer_id]:
+                            cohort_data[first_month][month_diff] += 1
+            
+            # Format data cohort untuk output
+            formatted_cohorts = []
+            for cohort_month, retentions in cohort_data.items():
+                cohort_size = cohort_sizes[cohort_month]
+                
+                # Buat entri cohort
+                cohort_entry = {
+                    'cohort': cohort_month,
+                    'cohort_display': datetime.strptime(cohort_month, '%Y-%m').strftime('%b %Y'),
+                    'total_customers': cohort_size
+                }
+                
+                # Tambahkan data retensi untuk setiap bulan (hingga depth)
+                for month_number in range(depth + 1):  # +1 karena kita juga ingin bulan 0
+                    retention_count = retentions.get(month_number, 0)
+                    retention_rate = (retention_count / cohort_size * 100) if cohort_size else 0
+                    
+                    # Format: 'month0', 'month1', dst. untuk retensi di bulan ke-n
+                    cohort_entry[f'month{month_number}'] = round(retention_rate, 1)
+                
+                formatted_cohorts.append(cohort_entry)
+            
+            # Urutkan cohort berdasarkan bulan (terbaru ke terlama)
+            formatted_cohorts.sort(key=lambda x: x['cohort'], reverse=True)
+            
+            return formatted_cohorts
+            
+        except Exception as e:
+            _logger.error(f"Error in calculate_customer_cohorts: {str(e)}")
+            return []
+
     def calculate_enhanced_customer_cohorts(self, start_date, end_date, depth=6, segment_by=None, include_metrics=False):
         """
         Menghitung analisis cohort retensi pelanggan dengan segmentasi dan metrik tambahan.

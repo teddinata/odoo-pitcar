@@ -2931,6 +2931,439 @@ class KPIController(http.Controller):
             _logger.error(f"Error in get_service_advisor_detail: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
+    # @http.route('/web/v2/statistics/overview', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    # def get_dashboard_overview(self, **kw):
+    #     """Get comprehensive dashboard overview including cohort analysis"""
+        # try:
+    #         # Get date range parameters
+    #         date_range = kw.get('date_range', 'today')
+    #         start_date = kw.get('start_date')
+    #         end_date = kw.get('end_date')
+            
+    #         # Set timezone
+    #         tz = pytz.timezone('Asia/Jakarta')
+    #         now = datetime.now(tz)
+            
+    #         # Calculate date range
+    #         if start_date and end_date:
+    #             try:
+    #                 start = datetime.strptime(start_date, '%Y-%m-%d')
+    #                 end = datetime.strptime(end_date, '%Y-%m-%d')
+    #                 start = tz.localize(start.replace(hour=0, minute=0, second=0))
+    #                 end = tz.localize(end.replace(hour=23, minute=59, second=59))
+    #             except (ValueError, TypeError):
+    #                 return {'status': 'error', 'message': 'Invalid date format'}
+    #         else:
+    #             if date_range == 'today':
+    #                 start = now.replace(hour=0, minute=0, second=0)
+    #                 end = now
+    #             elif date_range == 'yesterday':
+    #                 yesterday = now - timedelta(days=1)
+    #                 start = yesterday.replace(hour=0, minute=0, second=0)
+    #                 end = yesterday.replace(hour=23, minute=59, second=59)
+    #             elif date_range == 'this_week':
+    #                 start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+    #                 end = now
+    #             elif date_range == 'this_month':
+    #                 start = now.replace(day=1, hour=0, minute=0, second=0)
+    #                 end = now
+    #             elif date_range == 'this_year':
+    #                 start = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+    #                 end = now
+    #             else:
+    #                 start = now.replace(hour=0, minute=0, second=0)
+    #                 end = now
+
+    #         # Convert to UTC for database queries
+    #         start_utc = start.astimezone(pytz.UTC)
+    #         end_utc = end.astimezone(pytz.UTC)
+
+    #         # Get previous period for comparison
+    #         delta = end_utc - start_utc
+    #         prev_end = start_utc - timedelta(microseconds=1)
+    #         prev_start = prev_end - delta
+
+    #         # Get current period orders dengan state='sale' dan menggunakan date_completed
+    #         current_domain = [
+    #             ('date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+    #             ('date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+    #             ('state', '=', 'sale')  # Hanya ambil confirmed sales
+    #         ]
+
+    #         # Get previous period orders
+    #         prev_domain = [
+    #             ('date_completed', '>=', prev_start.strftime('%Y-%m-%d %H:%M:%S')),
+    #             ('date_completed', '<=', prev_end.strftime('%Y-%m-%d %H:%M:%S')),
+    #             ('state', '=', 'sale')  # Hanya ambil confirmed sales
+    #         ]
+
+    #         # Get quotations
+    #         current_quotations = request.env['sale.order'].sudo().search([
+    #             *current_domain,
+    #             ('state', '=', 'draft')
+    #         ])
+    #         prev_quotations = request.env['sale.order'].sudo().search([
+    #             *prev_domain,
+    #             ('state', '=', 'draft')
+    #         ])
+
+    #         # Get confirmed orders
+    #         current_orders = request.env['sale.order'].sudo().search(current_domain)
+    #         prev_orders = request.env['sale.order'].sudo().search(prev_domain)
+
+    #         # Calculate overall metrics
+    #         current_order_count = len(current_orders)
+    #         prev_order_count = len(prev_orders)
+    #         current_flat_rate_hours = sum(order.total_service_duration for order in current_orders)
+    #         prev_flat_rate_hours = sum(order.total_service_duration for order in prev_orders)
+
+    #         # Overall flat rate metrics
+    #         flat_rate_overall = {
+    #             'total_flat_rate_hours': {
+    #                 'current': round(current_flat_rate_hours, 2),
+    #                 'previous': round(prev_flat_rate_hours, 2),
+    #                 'growth': round(
+    #                     ((current_flat_rate_hours - prev_flat_rate_hours) / prev_flat_rate_hours * 100)
+    #                     if prev_flat_rate_hours else 0,
+    #                     2
+    #                 ),
+    #             },
+    #             'average_flat_rate_per_order': {
+    #                 'current': round(current_flat_rate_hours / current_order_count, 2) if current_order_count else 0,
+    #                 'previous': round(prev_flat_rate_hours / prev_order_count, 2) if prev_order_count else 0,
+    #                 'growth': round(
+    #                     (((current_flat_rate_hours / current_order_count if current_order_count else 0) -
+    #                     (prev_flat_rate_hours / prev_order_count if prev_order_count else 0)) /
+    #                     (prev_flat_rate_hours / prev_order_count if prev_order_count else 1) * 100)
+    #                     if prev_flat_rate_hours else 0,
+    #                     2
+    #                 ),
+    #             },
+    #         }
+
+    #         # Calculate flat rate per mechanic
+    #         def calculate_mechanic_flat_rate(orders):
+    #             mechanic_data = {}
+    #             for order in orders:
+    #                 if order.car_mechanic_id_new:
+    #                     mechanic_count = len(order.car_mechanic_id_new)
+    #                     if mechanic_count > 0:
+    #                         flat_rate_per_mechanic = order.total_service_duration / mechanic_count
+    #                         for mechanic in order.car_mechanic_id_new:
+    #                             if mechanic.id not in mechanic_data:
+    #                                 mechanic_data[mechanic.id] = {
+    #                                     'id': mechanic.id,
+    #                                     'name': mechanic.name,
+    #                                     'total_flat_rate_hours': 0.0,
+    #                                     'order_count': 0,
+    #                                 }
+    #                             mechanic_data[mechanic.id]['total_flat_rate_hours'] += flat_rate_per_mechanic
+    #                             mechanic_data[mechanic.id]['order_count'] += 1
+    #             return mechanic_data
+
+    #         current_mechanic_data = calculate_mechanic_flat_rate(current_orders)
+    #         prev_mechanic_data = calculate_mechanic_flat_rate(prev_orders)
+
+    #         # Combine mechanic data for current and previous periods
+    #         mechanic_flat_rate_data = []
+    #         all_mechanic_ids = set(current_mechanic_data.keys()) | set(prev_mechanic_data.keys())
+    #         for mechanic_id in all_mechanic_ids:
+    #             current = current_mechanic_data.get(mechanic_id, {'total_flat_rate_hours': 0, 'order_count': 0, 'name': ''})
+    #             prev = prev_mechanic_data.get(mechanic_id, {'total_flat_rate_hours': 0, 'order_count': 0, 'name': ''})
+    #             mechanic_flat_rate = {
+    #                 'id': mechanic_id,
+    #                 'name': current.get('name') or prev.get('name') or 'Unknown',
+    #                 'current': {
+    #                     'total_flat_rate_hours': round(current['total_flat_rate_hours'], 2),
+    #                     'order_count': current['order_count'],
+    #                     'average_flat_rate': round(
+    #                         current['total_flat_rate_hours'] / current['order_count'], 2
+    #                     ) if current['order_count'] else 0,
+    #                 },
+    #                 'previous': {
+    #                     'total_flat_rate_hours': round(prev['total_flat_rate_hours'], 2),
+    #                     'order_count': prev['order_count'],
+    #                     'average_flat_rate': round(
+    #                         prev['total_flat_rate_hours'] / prev['order_count'], 2
+    #                     ) if prev['order_count'] else 0,
+    #                 },
+    #                 'growth': {
+    #                     'total_flat_rate_hours': round(
+    #                         ((current['total_flat_rate_hours'] - prev['total_flat_rate_hours']) /
+    #                         prev['total_flat_rate_hours'] * 100)
+    #                         if prev['total_flat_rate_hours'] else 0,
+    #                         2
+    #                     ),
+    #                 },
+    #             }
+    #             mechanic_flat_rate_data.append(mechanic_flat_rate)
+
+    #         # Sort by current total flat rate hours
+    #         mechanic_flat_rate_data.sort(key=lambda x: x['current']['total_flat_rate_hours'], reverse=True)
+
+    #         # Calculate basic metrics
+    #         current_revenue = sum(order.amount_untaxed for order in current_orders)
+    #         prev_revenue = sum(order.amount_untaxed for order in prev_orders)
+            
+    #         metrics = {
+    #             'quotations': {
+    #                 'current': len(current_quotations),
+    #                 'previous': len(prev_quotations),
+    #                 'growth': ((len(current_quotations) - len(prev_quotations)) / len(prev_quotations) * 100) 
+    #                         if prev_quotations else 0
+    #             },
+    #             'orders': {
+    #                 'current': len(current_orders),
+    #                 'previous': len(prev_orders),
+    #                 'growth': ((len(current_orders) - len(prev_orders)) / len(prev_orders) * 100) 
+    #                         if prev_orders else 0
+    #             },
+    #             'revenue': {
+    #                 'current': current_revenue,
+    #                 'previous': prev_revenue,
+    #                 'growth': ((current_revenue - prev_revenue) / prev_revenue * 100) if prev_revenue else 0
+    #             },
+    #             'average_order': {
+    #                 'current': current_revenue / len(current_orders) if current_orders else 0,
+    #                 'previous': prev_revenue / len(prev_orders) if prev_orders else 0,
+    #                 'growth': (((current_revenue / len(current_orders) if current_orders else 0) - 
+    #                         (prev_revenue / len(prev_orders) if prev_orders else 0)) / 
+    #                         (prev_revenue / len(prev_orders) if prev_orders else 1) * 100)
+    #                         if prev_orders else 0
+    #             },
+    #             'flat_rate': {
+    #                 'overall': flat_rate_overall,
+    #                 'per_mechanic': mechanic_flat_rate_data,
+    #             },
+    #         }
+
+    #         # Calculate daily/monthly sales trend
+    #         trends = []
+    #         current = start
+    #         while current <= end:
+    #             current_end = min(current.replace(hour=23, minute=59, second=59), end)
+    #             day_orders = request.env['sale.order'].sudo().search([
+    #                 ('date_completed', '>=', current.strftime('%Y-%m-%d %H:%M:%S')),
+    #                 ('date_completed', '<=', current_end.strftime('%Y-%m-%d %H:%M:%S')),
+    #                 ('state', '=', 'sale')
+    #             ])
+                
+    #             if day_orders:
+    #                 trends.append({
+    #                     'date': current.strftime('%Y-%m-%d'),
+    #                     'revenue': sum(order.amount_total for order in day_orders),
+    #                     'orders': len(day_orders)
+    #                 })
+                
+    #             current += timedelta(days=1)
+
+    #         # Get top products
+    #         order_lines = request.env['sale.order.line'].sudo().search([
+    #             ('order_id.state', '=', 'sale'),
+    #             ('order_id.date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+    #             ('order_id.date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+    #         ])
+            
+    #         # Get top products separated by category
+    #         service_products = {}
+    #         physical_products = {}
+
+    #         for line in order_lines:
+    #             product = line.product_id
+    #             # Check if product is a service
+    #             is_service = product.type == 'service'  # or use your own criteria to determine service
+                
+    #             # Choose target dictionary based on product type
+    #             target_dict = service_products if is_service else physical_products
+                
+    #             if product.id not in target_dict:
+    #                 target_dict[product.id] = {
+    #                     'id': product.id,
+    #                     'name': product.name,
+    #                     'orders': 0,
+    #                     'revenue': 0
+    #                 }
+    #             target_dict[product.id]['orders'] += line.product_uom_qty
+    #             target_dict[product.id]['revenue'] += line.price_subtotal
+
+    #         # Sort and get top 10 for each category
+    #         top_services = sorted(
+    #             service_products.values(),
+    #             key=lambda x: x['revenue'],
+    #             reverse=True
+    #         )[:10]
+
+    #         top_physical_products = sorted(
+    #             physical_products.values(),
+    #             key=lambda x: x['revenue'],
+    #             reverse=True
+    #         )[:10]
+
+    #         # Get top quotations
+    #         top_quotations = [{
+    #             'id': quot.id,
+    #             'name': quot.name,
+    #             'customer': quot.partner_id.name,
+    #             'service_advisor': [sa.name for sa in quot.service_advisor_id],
+    #             'amount': quot.amount_total
+    #         } for quot in sorted(
+    #             current_quotations,
+    #             key=lambda x: x.amount_total,
+    #             reverse=True
+    #         )[:10]]
+
+    #         # Get top sales orders
+    #         top_sales = [{
+    #             'id': order.id,
+    #             'name': order.name,
+    #             'customer': order.partner_id.name,
+    #             'service_advisor': [sa.name for sa in order.service_advisor_id],
+    #             'mechanic': [m.name for m in order.car_mechanic_id_new],
+    #             'amount': order.amount_total
+    #         } for order in sorted(
+    #             current_orders,
+    #             key=lambda x: x.amount_total,
+    #             reverse=True
+    #         )[:10]]
+
+    #         # Get top customers
+    #         customer_data = {}
+    #         for order in current_orders:
+    #             if order.partner_id.id not in customer_data:
+    #                 customer_data[order.partner_id.id] = {
+    #                     'id': order.partner_id.id,
+    #                     'name': order.partner_id.name,
+    #                     'orders': 0,
+    #                     'revenue': 0
+    #                 }
+    #             customer_data[order.partner_id.id]['orders'] += 1
+    #             customer_data[order.partner_id.id]['revenue'] += order.amount_total
+
+    #         top_customers = sorted(
+    #             customer_data.values(),
+    #             key=lambda x: x['revenue'],
+    #             reverse=True
+    #         )[:10]
+
+    #         # Get top service categories 
+    #         subcategory_data = {key: {'name': label, 'orders': 0, 'revenue': 0}
+    #                 for key, label in request.env['sale.order']._fields['service_subcategory'].selection}
+
+    #         # Calculate subcategories data
+    #         for order in current_orders:
+    #             if order.service_subcategory:
+    #                 subcategory_data[order.service_subcategory]['orders'] += 1
+    #                 subcategory_data[order.service_subcategory]['revenue'] += order.amount_total
+
+    #         # Format and sort categories (with empty list fallback)
+    #         formatted_categories = []
+    #         if current_orders:
+    #             formatted_categories = [
+    #                 {
+    #                     'id': subcat_key,
+    #                     'name': subcat['name'], 
+    #                     'orders': subcat['orders'],
+    #                     'revenue': subcat['revenue']
+    #                 }
+    #                 for subcat_key, subcat in subcategory_data.items() 
+    #                 if subcat['orders'] > 0
+    #             ]
+    #             formatted_categories.sort(key=lambda x: x['revenue'], reverse=True)
+
+    #         # Get top service advisors
+    #         advisor_data = {}
+    #         for order in current_orders:
+    #             for advisor in order.service_advisor_id:
+    #                 if advisor.id not in advisor_data:
+    #                     advisor_data[advisor.id] = {
+    #                         'id': advisor.id,
+    #                         'name': advisor.name,
+    #                         'orders': 0,
+    #                         'revenue': 0
+    #                     }
+    #                 advisor_data[advisor.id]['orders'] += 1
+    #                 advisor_data[advisor.id]['revenue'] += order.amount_total / len(order.service_advisor_id)
+
+    #         top_advisors = sorted(
+    #             advisor_data.values(),
+    #             key=lambda x: x['revenue'],
+    #             reverse=True
+    #         )[:10]
+
+    #         # Get top mechanics
+    #         mechanic_data = {}
+    #         for order in current_orders:
+    #             for mechanic in order.car_mechanic_id_new:
+    #                 if mechanic.id not in mechanic_data:
+    #                     mechanic_data[mechanic.id] = {
+    #                         'id': mechanic.id,
+    #                         'name': mechanic.name,
+    #                         'orders': 0,
+    #                         'revenue': 0
+    #                     }
+    #                 mechanic_data[mechanic.id]['orders'] += 1
+    #                 mechanic_data[mechanic.id]['revenue'] += order.amount_total / len(order.car_mechanic_id_new)
+
+    #         top_mechanics = sorted(
+    #             mechanic_data.values(),
+    #             key=lambda x: x['revenue'],
+    #             reverse=True
+    #         )[:10]
+
+    #         # Get cohort analysis data
+    #         cohort_params = kw.get('cohort', {})
+    #         cohort_depth = cohort_params.get('depth', 6)  # Default 6 bulan
+    #         segment_by = cohort_params.get('segment_by')  # Optional segmentation parameter
+    #         include_metrics = cohort_params.get('include_metrics', False)  # Optional additional metrics
+            
+    #         # Jika menggunakan enhanced cohort analysis
+    #         if segment_by or include_metrics:
+    #             # Get enhanced cohort data
+    #             cohort_data = self.calculate_enhanced_customer_cohorts(
+    #                 start_utc, 
+    #                 end_utc, 
+    #                 depth=cohort_depth,
+    #                 segment_by=segment_by,
+    #                 include_metrics=include_metrics
+    #             )
+    #         else:
+    #             # Get basic cohort data (menggunakan fungsi yang sudah ada)
+    #             basic_cohort_data = self.calculate_customer_cohorts(start_utc, end_utc, depth=cohort_depth)
+    #             cohort_data = {
+    #                 'segmented': False,
+    #                 'cohorts': basic_cohort_data
+    #             }
+
+    #         return {
+    #             'status': 'success',
+    #             'data': {
+    #                 'date_range': {
+    #                     'type': date_range,
+    #                     'start': start.strftime('%Y-%m-%d'),
+    #                     'end': end.strftime('%Y-%m-%d')
+    #                 },
+    #                 'metrics': metrics,
+    #                 'trends': trends,
+    #                 'cohort_analysis': cohort_data,
+    #                 'top_data': {
+    #                     'products': {
+    #                         'services': top_services,
+    #                         'physical': top_physical_products
+    #                     },
+    #                     'quotations': top_quotations,
+    #                     'sales': top_sales,
+    #                     'customers': top_customers,
+    #                     'categories': formatted_categories,
+    #                     'advisors': top_advisors,
+    #                     'mechanics': top_mechanics
+    #                 }
+    #             }
+    #         }
+
+        # except Exception as e:
+    #         _logger.error(f"Error in get_dashboard_overview: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
+
     @http.route('/web/v2/statistics/overview', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_dashboard_overview(self, **kw):
         """Get comprehensive dashboard overview including cohort analysis"""
@@ -2969,6 +3402,14 @@ class KPIController(http.Controller):
                     end = now
                 elif date_range == 'this_year':
                     start = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'last_year':
+                    last_year = now.year - 1
+                    start = now.replace(year=last_year, month=1, day=1, hour=0, minute=0, second=0)
+                    end = now.replace(year=last_year, month=12, day=31, hour=23, minute=59, second=59)
+                elif date_range == 'all_time':
+                    # Use a far past date for start (e.g., 5 years ago)
+                    start = now.replace(year=now.year-5, month=1, day=1, hour=0, minute=0, second=0)
                     end = now
                 else:
                     start = now.replace(hour=0, minute=0, second=0)
@@ -3310,29 +3751,22 @@ class KPIController(http.Controller):
                 reverse=True
             )[:10]
 
-            # Get cohort analysis data
+            # Get cohort analysis data - New Auto Service Cohort Implementation
             cohort_params = kw.get('cohort', {})
-            cohort_depth = cohort_params.get('depth', 6)  # Default 6 bulan
+            cohort_depth = cohort_params.get('depth', 12)  # Default 12 periods
             segment_by = cohort_params.get('segment_by')  # Optional segmentation parameter
             include_metrics = cohort_params.get('include_metrics', False)  # Optional additional metrics
+            interval_type = cohort_params.get('interval_type', '3_month')  # Default to 3-month interval for auto service
             
-            # Jika menggunakan enhanced cohort analysis
-            if segment_by or include_metrics:
-                # Get enhanced cohort data
-                cohort_data = self.calculate_enhanced_customer_cohorts(
-                    start_utc, 
-                    end_utc, 
-                    depth=cohort_depth,
-                    segment_by=segment_by,
-                    include_metrics=include_metrics
-                )
-            else:
-                # Get basic cohort data (menggunakan fungsi yang sudah ada)
-                basic_cohort_data = self.calculate_customer_cohorts(start_utc, end_utc, depth=cohort_depth)
-                cohort_data = {
-                    'segmented': False,
-                    'cohorts': basic_cohort_data
-                }
+            # Get enhanced auto service cohort data
+            cohort_data = self.calculate_auto_service_cohorts(
+                start_utc, 
+                end_utc, 
+                interval_type=interval_type,
+                depth=cohort_depth,
+                segment_by=segment_by,
+                include_metrics=include_metrics
+            )
 
             return {
                 'status': 'success',
@@ -3359,7 +3793,7 @@ class KPIController(http.Controller):
                     }
                 }
             }
-
+        
         except Exception as e:
             _logger.error(f"Error in get_dashboard_overview: {str(e)}")
             return {'status': 'error', 'message': str(e)}
@@ -3773,3 +4207,334 @@ class KPIController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in calculate_enhanced_customer_cohorts: {str(e)}")
             return {'error': str(e)}
+
+    def calculate_auto_service_cohorts(self, start_date, end_date, interval_type='monthly', depth=12, segment_by=None, include_metrics=False):
+        """
+        Menghitung analisis cohort retensi pelanggan khusus untuk bengkel mobil dengan pendekatan interval servis.
+        
+        Args:
+            start_date: Tanggal awal untuk analisis cohort (format: datetime UTC)
+            end_date: Tanggal akhir untuk analisis cohort (format: datetime UTC)
+            interval_type: Tipe interval cohort ('monthly', '3_month', '6_month', '12_month')
+            depth: Jumlah interval yang akan dihitung (default: 12)
+            segment_by: Field untuk segmentasi ('car_brand', 'service_category', 'service_advisor', dll)
+            include_metrics: Jika True, akan menyertakan metrik tambahan
+            
+        Returns:
+            Dictionary berisi data cohort dengan pola retensi servis mobil
+        """
+        try:
+            # Mengambil semua order dalam rentang waktu
+            all_orders = request.env['sale.order'].sudo().search([
+                ('state', '=', 'sale'),
+                ('date_completed', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
+            ])
+            
+            if not all_orders:
+                return {'segmented': False, 'cohorts': []}
+                
+            # Import libraries
+            from collections import defaultdict
+            from dateutil.relativedelta import relativedelta
+            
+            # Tentukan interval dalam bulan berdasarkan tipe yang dipilih
+            interval_months = {
+                'monthly': 1,
+                '3_month': 3,
+                '6_month': 6,
+                '12_month': 12
+            }.get(interval_type, 1)
+            
+            # Tentukan window toleransi (seberapa jauh dari tanggal ekspektasi servis berikutnya)
+            # Misal: Untuk interval 3 bulan, berikan window 1 bulan (sebulan sebelum dan sesudah)
+            window_months = max(1, interval_months // 3)
+            
+            # Dictionary untuk menyimpan semua order per pelanggan dan tanggal 
+            customer_orders = defaultdict(list)
+            # Dictionary untuk menyimpan mobil yang dimiliki pelanggan
+            customer_cars = defaultdict(set)
+            # Dictionary untuk menyimpan order pertama per pelanggan
+            first_orders = {}
+            # Dictionary untuk track bulan pertama servis per cohort
+            cohort_first_months = defaultdict(list)
+            
+            # Proses semua order
+            for order in all_orders:
+                customer_id = order.partner_id.id
+                car_id = order.partner_car_id.id if order.partner_car_id else None
+                
+                if car_id:
+                    customer_cars[customer_id].add(car_id)
+                
+                # Simpan order dengan data lengkap
+                customer_orders[customer_id].append({
+                    'id': order.id,
+                    'date': order.date_completed,
+                    'car_id': car_id,
+                    'car_brand': order.partner_car_brand.name if order.partner_car_brand else None,
+                    'service_category': order.service_category,
+                    'service_subcategory': order.service_subcategory,
+                    'service_advisor': order.service_advisor_id[0].name if order.service_advisor_id else None,
+                    'customer_rating': order.customer_rating,
+                    'is_booking': order.is_booking,
+                    'is_willing_to_feedback': order.is_willing_to_feedback,
+                    'revenue': order.amount_total,
+                    'order': order
+                })
+            
+            # Urutkan order untuk setiap pelanggan berdasarkan tanggal
+            for customer_id, orders in customer_orders.items():
+                orders.sort(key=lambda o: o['date'])
+                
+                # Catat order pertama untuk setiap pelanggan
+                if orders:
+                    first_orders[customer_id] = orders[0]
+                    
+                    # Tentukan bulan cohort berdasarkan tanggal order pertama
+                    first_date = orders[0]['date']
+                    # Format cohort berdasarkan interval
+                    if interval_type == 'monthly':
+                        cohort_key = first_date.strftime('%Y-%m')  # YYYY-MM
+                    elif interval_type == '3_month':
+                        # Quarter (Q1, Q2, Q3, Q4)
+                        quarter = ((first_date.month - 1) // 3) + 1
+                        cohort_key = f"{first_date.year}-Q{quarter}"
+                    elif interval_type == '6_month':
+                        # Semester (S1, S2)
+                        semester = ((first_date.month - 1) // 6) + 1
+                        cohort_key = f"{first_date.year}-S{semester}"
+                    else:  # 12_month
+                        cohort_key = f"{first_date.year}"
+                    
+                    # Tambahkan ke cohort yang sesuai
+                    cohort_first_months[cohort_key].append({
+                        'customer_id': customer_id,
+                        'first_date': first_date,
+                        'order': orders[0]
+                    })
+            
+            # Jika ada segmentasi, proses data segmentasi
+            segment_data = {}
+            if segment_by:
+                # Inisialisasi segment data
+                for customer_info in first_orders.values():
+                    # Tentukan nilai segment berdasarkan parameter segment_by
+                    if segment_by == 'car_brand':
+                        segment_value = customer_info['car_brand'] or 'Unknown'
+                    elif segment_by == 'service_category':
+                        segment_value = dict(all_orders._fields['service_category'].selection).get(
+                            customer_info['service_category'], 'Unknown')
+                    elif segment_by == 'service_advisor':
+                        segment_value = customer_info['service_advisor'] or 'No Advisor'
+                    elif segment_by == 'customer_rating':
+                        segment_value = customer_info['customer_rating'] or 'No Rating'
+                    else:
+                        segment_value = 'Default'
+                    
+                    # Inisialisasi segment jika belum ada
+                    if segment_value not in segment_data:
+                        segment_data[segment_value] = {
+                            'cohorts': defaultdict(list),
+                            'retention_data': defaultdict(lambda: defaultdict(int))
+                        }
+                    
+                    # Tambahkan customer ke segment
+                    customer_id = customer_info['order']['partner_id'].id
+                    first_date = customer_info['date']
+                    
+                    # Tentukan cohort key seperti sebelumnya
+                    if interval_type == 'monthly':
+                        cohort_key = first_date.strftime('%Y-%m')
+                    elif interval_type == '3_month':
+                        quarter = ((first_date.month - 1) // 3) + 1
+                        cohort_key = f"{first_date.year}-Q{quarter}"
+                    elif interval_type == '6_month':
+                        semester = ((first_date.month - 1) // 6) + 1
+                        cohort_key = f"{first_date.year}-S{semester}"
+                    else:  # 12_month
+                        cohort_key = f"{first_date.year}"
+                    
+                    segment_data[segment_value]['cohorts'][cohort_key].append(customer_id)
+            
+            # Proses data retensi untuk setiap cohort
+            def process_cohort_retention(cohort_key, customer_infos, segment=None):
+                # Struktur untuk menyimpan data retensi cohort tertentu
+                retention_data = defaultdict(int)
+                cohort_size = len(customer_infos)
+                
+                # Untuk setiap pelanggan dalam cohort, cek retensi di interval berikutnya
+                for customer_info in customer_infos:
+                    customer_id = customer_info['customer_id']
+                    first_date = customer_info['first_date']
+                    
+                    # Dapatkan semua order untuk pelanggan ini
+                    orders = customer_orders[customer_id]
+                    
+                    # Untuk setiap interval berikutnya, cek apakah ada servis
+                    for interval in range(depth + 1):  # +1 karena kita ingin termasuk interval 0 (awal)
+                        # Interval 0 selalu 100% (semua pelanggan ada di bulan pertama)
+                        if interval == 0:
+                            retention_data[0] += 1
+                            continue
+                        
+                        # Hitung tanggal ekspektasi untuk interval ini
+                        expected_date = first_date + relativedelta(months=interval * interval_months)
+                        
+                        # Tentukan window toleransi
+                        window_start = expected_date - relativedelta(months=window_months)
+                        window_end = expected_date + relativedelta(months=window_months)
+                        
+                        # Cek apakah ada servis dalam window
+                        has_service = False
+                        for order in orders:
+                            if window_start <= order['date'] <= window_end:
+                                # Jika pelanggan servis dalam window, tandai sebagai retensi
+                                has_service = True
+                                break
+                        
+                        if has_service:
+                            retention_data[interval] += 1
+                
+                # Hitung persentase retensi
+                retention_percent = {}
+                for interval, count in retention_data.items():
+                    retention_percent[interval] = round((count / cohort_size * 100) if cohort_size else 0, 1)
+                
+                # Format data untuk output
+                result = {
+                    'cohort': cohort_key,
+                    'cohort_display': format_cohort_display(cohort_key, interval_type),
+                    'total_customers': cohort_size,
+                }
+                
+                # Tambahkan persentase retensi untuk setiap interval
+                for interval in range(depth + 1):
+                    result[f'month{interval}'] = retention_percent.get(interval, 0)
+                
+                # Jika segment ditentukan
+                if segment:
+                    result['segment'] = segment
+                
+                # Jika metrics diminta, tambahkan metrik lainnya
+                if include_metrics:
+                    # Ambil semua order untuk cohort ini
+                    all_cohort_orders = []
+                    for customer_info in customer_infos:
+                        all_cohort_orders.extend([o['order'] for o in customer_orders[customer_info['customer_id']]])
+                    
+                    # Hitung metrik tambahan
+                    if all_cohort_orders:
+                        # Average rating
+                        ratings = [float(o.customer_rating) for o in all_cohort_orders 
+                                if o.customer_rating and o.customer_rating.isdigit()]
+                        avg_rating = sum(ratings) / len(ratings) if ratings else 0
+                        
+                        # Booking rate
+                        booking_count = sum(1 for o in all_cohort_orders if o.is_booking)
+                        booking_rate = (booking_count / len(all_cohort_orders) * 100)
+                        
+                        # Feedback rate
+                        feedback_count = sum(1 for o in all_cohort_orders if o.is_willing_to_feedback == 'yes')
+                        feedback_rate = (feedback_count / len(all_cohort_orders) * 100)
+                        
+                        # Total revenue
+                        total_revenue = sum(o.amount_total for o in all_cohort_orders)
+                        
+                        # Cars per customer
+                        cars_per_customer = sum(len(customer_cars[info['customer_id']]) 
+                                                for info in customer_infos) / cohort_size
+                        
+                        # Tambahkan metrik ke result
+                        result.update({
+                            'avg_rating': round(avg_rating, 1),
+                            'booking_rate': round(booking_rate, 1),
+                            'feedback_rate': round(feedback_rate, 1),
+                            'total_revenue': round(total_revenue, 2),
+                            'cars_per_customer': round(cars_per_customer, 1)
+                        })
+                
+                return result
+            
+            # Helper untuk format cohort display
+            def format_cohort_display(cohort_key, interval_type):
+                """Format cohort key menjadi tampilan yang lebih user friendly"""
+                if interval_type == 'monthly':
+                    # YYYY-MM format to Month Year (e.g., Jan 2023)
+                    try:
+                        year, month = cohort_key.split('-')
+                        return datetime(int(year), int(month), 1).strftime('%b %Y')
+                    except:
+                        return cohort_key
+                elif interval_type == '3_month':
+                    # YYYY-Q# format to Q# YYYY (e.g., Q1 2023)
+                    try:
+                        year, quarter = cohort_key.split('-')
+                        return f"{quarter} {year}"
+                    except:
+                        return cohort_key
+                elif interval_type == '6_month':
+                    # YYYY-S# format to H# YYYY (e.g., H1 2023)
+                    try:
+                        year, semester = cohort_key.split('-')
+                        return f"{semester} {year}"
+                    except:
+                        return cohort_key
+                else:  # yearly
+                    # YYYY format to Year YYYY (e.g., Year 2023)
+                    return f"Year {cohort_key}"
+            
+            # Proses hasil akhir
+            if segment_by:
+                # Result dengan segmentasi
+                segment_result = {}
+                
+                for segment_value, data in segment_data.items():
+                    segment_cohorts = []
+                    
+                    for cohort_key, customer_ids in data['cohorts'].items():
+                        # Dapatkan info pelanggan untuk cohort ini
+                        customer_infos = [
+                            {'customer_id': cust_id, 'first_date': first_orders[cust_id]['date']}
+                            for cust_id in customer_ids if cust_id in first_orders
+                        ]
+                        
+                        if customer_infos:
+                            # Proses data retensi untuk segment dan cohort ini
+                            cohort_data = process_cohort_retention(
+                                cohort_key, customer_infos, segment_value
+                            )
+                            segment_cohorts.append(cohort_data)
+                    
+                    # Sort cohorts dalam segment dan simpan
+                    if segment_cohorts:
+                        segment_cohorts.sort(key=lambda x: x['cohort'], reverse=True)
+                        segment_result[segment_value] = segment_cohorts
+                
+                return {
+                    'segmented': True,
+                    'segment_by': segment_by,
+                    'interval_type': interval_type,
+                    'segments': segment_result
+                }
+                
+            else:
+                # Result tanpa segmentasi
+                formatted_cohorts = []
+                
+                for cohort_key, customer_infos in cohort_first_months.items():
+                    cohort_data = process_cohort_retention(cohort_key, customer_infos)
+                    formatted_cohorts.append(cohort_data)
+                
+                # Sort cohorts
+                formatted_cohorts.sort(key=lambda x: x['cohort'], reverse=True)
+                
+                return {
+                    'segmented': False,
+                    'interval_type': interval_type,
+                    'cohorts': formatted_cohorts
+                }
+                
+        except Exception as e:
+            _logger.error(f"Error in calculate_auto_service_cohorts: {str(e)}")
+            return {'error': str(e), 'segmented': False, 'cohorts': []}

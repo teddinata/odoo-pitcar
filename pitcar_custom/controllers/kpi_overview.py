@@ -2444,6 +2444,61 @@ class KPIOverview(http.Controller):
                         target_units = 145  # Target PKB per bulan
                         actual = (total_units / target_units * 100) if target_units else 0
                         kpi['measurement'] = f"Berhasil handle {total_units} PKB dari target {target_units} PKB/bulan"
+
+                    elif kpi['type'] == 'service_quality':
+                        # Get all orders for the team
+                        team_orders = request.env['sale.order'].sudo().search([
+                            *base_domain,
+                            ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])  # Include leader
+                        ])
+                        
+                        # Ambil order yang memiliki detailed_ratings dan service_rating
+                        rated_orders = team_orders.filtered(lambda o: o.detailed_ratings and 'service_rating' in o.detailed_ratings)
+                        total_rated_orders = len(rated_orders)
+                        
+                        if total_rated_orders > 0:
+                            # Hitung rata-rata service_rating
+                            total_service_rating = 0
+                            for order in rated_orders:
+                                try:
+                                    service_rating = int(order.detailed_ratings.get('service_rating', 0))
+                                    total_service_rating += service_rating
+                                except (ValueError, TypeError):
+                                    # Skip this order if service_rating cannot be converted to int
+                                    continue
+                                    
+                            avg_service_rating = total_service_rating / total_rated_orders
+                            
+                            # Ambil jumlah order yang service_rating-nya kurang dari 3 (komplain)
+                            complaints = 0
+                            for order in rated_orders:
+                                try:
+                                    service_rating = int(order.detailed_ratings.get('service_rating', 0))
+                                    if service_rating < 3:
+                                        complaints += 1
+                                except (ValueError, TypeError):
+                                    continue
+                            
+                            satisfied_customers = total_rated_orders - complaints
+                            
+                            # Implementasi formula perhitungan
+                            if avg_service_rating > 4.8:
+                                actual = 120
+                            elif avg_service_rating == 4.8:
+                                actual = 100
+                            elif 4.6 <= avg_service_rating <= 4.7:
+                                actual = 50
+                            else:  # < 4.6
+                                actual = 0
+                                
+                            kpi['measurement'] = (
+                                f"Total orders dengan rating: {total_rated_orders}, "
+                                f"Puas: {satisfied_customers}, Komplain: {complaints}, "
+                                f"Rating rata-rata: {avg_service_rating:.1f}"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada rating pelayanan pada periode {month}/{year}"
                     
                     elif kpi['type'] == 'flat_rate':
                         try:

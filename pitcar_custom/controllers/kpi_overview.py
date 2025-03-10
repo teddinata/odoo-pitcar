@@ -434,7 +434,7 @@ class KPIOverview(http.Controller):
                     'no': 6,
                     'name': 'Persentase sampel tim support bekerja sesuai alur SOP',
                     'type': 'team_control',
-                    'weight': 15,
+                    'weight': 5,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan tim support yang dilakukan tidak sesuai dengan alur/SOP',
                     'include_in_calculation': True
@@ -803,8 +803,14 @@ class KPIOverview(http.Controller):
                             ('state', '=', 'done')
                         ])
                         if leads_checks:
+                            total_checks = len(leads_checks)
+                            accurate_leads_count = sum(check.accuracy_count for check in leads_checks)
+                            total_leads_count = sum(check.total_count for check in leads_checks)
                             actual = sum(leads_checks.mapped('accuracy_rate')) / len(leads_checks)
-                            kpi['measurement'] = f"Rata-rata akurasi rekap leads: {actual:.1f}%"
+                            kpi['measurement'] = f"Rekap leads akurat: {accurate_leads_count} dari {total_leads_count} leads ({actual:.1f}%)"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada verifikasi leads pada periode {month}/{year}"
                         
                     elif kpi['type'] == 'customer_contact':
                         # Ambil data dari cs.contact.monitoring
@@ -815,8 +821,14 @@ class KPIOverview(http.Controller):
                             ('state', '=', 'done')
                         ])
                         if contact_checks:
+                            total_checks = len(contact_checks)
+                            compliant_contacts = sum(check.compliant_count for check in contact_checks)
+                            total_contacts = sum(check.total_count for check in contact_checks)
                             actual = sum(contact_checks.mapped('compliance_rate')) / len(contact_checks)
-                            kpi['measurement'] = f"Rata-rata kepatuhan kontak & broadcast: {actual:.1f}%"
+                            kpi['measurement'] = f"Kontak & broadcast sesuai: {compliant_contacts} dari {total_contacts} customer ({actual:.1f}%)"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada monitoring kontak pada periode {month}/{year}"
                         
                     elif kpi['type'] == 'service_reminder':
                         # Existing code untuk reminder service
@@ -1079,7 +1091,7 @@ class KPIOverview(http.Controller):
                         sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
                         
                         # Calculate actual score
-                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
+                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 100
                         
                         # Format measurement message
                         if total_samplings > 0:
@@ -1107,7 +1119,7 @@ class KPIOverview(http.Controller):
                         sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
                         
                         # Calculate actual score
-                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
+                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 100
                         
                         # Format measurement message
                         if total_samplings > 0:

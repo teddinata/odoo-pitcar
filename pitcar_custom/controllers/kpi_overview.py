@@ -2155,7 +2155,7 @@ class KPIOverview(http.Controller):
                             satisfied_orders = len(orders_with_rating.filtered(lambda o: o.post_service_rating not in ['1', '2']))
                             complaints = len(orders_with_rating.filtered(lambda o: o.post_service_rating in ['1', '2']))
                             
-                            actual = (satisfied_orders / total_rated_orders * 100) if total_rated_orders else 0
+                            actual = (satisfied_orders / total_rated_orders * 100) if total_rated_orders else 100
                             kpi['measurement'] = f"Order dengan rating: {total_rated_orders}, Customer puas: {satisfied_orders}, Komplain: {complaints} ({actual:.1f}%)"
                         else:
                             actual = 0
@@ -2834,10 +2834,6 @@ class KPIOverview(http.Controller):
                             variance = max(avg_times) - min(avg_times)  # Variance antar mekanik
                             actual = max(0, 100 - (variance * 10))  # Convert variance to score
                             kpi['measurement'] = f"Variance waktu antar mekanik: {variance:.1f} jam"
-    
-                    elif kpi['type'] == 'service_quality':
-                        actual = (satisfied_customers / total_units * 100) if total_units else 0
-                        kpi['measurement'] = f"Total order: {total_units}, Customer puas: {satisfied_customers}, Komplain: {complaints}"
                         
                     elif kpi['type'] == 'complaint_handling':
                         complaints = team_orders.filtered(lambda o: o.customer_rating in ['1', '2'])

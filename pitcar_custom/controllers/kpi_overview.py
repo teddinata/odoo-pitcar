@@ -831,12 +831,12 @@ class KPIOverview(http.Controller):
                         ])
                         if contact_checks:
                             total_customers = sum(contact_checks.mapped('total_customers'))
-                            compliant_customers = sum(contact_checks.mapped('compliant_customers'))
+                            contacts_saved = sum(contact_checks.mapped('contacts_saved'))
                             
-                            # Asumsi compliance_rate sudah dihitung di model
+                            # Hitung rata-rata compliance_rate dari semua check
                             actual = sum(contact_checks.mapped('compliance_rate')) / len(contact_checks)
                             
-                            kpi['measurement'] = f"Kontak & broadcast sesuai: {compliant_customers} dari {total_customers} customer ({actual:.1f}%)"
+                            kpi['measurement'] = f"Kontak & broadcast sesuai: {contacts_saved} dari {total_customers} customer ({actual:.1f}%)"
                         else:
                             actual = 0
                             kpi['measurement'] = f"Belum ada monitoring kontak pada periode {month}/{year}"

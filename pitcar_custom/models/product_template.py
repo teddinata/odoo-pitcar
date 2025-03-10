@@ -14,6 +14,40 @@ class ProductTemplate(models.Model):
         default=0.0
     )
 
+    flat_rate = fields.Float(
+        string='Flat Rate (Jam)',
+        help='Jam flat rate untuk layanan ini',
+        default=0.0,
+        tracking=True
+    )
+
+    flat_rate_value = fields.Float(
+        string='Nilai Flat Rate',
+        default=190000,
+        help='Nilai flat rate per jam (default: 190.000)'
+    )
+
+    def calculate_flat_rate(self):
+        for product in self:
+            if product.list_price > 0 and product.flat_rate_value > 0:
+                product.flat_rate = product.list_price / product.flat_rate_value
+        return True
+    
+    # Metode untuk menghitung flat rate untuk semua produk service
+    @api.model
+    def action_calculate_all_flat_rates(self):
+        service_products = self.search([('type', '=', 'service')])
+        service_products.calculate_flat_rate()
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Sukses',
+                'message': f'Flat rate untuk {len(service_products)} produk layanan telah diperbarui.',
+                'sticky': False,
+            }
+        }
+
     def write(self, vals):
         res = super().write(vals)
         # Update template lines ketika service duration berubah

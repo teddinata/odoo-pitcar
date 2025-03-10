@@ -13,6 +13,18 @@
                        widget="float_time" 
                        attrs="{'invisible': [('type', '!=', 'service')]}"
                        force_save="1"/>
+                <field name="flat_rate" 
+                       widget="float_time" 
+                       attrs="{'invisible': [('type', '!=', 'service')]}"
+                       force_save="1"/>
+                <field name="flat_rate_value" 
+                       attrs="{'invisible': [('type', '!=', 'service')]}"
+                       force_save="1"/>
+                <button name="calculate_flat_rate" 
+                       string="Hitung Flat Rate" 
+                       type="object" 
+                       class="oe_highlight"
+                       attrs="{'invisible': [('type', '!=', 'service')]}"/>
             </xpath>
         </field>
     </record>
@@ -73,6 +85,10 @@
                             string="Perbarui Semua Umur Persediaan" 
                             type="object" 
                             class="btn-primary"/>
+                    <button name="action_calculate_all_flat_rates" 
+                            string="Hitung Semua Flat Rate Layanan" 
+                            type="object" 
+                            class="btn-primary"/>
                 </header>
             </xpath>
             <field name="name" position="after">
@@ -91,6 +107,9 @@
                 <field name="is_below_mandatory_level" 
                        optional="show" 
                        decoration-danger="is_below_mandatory_level"/>
+                <!-- Flat Rate Fields -->
+                <field name="flat_rate" optional="show"/>
+                <field name="flat_rate_value" optional="show"/>
             </field>
         </field>
     </record>
@@ -123,6 +142,9 @@
                 <separator/>
                 <filter string="Wajib Ready Stock" name="mandatory_stock" domain="[('is_mandatory_stock', '=', True)]"/>
                 <filter string="Stock Di Bawah Minimum" name="below_minimum" domain="[('is_below_mandatory_level', '=', True)]"/>
+                <!-- Service Filter -->
+                <separator/>
+                <filter string="Layanan" name="service" domain="[('type', '=', 'service')]"/>
             </filter>
         </field>
     </record>
@@ -159,6 +181,17 @@
         </field>
     </record>
 
+    <record id="action_calculate_all_flat_rates" model="ir.actions.server">
+        <field name="name">Hitung Semua Flat Rate Layanan</field>
+        <field name="type">ir.actions.server</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="binding_model_id" ref="product.model_product_template"/>
+        <field name="state">code</field>
+        <field name="code">
+            action = model.action_calculate_all_flat_rates()
+        </field>
+    </record>
+
     <record id="action_stock_mandatory_stockout" model="ir.actions.act_window">
         <field name="name">Stockout Wajib Ready</field>
         <field name="res_model">stock.mandatory.stockout</field>
@@ -182,6 +215,12 @@
               action="action_update_all_inventory_ages"
               parent="stock.menu_stock_inventory_control"
               sequence="100"/>
+
+    <menuitem id="menu_calculate_all_flat_rates"
+            name="Hitung Semua Flat Rate Layanan"
+            action="action_calculate_all_flat_rates"
+            parent="stock.menu_stock_inventory_control"
+            sequence="110"/>
 
     <menuitem id="menu_stock_mandatory_stockout"
               name="Stockout Wajib Ready"

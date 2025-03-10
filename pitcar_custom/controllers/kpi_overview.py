@@ -1410,7 +1410,7 @@ class KPIOverview(http.Controller):
                             actual = (passed_samplings / total_samplings * 100)
                             kpi['measurement'] = f"Sampel sesuai SOP (Leader): {passed_samplings} dari {total_samplings} sampling"
                         else:
-                            actual = 0
+                            actual = 100
                             kpi['measurement'] = f"Belum ada sampling SOP (Leader) pada periode {month}/{year}"
 
                     elif kpi['type'] == 'valet_sop_kaizen':
@@ -1428,7 +1428,7 @@ class KPIOverview(http.Controller):
                             actual = (passed_samplings / total_samplings * 100)
                             kpi['measurement'] = f"Sampel sesuai SOP (Kaizen): {passed_samplings} dari {total_samplings} sampling"
                         else:
-                            actual = 0
+                            actual = 100
                             kpi['measurement'] = f"Belum ada sampling SOP (Kaizen) pada periode {month}/{year}"
                         
                         total_samplings = len(samplings)
@@ -2893,7 +2893,7 @@ class KPIOverview(http.Controller):
                         ])
                         
                         if not team_samplings:
-                            actual = 0
+                            actual = 100
                             kpi['measurement'] = f"Belum ada sampling SOP (Leader) untuk tim mekanik pada periode {month}/{year}"
                         else:
                             # Hitung total sampel dan yang sesuai SOP
@@ -2955,7 +2955,7 @@ class KPIOverview(http.Controller):
                         ])
                         
                         if not team_samplings:
-                            actual = 0
+                            actual = 100
                             kpi['measurement'] = f"Belum ada sampling SOP (Kaizen) untuk tim mekanik pada periode {month}/{year}"
                         else:
                             # Hitung total sampel dan yang sesuai SOP

@@ -434,7 +434,7 @@ class KPIOverview(http.Controller):
                     'no': 6,
                     'name': 'Persentase sampel tim support bekerja sesuai alur SOP',
                     'type': 'team_control',
-                    'weight': 15,
+                    'weight': 5,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan tim support yang dilakukan tidak sesuai dengan alur/SOP',
                     'include_in_calculation': True
@@ -803,8 +803,23 @@ class KPIOverview(http.Controller):
                             ('state', '=', 'done')
                         ])
                         if leads_checks:
-                            actual = sum(leads_checks.mapped('accuracy_rate')) / len(leads_checks)
-                            kpi['measurement'] = f"Rata-rata akurasi rekap leads: {actual:.1f}%"
+                            # Berdasarkan model, accuracy_rate sudah dihitung di level record
+                            total_checks = len(leads_checks)
+                            system_total = sum(leads_checks.mapped('system_leads_count'))
+                            actual_total = sum(leads_checks.mapped('actual_leads_count'))
+                            missing_total = sum(leads_checks.mapped('missing_leads_count'))
+                            
+                            # Hitung leads yang akurat
+                            accurate_leads = max(system_total, actual_total) - missing_total
+                            total_leads = max(system_total, actual_total)
+                            
+                            # Hitung rata-rata accuracy_rate dari semua verifikasi
+                            actual = sum(leads_checks.mapped('accuracy_rate')) / total_checks
+                            
+                            kpi['measurement'] = f"Rekap leads akurat: {accurate_leads} dari {total_leads} leads ({actual:.1f}%)"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada verifikasi leads pada periode {month}/{year}"
                         
                     elif kpi['type'] == 'customer_contact':
                         # Ambil data dari cs.contact.monitoring
@@ -815,8 +830,16 @@ class KPIOverview(http.Controller):
                             ('state', '=', 'done')
                         ])
                         if contact_checks:
+                            total_customers = sum(contact_checks.mapped('total_customers'))
+                            compliant_customers = sum(contact_checks.mapped('compliant_customers'))
+                            
+                            # Asumsi compliance_rate sudah dihitung di model
                             actual = sum(contact_checks.mapped('compliance_rate')) / len(contact_checks)
-                            kpi['measurement'] = f"Rata-rata kepatuhan kontak & broadcast: {actual:.1f}%"
+                            
+                            kpi['measurement'] = f"Kontak & broadcast sesuai: {compliant_customers} dari {total_customers} customer ({actual:.1f}%)"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada monitoring kontak pada periode {month}/{year}"
                         
                     elif kpi['type'] == 'service_reminder':
                         # Existing code untuk reminder service
@@ -1079,7 +1102,7 @@ class KPIOverview(http.Controller):
                         sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
                         
                         # Calculate actual score
-                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
+                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 100
                         
                         # Format measurement message
                         if total_samplings > 0:
@@ -1107,7 +1130,7 @@ class KPIOverview(http.Controller):
                         sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
                         
                         # Calculate actual score
-                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
+                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 100
                         
                         # Format measurement message
                         if total_samplings > 0:
@@ -1976,15 +1999,24 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 4,
-                    'name': 'Persentase sampel tim mekanik bekerja sesuai alur SOP',
-                    'type': 'sop_compliance',
+                    'name': 'Persentase sampel dari Lead: tim mekanik bekerja sesuai alur SOP',
+                    'type': 'sop_compliance_lead',
                     'weight': 20,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 5,  # Tambahkan sebagai KPI terakhir
+                    'no': 5,
+                    'name': 'Persentase sampel dari Kaizen: tim mekanik bekerja sesuai alur SOP',
+                    'type': 'sop_compliance_kaizen',
+                    'weight': 20,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 6,  # Tambahkan sebagai KPI terakhir
                     'name': 'Kedisiplinan (Informasi)',
                     'type': 'discipline',
                     'weight': 0,  # Weight 0 karena tidak dihitung
@@ -2033,8 +2065,17 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 5,
-                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
+                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan',
                     'type': 'complaint_handling',
+                    'weight': 15,
+                    'target': 90,
+                    'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 6,
+                    'name': 'Jumlah hand-tools sesuai antara dara sistem dengan kondisi aktual',
+                    'type': 'tools_check',
                     'weight': 15,
                     'target': 90,
                     'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
@@ -2050,16 +2091,25 @@ class KPIOverview(http.Controller):
                 #     'include_in_calculation': True
                 # },
                 {
-                    'no': 6,
-                    'name': 'Kontrol kinerja tim mekanik',
-                    'type': 'sop_compliance',
+                    'no': 7,
+                    'name': 'Persentase % sampel tim mekanik bekerja sesuai alur SOP',
+                    'type': 'sop_compliance_lead',
                     'weight': 15,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 7,
+                    'no': 8,
+                    'name': 'Persentase % sampel dari Kaizen: tim mekanik bekerja sesuai alur SOP',
+                    'type': 'sop_compliance_kaizen',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 9,
                     'name': 'Menjalankan kegiatan operasional secara disiplin',
                     'type': 'team_discipline',
                     'weight': 0,
@@ -2098,9 +2148,18 @@ class KPIOverview(http.Controller):
                 for kpi in mechanic_kpi_template:
                     actual = 0
                     if kpi['type'] == 'service_quality':
-                        actual = (satisfied_orders / total_orders * 100) if total_orders else 0
-                        complaints = len(orders.filtered(lambda o: o.customer_rating in ['1', '2']))
-                        kpi['measurement'] = f"Total order: {total_orders}, Customer puas: {satisfied_orders}, Komplain: {complaints}"
+                        # Gunakan post_service_rating untuk service quality
+                        orders_with_rating = orders.filtered(lambda o: o.post_service_rating)
+                        if orders_with_rating:
+                            total_rated_orders = len(orders_with_rating)
+                            satisfied_orders = len(orders_with_rating.filtered(lambda o: o.post_service_rating not in ['1', '2']))
+                            complaints = len(orders_with_rating.filtered(lambda o: o.post_service_rating in ['1', '2']))
+                            
+                            actual = (satisfied_orders / total_rated_orders * 100) if total_rated_orders else 0
+                            kpi['measurement'] = f"Order dengan rating: {total_rated_orders}, Customer puas: {satisfied_orders}, Komplain: {complaints} ({actual:.1f}%)"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada rating post-service pada periode {month}/{year}"
                         
                     elif kpi['type'] == 'productivity':
                         monthly_target = mechanic.monthly_target or 64000000
@@ -2114,114 +2173,40 @@ class KPIOverview(http.Controller):
                         formatted_target = "{:,.0f}".format(monthly_target)
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
 
-                    # elif kpi['type'] == 'flat_rate':
-                    #     # Hitung productive hours dari absensi
-                    #     attendances = request.env['hr.attendance'].sudo().search([
-                    #         ('employee_id', '=', employee.id),
-                    #         ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                    #         ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
-                    #     ])
-                        
-                    #     productive_hours = 0
-                    #     for attendance in attendances:
-                    #         if attendance.check_out:
-                    #             worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
-                    #             # Kurangi waktu istirahat (1 jam) jika bekerja lebih dari 6 jam
-                    #             if worked_hours > 6:
-                    #                 worked_hours -= 1
-                    #             productive_hours += worked_hours
-
-                    #     # Hitung jam terjual dari order yang selesai
-                    #     completed_orders = orders.filtered(lambda o: o.controller_selesai)
-                    #     sold_hours = sum(order.lead_time_servis for order in completed_orders)
-                        
-                    #     # Hitung flat rate (dalam persentase)
-                    #     actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
-                        
-                    #     formatted_sold = f"{sold_hours:.1f}"
-                    #     formatted_productive = f"{productive_hours:.1f}"
-                    #     kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
-
                     elif kpi['type'] == 'flat_rate':
                         try:
-                            tz = pytz.timezone('Asia/Jakarta')
-                            total_attendance_hours = 0
-                            total_productive_hours = 0
-
-                            # Get attendance records
-                            attendances = request.env['hr.attendance'].sudo().search([
-                                ('employee_id', '=', employee.id),
-                                ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                                ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
-                                ('check_out', '!=', False)
-                            ])
-
-                            # Get mechanic orders
-                            mechanic_orders = request.env['sale.order'].sudo().search([
-                                ('date_completed', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                                ('date_completed', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                            # Target flat rate bulanan mekanik (115 jam)
+                            monthly_flat_rate_target = 115  # Target default
+                            
+                            # Jika ada target spesifik di data mekanik, gunakan itu
+                            if hasattr(mechanic, 'flat_rate_target') and mechanic.flat_rate_target:
+                                monthly_flat_rate_target = mechanic.flat_rate_target
+                            
+                            # Ambil semua order yang selesai dalam periode
+                            completed_orders = request.env['sale.order'].sudo().search([
+                                ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
                                 ('state', '=', 'sale'),
                                 ('car_mechanic_id_new', 'in', [mechanic.id])
                             ])
-
-                            # Calculate attendance hours
-                            for att in attendances:
-                                check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
-                                check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
-                                
-                                # Set work start (minimal jam 8)
-                                work_start = check_in_local.replace(hour=8, minute=0, second=0)
-                                
-                                # Effective time calculation - allow overtime
-                                effective_start = max(check_in_local, work_start)
-                                effective_end = check_out_local
-                                
-                                if effective_end > effective_start:
-                                    break_start = effective_start.replace(hour=12, minute=0, second=0)
-                                    break_end = effective_start.replace(hour=13, minute=0, second=0)
-                                    
-                                    if effective_start < break_end and effective_end > break_start:
-                                        morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
-                                        afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
-                                        total_attendance_hours += max(0, morning_hours) + max(0, afternoon_hours)
-                                    else:
-                                        total_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
-
-                            # Calculate productive hours - without dividing by mechanic count
-                            for order in mechanic_orders:
-                                if order.controller_mulai_servis and order.controller_selesai:
-                                    start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
-                                    end_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
-                                    
-                                    for att in attendances:
-                                        check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
-                                        check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
-                                        
-                                        work_start = check_in_local.replace(hour=8, minute=0, second=0)
-                                        
-                                        start_overlap = max(start_local, check_in_local, work_start)
-                                        end_overlap = min(end_local, check_out_local)
-                                        
-                                        if end_overlap > start_overlap:
-                                            break_start = start_overlap.replace(hour=12, minute=0, second=0)
-                                            break_end = start_overlap.replace(hour=13, minute=0, second=0)
-                                            
-                                            if start_overlap < break_end and end_overlap > break_start:
-                                                morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
-                                                afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
-                                                total_productive_hours += max(0, morning_prod) + max(0, afternoon_prod)
-                                            else:
-                                                total_productive_hours += (end_overlap - start_overlap).total_seconds() / 3600
-
-                            # Calculate flat rate
-                            actual = (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0
-                            actual = min(actual, 100)  # Cap at 100%
-
-                            kpi['measurement'] = f"""Statistik Kerja Mekanik:
-                    Jam Kerja: {total_attendance_hours:.1f} jam
-                    Jam Terjual: {total_productive_hours:.1f} jam
-                    Flat Rate: {actual:.1f}%""".strip()
-
+                            
+                            # Hitung total jam flat rate terjual dari semua jasa di PKB
+                            total_flat_rate_hours = 0
+                            
+                            for order in completed_orders:
+                                # Hitung flat rate untuk setiap order line yang merupakan jasa
+                                for line in order.order_line:
+                                    if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                        # Jika ada beberapa mekanik, bagi flat rate dengan jumlah mekanik
+                                        mechanics_count = len(order.car_mechanic_id_new) or 1
+                                        line_flat_rate = line.product_id.flat_rate / mechanics_count
+                                        total_flat_rate_hours += line_flat_rate * line.product_uom_qty
+                            
+                            # Hitung persentase pencapaian terhadap target
+                            actual = (total_flat_rate_hours / monthly_flat_rate_target * 100) if monthly_flat_rate_target > 0 else 0
+                            
+                            kpi['measurement'] = f"Flat Rate: {total_flat_rate_hours:.1f} jam dari target {monthly_flat_rate_target} jam/bulan ({actual:.1f}%)"
+                            
                         except Exception as e:
                             _logger.error(f"Error calculating flat rate for mechanic: {str(e)}")
                             actual = 0
@@ -2229,7 +2214,11 @@ class KPIOverview(http.Controller):
 
                     # elif kpi['type'] == 'flat_rate':
                     #     try:
-                    #         # Get attendance records untuk mechanic
+                    #         tz = pytz.timezone('Asia/Jakarta')
+                    #         total_attendance_hours = 0
+                    #         total_productive_hours = 0
+
+                    #         # Get attendance records
                     #         attendances = request.env['hr.attendance'].sudo().search([
                     #             ('employee_id', '=', employee.id),
                     #             ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
@@ -2237,60 +2226,76 @@ class KPIOverview(http.Controller):
                     #             ('check_out', '!=', False)
                     #         ])
 
-                    #         total_attendance_hours = 0
-                    #         total_sold_hours = 0
+                    #         # Get mechanic orders
+                    #         mechanic_orders = request.env['sale.order'].sudo().search([
+                    #             ('date_completed', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                    #             ('date_completed', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                    #             ('state', '=', 'sale'),
+                    #             ('car_mechanic_id_new', 'in', [mechanic.id])
+                    #         ])
 
-                    #         # Group attendance by date
-                    #         attendance_by_date = {}
+                    #         # Calculate attendance hours
                     #         for att in attendances:
-                    #             att_date = fields.Datetime.from_string(att.check_in).date()
-                    #             if att_date not in attendance_by_date:
-                    #                 attendance_by_date[att_date] = []
-                    #             attendance_by_date[att_date].append(att)
+                    #             check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                    #             check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                                
+                    #             # Set work start (minimal jam 8)
+                    #             work_start = check_in_local.replace(hour=8, minute=0, second=0)
+                                
+                    #             # Effective time calculation - allow overtime
+                    #             effective_start = max(check_in_local, work_start)
+                    #             effective_end = check_out_local
+                                
+                    #             if effective_end > effective_start:
+                    #                 break_start = effective_start.replace(hour=12, minute=0, second=0)
+                    #                 break_end = effective_start.replace(hour=13, minute=0, second=0)
+                                    
+                    #                 if effective_start < break_end and effective_end > break_start:
+                    #                     morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
+                    #                     afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
+                    #                     total_attendance_hours += max(0, morning_hours) + max(0, afternoon_hours)
+                    #                 else:
+                    #                     total_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
 
-                    #         # Get orders untuk mechanic ini
-                    #         mechanic_orders = orders.filtered(lambda o: mechanic.id in o.car_mechanic_id_new.ids)
-
-                    #         # Calculate seperti UT Labor
+                    #         # Calculate productive hours - without dividing by mechanic count
                     #         for order in mechanic_orders:
                     #             if order.controller_mulai_servis and order.controller_selesai:
-                    #                 order_date = fields.Datetime.from_string(order.controller_mulai_servis).date()
-                    #                 day_attendances = attendance_by_date.get(order_date, [])
+                    #                 start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
+                    #                 end_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
+                                    
+                    #                 for att in attendances:
+                    #                     check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                    #                     check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                                        
+                    #                     work_start = check_in_local.replace(hour=8, minute=0, second=0)
+                                        
+                    #                     start_overlap = max(start_local, check_in_local, work_start)
+                    #                     end_overlap = min(end_local, check_out_local)
+                                        
+                    #                     if end_overlap > start_overlap:
+                    #                         break_start = start_overlap.replace(hour=12, minute=0, second=0)
+                    #                         break_end = start_overlap.replace(hour=13, minute=0, second=0)
+                                            
+                    #                         if start_overlap < break_end and end_overlap > break_start:
+                    #                             morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
+                    #                             afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
+                    #                             total_productive_hours += max(0, morning_prod) + max(0, afternoon_prod)
+                    #                         else:
+                    #                             total_productive_hours += (end_overlap - start_overlap).total_seconds() / 3600
 
-                    #                 if day_attendances:
-                    #                     for att in day_attendances:
-                    #                         sold_hours = calculate_productive_hours(
-                    #                             order.controller_mulai_servis,
-                    #                             order.controller_selesai,
-                    #                             att.check_in,
-                    #                             att.check_out
-                    #                         )
-                    #                         total_sold_hours += sold_hours
+                    #         # Calculate flat rate
+                    #         actual = (total_productive_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0
+                    #         actual = min(actual, 100)  # Cap at 100%
 
-                    #                         att_hours = calculate_productive_hours(
-                    #                             att.check_in,
-                    #                             att.check_out,
-                    #                             att.check_in,
-                    #                             att.check_out
-                    #                         )
-                    #                         total_attendance_hours += att_hours
-
-                    #         # Calculate flat rate untuk mechanic
-                    #         flat_rate = (total_sold_hours / total_attendance_hours * 100) if total_attendance_hours > 0 else 0
-                    #         actual = min(flat_rate, 100)
-
-                    #         kpi['measurement'] = (
-                    #             f"Jam Kerja: {total_attendance_hours:.1f} jam\n"
-                    #             f"Jam Terjual: {total_sold_hours:.1f} jam\n"
-                    #             f"Flat Rate: {actual:.1f}%"
-                    #         )
-
+                    #         kpi['measurement'] = f"""Statistik Kerja Mekanik:
+                    # Jam Kerja: {total_attendance_hours:.1f} jam
+                    # Jam Terjual: {total_productive_hours:.1f} jam
+                    # Flat Rate: {actual:.1f}%""".strip()
 
                     #     except Exception as e:
                     #         _logger.error(f"Error calculating flat rate for mechanic: {str(e)}")
                     #         actual = 0
                     #         kpi['measurement'] = f"Error: {str(e)}"
-
 
                     elif kpi['type'] == 'service_efficiency':
                         orders_with_duration = orders.filtered(lambda o: o.duration_deviation is not False)
@@ -2314,24 +2319,48 @@ class KPIOverview(http.Controller):
                             )
                             actual = avg_realization
                         
-                    elif kpi['type'] == 'sop_compliance':
+                    elif kpi['type'] == 'sop_compliance_lead':
+                        # Sampel dari Leader untuk mekanik
                         mechanic_samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
                             ('mechanic_id', 'in', [mechanic.id]),
                             ('sop_id.role', '=', 'mechanic'),
+                            ('sampling_type', '=', 'lead'),  # Filter untuk sampel dari Leader
                             ('state', '=', 'done')
                         ])
                         
                         total_samplings = len(mechanic_samplings)
-                        failed_samplings = len(mechanic_samplings.filtered(lambda s: s.result == 'fail'))
+                        passed_samplings = len(mechanic_samplings.filtered(lambda s: s.result == 'pass'))
                         
                         if total_samplings > 0:
-                            actual = ((total_samplings - failed_samplings) / total_samplings * 100)
-                            kpi['measurement'] = f"Sampling sesuai SOP: {total_samplings - failed_samplings} dari {total_samplings} sampling ({actual:.1f}%)"
+                            actual = (passed_samplings / total_samplings * 100)
+                            kpi['measurement'] = f"Sesuai SOP (Leader): {passed_samplings} dari {total_samplings} sampel ({actual:.1f}%)"
                         else:
                             actual = 100
-                            kpi['measurement'] = f"Belum ada sampling SOP pada periode {month}/{year}"
+                            kpi['measurement'] = f"Belum ada sampling SOP dari Leader pada periode {month}/{year}"
+
+                    elif kpi['type'] == 'sop_compliance_kaizen':
+                        # Sampel dari Kaizen untuk mekanik
+                        mechanic_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('mechanic_id', 'in', [mechanic.id]),
+                            ('sop_id.role', '=', 'mechanic'),
+                            ('sampling_type', '=', 'kaizen'),  # Filter untuk sampel dari Kaizen
+                            ('state', '=', 'done')
+                        ])
+                        
+                        total_samplings = len(mechanic_samplings)
+                        passed_samplings = len(mechanic_samplings.filtered(lambda s: s.result == 'pass'))
+                        
+                        if total_samplings > 0:
+                            actual = (passed_samplings / total_samplings * 100)
+                            kpi['measurement'] = f"Sesuai SOP (Kaizen): {passed_samplings} dari {total_samplings} sampel ({actual:.1f}%)"
+                        else:
+                            actual = 100
+                            kpi['measurement'] = f"Belum ada sampling SOP dari Kaizen pada periode {month}/{year}"
+
                         
                     elif kpi['type'] == 'discipline':
                         attendances = request.env['hr.attendance'].sudo().search([
@@ -2416,258 +2445,259 @@ class KPIOverview(http.Controller):
                         actual = (total_units / target_units * 100) if target_units else 0
                         kpi['measurement'] = f"Berhasil handle {total_units} PKB dari target {target_units} PKB/bulan"
                     
-                    # elif kpi['type'] == 'flat_rate':
-                    #     # Hitung jam terjual dari order yang selesai
-                    #     completed_orders = team_orders.filtered(lambda o: o.controller_selesai)  # Gunakan team_orders bukan orders
-                    #     sold_hours = sum(order.lead_time_servis for order in completed_orders)
-                    #     # Get orders for the mechanic team first
-                    #     team_orders = request.env['sale.order'].sudo().search([
-                    #         *base_domain,
-                    #         ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])  # Include leader
-                    #     ])
-
-                    #     # Hitung productive hours dari absensi
-                    #     attendances = request.env['hr.attendance'].sudo().search([
-                    #         ('employee_id', '=', employee.id),
-                    #         ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                    #         ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S'))
-                    #     ])
-                        
-                    #     productive_hours = 0
-                    #     for attendance in attendances:
-                    #         if attendance.check_out:
-                    #             worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
-                    #             # Kurangi waktu istirahat (1 jam) jika bekerja lebih dari 6 jam
-                    #             if worked_hours > 6:
-                    #                 worked_hours -= 1
-                    #             productive_hours += worked_hours
-
-                    #     # Hitung jam terjual dari order yang selesai
-                    #     completed_orders = orders.filtered(lambda o: o.controller_selesai)
-                    #     sold_hours = sum(order.lead_time_servis for order in completed_orders)
-                        
-                    #     # Hitung flat rate (dalam persentase)
-                    #     actual = (sold_hours / productive_hours * 100) if productive_hours > 0 else 0
-                        
-                    #     formatted_sold = f"{sold_hours:.1f}"
-                    #     formatted_productive = f"{productive_hours:.1f}"
-                    #     kpi['measurement'] = f"Jam terjual: {formatted_sold} jam dari {formatted_productive} jam produktif"
-
                     elif kpi['type'] == 'flat_rate':
                         try:
-                            tz = pytz.timezone('Asia/Jakarta')
-                            all_mechanics = team_members + mechanic  # Include leader
+                            # Get team members
+                            team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                ('leader_id', '=', mechanic.id)
+                            ])
                             
-                            team_total_attendance = 0
-                            team_total_productive = 0
-                            team_results = []
-
-                            # Calculate untuk setiap anggota tim
-                            for member in all_mechanics:
-                                member_attendances = request.env['hr.attendance'].sudo().search([
-                                    ('employee_id', '=', member.employee_id.id),
-                                    ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                                    ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
-                                    ('check_out', '!=', False)
-                                ])
-
-                                member_attendance_hours = 0
-                                member_productive_hours = 0
-
-                                # Calculate attendance hours
-                                for att in member_attendances:
-                                    check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
-                                    check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
-                                    
-                                    # Set work start (minimal jam 8)
-                                    work_start = check_in_local.replace(hour=8, minute=0, second=0)
-                                    
-                                    # Effective time calculation - allow overtime
-                                    effective_start = max(check_in_local, work_start)
-                                    effective_end = check_out_local
-                                    
-                                    if effective_end > effective_start:
-                                        break_start = effective_start.replace(hour=12, minute=0, second=0)
-                                        break_end = effective_start.replace(hour=13, minute=0, second=0)
-                                        
-                                        if effective_start < break_end and effective_end > break_start:
-                                            morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
-                                            afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
-                                            member_attendance_hours += max(0, morning_hours) + max(0, afternoon_hours)
-                                        else:
-                                            member_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
-
-                                # Calculate productive hours
-                                member_orders = team_orders.filtered(lambda o: member.id in o.car_mechanic_id_new.ids)
-                                for order in member_orders:
-                                    if order.controller_mulai_servis and order.controller_selesai:
-                                        start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
-                                        end_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
-                                        
-                                        for att in member_attendances:
-                                            check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
-                                            check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
-                                            
-                                            work_start = check_in_local.replace(hour=8, minute=0, second=0)
-                                            
-                                            start_overlap = max(start_local, check_in_local, work_start)
-                                            end_overlap = min(end_local, check_out_local)
-                                            
-                                            if end_overlap > start_overlap:
-                                                break_start = start_overlap.replace(hour=12, minute=0, second=0)
-                                                break_end = start_overlap.replace(hour=13, minute=0, second=0)
-                                                
-                                                if start_overlap < break_end and end_overlap > break_start:
-                                                    morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
-                                                    afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
-                                                    productive_hours = max(0, morning_prod) + max(0, afternoon_prod)
-                                                else:
-                                                    productive_hours = (end_overlap - start_overlap).total_seconds() / 3600
-                                                    
-                                                member_productive_hours += productive_hours  # Tidak dibagi jumlah mekanik
-
-                                # Calculate member's flat rate
-                                member_flat_rate = (member_productive_hours / member_attendance_hours * 100) if member_attendance_hours > 0 else 0
-                                member_flat_rate = min(member_flat_rate, 100)  # Cap at 100%
-                                
-                                team_total_attendance += member_attendance_hours
-                                team_total_productive += member_productive_hours
-                                
-                                team_results.append({
+                            # Combine team members + leader
+                            all_mechanics_ids = team_members.ids + [mechanic.id]
+                            
+                            # Get completed orders with flat rate info
+                            completed_orders = request.env['sale.order'].sudo().search([
+                                ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('state', '=', 'sale'),
+                                ('car_mechanic_id_new', 'in', all_mechanics_ids)
+                            ])
+                            
+                            # Target flat rate bulanan tim (115 jam per mekanik)
+                            monthly_flat_rate_target_per_mechanic = 115  # Target default per mekanik
+                            team_size = len(all_mechanics_ids)
+                            team_monthly_target = monthly_flat_rate_target_per_mechanic * team_size
+                            
+                            # Inisialisasi perhitungan per anggota tim
+                            member_flat_rates = {}
+                            for member_id in all_mechanics_ids:
+                                member = request.env['pitcar.mechanic.new'].sudo().browse(member_id)
+                                member_flat_rates[member_id] = {
                                     'name': member.name,
                                     'is_leader': member.id == mechanic.id,
-                                    'attendance_hours': member_attendance_hours,
-                                    'productive_hours': member_productive_hours,
-                                    'flat_rate': member_flat_rate
-                                })
-
-                            # Calculate team's overall flat rate
-                            actual = (team_total_productive / team_total_attendance * 100) if team_total_attendance > 0 else 0
-                            actual = min(actual, 100)  # Cap at 100%
-
-                            kpi['measurement'] = f"""Tim Total ({len(team_members)} anggota + 1 leader):
-                    - Total Jam Kerja Tim: {team_total_attendance:.1f} jam
-                    - Total Jam Terjual Tim: {team_total_productive:.1f} jam
-                    - Flat Rate Tim: {actual:.1f}%
-
-                    Detail Per Anggota:
-                    {chr(10).join(f"• {'(Leader) ' if r['is_leader'] else ''}{r['name']}: {r['flat_rate']:.1f}% ({r['productive_hours']:.1f}/{r['attendance_hours']:.1f} jam)" for r in team_results)}""".strip()
-
+                                    'total_flat_rate': 0,
+                                    'target': monthly_flat_rate_target_per_mechanic
+                                }
+                            
+                            # Hitung total jam flat rate terjual dari semua jasa di PKB
+                            team_total_flat_rate = 0
+                            
+                            for order in completed_orders:
+                                # Ambil mekanik yang mengerjakan order ini
+                                order_mechanics = order.car_mechanic_id_new
+                                mechanics_count = len(order_mechanics) or 1
+                                
+                                # Hitung flat rate untuk setiap order line yang merupakan jasa
+                                for line in order.order_line:
+                                    if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                        # Total flat rate jam untuk item ini
+                                        line_flat_rate = line.product_id.flat_rate * line.product_uom_qty
+                                        
+                                        # Distribusikan ke mekanik yang mengerjakan
+                                        flat_rate_per_mechanic = line_flat_rate / mechanics_count
+                                        
+                                        # Tambahkan ke total tim
+                                        team_total_flat_rate += line_flat_rate
+                                        
+                                        # Tambahkan ke masing-masing mekanik di order ini
+                                        for mech in order_mechanics:
+                                            if mech.id in member_flat_rates:
+                                                member_flat_rates[mech.id]['total_flat_rate'] += flat_rate_per_mechanic
+                            
+                            # Hitung persentase pencapaian tim terhadap target
+                            actual = (team_total_flat_rate / team_monthly_target * 100) if team_monthly_target > 0 else 0
+                            
+                            # Siapkan detail untuk setiap anggota tim
+                            member_details = []
+                            for member_id, data in member_flat_rates.items():
+                                member_achievement = (data['total_flat_rate'] / data['target'] * 100) if data['target'] > 0 else 0
+                                member_details.append(
+                                    f"{'(Leader) ' if data['is_leader'] else ''}{data['name']}: "
+                                    f"{data['total_flat_rate']:.1f} jam ({member_achievement:.1f}%)"
+                                )
+                            
+                            # Format pesan measurement
+                            kpi['measurement'] = (
+                                f"Tim ({team_size} mekanik): {team_total_flat_rate:.1f} jam flat rate dari target {team_monthly_target} jam/bulan ({actual:.1f}%)\n\n"
+                                f"Detail per anggota tim:\n" + "\n".join([f"• {detail}" for detail in member_details])
+                            )
+                            
                         except Exception as e:
                             _logger.error(f"Error calculating flat rate for team leader: {str(e)}")
                             actual = 0
                             kpi['measurement'] = f"Error: {str(e)}"
 
-                #     elif kpi['type'] == 'flat_rate':
-                #         try:
-                #             team_members = request.env['pitcar.mechanic.new'].sudo().search([
-                #                 ('leader_id', '=', mechanic.id)
-                #             ])
+                    elif kpi['type'] == 'tools_check':
+                        try:
+                            # Get data for team hand tools checks
+                            team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                ('leader_id', '=', mechanic.id)
+                            ])
+                            
+                            # List semua employee IDs tim termasuk leader
+                            all_mechanic_employee_ids = team_members.mapped('employee_id').ids + [employee.id]
+                            
+                            # Ambil semua pengecekan tools dalam periode
+                            tool_checks = request.env['pitcar.mechanic.tool.check'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('mechanic_id', 'in', all_mechanic_employee_ids),
+                                ('state', '=', 'done')
+                            ])
+                            
+                            if not tool_checks:
+                                actual = 0
+                                kpi['measurement'] = f"Belum ada pengecekan tools pada periode {month}/{year}"
+                            else:
+                                # Hitung metrics per mekanik
+                                mechanic_stats = {}
+                                
+                                for check in tool_checks:
+                                    mechanic_id = check.mechanic_id.id
+                                    if mechanic_id not in mechanic_stats:
+                                        mechanic_stats[mechanic_id] = {
+                                            'name': check.mechanic_id.name,
+                                            'is_leader': mechanic_id == employee.id,
+                                            'total_items': 0,
+                                            'matched_items': 0,
+                                            'checks_count': 0
+                                        }
+                                    
+                                    mechanic_stats[mechanic_id]['total_items'] += check.total_items
+                                    mechanic_stats[mechanic_id]['matched_items'] += check.matched_items
+                                    mechanic_stats[mechanic_id]['checks_count'] += 1
+                                
+                                # Hitung total tim
+                                team_total_items = sum(stats['total_items'] for stats in mechanic_stats.values())
+                                team_matched_items = sum(stats['matched_items'] for stats in mechanic_stats.values())
+                                
+                                # Hitung persentase kecocokan tim
+                                actual = (team_matched_items / team_total_items * 100) if team_total_items > 0 else 0
+                                
+                                # Siapkan detail per mekanik
+                                member_details = []
+                                for data in mechanic_stats.values():
+                                    mechanic_accuracy = (data['matched_items'] / data['total_items'] * 100) if data['total_items'] > 0 else 0
+                                    member_details.append(
+                                        f"{'(Leader) ' if data['is_leader'] else ''}{data['name']}: "
+                                        f"{data['matched_items']}/{data['total_items']} tools sesuai ({mechanic_accuracy:.1f}%)"
+                                    )
+                                
+                                # Format pesan measurement
+                                kpi['measurement'] = (
+                                    f"Tim hand-tools: {team_matched_items}/{team_total_items} tools sesuai ({actual:.1f}%)\n\n"
+                                    f"Detail per mekanik ({len(mechanic_stats)} mekanik):\n" + "\n".join([f"• {detail}" for detail in member_details])
+                                )
+                                
+                        except Exception as e:
+                            _logger.error(f"Error calculating tools check for team leader: {str(e)}")
+                            actual = 0
+                            kpi['measurement'] = f"Error: {str(e)}"
 
-                #             # 1. Hitung metrics untuk leader
-                #             leader_attendances = request.env['hr.attendance'].sudo().search([
-                #                 ('employee_id', '=', employee.id),
-                #                 ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                #                 ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
-                #                 ('check_out', '!=', False)
-                #             ])
+                    # elif kpi['type'] == 'flat_rate':
+                    #     try:
+                    #         tz = pytz.timezone('Asia/Jakarta')
+                    #         all_mechanics = team_members + mechanic  # Include leader
+                            
+                    #         team_total_attendance = 0
+                    #         team_total_productive = 0
+                    #         team_results = []
 
-                #             # Fungsi helper untuk menghitung metrics per orang
-                #             def calculate_member_metrics(attendances, mechanic_id):
-                #                 attendance_by_date = {}
-                #                 total_attendance = 0
-                #                 total_sold = 0
+                    #         # Calculate untuk setiap anggota tim
+                    #         for member in all_mechanics:
+                    #             member_attendances = request.env['hr.attendance'].sudo().search([
+                    #                 ('employee_id', '=', member.employee_id.id),
+                    #                 ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                    #                 ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                    #                 ('check_out', '!=', False)
+                    #             ])
 
-                #                 # Group attendance
-                #                 for att in attendances:
-                #                     att_date = fields.Datetime.from_string(att.check_in).date()
-                #                     if att_date not in attendance_by_date:
-                #                         attendance_by_date[att_date] = []
-                #                     attendance_by_date[att_date].append(att)
+                    #             member_attendance_hours = 0
+                    #             member_productive_hours = 0
 
-                #                 # Get orders untuk mechanic ini
-                #                 member_orders = orders.filtered(lambda o: mechanic_id in o.car_mechanic_id_new.ids)
+                    #             # Calculate attendance hours
+                    #             for att in member_attendances:
+                    #                 check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                    #                 check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                                    
+                    #                 # Set work start (minimal jam 8)
+                    #                 work_start = check_in_local.replace(hour=8, minute=0, second=0)
+                                    
+                    #                 # Effective time calculation - allow overtime
+                    #                 effective_start = max(check_in_local, work_start)
+                    #                 effective_end = check_out_local
+                                    
+                    #                 if effective_end > effective_start:
+                    #                     break_start = effective_start.replace(hour=12, minute=0, second=0)
+                    #                     break_end = effective_start.replace(hour=13, minute=0, second=0)
+                                        
+                    #                     if effective_start < break_end and effective_end > break_start:
+                    #                         morning_hours = (min(break_start, effective_end) - effective_start).total_seconds() / 3600
+                    #                         afternoon_hours = (effective_end - max(break_end, effective_start)).total_seconds() / 3600
+                    #                         member_attendance_hours += max(0, morning_hours) + max(0, afternoon_hours)
+                    #                     else:
+                    #                         member_attendance_hours += (effective_end - effective_start).total_seconds() / 3600
 
-                #                 for order in member_orders:
-                #                     if order.controller_mulai_servis and order.controller_selesai:
-                #                         order_date = fields.Datetime.from_string(order.controller_mulai_servis).date()
-                #                         day_attendances = attendance_by_date.get(order_date, [])
+                    #             # Calculate productive hours
+                    #             member_orders = team_orders.filtered(lambda o: member.id in o.car_mechanic_id_new.ids)
+                    #             for order in member_orders:
+                    #                 if order.controller_mulai_servis and order.controller_selesai:
+                    #                     start_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_mulai_servis)).astimezone(tz)
+                    #                     end_local = pytz.utc.localize(fields.Datetime.from_string(order.controller_selesai)).astimezone(tz)
+                                        
+                    #                     for att in member_attendances:
+                    #                         check_in_local = pytz.utc.localize(fields.Datetime.from_string(att.check_in)).astimezone(tz)
+                    #                         check_out_local = pytz.utc.localize(fields.Datetime.from_string(att.check_out)).astimezone(tz)
+                                            
+                    #                         work_start = check_in_local.replace(hour=8, minute=0, second=0)
+                                            
+                    #                         start_overlap = max(start_local, check_in_local, work_start)
+                    #                         end_overlap = min(end_local, check_out_local)
+                                            
+                    #                         if end_overlap > start_overlap:
+                    #                             break_start = start_overlap.replace(hour=12, minute=0, second=0)
+                    #                             break_end = start_overlap.replace(hour=13, minute=0, second=0)
+                                                
+                    #                             if start_overlap < break_end and end_overlap > break_start:
+                    #                                 morning_prod = (min(break_start, end_overlap) - start_overlap).total_seconds() / 3600
+                    #                                 afternoon_prod = (end_overlap - max(break_end, start_overlap)).total_seconds() / 3600
+                    #                                 productive_hours = max(0, morning_prod) + max(0, afternoon_prod)
+                    #                             else:
+                    #                                 productive_hours = (end_overlap - start_overlap).total_seconds() / 3600
+                                                    
+                    #                             member_productive_hours += productive_hours  # Tidak dibagi jumlah mekanik
 
-                #                         if day_attendances:
-                #                             for att in day_attendances:
-                #                                 sold_hours = calculate_productive_hours(
-                #                                     order.controller_mulai_servis,
-                #                                     order.controller_selesai,
-                #                                     att.check_in,
-                #                                     att.check_out
-                #                                 )
-                #                                 total_sold += sold_hours
+                    #             # Calculate member's flat rate
+                    #             member_flat_rate = (member_productive_hours / member_attendance_hours * 100) if member_attendance_hours > 0 else 0
+                    #             member_flat_rate = min(member_flat_rate, 100)  # Cap at 100%
+                                
+                    #             team_total_attendance += member_attendance_hours
+                    #             team_total_productive += member_productive_hours
+                                
+                    #             team_results.append({
+                    #                 'name': member.name,
+                    #                 'is_leader': member.id == mechanic.id,
+                    #                 'attendance_hours': member_attendance_hours,
+                    #                 'productive_hours': member_productive_hours,
+                    #                 'flat_rate': member_flat_rate
+                    #             })
 
-                #                                 att_hours = calculate_productive_hours(
-                #                                     att.check_in,
-                #                                     att.check_out,
-                #                                     att.check_in,
-                #                                     att.check_out
-                #                                 )
-                #                                 total_attendance += att_hours
+                    #         # Calculate team's overall flat rate
+                    #         actual = (team_total_productive / team_total_attendance * 100) if team_total_attendance > 0 else 0
+                    #         actual = min(actual, 100)  # Cap at 100%
 
-                #                 return total_attendance, total_sold
+                    #         kpi['measurement'] = f"""Tim Total ({len(team_members)} anggota + 1 leader):
+                    # - Total Jam Kerja Tim: {team_total_attendance:.1f} jam
+                    # - Total Jam Terjual Tim: {team_total_productive:.1f} jam
+                    # - Flat Rate Tim: {actual:.1f}%
 
-                #             # Calculate leader metrics
-                #             leader_attendance, leader_sold = calculate_member_metrics(leader_attendances, mechanic.id)
-                #             leader_flat_rate = min((leader_sold / leader_attendance * 100) if leader_attendance > 0 else 0, 100)
+                    # Detail Per Anggota:
+                    # {chr(10).join(f"• {'(Leader) ' if r['is_leader'] else ''}{r['name']}: {r['flat_rate']:.1f}% ({r['productive_hours']:.1f}/{r['attendance_hours']:.1f} jam)" for r in team_results)}""".strip()
 
-                #             # Calculate team metrics
-                #             team_attendance = leader_attendance
-                #             team_sold = leader_sold
-                #             member_details = []
-
-                #             for member in team_members:
-                #                 member_attendances = request.env['hr.attendance'].sudo().search([
-                #                     ('employee_id', '=', member.employee_id.id),
-                #                     ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                #                     ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
-                #                     ('check_out', '!=', False)
-                #                 ])
-
-                #                 member_attendance, member_sold = calculate_member_metrics(member_attendances, member.id)
-                #                 member_flat_rate = min((member_sold / member_attendance * 100) if member_attendance > 0 else 0, 100)
-
-                #                 team_attendance += member_attendance
-                #                 team_sold += member_sold
-
-                #                 member_details.append({
-                #                     'name': member.name,
-                #                     'attendance_hours': member_attendance,
-                #                     'sold_hours': member_sold,
-                #                     'flat_rate': member_flat_rate
-                #                 })
-
-                #             # Calculate team totals
-                #             team_flat_rate = min((team_sold / team_attendance * 100) if team_attendance > 0 else 0, 100)
-                #             actual = team_flat_rate
-
-                #             kpi['measurement'] = f"""
-                # Tim Total ({len(team_members)} anggota + 1 leader):
-                # - Total Jam Kerja Tim: {team_attendance:.1f} jam
-                # - Total Jam Terjual Tim: {team_sold:.1f} jam
-                # - Flat Rate Tim: {team_flat_rate:.1f}%
-
-                # Leader ({mechanic.name}):
-                # - Jam Kerja: {leader_attendance:.1f} jam
-                # - Jam Terjual: {leader_sold:.1f} jam
-                # - Flat Rate: {leader_flat_rate:.1f}%
-
-                # Detail Anggota Tim:
-                # {chr(10).join(f"• {m['name']}: {m['flat_rate']:.1f}% ({m['sold_hours']:.1f}/{m['attendance_hours']:.1f} jam)" for m in member_details)}
-                # """
-
-
-                        # except Exception as e:
-                        #     _logger.error(f"Error calculating flat rate for team leader: {str(e)}")
-                        #     actual = 0
-                        #     kpi['measurement'] = f"Error: {str(e)}"
-
+                    #     except Exception as e:
+                    #         _logger.error(f"Error calculating flat rate for team leader: {str(e)}")
+                    #         actual = 0
+                    #         kpi['measurement'] = f"Error: {str(e)}"
 
                     # Perbaikan perhitungan mechanic efficiency
                     elif kpi['type'] == 'mechanic_efficiency':
@@ -2843,29 +2873,129 @@ class KPIOverview(http.Controller):
                         formatted_target = "{:,.0f}".format(team_target)
                         kpi['measurement'] = f"Revenue tim: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
                         
-                    elif kpi['type'] == 'sop_compliance':
-                        # Get SOP samplings for all team members
+                    elif kpi['type'] == 'sop_compliance_lead':
+                        # Ambil data sampel SOP dari Leader untuk tim mekanik
+                        team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                            ('leader_id', '=', mechanic.id)
+                        ])
+                        
+                        # List semua ID mekanik termasuk leader
+                        all_mechanic_ids = team_members.ids + [mechanic.id]
+                        
+                        # Ambil sampel SOP dari Leader untuk tim mekanik
                         team_samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
-                            ('mechanic_id', 'in', team_members.ids),
+                            ('mechanic_id', 'in', all_mechanic_ids),
                             ('sop_id.role', '=', 'mechanic'),
+                            ('sampling_type', '=', 'lead'),  # Filter untuk sampel dari Leader
                             ('state', '=', 'done')
                         ])
                         
-                        total_samplings = len(team_samplings)
-                        failed_samplings = len(team_samplings.filtered(lambda s: s.result == 'fail'))
-                        
-                        if total_samplings > 0:
-                            actual = ((total_samplings - failed_samplings) / total_samplings * 100)
-                            kpi['measurement'] = (
-                                f"Total sampling tim: {total_samplings}, "
-                                f"Sesuai SOP: {total_samplings - failed_samplings}, "
-                                f"Pelanggaran: {failed_samplings} ({actual:.1f}%)"
-                            )
+                        if not team_samplings:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada sampling SOP (Leader) untuk tim mekanik pada periode {month}/{year}"
                         else:
-                            actual = 100
-                            kpi['measurement'] = f"Belum ada sampling SOP tim pada periode {month}/{year}"
+                            # Hitung total sampel dan yang sesuai SOP
+                            total_samplings = len(team_samplings)
+                            passed_samplings = len(team_samplings.filtered(lambda s: s.result == 'pass'))
+                            
+                            # Hitung metrics per mekanik
+                            mechanic_stats = {}
+                            for sampling in team_samplings:
+                                for mech in sampling.mechanic_id:
+                                    if mech.id not in mechanic_stats:
+                                        mechanic_stats[mech.id] = {
+                                            'name': mech.name,
+                                            'is_leader': mech.id == mechanic.id,
+                                            'total': 0,
+                                            'passed': 0
+                                        }
+                                    mechanic_stats[mech.id]['total'] += 1
+                                    if sampling.result == 'pass':
+                                        mechanic_stats[mech.id]['passed'] += 1
+                            
+                            # Hitung persentase kepatuhan
+                            actual = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                            
+                            # Buat detail per mekanik
+                            member_details = []
+                            for data in mechanic_stats.values():
+                                if data['total'] > 0:
+                                    compliance_rate = (data['passed'] / data['total'] * 100)
+                                    member_details.append(
+                                        f"{'(Leader) ' if data['is_leader'] else ''}{data['name']}: "
+                                        f"{data['passed']}/{data['total']} sesuai SOP ({compliance_rate:.1f}%)"
+                                    )
+                            
+                            # Format pesan measurement
+                            kpi['measurement'] = (
+                                f"Sesuai SOP (Leader): {passed_samplings} dari {total_samplings} sampel ({actual:.1f}%)\n\n"
+                                f"Detail per mekanik ({len(mechanic_stats)} mekanik):\n" + 
+                                "\n".join([f"• {detail}" for detail in member_details]) if member_details else "Tidak ada data detail per mekanik"
+                            )
+
+                    elif kpi['type'] == 'sop_compliance_kaizen':
+                        # Ambil data sampel SOP dari Kaizen untuk tim mekanik
+                        team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                            ('leader_id', '=', mechanic.id)
+                        ])
+                        
+                        # List semua ID mekanik termasuk leader
+                        all_mechanic_ids = team_members.ids + [mechanic.id]
+                        
+                        # Ambil sampel SOP dari Kaizen untuk tim mekanik
+                        team_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('mechanic_id', 'in', all_mechanic_ids),
+                            ('sop_id.role', '=', 'mechanic'),
+                            ('sampling_type', '=', 'kaizen'),  # Filter untuk sampel dari Kaizen
+                            ('state', '=', 'done')
+                        ])
+                        
+                        if not team_samplings:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada sampling SOP (Kaizen) untuk tim mekanik pada periode {month}/{year}"
+                        else:
+                            # Hitung total sampel dan yang sesuai SOP
+                            total_samplings = len(team_samplings)
+                            passed_samplings = len(team_samplings.filtered(lambda s: s.result == 'pass'))
+                            
+                            # Hitung metrics per mekanik
+                            mechanic_stats = {}
+                            for sampling in team_samplings:
+                                for mech in sampling.mechanic_id:
+                                    if mech.id not in mechanic_stats:
+                                        mechanic_stats[mech.id] = {
+                                            'name': mech.name,
+                                            'is_leader': mech.id == mechanic.id,
+                                            'total': 0,
+                                            'passed': 0
+                                        }
+                                    mechanic_stats[mech.id]['total'] += 1
+                                    if sampling.result == 'pass':
+                                        mechanic_stats[mech.id]['passed'] += 1
+                            
+                            # Hitung persentase kepatuhan
+                            actual = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                            
+                            # Buat detail per mekanik
+                            member_details = []
+                            for data in mechanic_stats.values():
+                                if data['total'] > 0:
+                                    compliance_rate = (data['passed'] / data['total'] * 100)
+                                    member_details.append(
+                                        f"{'(Leader) ' if data['is_leader'] else ''}{data['name']}: "
+                                        f"{data['passed']}/{data['total']} sesuai SOP ({compliance_rate:.1f}%)"
+                                    )
+                            
+                            # Format pesan measurement
+                            kpi['measurement'] = (
+                                f"Sesuai SOP (Kaizen): {passed_samplings} dari {total_samplings} sampel ({actual:.1f}%)\n\n"
+                                f"Detail per mekanik ({len(mechanic_stats)} mekanik):\n" + 
+                                "\n".join([f"• {detail}" for detail in member_details]) if member_details else "Tidak ada data detail per mekanik"
+                            )
 
                         
                     elif kpi['type'] == 'team_discipline':

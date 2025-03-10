@@ -332,14 +332,23 @@ class KPIOverview(http.Controller):
                     'no': 6,
                     'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
                     'type': 'customer_satisfaction',
-                    'weight': 15,
+                    'weight': 10,
                     'target': 95,
                     'measurement': 'Diukur dari survey rating kepuasan customer',
                     'include_in_calculation': True
                 },
                 {
                     'no': 7,
-                    'name': 'Persentase sampel tim CS bekerja sesuai alur SOP',
+                    'name': 'Persentase sampel dari Leader: tim CS bekerja sesuai alur SOP',
+                    'type': 'sop_compliance',
+                    'weight': 5,
+                    'target': 95,
+                    'measurement': 'Diukur dari temuan pekerjaan tidak sesuai alur',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 8,
+                    'name': 'Persentase sampel dari tim Kaizen: CS bekerja sesuai alur SOP',
                     'type': 'sop_compliance',
                     'weight': 15,
                     'target': 95,
@@ -347,7 +356,7 @@ class KPIOverview(http.Controller):
                     'include_in_calculation': True
                 },
                 {
-                    'no': 8,  # Tambahkan sebagai KPI terakhir
+                    'no': 9,  # Tambahkan sebagai KPI terakhir
                     'name': 'Kedisiplinan (Informasi)',
                     'type': 'discipline',
                     'weight': 0,  # Weight 0 karena tidak dihitung
@@ -362,7 +371,7 @@ class KPIOverview(http.Controller):
                     'no': 1,
                     'name': 'Jumlah omzet pitcar service sesuai target',
                     'type': 'productivity',
-                    'weight': 20,
+                    'weight': 15,
                     'target': 100,
                     'measurement': 'Diukur dari jumlah omzet yang dihasilkan dari PKB yang ditangani',
                     'include_in_calculation': True
@@ -371,7 +380,7 @@ class KPIOverview(http.Controller):
                     'no': 2,
                     'name': 'Persentase rata-rata waktu penanganan customer yang sesuai target waktu',
                     'type': 'service_efficiency',
-                    'weight': 10,
+                    'weight': 15,
                     'target': 80,
                     'measurement': 'Diukur dari kesesuaian waktu penanganan customer berdasarkan target waktu',
                     'include_in_calculation': True
@@ -389,14 +398,14 @@ class KPIOverview(http.Controller):
                     'no': 3,
                     'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
                     'type': 'customer_satisfaction',
-                    'weight': 20,
+                    'weight': 15,
                     'target': 95,
                     'measurement': 'Diukur dari survey rating kepuasan customer',
                     'include_in_calculation': True
                 },
                 {
                     'no': 4,
-                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
+                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan',
                     'type': 'complaint_handling',
                     'weight': 20,
                     'target': 95,
@@ -405,13 +414,22 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 5,
-                    'name': 'Persentase waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
-                    'type': 'mechanic_efficiency',
+                    'name': 'Jumlah PKB yang diberikan rekomendasi tambahan servis',
+                    'type': 'service_recommendation',
                     'weight': 15,
-                    'target': 90,
-                    'measurement': 'Diukur dari rata-rata waktu pengerjaan per PKB setiap mekanik',
+                    'target': 80,
+                    'measurement': 'Diukur dari persentase rekomendasi yang diberikan',
                     'include_in_calculation': True
                 },
+                # {
+                #     'no': 6,
+                #     'name': 'Persentase waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
+                #     'type': 'mechanic_efficiency',
+                #     'weight': 15,
+                #     'target': 90,
+                #     'measurement': 'Diukur dari rata-rata waktu pengerjaan per PKB setiap mekanik',
+                #     'include_in_calculation': True
+                # },
                 {
                     'no': 6,
                     'name': 'Persentase sampel tim support bekerja sesuai alur SOP',
@@ -422,7 +440,16 @@ class KPIOverview(http.Controller):
                     'include_in_calculation': True
                 },
                 {
-                    'no': 7,  # Tambahkan sebagai KPI terakhir
+                    'no': 7,
+                    'name': 'Persentase sampel dari Kaizen: tim support bekerja sesuai alur SOP',
+                    'type': 'team_control',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan tim support yang dilakukan tidak sesuai dengan alur/SOP',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 8,  # Tambahkan sebagai KPI terakhir
                     'name': 'Kedisiplinan Tim (Informasi)',  
                     'type': 'team_discipline',
                     'weight': 0,
@@ -454,40 +481,57 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 3,
+                    'name': 'Jumlah PKB yang diberikan rekomendasi tambahan servis',
+                    'type': 'service_recommendation',
+                    'weight': 15,
+                    'target': 80,
+                    'measurement': 'Diukur dari persentase rekomendasi yang diberikan',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 4,
                     'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
                     'type': 'customer_satisfaction',
-                    'weight': 20,
+                    'weight': 15,
                     'target': 95,
                     'measurement': 'Diukur dari survey rating kepuasan customer',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 4,
-                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
+                    'no': 5,
+                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan',
                     'type': 'complaint_handling',
-                    'weight': 15,
+                    'weight': 5,
                     'target': 95,
                     'measurement': 'Diukur dari customer merasa puas terhadap pelayanan & solusi yang diberikan dalam kurun waktu 3 hari setelah complaint',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 5,
-                    'name': 'Follow up H+3 untuk setiap customer setelah servis',
+                    'no': 6,
+                    'name': 'Follow up H+3 setelah servis dilakukan untuk semua customer',
                     'type': 'follow_up_h3',
-                    'weight': 10,
+                    'weight': 5,
                     'target': 100,
                     'measurement': 'Diukur dari jumlah follow up yang dilakukan setelah servis',
                 },
                 {
-                    'no': 6,
-                    'name': 'Pekerjaan operasional dilakukan sesuai alur dan SOP yang ditetapkan',
-                    'type': 'sop_compliance',
+                    'no': 7,
+                    'name': 'Sampel dari Lead: tim SA bekerja sesuai alur SOP',
+                    'type': 'sop_compliance_lead',
+                    'weight': 5,
+                    'target': 90,
+                    'measurement': 'Persentase kepatuhan terhadap SOP'
+                },
+                {
+                    'no': 8,
+                    'name': 'Sampel dari Kaizen: tim SA bekerja sesuai alur SOP',
+                    'type': 'sop_compliance_kaizen',
                     'weight': 15,
                     'target': 90,
                     'measurement': 'Persentase kepatuhan terhadap SOP'
                 },
                 {
-                    'no': 7,  # Tambahkan sebagai KPI terakhir
+                    'no': 9,  # Tambahkan sebagai KPI terakhir
                     'name': 'Kedisiplinan (Informasi)',  
                     'type': 'discipline',
                     'weight': 0,
@@ -501,15 +545,24 @@ class KPIOverview(http.Controller):
             valet_kpi_template = [
                 {
                     'no': 1,
-                    'name': '% sampel tim valet parking bekerja sesuai alur SOP',
-                    'type': 'valet_sop',
-                    'weight': 50,
+                    'name': 'Persentase sampel dari Leader valet parking bekerja sesuai alur SOP',
+                    'type': 'valet_sop_lead',  # Ubah dari 'valet_sop' menjadi 'valet_sop_lead'
+                    'weight': 20,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
                     'include_in_calculation': True
                 },
                 {
                     'no': 2,
+                    'name': 'Persentase sampel tim Kaizen valet parking bekerja sesuai alur SOP',
+                    'type': 'valet_sop_kaizen',  # Ubah dari 'valet_sop' menjadi 'valet_sop_kaizen'
+                    'weight': 30,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 3,
                     'name': '% peralatan front office lengkap dan sesuai pada tempatnya',
                     'type': 'front_office',
                     'weight': 30,
@@ -518,7 +571,7 @@ class KPIOverview(http.Controller):
                     'include_in_calculation': True
                 },
                 {
-                    'no': 3,
+                    'no': 4,
                     'name': 'Rating survey kepuasan customer memberikan nilai minimal 4.8 dari 5',
                     'type': 'customer_satisfaction',
                     'weight': 20,
@@ -528,20 +581,20 @@ class KPIOverview(http.Controller):
                 }
             ]
 
-                        # Template KPI Admin Part
+            # Template KPI Admin Part
             admin_part_template = [
                 {
                     'no': 1,
-                    'name': 'Persentase kebutuhan part & tools terpenuhi',
+                    'name': 'Persentase kebutuhan part terpenuhi',
                     'type': 'part_fulfillment',
                     'weight': 20,
                     'target': 95,
-                    'measurement': 'Diukur dari jumlah part & tools terpenuhi / jumlah sampel',
+                    'measurement': 'Diukur dari jumlah part terpenuhi / jumlah sampel',
                     'include_in_calculation': True
                 },
                 {
                     'no': 2,
-                    'name': 'Response time estimasi part < 15 menit',
+                    'name': 'Jumlah estimasi part dilakukan sesuai target waktu < 15 menit',
                     'type': 'part_response',
                     'weight': 20,
                     'target': 95,
@@ -550,8 +603,74 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 3,
-                    'name': 'Jumlah hari stok part tersedia',
+                    'name': 'Jumlah hari stok part tersedia (tidak habis)',
                     'type': 'part_availability',
+                    'weight': 15,
+                    'target': 100,
+                    'measurement': 'Diukur dari jumlah hari stok part wajib ready tersedia',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 4,
+                    'name': 'Jumlah selisih nilai part antara di sistem dan aktual',
+                    'type': 'part_audit',
+                    'weight': 15,
+                    'target': 100,
+                    'measurement': 'Diukur dari selisih nilai part < Rp 200.000',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 5,
+                    'name': 'Jumlah selisih nilai tools SST antara di sistem dan aktual',
+                    'type': 'tools_audit',
+                    'weight': 10,
+                    'target': 100,
+                    'measurement': 'Diukur dari selisih nilai tools SST < Rp 200.000',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 6,
+                    'name': 'Persentase sampel tim part bekerja sesuai SOP',
+                    'type': 'sop_compliance_lead',
+                    'weight': 5,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah sampel sesuai SOP / total sampel',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 7,
+                    'name': 'Persentase sampel dari Kaizen: tim part bekerja sesuai SOP',
+                    'type': 'sop_compliance_kaizen',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah sampel sesuai SOP / total sampel',
+                    'include_in_calculation': True
+                },
+            ]
+
+            partman_template = [
+                {
+                    'no': 1,
+                    'name': 'Persentase % kebutuhan part untuk servis terpenuhi',
+                    'type': 'part_fulfillment',
+                    'weight': 20,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah part terpenuhi / jumlah sampel',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 2,
+                    'name': 'Jumlah hari estimasi part dilakukan sesuai target waktu < 15 menit',
+                    'type': 'part_response',
+                    'weight': 20,
+                    'target': 95,
+                    'measurement': 'Diukur dari kecepatan response part request',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 3,
+                    'name': 'Persentase % belanja part sesuai target waktu & kecocokan barang',
+                    'type': 'part_purchase',  # Sesuaikan dengan function yang sudah ada
                     'weight': 20,
                     'target': 100,
                     'measurement': 'Diukur dari jumlah hari stok part wajib ready tersedia',
@@ -559,47 +678,48 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 4,
-                    'name': 'Selisih nilai part sistem vs aktual',
+                    'name': 'Jumlah selisih nilai part antara di sistem dan aktual',
                     'type': 'part_audit',
-                    'weight': 10,
+                    'weight': 20,
                     'target': 100,
                     'measurement': 'Diukur dari selisih nilai part < Rp 200.000',
                     'include_in_calculation': True
                 },
                 {
                     'no': 5,
-                    'name': 'Selisih nilai tools sistem vs aktual',
-                    'type': 'tools_audit',
-                    'weight': 10,
-                    'target': 100,
-                    'measurement': 'Diukur dari selisih nilai tools < Rp 200.000',
+                    'name': 'Persentase sampel dari Lead: partman bekerja sesuai SOP',
+                    'type': 'sop_compliance_lead',  # Perubahan di sini
+                    'weight': 5,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah sampel sesuai SOP / total sampel',
                     'include_in_calculation': True
                 },
                 {
                     'no': 6,
-                    'name': 'Persentase sampel admin part bekerja sesuai SOP',
-                    'type': 'sop_compliance',
-                    'weight': 20,
+                    'name': 'Persentase sampel dari Kaizen: partman bekerja sesuai SOP',
+                    'type': 'sop_compliance_kaizen',  # Perubahan di sini
+                    'weight': 15,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah sampel sesuai SOP / total sampel',
                     'include_in_calculation': True
-                }
+                },
             ]
+                
 
             # Template KPI untuk Toolkeeper
             toolkeeper_template = [
                 {
                     'no': 1,
-                    'name': 'Persentase belanja part sesuai target & kecocokan',
+                    'name': 'Persentase belanja part sesuai target & kecocokan barang',
                     'type': 'part_purchase',
-                    'weight': 25,
+                    'weight': 20,
                     'target': 90,
                     'measurement': 'Diukur dari jumlah belanja part yang sesuai target dan cocok',
                     'include_in_calculation': True
                 },
                 {
                     'no': 2,
-                    'name': 'Persentase belanja tools sesuai target & kecocokan',
+                    'name': 'Proses pengadaan tools sesuai jadwal yang ditetapkan',
                     'type': 'tool_purchase',
                     'weight': 20,
                     'target': 95,
@@ -608,27 +728,36 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 3,
-                    'name': 'Selisih nilai part sistem vs aktual',
+                    'name': 'Jumlah tools digunakan sesuai kapabilitasnya (tidak rusak sebelum masa depresiasi berakhir)',
                     'type': 'part_audit',
-                    'weight': 10,
+                    'weight': 20,
                     'target': 100,
                     'measurement': 'Diukur dari selisih nilai part < Rp 200.000',
                     'include_in_calculation': True
                 },
                 {
                     'no': 4,
-                    'name': 'Selisih nilai tools sistem vs aktual',
+                    'name': 'Jumlah selisih nilai tools SST antara di sistem dan aktual',
                     'type': 'tools_audit',
-                    'weight': 25,
+                    'weight': 20,
                     'target': 100,
-                    'measurement': 'Diukur dari selisih nilai tools < Rp 200.000',
+                    'measurement': 'Diukur dari selisih nilai tools SST < Rp 200.000',
                     'include_in_calculation': True
                 },
                 {
                     'no': 5,
-                    'name': 'Persentase sampel toolkeeper bekerja sesuai SOP',
-                    'type': 'sop_compliance',
-                    'weight': 20,
+                    'name': 'Persentase sampel dari Lead: toolkeeper bekerja sesuai SOP',
+                    'type': 'sop_compliance_lead',
+                    'weight': 5,
+                    'target': 90,
+                    'measurement': 'Diukur dari jumlah sampel sesuai SOP / total sampel',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 6,
+                    'name': 'Persentase sampel dari Kaizen: toolkeeper bekerja sesuai SOP',
+                    'type': 'sop_compliance_kaizen',
+                    'weight': 15,
                     'target': 90,
                     'measurement': 'Diukur dari jumlah sampel sesuai SOP / total sampel',
                     'include_in_calculation': True
@@ -745,17 +874,42 @@ class KPIOverview(http.Controller):
                             kpi['measurement'] = f"Belum ada rating pada periode {month}/{year}"
                         
                     elif kpi['type'] == 'sop_compliance':
-                        # Existing code untuk SOP compliance
-                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
-                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
-                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
-                            ('cs_id', '=', employee.id),
-                            ('state', '=', 'done')
-                        ])
+                        # Filter berdasarkan nomor KPI untuk membedakan Leader vs Kaizen
+                        if kpi['no'] == 7:  # Sampel dari Leader
+                            samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('cs_id', 'in', [employee.id]),
+                                ('state', '=', 'done'),
+                                ('sampling_type', '=', 'lead')  # Filter untuk sampel dari Leader
+                            ])
+                        elif kpi['no'] == 8:  # Sampel dari Kaizen
+                            samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('cs_id', 'in', [employee.id]),
+                                ('state', '=', 'done'),
+                                ('sampling_type', '=', 'kaizen')  # Filter untuk sampel dari Kaizen
+                            ])
+                        else:
+                            samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('cs_id', 'in', [employee.id]),
+                                ('state', '=', 'done')
+                            ])
+                            
                         total_samples = len(samplings)
                         passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
                         actual = (passed_samples / total_samples * 100) if total_samples else 100
-                        kpi['measurement'] = f"Sesuai SOP: {passed_samples} dari {total_samples} sampel"
+                        
+                        # Sesuaikan pesan measurement berdasarkan jenis sampling
+                        if kpi['no'] == 7:
+                            kpi['measurement'] = f"Sesuai SOP (Leader): {passed_samples} dari {total_samples} sampel"
+                        elif kpi['no'] == 8:
+                            kpi['measurement'] = f"Sesuai SOP (Kaizen): {passed_samples} dari {total_samples} sampel"
+                        else:
+                            kpi['measurement'] = f"Sesuai SOP: {passed_samples} dari {total_samples} sampel"
 
                     elif kpi['type'] == 'discipline':
                         attendances = request.env['hr.attendance'].sudo().search([
@@ -835,7 +989,10 @@ class KPIOverview(http.Controller):
                         if orders_with_duration:
                             avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
                             actual = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
-                        measurement = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
+                            measurement = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
+                        else:
+                            actual = 0
+                            measurement = f"Belum ada data deviasi waktu pada periode {month}/{year}"
 
                     elif kpi['type'] == 'customer_satisfaction':
                         # Filter orders berdasarkan periode yang dipilih
@@ -846,163 +1003,75 @@ class KPIOverview(http.Controller):
                             ('service_advisor_id', 'in', team_sa.ids)  # Untuk memastikan hanya order dari tim SA yang dihitung
                         ])
                         
-                        # Ambil order yang memiliki rating dari periode yang dipilih
-                        rated_orders = period_orders.filtered(lambda o: o.customer_rating)
+                        # Ambil order yang memiliki detailed_ratings dan service_rating
+                        rated_orders = period_orders.filtered(lambda o: o.detailed_ratings and 'service_rating' in o.detailed_ratings)
                         total_rated_orders = len(rated_orders)
                         
                         if total_rated_orders > 0:
-                            # Hitung rata-rata rating
-                            total_rating = sum(float(order.customer_rating) for order in rated_orders)
-                            avg_rating = total_rating / total_rated_orders
+                            # Hitung rata-rata service_rating
+                            total_service_rating = 0
+                            for order in rated_orders:
+                                try:
+                                    service_rating = int(order.detailed_ratings.get('service_rating', 0))
+                                    total_service_rating += service_rating
+                                except (ValueError, TypeError):
+                                    # Skip this order if service_rating cannot be converted to int
+                                    continue
+                                    
+                            avg_service_rating = total_service_rating / total_rated_orders
                             
-                            # Implementasi formula khusus
-                            if avg_rating > 4.8:
+                            # Implementasi formula khusus berdasarkan service_rating
+                            if avg_service_rating > 4.8:
                                 actual = 120
-                            elif avg_rating == 4.8:
+                            elif avg_service_rating == 4.8:
                                 actual = 100
-                            elif 4.6 <= avg_rating <= 4.7:
+                            elif 4.6 <= avg_service_rating <= 4.7:
                                 actual = 50
                             else:  # < 4.6
                                 actual = 0
                                 
                             measurement = (
-                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
+                                f"Rating pelayanan rata-rata: {avg_service_rating:.1f} dari {total_rated_orders} order "
                                 f"pada periode {month}/{year}."
                             )
                         else:
                             actual = 0
-                            measurement = f"Belum ada rating customer pada periode {month}/{year}"
+                            measurement = f"Belum ada rating pelayanan pada periode {month}/{year}"
 
                     elif kpi['type'] == 'complaint_handling':
                         # Otomatis ambil data penanganan komplain dari sistem
                         actual = (len(resolved_complaints) / len(complaints) * 100) if complaints else 100
                         measurement = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
 
-                    # Perbaikan perhitungan mechanic efficiency
-                    elif kpi['type'] == 'mechanic_efficiency':
-                        # Ambil semua lead mechanic yang aktif di periode tersebut
-                        lead_mechanics = request.env['pitcar.mechanic.new'].sudo().search([
-                            ('position_code', '=', 'leader')
-                        ])
-                        
-                        _logger.info(f"Found {len(lead_mechanics)} lead mechanics")
-
-                        if not lead_mechanics:
-                            actual = 0
-                            measurement = f"Tidak ada lead mechanic aktif pada periode {month}/{year}"
+                    elif kpi['type'] == 'service_recommendation':
+                        # Mengadopsi dari implementasi service advisor
+                        if all_orders:
+                            total_orders = len(all_orders)
+                            orders_with_recs = len(all_orders.filtered(lambda o: o.total_recommendations > 0))
+                            avg_realization = sum(all_orders.mapped('recommendation_realization_rate')) / total_orders if total_orders else 0
+                            
+                            measurement = (
+                                f"Orders dengan rekomendasi: {orders_with_recs}/{total_orders}, "
+                                f"Rata-rata realisasi: {avg_realization:.1f}%"
+                            )
+                            actual = avg_realization
                         else:
-                            # Data untuk HTML output
-                            leader_performance = []
-                            leaders_in_range = 0
-                            
-                            for leader in lead_mechanics:
-                                # Ambil anggota tim
-                                team_members = leader.team_member_ids
-                                
-                                if not team_members:
-                                    continue
-                                    
-                                # Ambil orders untuk tim ini
-                                team_orders = request.env['sale.order'].sudo().search([
-                                    *base_domain,
-                                    ('car_mechanic_id_new', 'in', team_members.ids)
-                                ])
-                                
-                                # Hitung rata-rata pengerjaan per mekanik dalam tim
-                                member_averages = {}
-                                for member in team_members:
-                                    member_orders = team_orders.filtered(lambda o: member in o.car_mechanic_id_new)
-                                    if member_orders:
-                                        member_times = [o.lead_time_servis for o in member_orders if o.lead_time_servis]
-                                        if member_times:
-                                            member_averages[member.id] = sum(member_times) / len(member_times)
-                                
-                                if member_averages:
-                                    # Hitung standar deviasi tim
-                                    team_avg = sum(member_averages.values()) / len(member_averages)
-                                    variance = sum((t - team_avg) ** 2 for t in member_averages.values()) / len(member_averages)
-                                    std_dev = variance ** 0.5
-                                    
-                                    # Hitung coefficient of variation (CV) sebagai ukuran distribusi kerja
-                                    cv = (std_dev / team_avg) * 100 if team_avg else 0
-                                    
-                                    # Leader dianggap efisien jika CV < 15% (variasi antar anggota tim < 15%)
-                                    is_efficient = cv < 5
-                                    if is_efficient:
-                                        leaders_in_range += 1
+                            actual = 0
+                            measurement = f"Belum ada order pada periode {month}/{year}"
 
-                                    mechanic_names = {m.id: m.name for m in team_members}
-                                    
-                                    leader_performance.append({
-                                        'name': leader.name,
-                                        'team_size': len(team_members),
-                                        'team_avg': team_avg,
-                                        'cv': cv,
-                                        'is_efficient': is_efficient,
-                                        'member_stats': {
-                                            mechanic_names[mid]: avg 
-                                            for mid, avg in member_averages.items()
-                                        }
-                                    })
-
-                            # Hitung actual score
-                            total_leaders = len([l for l in leader_performance if l['team_size'] > 0])
-                            actual = (leaders_in_range / total_leaders * 100) if total_leaders else 0
-
-                            # Generate HTML output
-                            measurement = '<div class="kpi-measurement">'
-                            measurement += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
-                            
-                            measurement += '<div class="summary-stats">'
-                            measurement += f'<div class="stat-item">Lead Mechanics efisien: {leaders_in_range}/{total_leaders}</div>'
-                            measurement += '</div>'
-                            
-                            measurement += '<div class="leader-details">'
-                            for leader in leader_performance:
-                                measurement += f'<div class="leader-card {"efficient" if leader["is_efficient"] else "inefficient"}">'
-                                measurement += f'<h4>{leader["name"]} ({leader["team_size"]} anggota)</h4>'
-                                measurement += f'<p>Rata-rata tim: {leader["team_avg"]:.1f} jam</p>'
-                                measurement += f'<p>Variasi distribusi: {leader["cv"]:.1f}%</p>'
-                                measurement += '<div class="member-stats">'
-                                for member, avg in leader['member_stats'].items():
-                                    measurement += f'<div>{member}: {avg:.1f} jam</div>'
-                                measurement += '</div>'
-                                measurement += '</div>'
-                            measurement += '</div>'
-                            
-                            measurement += '</div>'
-
-
-                        # kpi_scores.append({
-                        #     'no': kpi['no'],
-                        #     'name': kpi['name'],
-                        #     'type': kpi['type'],
-                        #     'weight': kpi['weight'],
-                        #     'target': kpi['target'],
-                        #     'measurement': measurement,
-                        #     'actual': actual,
-                        #     'achievement': actual,
-                        #     'weighted_score': (actual * kpi['weight'] / 100),
-                        #     'editable': ['weight', 'target']
-                        # })
-
-                    elif kpi['type'] == 'stock_management':
-                        # Manual input untuk stok management (bisa diotomatisasi jika ada data stok)
-                        actual = kpi_values.get(kpi['type'], {}).get('actual', 0)
-                        measurement = kpi_values.get(kpi['type'], {}).get('measurement', '') or "Menunggu input: Jumlah temuan stok part habis"
-
-                    elif kpi['type'] == 'team_control':
+                    elif kpi['type'] == 'team_control' and kpi['no'] == 6:
                         # Get service advisors for team members
                         team_sa = request.env['pitcar.service.advisor'].sudo().search([
                             ('user_id', 'in', team_members.mapped('user_id').ids)
                         ])
                         
-                        # Get all SOP samplings for the team's service advisors
+                        # Get all SOP samplings for the team's service advisors (Lead)
                         sa_samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('sale_order_id', 'in', all_orders.ids),
                             ('sop_id.is_sa', '=', True),  # Only SA-related SOPs
-                            ('sa_id', 'in', team_sa.ids),  # Using service advisor IDs instead of user IDs
-                            ('state', '=', 'done')  # Only count completed samplings
+                            ('sa_id', 'in', team_sa.ids),  # Using service advisor IDs
+                            ('state', '=', 'done'),  # Only count completed samplings
+                            ('sampling_type', '=', 'lead')  # Filter untuk sampel dari Leader
                         ])
                         
                         # Count total SA samplings and violations
@@ -1014,9 +1083,37 @@ class KPIOverview(http.Controller):
                         
                         # Format measurement message
                         if total_samplings > 0:
-                            measurement = f"Sampling SA sesuai SOP: {total_samplings - sop_violations} dari {total_samplings} sampling ({actual:.1f}%)"
+                            measurement = f"Sampling SA sesuai SOP (Leader): {total_samplings - sop_violations} dari {total_samplings} sampling ({actual:.1f}%)"
                         else:
-                            measurement = "Belum ada sampling SOP untuk tim SA pada periode ini"
+                            measurement = f"Belum ada sampling SOP (Leader) untuk tim SA pada periode {month}/{year}"
+
+                    elif kpi['type'] == 'team_control' and kpi['no'] == 7:
+                        # Get service advisors for team members
+                        team_sa = request.env['pitcar.service.advisor'].sudo().search([
+                            ('user_id', 'in', team_members.mapped('user_id').ids)
+                        ])
+                        
+                        # Get all SOP samplings for the team's service advisors (Kaizen)
+                        sa_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('sale_order_id', 'in', all_orders.ids),
+                            ('sop_id.is_sa', '=', True),  # Only SA-related SOPs
+                            ('sa_id', 'in', team_sa.ids),  # Using service advisor IDs
+                            ('state', '=', 'done'),  # Only count completed samplings
+                            ('sampling_type', '=', 'kaizen')  # Filter untuk sampel dari Kaizen
+                        ])
+                        
+                        # Count total SA samplings and violations
+                        total_samplings = len(sa_samplings)
+                        sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
+                        
+                        # Calculate actual score
+                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 0
+                        
+                        # Format measurement message
+                        if total_samplings > 0:
+                            measurement = f"Sampling SA sesuai SOP (Kaizen): {total_samplings - sop_violations} dari {total_samplings} sampling ({actual:.1f}%)"
+                        else:
+                            measurement = f"Belum ada sampling SOP (Kaizen) untuk tim SA pada periode {month}/{year}"
 
                     elif kpi['type'] == 'team_discipline':
                         # Otomatis ambil data kedisiplinan tim dari sistem
@@ -1029,8 +1126,6 @@ class KPIOverview(http.Controller):
                         actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
                         measurement = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
 
-                    # achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    # weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
                     # Perhitungan baru: weighted_score langsung dari actual × weight/100
                     weighted_score = actual * (kpi['weight'] / 100)
                     
@@ -1097,29 +1192,21 @@ class KPIOverview(http.Controller):
                             actual = 0
                             kpi['measurement'] = "Belum ada data deviasi waktu pengerjaan"
                     
-                    # elif kpi['type'] == 'follow_up_h3':
-                    #     # Filter order yang memiliki next_follow_up_3_days dalam bulan KPI yang dipilih
-                    #     follow_up_domain = [
-                    #         ('next_follow_up_3_days', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                    #         ('next_follow_up_3_days', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                    #         ('state', 'in', ['sale', 'done'])  # Pastikan hanya order yang sudah selesai
-                    #     ]
-
-                    #     # Ambil semua order yang masuk dalam kriteria follow-up
-                    #     due_follow_ups = request.env['sale.order'].sudo().search(follow_up_domain)
-
-                    #     # Filter order yang sudah benar-benar melakukan follow-up dalam bulan tersebut
-                    #     completed_follow_ups = due_follow_ups.filtered(lambda o: o.is_follow_up == 'yes')
-
-                    #     # Menghitung persentase follow-up yang telah dilakukan
-                    #     total_due = len(due_follow_ups)
-                    #     actual = (len(completed_follow_ups) / total_due * 100) if total_due else 0
-
-                    #     # Memformat output KPI agar lebih jelas
-                    #     kpi['measurement'] = (
-                    #         f"Follow up H+3: {len(completed_follow_ups)} dari {total_due} "
-                    #         f"({actual:.1f}%) pada bulan {start_date_utc.strftime('%B %Y')}."
-                    #     )
+                    elif kpi['type'] == 'service_recommendation':
+                        # Mengadopsi dari implementasi mekanik
+                        if orders:
+                            total_orders = len(orders)
+                            orders_with_recs = len(orders.filtered(lambda o: o.total_recommendations > 0))
+                            avg_realization = sum(orders.mapped('recommendation_realization_rate')) / total_orders if total_orders else 0
+                            
+                            kpi['measurement'] = (
+                                f"Orders dengan rekomendasi: {orders_with_recs}/{total_orders}, "
+                                f"Rata-rata realisasi: {avg_realization:.1f}%"
+                            )
+                            actual = avg_realization
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada order pada periode {month}/{year}"
 
                     elif kpi['type'] == 'customer_satisfaction':
                         # Filter orders berdasarkan periode yang dipilih
@@ -1130,32 +1217,40 @@ class KPIOverview(http.Controller):
                             ('service_advisor_id', '=', service_advisor.id)  # Hanya order dari SA yang bersangkutan
                         ])
                         
-                        # Ambil order yang memiliki rating dari periode yang dipilih
-                        rated_orders = period_orders.filtered(lambda o: o.customer_rating)
+                        # Ambil order yang memiliki detailed_ratings dan service_rating
+                        rated_orders = period_orders.filtered(lambda o: o.detailed_ratings and 'service_rating' in o.detailed_ratings)
                         total_rated_orders = len(rated_orders)
                         
                         if total_rated_orders > 0:
-                            # Hitung rata-rata rating
-                            total_rating = sum(float(order.customer_rating) for order in rated_orders)
-                            avg_rating = total_rating / total_rated_orders
+                            # Hitung rata-rata service_rating
+                            total_service_rating = 0
+                            for order in rated_orders:
+                                try:
+                                    service_rating = int(order.detailed_ratings.get('service_rating', 0))
+                                    total_service_rating += service_rating
+                                except (ValueError, TypeError):
+                                    # Skip this order if service_rating cannot be converted to int
+                                    continue
+                                    
+                            avg_service_rating = total_service_rating / total_rated_orders
                             
-                            # Implementasi formula khusus
-                            if avg_rating > 4.8:
+                            # Implementasi formula khusus berdasarkan service_rating
+                            if avg_service_rating > 4.8:
                                 actual = 120
-                            elif avg_rating == 4.8:
+                            elif avg_service_rating == 4.8:
                                 actual = 100
-                            elif 4.6 <= avg_rating <= 4.7:
+                            elif 4.6 <= avg_service_rating <= 4.7:
                                 actual = 50
                             else:  # < 4.6
                                 actual = 0
                                 
                             kpi['measurement'] = (
-                                f"Rating rata-rata: {avg_rating:.1f} dari {total_rated_orders} order "
+                                f"Rating pelayanan rata-rata: {avg_service_rating:.1f} dari {total_rated_orders} order "
                                 f"pada periode {month}/{year}."
                             )
                         else:
                             actual = 0
-                            kpi['measurement'] = f"Belum ada rating customer pada periode {month}/{year}"
+                            kpi['measurement'] = f"Belum ada rating pelayanan pada periode {month}/{year}"
 
                     elif kpi['type'] == 'complaint_handling':
                         # Data komplain
@@ -1171,14 +1266,15 @@ class KPIOverview(http.Controller):
                         actual = (len(completed_follow_ups) / len(due_follow_ups) * 100) if due_follow_ups else 0
                         kpi['measurement'] = f"Follow up H+3: {len(completed_follow_ups)} dari {len(due_follow_ups)} order pada periode {month}/{year}"
 
-                    elif kpi['type'] == 'sop_compliance':
-                        # Ambil samplings untuk SA dari periode yang dipilih
+                    elif kpi['type'] == 'sop_compliance_lead':
+                        # Ambil samplings untuk SA dari periode yang dipilih dengan sampling_type = 'lead'
                         sa_samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date.strftime('%Y-%m-%d')),
                             ('sop_id.is_sa', '=', True),  # Hanya SOP untuk SA
                             ('sa_id', 'in', [service_advisor.id]),  # Hanya untuk SA yang bersangkutan
-                            ('state', '=', 'done')  # Hanya sampling yang sudah selesai
+                            ('state', '=', 'done'),  # Hanya sampling yang sudah selesai
+                            ('sampling_type', '=', 'lead')  # Filter untuk sampel dari Leader
                         ])
                         
                         # Hitung total sampling dan pelanggaran
@@ -1190,9 +1286,33 @@ class KPIOverview(http.Controller):
                         
                         # Format measurement message
                         if total_samplings > 0:
-                            kpi['measurement'] = f"Sampling sesuai SOP: {total_samplings - sop_violations} dari {total_samplings} sampling ({actual:.1f}%)"
+                            kpi['measurement'] = f"Sampling sesuai SOP (Leader): {total_samplings - sop_violations} dari {total_samplings} sampling ({actual:.1f}%)"
                         else:
-                            kpi['measurement'] = f"Belum ada sampling SOP pada periode {month}/{year}"
+                            kpi['measurement'] = f"Belum ada sampling SOP dari Leader pada periode {month}/{year}"
+
+                    elif kpi['type'] == 'sop_compliance_kaizen':
+                        # Ambil samplings untuk SA dari periode yang dipilih dengan sampling_type = 'kaizen'
+                        sa_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date.strftime('%Y-%m-%d')),
+                            ('sop_id.is_sa', '=', True),  # Hanya SOP untuk SA
+                            ('sa_id', 'in', [service_advisor.id]),  # Hanya untuk SA yang bersangkutan
+                            ('state', '=', 'done'),  # Hanya sampling yang sudah selesai
+                            ('sampling_type', '=', 'kaizen')  # Filter untuk sampel dari Kaizen
+                        ])
+                        
+                        # Hitung total sampling dan pelanggaran
+                        total_samplings = len(sa_samplings)
+                        sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
+                        
+                        # Hitung actual score
+                        actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 100
+                        
+                        # Format measurement message
+                        if total_samplings > 0:
+                            kpi['measurement'] = f"Sampling sesuai SOP (Kaizen): {total_samplings - sop_violations} dari {total_samplings} sampling ({actual:.1f}%)"
+                        else:
+                            kpi['measurement'] = f"Belum ada sampling SOP dari Kaizen pada periode {month}/{year}"
 
                     elif kpi['type'] == 'discipline':
                         # Data kedisiplinan
@@ -1205,8 +1325,6 @@ class KPIOverview(http.Controller):
                         actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
                         kpi['measurement'] = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
 
-                    # achievement = (actual / kpi['target'] * 100) if kpi['target'] else 0
-                    # weighted_score = achievement * (kpi['weight'] / 100) if kpi.get('include_in_calculation', True) else 0
                     # Perhitungan baru: weighted_score langsung dari actual × weight/100
                     weighted_score = actual * (kpi['weight'] / 100)
                     
@@ -1254,22 +1372,60 @@ class KPIOverview(http.Controller):
                             actual = 0
                             kpi['measurement'] = f"Belum ada pengecekan pada periode {month}/{year}"
 
-                    elif kpi['type'] == 'valet_sop':
+                    elif kpi['type'] == 'valet_sop_lead':
                         samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
                             ('valet_id', 'in', [employee.id]),
-                            ('state', '=', 'done')
+                            ('state', '=', 'done'),
+                            ('sampling_type', '=', 'lead')  # Filter untuk sampel dari Leader
                         ])
                         
                         total_samplings = len(samplings)
                         if total_samplings > 0:
                             passed_samplings = len(samplings.filtered(lambda s: s.result == 'pass'))
                             actual = (passed_samplings / total_samplings * 100)
-                            kpi['measurement'] = f"Sampel sesuai SOP: {passed_samplings} dari {total_samplings} sampling"
+                            kpi['measurement'] = f"Sampel sesuai SOP (Leader): {passed_samplings} dari {total_samplings} sampling"
                         else:
                             actual = 0
-                            kpi['measurement'] = f"Belum ada sampling SOP pada periode {month}/{year}"
+                            kpi['measurement'] = f"Belum ada sampling SOP (Leader) pada periode {month}/{year}"
+
+                    elif kpi['type'] == 'valet_sop_kaizen':
+                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('valet_id', 'in', [employee.id]),
+                            ('state', '=', 'done'),
+                            ('sampling_type', '=', 'kaizen')  # Filter untuk sampel dari Kaizen
+                        ])
+                        
+                        total_samplings = len(samplings)
+                        if total_samplings > 0:
+                            passed_samplings = len(samplings.filtered(lambda s: s.result == 'pass'))
+                            actual = (passed_samplings / total_samplings * 100)
+                            kpi['measurement'] = f"Sampel sesuai SOP (Kaizen): {passed_samplings} dari {total_samplings} sampling"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = f"Belum ada sampling SOP (Kaizen) pada periode {month}/{year}"
+                        
+                        total_samplings = len(samplings)
+                        if total_samplings > 0:
+                            passed_samplings = len(samplings.filtered(lambda s: s.result == 'pass'))
+                            actual = (passed_samplings / total_samplings * 100)
+                            
+                            # Sesuaikan pesan measurement berdasarkan jenis sampling
+                            if kpi['no'] == 1:
+                                kpi['measurement'] = f"Sampel sesuai SOP (Leader): {passed_samplings} dari {total_samplings} sampling"
+                            elif kpi['no'] == 2:
+                                kpi['measurement'] = f"Sampel sesuai SOP (Kaizen): {passed_samplings} dari {total_samplings} sampling"
+                        else:
+                            actual = 0
+                            
+                            # Sesuaikan pesan measurement berdasarkan jenis sampling
+                            if kpi['no'] == 1:
+                                kpi['measurement'] = f"Belum ada sampling SOP (Leader) pada periode {month}/{year}"
+                            elif kpi['no'] == 2:
+                                kpi['measurement'] = f"Belum ada sampling SOP (Kaizen) pada periode {month}/{year}"
                             
                     elif kpi['type'] == 'customer_satisfaction':
                         period_orders = request.env['sale.order'].sudo().search([
@@ -1374,17 +1530,31 @@ class KPIOverview(http.Controller):
                         actual = (within_tolerance / total_audits * 100) if total_audits else 0
                         kpi['measurement'] = f'Audit dalam toleransi: {within_tolerance} dari {total_audits}'
 
-                    elif kpi['type'] == 'sop_compliance':
+                    elif kpi['type'] == 'sop_compliance_lead':
                         samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
-                            ('sop_id.role', '=', 'admin_part'),
-                            ('state', '=', 'done')
+                            ('part_support_id', 'in', [employee.id]),  # Asumsi ini field yang benar untuk Admin Part
+                            ('state', '=', 'done'),
+                            ('sampling_type', '=', 'lead')  # Filter untuk sampel dari Leader
                         ])
                         total_samples = len(samplings)
                         passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
                         actual = (passed_samples / total_samples * 100) if total_samples else 100
-                        kpi['measurement'] = f'Sesuai SOP: {passed_samples} dari {total_samples} sampel'
+                        kpi['measurement'] = f'Sesuai SOP (Leader): {passed_samples} dari {total_samples} sampel'
+
+                    elif kpi['type'] == 'sop_compliance_kaizen':
+                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('part_support_id', 'in', [employee.id]),  # Asumsi ini field yang benar untuk Admin Part
+                            ('state', '=', 'done'),
+                            ('sampling_type', '=', 'kaizen')  # Filter untuk sampel dari Kaizen
+                        ])
+                        total_samples = len(samplings)
+                        passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
+                        actual = (passed_samples / total_samples * 100) if total_samples else 100
+                        kpi['measurement'] = f'Sesuai SOP (Kaizen): {passed_samples} dari {total_samples} sampel'
 
                     # Perhitungan baru: weighted_score langsung dari actual × weight/100
                     weighted_score = actual * (kpi['weight'] / 100)
@@ -1408,9 +1578,34 @@ class KPIOverview(http.Controller):
             # Handler untuk Toolkeeper
             elif 'Partman' in job_title:
                 kpi_scores = []
-                for kpi in toolkeeper_template:
+                for kpi in partman_template:  # Ganti toolkeeper_template menjadi partman_template
                     actual = 0
-                    if kpi['type'] == 'part_purchase':
+                    if kpi['type'] == 'part_fulfillment':
+                        # Implementasi untuk part_fulfillment (bisa mengadopsi dari Admin Part)
+                        part_items = request.env['sale.order.part.item'].sudo().search([
+                            ('create_date', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('create_date', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                        ])
+                        total_items = len(part_items)
+                        fulfilled_items = len(part_items.filtered(lambda x: x.is_fulfilled))
+                        actual = (fulfilled_items / total_items * 100) if total_items else 0
+                        kpi['measurement'] = f'Total request: {total_items}, Terpenuhi: {fulfilled_items}'
+                        
+                    elif kpi['type'] == 'part_response':
+                        # Implementasi untuk part_response (bisa mengadopsi dari Admin Part)
+                        part_items = request.env['sale.order.part.item'].sudo().search([
+                            ('create_date', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('create_date', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('response_time', '!=', False)
+                        ])
+                        total_responses = len(part_items)
+                        on_time_responses = len(part_items.filtered(
+                            lambda x: (x.response_time - x.create_date).total_seconds() / 60 <= 15
+                        ))
+                        actual = (on_time_responses / total_responses * 100) if total_responses else 0
+                        kpi['measurement'] = f'Total response: {total_responses}, Tepat waktu: {on_time_responses}'
+                        
+                    elif kpi['type'] == 'part_purchase':
                         purchases = request.env['part.purchase.leadtime'].sudo().search([
                             ('partman_id', '=', employee.id),
                             ('purchase_type', '=', 'part'),
@@ -1423,24 +1618,10 @@ class KPIOverview(http.Controller):
                         actual = (success_purchases / total_purchases * 100) if total_purchases else 0
                         kpi['measurement'] = f"Belanja part sesuai: {success_purchases} dari {total_purchases} kali belanja"
 
-                    elif kpi['type'] == 'tool_purchase':
-                        tool_purchases = request.env['part.purchase.leadtime'].sudo().search([
-                            ('partman_id', '=', employee.id),
-                            ('purchase_type', '=', 'tool'),
-                            ('state', '=', 'returned'),
-                            ('return_time', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
-                            ('return_time', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S'))
-                        ])
-                        total_tools = len(tool_purchases)
-                        success_tools = len(tool_purchases.filtered(lambda p: p.actual_completeness >= 90))
-                        actual = (success_tools / total_tools * 100) if total_tools else 0
-                        kpi['measurement'] = f"Belanja tools sesuai: {success_tools} dari {total_tools} kali belanja"
-
-                    elif kpi['type'] in ['part_audit', 'tools_audit']:
-                        audit_type = 'part' if kpi['type'] == 'part_audit' else 'tool'
+                    elif kpi['type'] == 'part_audit':
                         audit_entries = request.env['account.move'].sudo().search([
                             ('is_stock_audit', '=', True),
-                            ('audit_type', '=', audit_type),
+                            ('audit_type', '=', 'part'),
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
                             ('state', '=', 'posted')
@@ -1452,17 +1633,160 @@ class KPIOverview(http.Controller):
                         actual = (within_tolerance / total_audits * 100) if total_audits else 0
                         kpi['measurement'] = f'Audit dalam toleransi: {within_tolerance} dari {total_audits}'
 
-                    elif kpi['type'] == 'sop_compliance':
+                    elif kpi['type'] == 'sop_compliance_lead':
                         samplings = request.env['pitcar.sop.sampling'].sudo().search([
                             ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
                             ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
-                            ('sop_id.role', '=', 'toolkeeper'),
-                            ('state', '=', 'done')
+                            ('part_support_id', 'in', [employee.id]),  # Perlu verifikasi field yang benar
+                            ('state', '=', 'done'),
+                            ('sampling_type', '=', 'lead')  # Filter untuk sampel dari Leader
                         ])
                         total_samples = len(samplings)
                         passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
                         actual = (passed_samples / total_samples * 100) if total_samples else 100
-                        kpi['measurement'] = f'Sesuai SOP: {passed_samples} dari {total_samples} sampel'
+                        kpi['measurement'] = f'Sesuai SOP (Leader): {passed_samples} dari {total_samples} sampel'
+
+                    elif kpi['type'] == 'sop_compliance_kaizen':
+                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('part_support_id', 'in', [employee.id]),  # Perlu verifikasi field yang benar
+                            ('state', '=', 'done'),
+                            ('sampling_type', '=', 'kaizen')  # Filter untuk sampel dari Kaizen
+                        ])
+                        total_samples = len(samplings)
+                        passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
+                        actual = (passed_samples / total_samples * 100) if total_samples else 100
+                        kpi['measurement'] = f'Sesuai SOP (Kaizen): {passed_samples} dari {total_samples} sampel'
+
+                    # Perhitungan baru: weighted_score langsung dari actual × weight/100
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement sama dengan weighted_score untuk kompatibilitas frontend
+                    achievement = weighted_score
+
+                    kpi_scores.append({
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': kpi['measurement'],
+                        'actual': actual,
+                        'achievement': achievement,  # Sama dengan weighted_score
+                        'weighted_score': weighted_score,
+                        'editable': ['weight', 'target']
+                    })
+            
+            # Handler untuk Toolkeeper
+            elif 'Toolkeeper' in job_title:
+                kpi_scores = []
+                for kpi in toolkeeper_template:
+                    actual = 0
+                    if kpi['type'] == 'part_purchase':
+                        purchases = request.env['part.purchase.leadtime'].sudo().search([
+                            ('partman_id', '=', employee.id),  # Asumsi menggunakan field partman_id
+                            ('purchase_type', '=', 'part'),
+                            ('state', '=', 'returned'),
+                            ('return_time', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('return_time', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                        ])
+                        total_purchases = len(purchases)
+                        success_purchases = len(purchases.filtered(lambda p: p.actual_completeness >= 90))
+                        actual = (success_purchases / total_purchases * 100) if total_purchases else 0
+                        kpi['measurement'] = f"Belanja part sesuai: {success_purchases} dari {total_purchases} kali belanja"
+
+                    elif kpi['type'] == 'tool_purchase':
+                        # Menggunakan model pitcar.tools untuk memeriksa pengadaan tools
+                        tools = request.env['pitcar.tools'].sudo().search([
+                            ('requester_id', '=', employee.id),
+                            ('state', 'in', ['purchased', 'in_use', 'broken', 'deprecated']),
+                            ('purchase_date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('purchase_date', '<=', end_date_utc.strftime('%Y-%m-%d'))
+                        ])
+                        
+                        # Hitung tools yang dibeli sesuai jadwal (dari requested ke purchased)
+                        total_tools = len(tools)
+                        on_schedule_tools = 0
+                        
+                        for tool in tools:
+                            logs = request.env['pitcar.tools.status.log'].sudo().search([
+                                ('tool_id', '=', tool.id),
+                                ('new_state', '=', 'purchased')
+                            ], limit=1, order='change_date desc')
+                            
+                            if logs:
+                                request_logs = request.env['pitcar.tools.status.log'].sudo().search([
+                                    ('tool_id', '=', tool.id),
+                                    ('new_state', '=', 'requested')
+                                ], limit=1, order='change_date desc')
+                                
+                                if request_logs:
+                                    # Anggap jadwal standar adalah 7 hari dari requested ke purchased
+                                    request_date = request_logs.change_date
+                                    purchase_date = logs.change_date
+                                    days_taken = (purchase_date - request_date).days
+                                    
+                                    if days_taken <= 7:  # Asumsi target waktu 7 hari
+                                        on_schedule_tools += 1
+                        
+                        actual = (on_schedule_tools / total_tools * 100) if total_tools else 0
+                        kpi['measurement'] = f"Pengadaan tools tepat waktu: {on_schedule_tools} dari {total_tools} tools"
+
+                    elif kpi['type'] == 'part_audit':
+                        # Untuk poin 3: Tools digunakan sesuai kapabilitasnya
+                        tools = request.env['pitcar.tools'].sudo().search([
+                            ('state', 'in', ['broken', 'deprecated']),
+                            ('broken_date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('broken_date', '<=', end_date_utc.strftime('%Y-%m-%d'))
+                        ])
+                        
+                        total_tools = len(tools)
+                        tools_in_lifetime = len(tools.filtered(lambda t: not t.is_premature_broken))
+                        
+                        actual = (tools_in_lifetime / total_tools * 100) if total_tools else 100
+                        kpi['measurement'] = f"Tools sesuai umur: {tools_in_lifetime} dari {total_tools} tools"
+
+                    elif kpi['type'] == 'tools_audit':
+                        audit_entries = request.env['account.move'].sudo().search([
+                            ('is_stock_audit', '=', True),
+                            ('audit_type', '=', 'tool'),
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('state', '=', 'posted')
+                        ])
+                        total_audits = len(audit_entries)
+                        within_tolerance = len(audit_entries.filtered(
+                            lambda x: abs(x.audit_difference) < 200000
+                        ))
+                        actual = (within_tolerance / total_audits * 100) if total_audits else 0
+                        kpi['measurement'] = f'Audit dalam toleransi: {within_tolerance} dari {total_audits}'
+
+                    elif kpi['type'] == 'sop_compliance_lead':
+                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('part_support_id', 'in', [employee.id]),  # Sesuaikan dengan field yang benar
+                            ('state', '=', 'done'),
+                            ('sampling_type', '=', 'lead')  # Filter untuk sampel dari Leader
+                        ])
+                        total_samples = len(samplings)
+                        passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
+                        actual = (passed_samples / total_samples * 100) if total_samples else 100
+                        kpi['measurement'] = f'Sesuai SOP (Leader): {passed_samples} dari {total_samples} sampel'
+
+                    elif kpi['type'] == 'sop_compliance_kaizen':
+                        samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('part_support_id', 'in', [employee.id]),  # Sesuaikan dengan field yang benar
+                            ('state', '=', 'done'),
+                            ('sampling_type', '=', 'kaizen')  # Filter untuk sampel dari Kaizen
+                        ])
+                        total_samples = len(samplings)
+                        passed_samples = len(samplings.filtered(lambda s: s.result == 'pass'))
+                        actual = (passed_samples / total_samples * 100) if total_samples else 100
+                        kpi['measurement'] = f'Sesuai SOP (Kaizen): {passed_samples} dari {total_samples} sampel'
 
                     # Perhitungan baru: weighted_score langsung dari actual × weight/100
                     weighted_score = actual * (kpi['weight'] / 100)

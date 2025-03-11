@@ -199,29 +199,31 @@ class ContentRevision(models.Model):
 class ContentBAU(models.Model):
     _name = 'content.bau'
     _description = 'BAU Activity'
+    _inherit = ['mail.thread']
     
     name = fields.Char('Activity Name', required=True, tracking=True)
     project_id = fields.Many2one('content.project', 'Related Project', tracking=True)
-     # Ubah ke hr.employee
     creator_id = fields.Many2one('hr.employee', 'Creator', required=True, tracking=True)
-    
     date = fields.Date('Date', required=True)
-    hours_spent = fields.Float('Hours Spent')
-    
+    hours_spent = fields.Float('Hours Spent', default=0.0, help="Optional: Record hours spent if applicable")
     activity_type = fields.Selection([
         ('video', 'Video Related'),
         ('design', 'Design Related'),
         ('other', 'Other BAU')
     ], string='Activity Type', required=True, tracking=True)
-    
     description = fields.Text('Description')
     impact_on_delivery = fields.Text('Impact on Deliverables')
-
-    # Tambahkan ke class ContentBAU
-    target_hours = fields.Float('Target Hours', default=2.0)  # Target jam per hari
-    is_target_achieved = fields.Boolean('Target Achieved', compute='_compute_target_achieved')
-
-    @api.depends('hours_spent', 'target_hours')
-    def _compute_target_achieved(self):
+    state = fields.Selection([
+        ('planned', 'Planned'),
+        ('done', 'Done'),
+        ('not_done', 'Not Done')
+    ], string='Status', default='planned', required=True, tracking=True)
+    verified_by = fields.Many2one('hr.employee', 'Verified By', readonly=True)
+    verification_date = fields.Datetime('Verification Date', readonly=True)
+    verification_reason = fields.Text('Verification Reason', help="Required if verified on H+1")
+    
+    @api.constrains('hours_spent')
+    def _check_hours_spent(self):
         for record in self:
-            record.is_target_achieved = record.hours_spent >= record.target_hours
+            if record.hours_spent < 0:
+                raise ValidationError('Hours spent cannot be negative')

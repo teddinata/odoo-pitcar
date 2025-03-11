@@ -108,3 +108,29 @@ pitcar_custom.access_mechanic_hand_tool_user,mechanic.hand.tool user,model_pitca
 pitcar_custom.access_tool_category_user,tool.category user,model_pitcar_tool_category,base.group_user,1,1,1,1
 pitcar_custom.access_mechanic_tool_check_user,mechanic.tool.check user,model_pitcar_mechanic_tool_check,base.group_user,1,1,1,1
 pitcar_custom.access_mechanic_tool_check_line_user,mechanic.tool.check.line user,model_pitcar_mechanic_tool_check_line,base.group_user,1,1,1,1
+pitcar_custom.access_team_project_user,access.team.project.user,pitcar_custom.model_team_project,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_manager,access.team.project.manager,pitcar_custom.model_team_project,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_tag_user,access.team.project.tag.user,pitcar_custom.model_team_project_tag,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_tag_manager,access.team.project.tag.manager,pitcar_custom.model_team_project_tag,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_task_user,access.team.project.task.user,pitcar_custom.model_team_project_task,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_task_manager,access.team.project.task.manager,pitcar_custom.model_team_project_task,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_task_tag_user,access.team.project.task.tag.user,pitcar_custom.model_team_project_task_tag,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_task_tag_manager,access.team.project.task.tag.manager,pitcar_custom.model_team_project_task_tag,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_task_type_user,access.team.project.task.type.user,pitcar_custom.model_team_project_task_type,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_task_type_manager,access.team.project.task.type.manager,pitcar_custom.model_team_project_task_type,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_task_checklist_user,access.team.project.task.checklist.user,pitcar_custom.model_team_project_task_checklist,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_task_checklist_manager,access.team.project.task.checklist.manager,pitcar_custom.model_team_project_task_checklist,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_task_comment_user,access.team.project.task.comment.user,pitcar_custom.model_team_project_task_comment,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_task_comment_manager,access.team.project.task.comment.manager,pitcar_custom.model_team_project_task_comment,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_group_user,access.team.project.group.user,pitcar_custom.model_team_project_group,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_group_manager,access.team.project.group.manager,pitcar_custom.model_team_project_group,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_message_user,access.team.project.message.user,pitcar_custom.model_team_project_message,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_message_manager,access.team.project.message.manager,pitcar_custom.model_team_project_message,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_bau_user,access.team.project.bau.user,pitcar_custom.model_team_project_bau,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_bau_manager,access.team.project.bau.manager,pitcar_custom.model_team_project_bau,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_timesheet_user,access.team.project.timesheet.user,pitcar_custom.model_team_project_timesheet,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_timesheet_manager,access.team.project.timesheet.manager,pitcar_custom.model_team_project_timesheet,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_meeting_user,access.team.project.meeting.user,pitcar_custom.model_team_project_meeting,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_meeting_manager,access.team.project.meeting.manager,pitcar_custom.model_team_project_meeting,base.group_system,1,1,1,1
+pitcar_custom.access_team_project_meeting_action_user,access.team.project.meeting.action.user,pitcar_custom.model_team_project_meeting_action,base.group_user,1,1,1,0
+pitcar_custom.access_team_project_meeting_action_manager,access.team.project.meeting.action.manager,pitcar_custom.model_team_project_meeting_action,base.group_system,1,1,1,1

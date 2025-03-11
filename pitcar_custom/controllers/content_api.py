@@ -518,7 +518,8 @@ class ContentManagementAPI(http.Controller):
                     'hours_spent': float(kw['hours_spent']),
                     'project_id': int(kw['project_id']) if kw.get('project_id') else False,
                     'description': kw.get('description', ''),
-                    'impact_on_delivery': kw.get('impact_on_delivery', '')
+                    'impact_on_delivery': kw.get('impact_on_delivery', ''),
+                    'target_hours': float(kw.get('target_hours', 2.0)),
                 }
 
                 bau = request.env['content.bau'].sudo().create(values)
@@ -541,6 +542,70 @@ class ContentManagementAPI(http.Controller):
                     'status': 'success',
                     'data': [self._prepare_bau_data(bau) for bau in bau_activities]
                 }
+            
+            elif operation == 'update':
+                if not kw.get('bau_id'):
+                    return {'status': 'error', 'message': 'Missing BAU ID'}
+                    
+                try:
+                    bau = request.env['content.bau'].sudo().browse(int(kw['bau_id']))
+                    if not bau.exists():
+                        return {'status': 'error', 'message': 'BAU activity not found'}
+                        
+                    update_values = {}
+                    if kw.get('name'):
+                        update_values['name'] = kw['name']
+                    if kw.get('activity_type'):
+                        update_values['activity_type'] = kw['activity_type']
+                    if kw.get('hours_spent'):
+                        update_values['hours_spent'] = float(kw['hours_spent'])
+                    if kw.get('date'):
+                        update_values['date'] = kw['date']
+                    if kw.get('description') is not None:
+                        update_values['description'] = kw['description']
+                    if kw.get('impact_on_delivery') is not None:
+                        update_values['impact_on_delivery'] = kw['impact_on_delivery']
+                    if kw.get('target_hours'):
+                        update_values['target_hours'] = float(kw['target_hours'])
+                        
+                    # Update BAU record
+                    bau.write(update_values)
+                    return {
+                        'status': 'success',
+                        'data': self._prepare_bau_data(bau),
+                        'message': 'BAU activity updated successfully'
+                    }
+                    
+                except Exception as e:
+                    return {
+                        'status': 'error',
+                        'message': f'Error updating BAU activity: {str(e)}'
+                    }
+                
+            elif operation == 'delete':
+                if not kw.get('bau_id'):
+                    return {'status': 'error', 'message': 'Missing BAU ID'}
+                    
+                try:
+                    bau = request.env['content.bau'].sudo().browse(int(kw['bau_id']))
+                    if not bau.exists():
+                        return {'status': 'error', 'message': 'BAU activity not found'}
+                        
+                    # Simpan nama untuk pesan konfirmasi
+                    bau_name = bau.name
+                    
+                    # Hapus BAU record
+                    bau.unlink()
+                    return {
+                        'status': 'success',
+                        'message': f'BAU activity "{bau_name}" deleted successfully'
+                    }
+                    
+                except Exception as e:
+                    return {
+                        'status': 'error',
+                        'message': f'Error deleting BAU activity: {str(e)}'
+                    }
           
         except Exception as e:
           _logger.error('Error: %s', e)
@@ -668,7 +733,10 @@ class ContentManagementAPI(http.Controller):
                 'name': bau.project_id.name
             } if bau.project_id else None,
             'description': bau.description,
-            'impact_on_delivery': bau.impact_on_delivery
+            'impact_on_delivery': bau.impact_on_delivery,
+            # Tambahkan field baru
+            'target_hours': bau.target_hours,
+            'is_target_achieved': bau.is_target_achieved,
         }
 
     @http.route('/web/v2/content/tasks/logs', type='json', auth='user', methods=['POST'], csrf=False)
@@ -749,3 +817,115 @@ class ContentManagementAPI(http.Controller):
                 'new_value': tracking.new_value_char
             } for tracking in log.tracking_value_ids] if log.tracking_value_ids else []
         }
+
+    @http.route('/web/v2/content/bau/report', type='json', auth='user', methods=['POST'], csrf=False)
+    def bau_report(self, **kw):
+        try:
+            # Validasi input
+            if not kw.get('date_from') or not kw.get('date_to'):
+                return {'status': 'error', 'message': 'Date range is required'}
+                
+            domain = [
+                ('date', '>=', kw['date_from']),
+                ('date', '<=', kw['date_to'])
+            ]
+            
+            if kw.get('creator_id'):
+                domain.append(('creator_id', '=', int(kw['creator_id'])))
+                
+            # Ambil data BAU
+            bau_activities = request.env['content.bau'].sudo().search(domain)
+            
+            # Kelompokkan berdasarkan creator dan tanggal
+            grouped_data = {}
+            for bau in bau_activities:
+                key = (bau.creator_id.id, bau.date)
+                if key not in grouped_data:
+                    grouped_data[key] = {
+                        'creator_id': bau.creator_id.id,
+                        'creator_name': bau.creator_id.name,
+                        'date': bau.date,
+                        'total_hours': 0,
+                        'target_achieved': False,
+                        'activities': []
+                    }
+                
+                grouped_data[key]['total_hours'] += bau.hours_spent
+                grouped_data[key]['activities'].append(self._prepare_bau_data(bau))
+                
+                # Update target achieved flag
+                target_hours = bau.target_hours if hasattr(bau, 'target_hours') else 2.0  # Default 2 jam
+                grouped_data[key]['target_achieved'] = grouped_data[key]['total_hours'] >= target_hours
+            
+            # Hitung statistik
+            report_data = {
+                'daily_data': list(grouped_data.values()),
+                'summary': {
+                    'total_bau_days': len(grouped_data),
+                    'total_target_achieved': sum(1 for d in grouped_data.values() if d['target_achieved']),
+                    'achievement_rate': round(sum(1 for d in grouped_data.values() if d['target_achieved']) / max(len(grouped_data), 1) * 100, 2)
+                }
+            }
+            
+            return {
+                'status': 'success',
+                'data': report_data
+            }
+            
+        except Exception as e:
+            _logger.error('Error in bau_report: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error generating BAU report: {str(e)}'
+            }
+        
+    @http.route('/web/v2/content/bau/batch', type='json', auth='user', methods=['POST'], csrf=False)
+    def batch_bau(self, **kw):
+        """Handle batch BAU activities creation"""
+        try:
+            if not kw.get('activities') or not isinstance(kw['activities'], list):
+                return {'status': 'error', 'message': 'Activities list is required'}
+                
+            created_baus = []
+            errors = []
+            
+            for activity in kw['activities']:
+                # Validate required fields
+                required_fields = ['name', 'creator_id', 'date', 'activity_type', 'hours_spent']
+                if not all(activity.get(field) for field in required_fields):
+                    errors.append(f"Missing required fields for activity: {activity.get('name', 'Unnamed')}")
+                    continue
+                    
+                try:
+                    values = {
+                        'name': activity['name'],
+                        'creator_id': int(activity['creator_id']),
+                        'date': activity['date'],
+                        'activity_type': activity['activity_type'],
+                        'hours_spent': float(activity['hours_spent']),
+                        'project_id': int(activity['project_id']) if activity.get('project_id') else False,
+                        'description': activity.get('description', ''),
+                        'impact_on_delivery': activity.get('impact_on_delivery', ''),
+                        'target_hours': float(activity.get('target_hours', 2.0)),
+                    }
+                    
+                    bau = request.env['content.bau'].sudo().create(values)
+                    created_baus.append(self._prepare_bau_data(bau))
+                    
+                except Exception as e:
+                    errors.append(f"Error creating activity {activity.get('name', 'Unnamed')}: {str(e)}")
+                    
+            return {
+                'status': 'partial_success' if errors else 'success',
+                'data': {
+                    'created': created_baus,
+                    'errors': errors
+                },
+                'message': f'Created {len(created_baus)} BAU activities with {len(errors)} errors'
+            }
+            
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': f'Error processing batch BAU: {str(e)}'
+            }

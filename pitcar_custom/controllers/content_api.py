@@ -118,41 +118,70 @@ class ContentManagementAPI(http.Controller):
             }
 
     def _delete_project(self, data):
-        """Helper method to delete project"""
+        """Helper method to delete project with optional force delete"""
         try:
             if not data.get('project_id'):
-                return {'status': 'error', 'message': 'Project ID is required'}
+                return {
+                    'jsonrpc': '2.0',
+                    'result': {'status': 'error', 'message': 'Project ID is required'},
+                    'id': data.get('id')
+                }
 
             project = request.env['content.project'].sudo().browse(int(data['project_id']))
             if not project.exists():
-                return {'status': 'error', 'message': 'Project not found'}
-
-            # Check if project has tasks
-            if project.task_ids:
                 return {
-                    'status': 'error',
-                    'message': 'Cannot delete project with existing tasks. Please delete or move tasks first.'
+                    'jsonrpc': '2.0',
+                    'result': {'status': 'error', 'message': 'Project not found'},
+                    'id': data.get('id')
                 }
 
-            # Create activity log before deletion
+            # Cek apakah force delete diaktifkan
+            force_delete = data.get('force', False)
+
+            if project.task_ids and not force_delete:
+                return {
+                    'jsonrpc': '2.0',
+                    'result': {
+                        'status': 'error',
+                        'message': 'Cannot delete project with existing tasks. Please delete or move tasks first.'
+                    },
+                    'id': data.get('id')
+                }
+
+            # Jika force delete diaktifkan, hapus semua task dan revision terkait
+            if force_delete and project.task_ids:
+                for task in project.task_ids:
+                    # Hapus semua revision terkait task
+                    if task.revision_ids:
+                        task.revision_ids.unlink()
+                    # Hapus task itu sendiri
+                    task.unlink()
+
+            # Catat log sebelum penghapusan project
             project.message_post(
-                body=f"Project '{project.name}' was deleted by {request.env.user.name}",
+                body=f"Project '{project.name}' was deleted by {request.env.user.name}" + 
+                    (" (force delete)" if force_delete else ""),
                 message_type='notification'
             )
 
-            # Delete the project
+            # Hapus project
             project.unlink()
 
             return {
-                'status': 'success',
-                'message': 'Project deleted successfully'
+                'jsonrpc': '2.0',
+                'result': {
+                    'status': 'success',
+                    'message': 'Project deleted successfully' + (' (force delete)' if force_delete else '')
+                },
+                'id': data.get('id')
             }
 
         except Exception as e:
             _logger.error('Error deleting project: %s', str(e))
             return {
-                'status': 'error',
-                'message': f'Error deleting project: {str(e)}'
+                'jsonrpc': '2.0',
+                'result': {'status': 'error', 'message': f'Error deleting project: {str(e)}'},
+                'id': data.get('id')
             }
         
     @http.route('/web/v2/content/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
@@ -1062,18 +1091,18 @@ class ContentManagementAPI(http.Controller):
             if delta_days < 0:
                 return {
                     'status': 'error',
-                    'message': f'Cannot verify future activity (date: {activity_date})'
+                    'message': f'Maaf, Anda tidak dapat memverifikasi aktivitas yang terjadi di masa depan (tanggal aktivitas: {activity_date}).'
                 }
             elif delta_days > 1:
                 return {
                     'status': 'error',
-                    'message': f'Verification must be done on the same day or H+1 (activity date: {activity_date})'
+                    'message': f'Verifikasi harus dilakukan pada hari yang sama atau H+1 (tanggal aktivitas: {activity_date})'
                 }
             elif delta_days == 1:  # H+1
                 if not kw.get('verification_reason'):
                     return {
                         'status': 'error',
-                        'message': 'Verification reason is required for H+1 verification'
+                        'message': 'Alasan verifikasi diperlukan untuk verifikasi H+1'
                     }
             
             # Validasi state

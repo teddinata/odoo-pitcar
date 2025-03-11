@@ -929,7 +929,7 @@ class ContentManagementAPI(http.Controller):
             current_date = date_from
             while current_date <= date_to:
                 # 0-4 adalah Senin-Jumat, 5-6 adalah Sabtu-Minggu
-                if current_date.weekday() < 5:  # Hanya hari kerja
+                if current_date.weekday() < 6:  # Hanya hari kerja
                     try:
                         values = {
                             'name': activity['name'],

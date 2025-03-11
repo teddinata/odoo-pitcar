@@ -723,7 +723,7 @@ class ContentManagementAPI(http.Controller):
             'creator': {
                 'id': bau.creator_id.id,
                 'name': bau.creator_id.name,
-                'position': bau.creator_id.job_id.name,
+                'position': bau.creator_id.job_id.name if bau.creator_id.job_id else '',
             },
             'date': bau.date,
             'activity_type': bau.activity_type,
@@ -734,7 +734,6 @@ class ContentManagementAPI(http.Controller):
             } if bau.project_id else None,
             'description': bau.description,
             'impact_on_delivery': bau.impact_on_delivery,
-            # Tambahkan field baru
             'target_hours': bau.target_hours,
             'is_target_achieved': bau.is_target_achieved,
         }
@@ -820,6 +819,7 @@ class ContentManagementAPI(http.Controller):
 
     @http.route('/web/v2/content/bau/report', type='json', auth='user', methods=['POST'], csrf=False)
     def bau_report(self, **kw):
+        """Generate BAU report for dashboard and team view"""
         try:
             # Validasi input
             if not kw.get('date_from') or not kw.get('date_to'):
@@ -830,40 +830,131 @@ class ContentManagementAPI(http.Controller):
                 ('date', '<=', kw['date_to'])
             ]
             
+            # Optional filter by creator
             if kw.get('creator_id'):
                 domain.append(('creator_id', '=', int(kw['creator_id'])))
                 
-            # Ambil data BAU
+            # Get BAU activities
             bau_activities = request.env['content.bau'].sudo().search(domain)
             
-            # Kelompokkan berdasarkan creator dan tanggal
-            grouped_data = {}
+            # Group activities by creator and date
+            creators_data = {}
+            daily_data = {}
+            
             for bau in bau_activities:
-                key = (bau.creator_id.id, bau.date)
-                if key not in grouped_data:
-                    grouped_data[key] = {
-                        'creator_id': bau.creator_id.id,
+                # Group by creator
+                creator_id = bau.creator_id.id
+                if creator_id not in creators_data:
+                    creators_data[creator_id] = {
+                        'creator_id': creator_id,
                         'creator_name': bau.creator_id.name,
-                        'date': bau.date,
+                        'position': bau.creator_id.job_id.name if bau.creator_id.job_id else '',
                         'total_hours': 0,
-                        'target_achieved': False,
+                        'bau_days': set(),
+                        'activities_by_type': {},
+                        'target_achievement': 0,
                         'activities': []
                     }
                 
-                grouped_data[key]['total_hours'] += bau.hours_spent
-                grouped_data[key]['activities'].append(self._prepare_bau_data(bau))
+                # Update creator data
+                creators_data[creator_id]['total_hours'] += bau.hours_spent
+                creators_data[creator_id]['bau_days'].add(bau.date)
                 
-                # Update target achieved flag
-                target_hours = bau.target_hours if hasattr(bau, 'target_hours') else 2.0  # Default 2 jam
-                grouped_data[key]['target_achieved'] = grouped_data[key]['total_hours'] >= target_hours
+                # Track activities by type
+                activity_type = bau.activity_type
+                if activity_type not in creators_data[creator_id]['activities_by_type']:
+                    creators_data[creator_id]['activities_by_type'][activity_type] = {
+                        'count': 0,
+                        'hours': 0
+                    }
+                creators_data[creator_id]['activities_by_type'][activity_type]['count'] += 1
+                creators_data[creator_id]['activities_by_type'][activity_type]['hours'] += bau.hours_spent
+                
+                # Track recent activities
+                creators_data[creator_id]['activities'].append(self._prepare_bau_data(bau))
+                
+                # Group by date
+                date_key = str(bau.date)
+                if date_key not in daily_data:
+                    daily_data[date_key] = {
+                        'date': date_key,
+                        'total_hours': 0,
+                        'activities_count': 0,
+                        'creators': set(),
+                        'target_achieved': False
+                    }
+                
+                # Update daily data
+                daily_data[date_key]['total_hours'] += bau.hours_spent
+                daily_data[date_key]['activities_count'] += 1
+                daily_data[date_key]['creators'].add(creator_id)
+                
+                # Check if target achieved (default target: 2 hours)
+                target_hours = bau.target_hours if hasattr(bau, 'target_hours') else 2.0
+                if bau.hours_spent >= target_hours:
+                    daily_data[date_key]['target_achieved'] = True
             
-            # Hitung statistik
+            # Calculate target achievement for each creator
+            for creator_id, data in creators_data.items():
+                # Calculate how many days the target was achieved
+                bau_days_count = len(data['bau_days'])
+                if bau_days_count > 0:
+                    # For simplicity, we're assuming target is achieved if hours >= 2.0 per day
+                    # In a real implementation, you'd need to check against the actual target
+                    achieved_days = sum(1 for date_key, day_data in daily_data.items() 
+                                    if creator_id in day_data['creators'] and day_data['target_achieved'])
+                    data['target_achievement'] = round((achieved_days / bau_days_count) * 100, 2)
+                
+                # Convert set to length for serialization
+                data['bau_days'] = len(data['bau_days'])
+                
+                # Find most common activity type
+                if data['activities_by_type']:
+                    data['most_common_activity'] = max(
+                        data['activities_by_type'].items(),
+                        key=lambda x: x[1]['count']
+                    )[0]
+                else:
+                    data['most_common_activity'] = 'none'
+                
+                # Limit activities to most recent 5
+                data['activities'] = sorted(
+                    data['activities'], 
+                    key=lambda x: x['date'], 
+                    reverse=True
+                )[:5]
+            
+            # Process daily data for serialization
+            processed_daily_data = []
+            for date_key, data in daily_data.items():
+                data['creators'] = list(data['creators'])
+                processed_daily_data.append(data)
+            
+            # Calculate overall statistics
+            total_bau_days = len(daily_data)
+            total_target_achieved = sum(1 for data in daily_data.values() if data['target_achieved'])
+            achievement_rate = 0
+            if total_bau_days > 0:
+                achievement_rate = round((total_target_achieved / total_bau_days) * 100, 2)
+            
+            # Find top performer
+            top_performer = None
+            if creators_data:
+                top_performer = max(
+                    creators_data.values(),
+                    key=lambda x: (x['target_achievement'], x['total_hours'])
+                )
+            
+            # Prepare final report data
             report_data = {
-                'daily_data': list(grouped_data.values()),
+                'creators': list(creators_data.values()),
+                'daily_data': processed_daily_data,
                 'summary': {
-                    'total_bau_days': len(grouped_data),
-                    'total_target_achieved': sum(1 for d in grouped_data.values() if d['target_achieved']),
-                    'achievement_rate': round(sum(1 for d in grouped_data.values() if d['target_achieved']) / max(len(grouped_data), 1) * 100, 2)
+                    'total_bau_days': total_bau_days,
+                    'total_target_achieved': total_target_achieved,
+                    'achievement_rate': achievement_rate,
+                    'top_performer': top_performer['creator_name'] if top_performer else None,
+                    'total_hours': sum(data['total_hours'] for data in creators_data.values())
                 }
             }
             
@@ -928,4 +1019,80 @@ class ContentManagementAPI(http.Controller):
             return {
                 'status': 'error',
                 'message': f'Error processing batch BAU: {str(e)}'
+            }
+        
+    @http.route('/web/v2/content/bau/calendar', type='json', auth='user', methods=['POST'], csrf=False)
+    def bau_calendar(self, **kw):
+        """Get BAU activities for calendar view"""
+        try:
+            # Validasi input
+            if not kw.get('date_from') or not kw.get('date_to'):
+                return {'status': 'error', 'message': 'Date range is required'}
+                
+            domain = [
+                ('date', '>=', kw['date_from']),
+                ('date', '<=', kw['date_to'])
+            ]
+            
+            # Optional filter by creator
+            if kw.get('creator_id'):
+                domain.append(('creator_id', '=', int(kw['creator_id'])))
+                
+            # Get BAU activities
+            bau_activities = request.env['content.bau'].sudo().search(domain)
+            
+            # Group activities by date for calendar view
+            calendar_data = {}
+            for bau in bau_activities:
+                date_key = str(bau.date)
+                if date_key not in calendar_data:
+                    calendar_data[date_key] = {
+                        'date': date_key,
+                        'activities': [],
+                        'total_hours': 0,
+                        'target_achieved': False
+                    }
+                
+                # Add activity data
+                activity_data = self._prepare_bau_data(bau)
+                
+                # Add time information for week view (mock start/end times)
+                # In real implementation, you'd have actual start/end times
+                hours = int(bau.hours_spent)
+                minutes = int((bau.hours_spent - hours) * 60)
+                
+                # Mock start at 9 AM and calculate end time
+                start_hour = 9
+                end_hour = start_hour + hours
+                end_minutes = minutes
+                
+                # Adjust if hours overflow
+                if end_hour > 17:  # Cap at 5 PM
+                    end_hour = 17
+                    end_minutes = 0
+                
+                activity_data['time'] = {
+                    'start': f"{start_hour:02d}:{0:02d}",
+                    'end': f"{end_hour:02d}:{end_minutes:02d}",
+                    'duration': bau.hours_spent
+                }
+                
+                calendar_data[date_key]['activities'].append(activity_data)
+                calendar_data[date_key]['total_hours'] += bau.hours_spent
+                
+                # Update target achieved status
+                target_hours = bau.target_hours if hasattr(bau, 'target_hours') else 2.0
+                if bau.hours_spent >= target_hours:
+                    calendar_data[date_key]['target_achieved'] = True
+            
+            return {
+                'status': 'success',
+                'data': list(calendar_data.values())
+            }
+            
+        except Exception as e:
+            _logger.error('Error in bau_calendar: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error getting calendar data: {str(e)}'
             }

@@ -216,3 +216,12 @@ class ContentBAU(models.Model):
     
     description = fields.Text('Description')
     impact_on_delivery = fields.Text('Impact on Deliverables')
+
+    # Tambahkan ke class ContentBAU
+    target_hours = fields.Float('Target Hours', default=2.0)  # Target jam per hari
+    is_target_achieved = fields.Boolean('Target Achieved', compute='_compute_target_achieved')
+
+    @api.depends('hours_spent', 'target_hours')
+    def _compute_target_achieved(self):
+        for record in self:
+            record.is_target_achieved = record.hours_spent >= record.target_hours

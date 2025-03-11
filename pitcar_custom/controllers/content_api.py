@@ -819,27 +819,44 @@ class ContentManagementAPI(http.Controller):
 
     @http.route('/web/v2/content/bau/report', type='json', auth='user', methods=['POST'], csrf=False)
     def bau_report(self, **kw):
-        """Generate BAU report for dashboard and team view"""
+        """Generate BAU report for dashboard and team view with enhanced metrics"""
         try:
-            # Validasi input
+            # Validate input
             if not kw.get('date_from') or not kw.get('date_to'):
                 return {'status': 'error', 'message': 'Date range is required'}
                 
-            domain = [
+            # Create domain for BAU activities search
+            bau_domain = [
                 ('date', '>=', kw['date_from']),
                 ('date', '<=', kw['date_to'])
             ]
             
             # Optional filter by creator
             if kw.get('creator_id'):
-                domain.append(('creator_id', '=', int(kw['creator_id'])))
+                bau_domain.append(('creator_id', '=', int(kw['creator_id'])))
                 
             # Get BAU activities
-            bau_activities = request.env['content.bau'].sudo().search(domain)
+            bau_activities = request.env['content.bau'].sudo().search(bau_domain)
+            
+            # Get project time data for the same period
+            project_domain = [
+                ('date', '>=', kw['date_from']),
+                ('date', '<=', kw['date_to'])
+            ]
+            
+            # Try to get project time records if there's a model for it
+            project_hours = 0
+            try:
+                project_time_records = request.env['content.project.time'].sudo().search(project_domain)
+                project_hours = sum(record.hours for record in project_time_records)
+            except Exception as e:
+                _logger.info(f"Could not fetch project time data: {str(e)}")
+                # If we can't get actual project time, we'll estimate it later
             
             # Group activities by creator and date
             creators_data = {}
             daily_data = {}
+            activity_types = {}
             
             for bau in bau_activities:
                 # Group by creator
@@ -870,7 +887,12 @@ class ContentManagementAPI(http.Controller):
                 creators_data[creator_id]['activities_by_type'][activity_type]['count'] += 1
                 creators_data[creator_id]['activities_by_type'][activity_type]['hours'] += bau.hours_spent
                 
-                # Track recent activities
+                # Track activity types globally for charts
+                if activity_type not in activity_types:
+                    activity_types[activity_type] = 0
+                activity_types[activity_type] += bau.hours_spent
+                
+                # Track recent activities with full details
                 creators_data[creator_id]['activities'].append(self._prepare_bau_data(bau))
                 
                 # Group by date
@@ -881,13 +903,15 @@ class ContentManagementAPI(http.Controller):
                         'total_hours': 0,
                         'activities_count': 0,
                         'creators': set(),
-                        'target_achieved': False
+                        'target_achieved': False,
+                        'activities': []  # Store activities for this day
                     }
                 
                 # Update daily data
                 daily_data[date_key]['total_hours'] += bau.hours_spent
                 daily_data[date_key]['activities_count'] += 1
                 daily_data[date_key]['creators'].add(creator_id)
+                daily_data[date_key]['activities'].append(self._prepare_bau_data(bau))
                 
                 # Check if target achieved (default target: 2 hours)
                 target_hours = bau.target_hours if hasattr(bau, 'target_hours') else 2.0
@@ -927,6 +951,7 @@ class ContentManagementAPI(http.Controller):
             # Process daily data for serialization
             processed_daily_data = []
             for date_key, data in daily_data.items():
+                # Convert sets to lists for JSON serialization
                 data['creators'] = list(data['creators'])
                 processed_daily_data.append(data)
             
@@ -937,6 +962,28 @@ class ContentManagementAPI(http.Controller):
             if total_bau_days > 0:
                 achievement_rate = round((total_target_achieved / total_bau_days) * 100, 2)
             
+            # Calculate BAU vs Project ratio
+            bau_hours = sum(data['total_hours'] for data in daily_data.values())
+            
+            # If we didn't get project hours earlier, estimate based on working days
+            if project_hours == 0:
+                # Estimate: For each working day, assume 8 hours total, subtract BAU hours
+                work_days = set()
+                for date_key in daily_data.keys():
+                    # Exclude weekends if needed
+                    date_obj = datetime.strptime(date_key, '%Y-%m-%d')
+                    if date_obj.weekday() < 5:  # Monday to Friday
+                        work_days.add(date_key)
+                
+                total_work_hours = len(work_days) * 8  # 8 hours per work day
+                project_hours = max(0, total_work_hours - bau_hours)
+            
+            # Calculate ratio
+            total_hours = bau_hours + project_hours
+            bau_percentage = round((bau_hours / total_hours * 100) if total_hours > 0 else 0)
+            project_percentage = round((project_hours / total_hours * 100) if total_hours > 0 else 0)
+            bau_vs_project_ratio = f"{bau_percentage}:{project_percentage}"
+            
             # Find top performer
             top_performer = None
             if creators_data:
@@ -945,7 +992,7 @@ class ContentManagementAPI(http.Controller):
                     key=lambda x: (x['target_achievement'], x['total_hours'])
                 )
             
-            # Prepare final report data
+            # Prepare final report data with enhanced metrics
             report_data = {
                 'creators': list(creators_data.values()),
                 'daily_data': processed_daily_data,
@@ -954,7 +1001,10 @@ class ContentManagementAPI(http.Controller):
                     'total_target_achieved': total_target_achieved,
                     'achievement_rate': achievement_rate,
                     'top_performer': top_performer['creator_name'] if top_performer else None,
-                    'total_hours': sum(data['total_hours'] for data in creators_data.values())
+                    'total_hours': bau_hours,
+                    'project_hours': project_hours,
+                    'bau_vs_project_ratio': bau_vs_project_ratio,
+                    'activity_types': activity_types
                 }
             }
             

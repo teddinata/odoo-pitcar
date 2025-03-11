@@ -3,7 +3,7 @@ from odoo import http, fields
 from odoo.http import request
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from odoo.exceptions import AccessError, ValidationError
 
 _logger = logging.getLogger(__name__)
@@ -506,7 +506,7 @@ class ContentManagementAPI(http.Controller):
             operation = kw.get('operation', 'create')
             
             if operation == 'create':
-                required_fields = ['name', 'creator_id', 'date', 'activity_type', 'hours_spent']
+                required_fields = ['name', 'creator_id', 'date', 'activity_type']
                 if not all(kw.get(field) for field in required_fields):
                     return {'status': 'error', 'message': 'Missing required fields'}
 
@@ -515,17 +515,48 @@ class ContentManagementAPI(http.Controller):
                     'creator_id': int(kw['creator_id']),
                     'date': kw['date'],
                     'activity_type': kw['activity_type'],
-                    'hours_spent': float(kw['hours_spent']),
+                    'hours_spent': float(kw.get('hours_spent', 0.0)),  # Opsional
                     'project_id': int(kw['project_id']) if kw.get('project_id') else False,
                     'description': kw.get('description', ''),
                     'impact_on_delivery': kw.get('impact_on_delivery', ''),
-                    'target_hours': float(kw.get('target_hours', 2.0)),
+                    'state': kw.get('state', 'planned'),  # Default ke planned
                 }
 
                 bau = request.env['content.bau'].sudo().create(values)
                 return {
                     'status': 'success',
                     'data': self._prepare_bau_data(bau)
+                }
+
+            elif operation == 'update':
+                if not kw.get('bau_id'):
+                    return {'status': 'error', 'message': 'Missing BAU ID'}
+                    
+                bau = request.env['content.bau'].sudo().browse(int(kw['bau_id']))
+                if not bau.exists():
+                    return {'status': 'error', 'message': 'BAU activity not found'}
+                    
+                update_values = {}
+                if kw.get('name'):
+                    update_values['name'] = kw['name']
+                if kw.get('activity_type'):
+                    update_values['activity_type'] = kw['activity_type']
+                if kw.get('hours_spent') is not None:
+                    update_values['hours_spent'] = float(kw['hours_spent'])
+                if kw.get('date'):
+                    update_values['date'] = kw['date']
+                if kw.get('description') is not None:
+                    update_values['description'] = kw['description']
+                if kw.get('impact_on_delivery') is not None:
+                    update_values['impact_on_delivery'] = kw['impact_on_delivery']
+                if kw.get('state'):
+                    update_values['state'] = kw['state']  # Update status menjadi done/not_done
+                    
+                bau.write(update_values)
+                return {
+                    'status': 'success',
+                    'data': self._prepare_bau_data(bau),
+                    'message': 'BAU activity updated successfully'
                 }
 
             elif operation == 'get':
@@ -542,45 +573,6 @@ class ContentManagementAPI(http.Controller):
                     'status': 'success',
                     'data': [self._prepare_bau_data(bau) for bau in bau_activities]
                 }
-            
-            elif operation == 'update':
-                if not kw.get('bau_id'):
-                    return {'status': 'error', 'message': 'Missing BAU ID'}
-                    
-                try:
-                    bau = request.env['content.bau'].sudo().browse(int(kw['bau_id']))
-                    if not bau.exists():
-                        return {'status': 'error', 'message': 'BAU activity not found'}
-                        
-                    update_values = {}
-                    if kw.get('name'):
-                        update_values['name'] = kw['name']
-                    if kw.get('activity_type'):
-                        update_values['activity_type'] = kw['activity_type']
-                    if kw.get('hours_spent'):
-                        update_values['hours_spent'] = float(kw['hours_spent'])
-                    if kw.get('date'):
-                        update_values['date'] = kw['date']
-                    if kw.get('description') is not None:
-                        update_values['description'] = kw['description']
-                    if kw.get('impact_on_delivery') is not None:
-                        update_values['impact_on_delivery'] = kw['impact_on_delivery']
-                    if kw.get('target_hours'):
-                        update_values['target_hours'] = float(kw['target_hours'])
-                        
-                    # Update BAU record
-                    bau.write(update_values)
-                    return {
-                        'status': 'success',
-                        'data': self._prepare_bau_data(bau),
-                        'message': 'BAU activity updated successfully'
-                    }
-                    
-                except Exception as e:
-                    return {
-                        'status': 'error',
-                        'message': f'Error updating BAU activity: {str(e)}'
-                    }
                 
             elif operation == 'delete':
                 if not kw.get('bau_id'):
@@ -716,7 +708,6 @@ class ContentManagementAPI(http.Controller):
         }
 
     def _prepare_bau_data(self, bau):
-        """Helper method to prepare BAU data"""
         return {
             'id': bau.id,
             'name': bau.name,
@@ -734,8 +725,7 @@ class ContentManagementAPI(http.Controller):
             } if bau.project_id else None,
             'description': bau.description,
             'impact_on_delivery': bau.impact_on_delivery,
-            'target_hours': bau.target_hours,
-            'is_target_achieved': bau.is_target_achieved,
+            'state': bau.state,  # Ganti is_target_achieved dengan state
         }
 
     @http.route('/web/v2/content/tasks/logs', type='json', auth='user', methods=['POST'], csrf=False)
@@ -819,192 +809,79 @@ class ContentManagementAPI(http.Controller):
 
     @http.route('/web/v2/content/bau/report', type='json', auth='user', methods=['POST'], csrf=False)
     def bau_report(self, **kw):
-        """Generate BAU report for dashboard and team view with enhanced metrics"""
         try:
-            # Validate input
             if not kw.get('date_from') or not kw.get('date_to'):
                 return {'status': 'error', 'message': 'Date range is required'}
-                
-            # Create domain for BAU activities search
+            
             bau_domain = [
                 ('date', '>=', kw['date_from']),
                 ('date', '<=', kw['date_to'])
             ]
-            
-            # Optional filter by creator
             if kw.get('creator_id'):
                 bau_domain.append(('creator_id', '=', int(kw['creator_id'])))
-                
-            # Get BAU activities
+            
             bau_activities = request.env['content.bau'].sudo().search(bau_domain)
             
-            # Get project time data for the same period
-            project_domain = [
-                ('date', '>=', kw['date_from']),
-                ('date', '<=', kw['date_to'])
-            ]
-            
-            # Try to get project time records if there's a model for it
-            project_hours = 0
-            try:
-                project_time_records = request.env['content.project.time'].sudo().search(project_domain)
-                project_hours = sum(record.hours for record in project_time_records)
-            except Exception as e:
-                _logger.info(f"Could not fetch project time data: {str(e)}")
-                # If we can't get actual project time, we'll estimate it later
-            
-            # Group activities by creator and date
             creators_data = {}
             daily_data = {}
-            activity_types = {}
             
             for bau in bau_activities:
-                # Group by creator
                 creator_id = bau.creator_id.id
                 if creator_id not in creators_data:
                     creators_data[creator_id] = {
                         'creator_id': creator_id,
                         'creator_name': bau.creator_id.name,
                         'position': bau.creator_id.job_id.name if bau.creator_id.job_id else '',
-                        'total_hours': 0,
+                        'total_activities': 0,
+                        'done_activities': 0,
                         'bau_days': set(),
-                        'activities_by_type': {},
-                        'target_achievement': 0,
                         'activities': []
                     }
                 
-                # Update creator data
-                creators_data[creator_id]['total_hours'] += bau.hours_spent
+                creators_data[creator_id]['total_activities'] += 1
+                if bau.state == 'done':
+                    creators_data[creator_id]['done_activities'] += 1
                 creators_data[creator_id]['bau_days'].add(bau.date)
-                
-                # Track activities by type
-                activity_type = bau.activity_type
-                if activity_type not in creators_data[creator_id]['activities_by_type']:
-                    creators_data[creator_id]['activities_by_type'][activity_type] = {
-                        'count': 0,
-                        'hours': 0
-                    }
-                creators_data[creator_id]['activities_by_type'][activity_type]['count'] += 1
-                creators_data[creator_id]['activities_by_type'][activity_type]['hours'] += bau.hours_spent
-                
-                # Track activity types globally for charts
-                if activity_type not in activity_types:
-                    activity_types[activity_type] = 0
-                activity_types[activity_type] += bau.hours_spent
-                
-                # Track recent activities with full details
                 creators_data[creator_id]['activities'].append(self._prepare_bau_data(bau))
                 
-                # Group by date
                 date_key = str(bau.date)
                 if date_key not in daily_data:
                     daily_data[date_key] = {
                         'date': date_key,
-                        'total_hours': 0,
-                        'activities_count': 0,
-                        'creators': set(),
-                        'target_achieved': False,
-                        'activities': []  # Store activities for this day
+                        'total_activities': 0,
+                        'done_activities': 0,
+                        'creators': set()
                     }
                 
-                # Update daily data
-                daily_data[date_key]['total_hours'] += bau.hours_spent
-                daily_data[date_key]['activities_count'] += 1
+                daily_data[date_key]['total_activities'] += 1
+                if bau.state == 'done':
+                    daily_data[date_key]['done_activities'] += 1
                 daily_data[date_key]['creators'].add(creator_id)
-                daily_data[date_key]['activities'].append(self._prepare_bau_data(bau))
-                
-                # Check if target achieved (default target: 2 hours)
-                target_hours = bau.target_hours if hasattr(bau, 'target_hours') else 2.0
-                if bau.hours_spent >= target_hours:
-                    daily_data[date_key]['target_achieved'] = True
             
-            # Calculate target achievement for each creator
+            # Hitung realisasi per creator
             for creator_id, data in creators_data.items():
-                # Calculate how many days the target was achieved
-                bau_days_count = len(data['bau_days'])
-                if bau_days_count > 0:
-                    # For simplicity, we're assuming target is achieved if hours >= 2.0 per day
-                    # In a real implementation, you'd need to check against the actual target
-                    achieved_days = sum(1 for date_key, day_data in daily_data.items() 
-                                    if creator_id in day_data['creators'] and day_data['target_achieved'])
-                    data['target_achievement'] = round((achieved_days / bau_days_count) * 100, 2)
-                
-                # Convert set to length for serialization
+                data['realization_rate'] = round((data['done_activities'] / data['total_activities'] * 100), 2) if data['total_activities'] > 0 else 0
                 data['bau_days'] = len(data['bau_days'])
-                
-                # Find most common activity type
-                if data['activities_by_type']:
-                    data['most_common_activity'] = max(
-                        data['activities_by_type'].items(),
-                        key=lambda x: x[1]['count']
-                    )[0]
-                else:
-                    data['most_common_activity'] = 'none'
-                
-                # Limit activities to most recent 5
-                data['activities'] = sorted(
-                    data['activities'], 
-                    key=lambda x: x['date'], 
-                    reverse=True
-                )[:5]
+                data['activities'] = sorted(data['activities'], key=lambda x: x['date'], reverse=True)[:5]
             
-            # Process daily data for serialization
-            processed_daily_data = []
-            for date_key, data in daily_data.items():
-                # Convert sets to lists for JSON serialization
-                data['creators'] = list(data['creators'])
-                processed_daily_data.append(data)
+            processed_daily_data = list(daily_data.values())
             
-            # Calculate overall statistics
             total_bau_days = len(daily_data)
-            total_target_achieved = sum(1 for data in daily_data.values() if data['target_achieved'])
-            achievement_rate = 0
-            if total_bau_days > 0:
-                achievement_rate = round((total_target_achieved / total_bau_days) * 100, 2)
+            total_activities = sum(data['total_activities'] for data in daily_data.values())
+            total_done = sum(data['done_activities'] for data in daily_data.values())
+            realization_rate = round((total_done / total_activities * 100), 2) if total_activities > 0 else 0
             
-            # Calculate BAU vs Project ratio
-            bau_hours = sum(data['total_hours'] for data in daily_data.values())
+            top_performer = max(creators_data.values(), key=lambda x: x['realization_rate']) if creators_data else None
             
-            # If we didn't get project hours earlier, estimate based on working days
-            if project_hours == 0:
-                # Estimate: For each working day, assume 8 hours total, subtract BAU hours
-                work_days = set()
-                for date_key in daily_data.keys():
-                    # Exclude weekends if needed
-                    date_obj = datetime.strptime(date_key, '%Y-%m-%d')
-                    if date_obj.weekday() < 5:  # Monday to Friday
-                        work_days.add(date_key)
-                
-                total_work_hours = len(work_days) * 8  # 8 hours per work day
-                project_hours = max(0, total_work_hours - bau_hours)
-            
-            # Calculate ratio
-            total_hours = bau_hours + project_hours
-            bau_percentage = round((bau_hours / total_hours * 100) if total_hours > 0 else 0)
-            project_percentage = round((project_hours / total_hours * 100) if total_hours > 0 else 0)
-            bau_vs_project_ratio = f"{bau_percentage}:{project_percentage}"
-            
-            # Find top performer
-            top_performer = None
-            if creators_data:
-                top_performer = max(
-                    creators_data.values(),
-                    key=lambda x: (x['target_achievement'], x['total_hours'])
-                )
-            
-            # Prepare final report data with enhanced metrics
             report_data = {
                 'creators': list(creators_data.values()),
                 'daily_data': processed_daily_data,
                 'summary': {
                     'total_bau_days': total_bau_days,
-                    'total_target_achieved': total_target_achieved,
-                    'achievement_rate': achievement_rate,
+                    'total_activities': total_activities,
+                    'total_done': total_done,
+                    'realization_rate': realization_rate,
                     'top_performer': top_performer['creator_name'] if top_performer else None,
-                    'total_hours': bau_hours,
-                    'project_hours': project_hours,
-                    'bau_vs_project_ratio': bau_vs_project_ratio,
-                    'activity_types': activity_types
                 }
             }
             
@@ -1022,40 +899,58 @@ class ContentManagementAPI(http.Controller):
         
     @http.route('/web/v2/content/bau/batch', type='json', auth='user', methods=['POST'], csrf=False)
     def batch_bau(self, **kw):
-        """Handle batch BAU activities creation"""
+        """Handle batch BAU activities creation with date range support, excluding weekends"""
         try:
-            if not kw.get('activities') or not isinstance(kw['activities'], list):
-                return {'status': 'error', 'message': 'Activities list is required'}
-                
+            # Validasi input
+            if not kw.get('activity') or not isinstance(kw['activity'], dict):
+                return {'status': 'error', 'message': 'Activity object is required'}
+            if not kw.get('date_from') or not kw.get('date_to'):
+                return {'status': 'error', 'message': 'Date range (date_from and date_to) is required'}
+
+            activity = kw['activity']
+            date_from = fields.Date.from_string(kw['date_from'])
+            date_to = fields.Date.from_string(kw['date_to'])
+
+            # Validasi tanggal
+            if date_from > date_to:
+                return {'status': 'error', 'message': 'date_from must be before date_to'}
+            if date_from < fields.Date.today():
+                return {'status': 'error', 'message': 'Cannot plan activities for past dates'}
+
+            # Validasi required fields untuk aktivitas
+            required_fields = ['name', 'creator_id', 'activity_type']
+            if not all(activity.get(field) for field in required_fields):
+                return {'status': 'error', 'message': 'Missing required fields in activity'}
+
             created_baus = []
             errors = []
-            
-            for activity in kw['activities']:
-                # Validate required fields
-                required_fields = ['name', 'creator_id', 'date', 'activity_type', 'hours_spent']
-                if not all(activity.get(field) for field in required_fields):
-                    errors.append(f"Missing required fields for activity: {activity.get('name', 'Unnamed')}")
-                    continue
-                    
-                try:
-                    values = {
-                        'name': activity['name'],
-                        'creator_id': int(activity['creator_id']),
-                        'date': activity['date'],
-                        'activity_type': activity['activity_type'],
-                        'hours_spent': float(activity['hours_spent']),
-                        'project_id': int(activity['project_id']) if activity.get('project_id') else False,
-                        'description': activity.get('description', ''),
-                        'impact_on_delivery': activity.get('impact_on_delivery', ''),
-                        'target_hours': float(activity.get('target_hours', 2.0)),
-                    }
-                    
-                    bau = request.env['content.bau'].sudo().create(values)
-                    created_baus.append(self._prepare_bau_data(bau))
-                    
-                except Exception as e:
-                    errors.append(f"Error creating activity {activity.get('name', 'Unnamed')}: {str(e)}")
-                    
+
+            # Buat aktivitas hanya untuk hari kerja
+            current_date = date_from
+            while current_date <= date_to:
+                # 0-4 adalah Senin-Jumat, 5-6 adalah Sabtu-Minggu
+                if current_date.weekday() < 5:  # Hanya hari kerja
+                    try:
+                        values = {
+                            'name': activity['name'],
+                            'creator_id': int(activity['creator_id']),
+                            'date': current_date,
+                            'activity_type': activity['activity_type'],
+                            'hours_spent': float(activity.get('hours_spent', 0.0)),  # Opsional
+                            'project_id': int(activity['project_id']) if activity.get('project_id') else False,
+                            'description': activity.get('description', ''),
+                            'impact_on_delivery': activity.get('impact_on_delivery', ''),
+                            'state': 'planned',  # Selalu planned untuk rencana
+                        }
+
+                        bau = request.env['content.bau'].sudo().create(values)
+                        created_baus.append(self._prepare_bau_data(bau))
+
+                    except Exception as e:
+                        errors.append(f"Error creating activity for {current_date}: {str(e)}")
+
+                current_date += timedelta(days=1)  # Tambah 1 hari
+
             return {
                 'status': 'partial_success' if errors else 'success',
                 'data': {
@@ -1064,7 +959,7 @@ class ContentManagementAPI(http.Controller):
                 },
                 'message': f'Created {len(created_baus)} BAU activities with {len(errors)} errors'
             }
-            
+
         except Exception as e:
             return {
                 'status': 'error',
@@ -1145,4 +1040,74 @@ class ContentManagementAPI(http.Controller):
             return {
                 'status': 'error',
                 'message': f'Error getting calendar data: {str(e)}'
+            }
+        
+    @http.route('/web/v2/content/bau/verify', type='json', auth='user', methods=['POST'], csrf=False)
+    def verify_bau(self, **kw):
+        """Verify BAU activity status (done/not_done) on same day or H+1 with reason"""
+        try:
+            if not kw.get('bau_id') or not kw.get('state'):
+                return {'status': 'error', 'message': 'Missing bau_id or state'}
+            
+            bau = request.env['content.bau'].sudo().browse(int(kw['bau_id']))
+            if not bau.exists():
+                return {'status': 'error', 'message': 'BAU activity not found'}
+            
+            # Cek tanggal saat ini
+            current_date = fields.Date.today()  # Misalnya 10 Maret 2025
+            activity_date = bau.date
+            delta_days = (current_date - activity_date).days
+            
+            # Validasi tanggal verifikasi (H atau H+1)
+            if delta_days < 0:
+                return {
+                    'status': 'error',
+                    'message': f'Cannot verify future activity (date: {activity_date})'
+                }
+            elif delta_days > 1:
+                return {
+                    'status': 'error',
+                    'message': f'Verification must be done on the same day or H+1 (activity date: {activity_date})'
+                }
+            elif delta_days == 1:  # H+1
+                if not kw.get('verification_reason'):
+                    return {
+                        'status': 'error',
+                        'message': 'Verification reason is required for H+1 verification'
+                    }
+            
+            # Validasi state
+            new_state = kw['state']
+            if new_state not in ['done', 'not_done']:
+                return {'status': 'error', 'message': 'State must be "done" or "not_done"'}
+            
+            # Update status dan verifikasi
+            update_values = {
+                'state': new_state,
+                'verified_by': request.env.user.employee_id.id,
+                'verification_date': fields.Datetime.now(),
+                'hours_spent': float(kw.get('hours_spent', bau.hours_spent)),  # Opsional
+            }
+            if delta_days == 1:
+                update_values['verification_reason'] = kw['verification_reason']
+            
+            bau.write(update_values)
+            
+            # Catat log aktivitas
+            log_message = f"Status changed to {new_state} by {request.env.user.name}"
+            if delta_days == 1:
+                log_message += f"\nReason for H+1 verification: {kw['verification_reason']}"
+            bau.message_post(body=log_message)
+            
+            return {
+                'status': 'success',
+                'data': self._prepare_bau_data(bau),
+                'message': f'BAU activity {bau.name} verified as {new_state}'
+            }
+            
+        except Exception as e:
+            _logger.error('Error verifying BAU: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error verifying BAU: {str(e)}'
             }

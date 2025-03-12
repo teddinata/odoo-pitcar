@@ -39,7 +39,7 @@ class Notification(models.Model):
                 record.name = 'Unknown'
 
     @api.model
-    def create_or_update_notification(self, model, res_id, type, title, message, request_time=None, data=None, user_id=None):
+    def create_or_update_notification(self, model, res_id, type, title, message, request_time=None, data=None, user_id=None, priority=None):
         # Tambahkan log untuk debugging
         _logger.info(f"Creating/updating notification: model={model}, res_id={res_id}, type={type}")
         
@@ -73,6 +73,11 @@ class Notification(models.Model):
             'data': data_str,
             'is_read': False if not existing else existing.is_read  
         }
+
+        if user_id:
+            values['user_id'] = user_id
+        if priority:
+            values['priority'] = priority
         
         try:
             if existing:

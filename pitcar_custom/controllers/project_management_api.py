@@ -207,7 +207,6 @@ class TeamProjectAPI(http.Controller):
 
     @http.route('/web/v2/team/chat/send', type='json', auth='user', methods=['POST'], csrf=False)
     def send_chat_message(self, **kw):
-        """Mengirim pesan dalam grup kolaborasi."""
         try:
             required_fields = ['group_id', 'content']
             if not all(kw.get(field) for field in required_fields):
@@ -217,9 +216,30 @@ class TeamProjectAPI(http.Controller):
                 'group_id': int(kw['group_id']),
                 'author_id': request.env.user.employee_id.id,
                 'content': kw['content'],
-                'project_id': int(kw['project_id']) if kw.get('project_id') else False
+                'project_id': int(kw['project_id']) if kw.get('project_id') else False,
+                'message_type': 'regular'
             }
+            
             message = request.env['team.project.message'].sudo().create(values)
+            
+            # Proses mentions jika ada
+            if kw.get('mentions'):
+                for user_id in kw['mentions']:
+                    # Buat notifikasi untuk setiap user yang di-mention
+                    self.env['pitcar.notification'].sudo().create_or_update_notification(
+                        model='team.project.message',
+                        res_id=message.id,
+                        type='mention',
+                        title=f"You were mentioned by {request.env.user.name}",
+                        message=f"You were mentioned in a message: '{kw['content'][:100]}...'",
+                        user_id=user_id,
+                        data={
+                            'message_id': message.id, 
+                            'group_id': values['group_id'],
+                            'action': 'view_group_chat'
+                        }
+                    )
+            
             return {'status': 'success', 'data': self._prepare_message_data(message)}
         except Exception as e:
             _logger.error(f"Error in send_chat_message: {str(e)}")

@@ -4,7 +4,7 @@ from odoo.http import request
 import json
 import logging
 import pytz
-from datetime import datetime, date
+import datetime  # Import the full datetime module
 
 _logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ class TeamProjectAPI(http.Controller):
         if not dt:
             return False
         
-        # If it's a Date field (not Datetime), just return the string representation
+        # If it's a Date field (not Datetime)
         if isinstance(dt, datetime.date) and not isinstance(dt, datetime.datetime):
             return fields.Date.to_string(dt)
                 
@@ -28,11 +28,15 @@ class TeamProjectAPI(http.Controller):
         # Define Jakarta timezone
         jakarta_tz = pytz.timezone('Asia/Jakarta')
         
-        # Convert to Jakarta timezone
-        dt_utc = pytz.utc.localize(dt) if not dt.tzinfo else dt
-        dt_jakarta = dt_utc.astimezone(jakarta_tz)
-        
-        return fields.Datetime.to_string(dt_jakarta)
+        # Convert to Jakarta timezone (only for datetime objects)
+        try:
+            dt_utc = pytz.utc.localize(dt) if not dt.tzinfo else dt
+            dt_jakarta = dt_utc.astimezone(jakarta_tz)
+            return fields.Datetime.to_string(dt_jakarta)
+        except AttributeError:
+            # If we get here, it means dt doesn't have tzinfo attribute
+            # So it's likely a date object that slipped through our checks
+            return fields.Date.to_string(dt) if hasattr(dt, 'day') else str(dt)
     
     @http.route('/web/v2/team/projects', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_projects(self, **kw):

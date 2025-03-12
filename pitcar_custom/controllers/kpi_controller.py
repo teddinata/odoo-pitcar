@@ -3903,10 +3903,8 @@ class KPIController(http.Controller):
 
             # Menghitung data per bulan untuk data_baru
             data_baru = {}
-            start_date = datetime.strptime(start, '%Y-%m-%d')
-            end_date = datetime.strptime(end, '%Y-%m-%d')
-            current_date = start_date
-            while current_date <= end_date:
+            current_date = start  # Gunakan start dan end sebagai datetime langsung
+            while current_date <= end:
                 month = current_date.month
                 year = current_date.year
                 month_key = f"{year}-{month:02d}"  # Format seperti "2024-11"
@@ -4121,7 +4119,7 @@ class KPIController(http.Controller):
                         'end': end.strftime('%Y-%m-%d')
                     },
                     'metrics': metrics,
-                    'data_baru': data_baru,  # Semua breakdown per bulan ada di sini
+                    'data_baru': data_baru,
                     'trends': trends,
                     'cohort_analysis': cohort_data,
                     'top_data': {

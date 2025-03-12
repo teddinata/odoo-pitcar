@@ -3768,6 +3768,186 @@ class KPIController(http.Controller):
                 include_metrics=include_metrics
             )
 
+            # Calculate service and product revenue
+            service_revenue = 0.0
+            product_revenue = 0.0
+            
+            for order in current_orders:
+                for line in order.order_line:
+                    if line.product_id.type == 'service':
+                        service_revenue += line.price_subtotal
+                    else:  # 'consu' or 'product'
+                        product_revenue += line.price_subtotal
+
+            # Calculate half service revenue
+            half_service_revenue = service_revenue / 2
+
+            # Calculate previous period revenues
+            prev_service_revenue = 0.0
+            prev_product_revenue = 0.0
+            
+            for order in prev_orders:
+                for line in order.order_line:
+                    if line.product_id.type == 'service':
+                        prev_service_revenue += line.price_subtotal
+                    else:
+                        prev_product_revenue += line.price_subtotal
+
+            prev_half_service_revenue = prev_service_revenue / 2
+
+            # Calculate total revenue for percentage
+            total_revenue = service_revenue + product_revenue
+            prev_total_revenue = prev_service_revenue + prev_product_revenue
+
+            # Add to metrics dictionary with percentages
+            metrics.update({
+                'service_revenue': {
+                    'current': round(service_revenue, 2),
+                    'previous': round(prev_service_revenue, 2),
+                    'growth': round(((service_revenue - prev_service_revenue) / prev_service_revenue * 100) 
+                                if prev_service_revenue else 0, 2),
+                    'percentage': round((service_revenue / total_revenue * 100) 
+                                    if total_revenue else 0, 2),
+                    'prev_percentage': round((prev_service_revenue / prev_total_revenue * 100) 
+                                        if prev_total_revenue else 0, 2)
+                },
+                'product_revenue': {
+                    'current': round(product_revenue, 2),
+                    'previous': round(prev_product_revenue, 2),
+                    'growth': round(((product_revenue - prev_product_revenue) / prev_product_revenue * 100) 
+                                if prev_product_revenue else 0, 2),
+                    'percentage': round((product_revenue / total_revenue * 100) 
+                                    if total_revenue else 0, 2),
+                    'prev_percentage': round((prev_product_revenue / prev_total_revenue * 100) 
+                                        if prev_total_revenue else 0, 2)
+                },
+                'half_service_revenue': {
+                    'current': round(half_service_revenue, 2),
+                    'previous': round(prev_half_service_revenue, 2),
+                    'growth': round(((half_service_revenue - prev_half_service_revenue) / prev_half_service_revenue * 100) 
+                                if prev_half_service_revenue else 0, 2),
+                    'percentage': round((half_service_revenue / total_revenue * 100) 
+                                    if total_revenue else 0, 2),
+                    'prev_percentage': round((prev_half_service_revenue / prev_total_revenue * 100) 
+                                        if prev_total_revenue else 0, 2)
+                }
+            })
+
+            # Calculate flat rate per mechanic based on work orders (PKB)
+            flat_rate_per_mechanic = {}
+            default_flat_rate_value = 190000  # Nilai default dari product.template
+
+            for order in current_orders:
+                if order.car_mechanic_id_new:  # Pastikan ada mekanik yang ditugaskan
+                    mechanic_count = len(order.car_mechanic_id_new)
+                    if mechanic_count > 0:
+                        # Hitung revenue jasa per PKB
+                        order_service_revenue = sum(
+                            line.price_subtotal 
+                            for line in order.order_line 
+                            if line.product_id.type == 'service'
+                        )
+                        
+                        # Bagi revenue jasa dengan jumlah mekanik untuk distribusi
+                        revenue_per_mechanic = order_service_revenue / mechanic_count
+                        
+                        for mechanic in order.car_mechanic_id_new:
+                            if mechanic.id not in flat_rate_per_mechanic:
+                                flat_rate_per_mechanic[mechanic.id] = {
+                                    'id': mechanic.id,
+                                    'name': mechanic.name,
+                                    'total_service_revenue': 0.0,
+                                    'flat_rate_hours': 0.0,
+                                    'order_count': 0
+                                }
+                            flat_rate_per_mechanic[mechanic.id]['total_service_revenue'] += revenue_per_mechanic
+                            flat_rate_per_mechanic[mechanic.id]['order_count'] += 1
+                            # Hitung flat rate hours berdasarkan revenue dibagi flat_rate_value
+                            flat_rate_per_mechanic[mechanic.id]['flat_rate_hours'] += (
+                                revenue_per_mechanic / default_flat_rate_value
+                            )
+
+            # Calculate for previous period
+            prev_flat_rate_per_mechanic = {}
+            for order in prev_orders:
+                if order.car_mechanic_id_new:
+                    mechanic_count = len(order.car_mechanic_id_new)
+                    if mechanic_count > 0:
+                        order_service_revenue = sum(
+                            line.price_subtotal 
+                            for line in order.order_line 
+                            if line.product_id.type == 'service'
+                        )
+                        revenue_per_mechanic = order_service_revenue / mechanic_count
+                        
+                        for mechanic in order.car_mechanic_id_new:
+                            if mechanic.id not in prev_flat_rate_per_mechanic:
+                                prev_flat_rate_per_mechanic[mechanic.id] = {
+                                    'id': mechanic.id,
+                                    'name': mechanic.name,
+                                    'total_service_revenue': 0.0,
+                                    'flat_rate_hours': 0.0,
+                                    'order_count': 0
+                                }
+                            prev_flat_rate_per_mechanic[mechanic.id]['total_service_revenue'] += revenue_per_mechanic
+                            prev_flat_rate_per_mechanic[mechanic.id]['order_count'] += 1
+                            prev_flat_rate_per_mechanic[mechanic.id]['flat_rate_hours'] += (
+                                revenue_per_mechanic / default_flat_rate_value
+                            )
+
+            # Format flat rate data per mechanic
+            mechanic_flat_rate_data = []
+            all_mechanic_ids = set(flat_rate_per_mechanic.keys()) | set(prev_flat_rate_per_mechanic.keys())
+            
+            for mechanic_id in all_mechanic_ids:
+                current = flat_rate_per_mechanic.get(mechanic_id, {
+                    'total_service_revenue': 0.0,
+                    'flat_rate_hours': 0.0,
+                    'order_count': 0,
+                    'name': ''
+                })
+                prev = prev_flat_rate_per_mechanic.get(mechanic_id, {
+                    'total_service_revenue': 0.0,
+                    'flat_rate_hours': 0.0,
+                    'order_count': 0,
+                    'name': ''
+                })
+                mechanic_flat_rate = {
+                    'id': mechanic_id,
+                    'name': current.get('name') or prev.get('name') or 'Unknown',
+                    'current': {
+                        'total_service_revenue': round(current['total_service_revenue'], 2),
+                        'flat_rate_hours': round(current['flat_rate_hours'], 2),
+                        'order_count': current['order_count'],
+                        'avg_flat_rate_per_order': round(
+                            current['flat_rate_hours'] / current['order_count'] 
+                            if current['order_count'] else 0, 2
+                        )
+                    },
+                    'previous': {
+                        'total_service_revenue': round(prev['total_service_revenue'], 2),
+                        'flat_rate_hours': round(prev['flat_rate_hours'], 2),
+                        'order_count': prev['order_count'],
+                        'avg_flat_rate_per_order': round(
+                            prev['flat_rate_hours'] / prev['order_count'] 
+                            if prev['order_count'] else 0, 2
+                        )
+                    },
+                    'growth': {
+                        'flat_rate_hours': round(
+                            ((current['flat_rate_hours'] - prev['flat_rate_hours']) / prev['flat_rate_hours'] * 100)
+                            if prev['flat_rate_hours'] else 0, 2
+                        )
+                    }
+                }
+                mechanic_flat_rate_data.append(mechanic_flat_rate)
+
+            # Sort by current flat rate hours
+            mechanic_flat_rate_data.sort(key=lambda x: x['current']['flat_rate_hours'], reverse=True)
+
+            # Update metrics dengan flat rate per mechanic
+            metrics['flat_rate']['per_mechanic'] = mechanic_flat_rate_data
+
             return {
                 'status': 'success',
                 'data': {

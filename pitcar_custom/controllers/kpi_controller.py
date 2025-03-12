@@ -3781,7 +3781,59 @@ class KPIController(http.Controller):
                 include_metrics=include_metrics
             )
 
-            # Hitung total flat rate hours berdasarkan flat_rate produk
+            # Fungsi bantu untuk mendapatkan order berdasarkan bulan dan tahun
+            def get_orders_by_month(orders, month, year):
+                return [order for order in orders if order.date_order and 
+                        order.date_order.month == month and order.date_order.year == year]
+
+            # Fungsi bantu untuk menghitung metrik per bulan
+            def calculate_monthly_metrics(orders, month, year):
+                monthly_orders = get_orders_by_month(orders, month, year)
+                flat_rate_hours = 0.0
+                service_rev = 0.0
+                product_rev = 0.0
+                total_flat_rate = 0.0
+                total_discount = 0.0
+                lead_time = 0.0
+                order_count = len(monthly_orders)
+
+                for order in monthly_orders:
+                    for line in order.order_line:
+                        if line.product_id.type == 'service':
+                            service_rev += line.price_subtotal
+                            if line.product_id.flat_rate > 0:
+                                mechanics_count = len(order.car_mechanic_id_new) or 1
+                                total_flat_rate += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
+                        elif line.product_id.type == 'product':
+                            product_rev += line.price_subtotal
+                        if 'discount' in (line.name or '').lower():
+                            total_discount += line.price_subtotal
+                    if order.lead_time_servis:
+                        lead_time += order.lead_time_servis
+
+                half_service_rev = service_rev / 2 if service_rev else 0
+                total_rev = service_rev + product_rev
+                flat_rate_value_per_hour = service_rev / total_flat_rate if total_flat_rate > 0 else 0
+                half_flat_rate_value_per_hour = half_service_rev / total_flat_rate if total_flat_rate > 0 else 0
+                avg_flat_rate_per_order = total_flat_rate / order_count if order_count else 0
+                avg_order_value = total_rev / order_count if order_count else 0
+
+                return {
+                    'flat_rate_hours': round(total_flat_rate, 2),
+                    'service_revenue': round(service_rev, 2),
+                    'product_revenue': round(product_rev, 2),
+                    'total_discount': round(abs(total_discount), 2),
+                    'half_service_revenue': round(half_service_rev, 2),
+                    'total_revenue': round(total_rev, 2),
+                    'flat_rate_value_per_hour': round(flat_rate_value_per_hour, 2),
+                    'half_flat_rate_value_per_hour': round(half_flat_rate_value_per_hour, 2),
+                    'lead_time_servis_bersih': round(lead_time, 2),
+                    'order_count': order_count,
+                    'avg_flat_rate_per_order': round(avg_flat_rate_per_order, 2),
+                    'avg_order_value': round(avg_order_value, 2)
+                }
+
+            # Hitung total flat rate hours berdasarkan flat_rate produk (untuk current dan previous)
             current_flat_rate_hours = 0.0
             for order in current_orders:
                 for line in order.order_line:
@@ -3796,11 +3848,11 @@ class KPIController(http.Controller):
                         mechanics_count = len(order.car_mechanic_id_new) or 1
                         prev_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
 
-            # Calculate service and product revenue
+            # Calculate service and product revenue (untuk current dan previous)
             service_revenue = 0.0
             product_revenue = 0.0
             total_flat_rate_hours = 0.0
-            total_discount = 0.0  # Akumulasi diskon dari baris "Discount"
+            total_discount = 0.0
 
             for order in current_orders:
                 for line in order.order_line:
@@ -3811,9 +3863,8 @@ class KPIController(http.Controller):
                             total_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
                     elif line.product_id.type == 'product':
                         product_revenue += line.price_subtotal
-                    # Tambahkan diskon jika nama produk mengandung "discount" (case-insensitive)
                     if 'discount' in (line.name or '').lower():
-                        total_discount += line.price_subtotal  # Nilai negatif akan diakumulasikan
+                        total_discount += line.price_subtotal
 
             half_service_revenue = service_revenue / 2
 
@@ -3832,7 +3883,7 @@ class KPIController(http.Controller):
                     elif line.product_id.type == 'product':
                         prev_product_revenue += line.price_subtotal
                     if 'discount' in (line.name or '').lower():
-                        prev_total_discount += line.price_subtotal  # Nilai negatif akan diakumulasikan
+                        prev_total_discount += line.price_subtotal
 
             prev_half_service_revenue = prev_service_revenue / 2
 
@@ -3845,14 +3896,30 @@ class KPIController(http.Controller):
             half_flat_rate_value_per_hour = half_service_revenue / total_flat_rate_hours if total_flat_rate_hours > 0 else 0
             prev_half_flat_rate_value_per_hour = prev_half_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
 
-            # Calculate lead time servis bersih berdasarkan filter
+            # Calculate lead time servis bersih berdasarkan filter (untuk current dan previous)
             current_lead_time_bersih = sum(order.lead_time_servis for order in current_orders if order.lead_time_servis)
             prev_lead_time_bersih = sum(order.lead_time_servis for order in prev_orders if order.lead_time_servis)
             total_lead_time_bersih = current_lead_time_bersih + prev_lead_time_bersih
 
-            # Add to metrics dictionary
+            # Menghitung data per bulan untuk data_baru
+            data_baru = {}
+            start_date = datetime.strptime(start, '%Y-%m-%d')
+            end_date = datetime.strptime(end, '%Y-%m-%d')
+            current_date = start_date
+            while current_date <= end_date:
+                month = current_date.month
+                year = current_date.year
+                month_key = f"{year}-{month:02d}"  # Format seperti "2024-11"
+                data_baru[month_key] = {
+                    'current': calculate_monthly_metrics(current_orders, month, year),
+                    'previous': calculate_monthly_metrics(prev_orders, month, year)
+                }
+                current_date = current_date.replace(day=1) + datetime.timedelta(days=32)
+                current_date = current_date.replace(day=1)
+
+            # Add to metrics dictionary (tanpa perubahan struktur asli)
             metrics.update({
-                'service_revenue': {  # Omzet Jasa
+                'service_revenue': {
                     'current': round(service_revenue, 2),
                     'previous': round(prev_service_revenue, 2),
                     'growth': round(((service_revenue - prev_service_revenue) / prev_service_revenue * 100) 
@@ -3862,8 +3929,8 @@ class KPIController(http.Controller):
                     'prev_percentage': round((prev_service_revenue / prev_total_revenue * 100) 
                                         if prev_total_revenue else 0, 2)
                 },
-                'total_discount': {  # Diskon
-                    'current': round(abs(total_discount), 2),  # Menggunakan nilai absolut karena diskon negatif
+                'total_discount': {
+                    'current': round(abs(total_discount), 2),
                     'previous': round(abs(prev_total_discount), 2),
                     'growth': round(((abs(total_discount) - abs(prev_total_discount)) / abs(prev_total_discount) * 100)
                                     if prev_total_discount else 0, 2),
@@ -3912,7 +3979,7 @@ class KPIController(http.Controller):
                                     if prev_half_flat_rate_value_per_hour else 0, 2)
                     }
                 },
-                'lead_time_servis_bersih': {  # Lead Time Servis Bersih
+                'lead_time_servis_bersih': {
                     'current': round(current_lead_time_bersih, 2),
                     'previous': round(prev_lead_time_bersih, 2),
                     'total': round(total_lead_time_bersih, 2),
@@ -3932,17 +3999,17 @@ class KPIController(http.Controller):
                             ),
                         },
                         'average_flat_rate_per_order': {
-                            'current': round(current_flat_rate_hours / current_order_count, 2) if current_order_count else 0,
-                            'previous': round(prev_flat_rate_hours / prev_order_count, 2) if prev_order_count else 0,
+                            'current': round(current_flat_rate_hours / len(current_orders), 2) if current_orders else 0,
+                            'previous': round(prev_flat_rate_hours / len(prev_orders), 2) if prev_orders else 0,
                             'growth': round(
-                                (((current_flat_rate_hours / current_order_count if current_order_count else 0) -
-                                (prev_flat_rate_hours / prev_order_count if prev_order_count else 0)) /
-                                (prev_flat_rate_hours / prev_order_count if prev_order_count else 1) * 100)
+                                (((current_flat_rate_hours / len(current_orders) if current_orders else 0) -
+                                (prev_flat_rate_hours / len(prev_orders) if prev_orders else 0)) /
+                                (prev_flat_rate_hours / len(prev_orders) if prev_orders else 1) * 100)
                                 if prev_flat_rate_hours else (100 if current_flat_rate_hours > 0 else 0), 2
                             ),
                         },
                     },
-                    'per_mechanic': mechanic_flat_rate_data  # (Dari perhitungan sebelumnya)
+                    'per_mechanic': mechanic_flat_rate_data
                 }
             })
 
@@ -4054,6 +4121,7 @@ class KPIController(http.Controller):
                         'end': end.strftime('%Y-%m-%d')
                     },
                     'metrics': metrics,
+                    'data_baru': data_baru,  # Semua breakdown per bulan ada di sini
                     'trends': trends,
                     'cohort_analysis': cohort_data,
                     'top_data': {

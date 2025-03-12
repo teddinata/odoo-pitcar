@@ -532,6 +532,13 @@ class TeamProjectMessage(models.Model):
     attachment_ids = fields.Many2many('ir.attachment', string='Attachments')
     parent_id = fields.Many2one('team.project.message', string='Parent Message')
     is_pinned = fields.Boolean(string='Pinned', default=False)
+
+    # Add this field
+    message_type = fields.Selection([
+        ('regular', 'Regular'),
+        ('mention', 'Mention'),
+        ('announcement', 'Announcement')
+    ], string='Message Type', default='regular')
     
     # Either project_id or group_id must be set
     @api.constrains('group_id', 'project_id')

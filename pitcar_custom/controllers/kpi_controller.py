@@ -3801,7 +3801,7 @@ class KPIController(http.Controller):
             product_revenue = 0.0
             total_flat_rate_hours = 0.0
             total_discount = 0.0  # Akumulasi diskon dari baris "Discount"
-            
+
             for order in current_orders:
                 for line in order.order_line:
                     if line.product_id.type == 'service':
@@ -3821,7 +3821,7 @@ class KPIController(http.Controller):
             prev_product_revenue = 0.0
             prev_total_flat_rate_hours = 0.0
             prev_total_discount = 0.0
-            
+
             for order in prev_orders:
                 for line in order.order_line:
                     if line.product_id.type == 'service':
@@ -3846,27 +3846,27 @@ class KPIController(http.Controller):
             prev_half_flat_rate_value_per_hour = prev_half_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
 
             # Calculate lead time servis bersih berdasarkan filter
-            current_lead_time_bersih = sum(order.lead_time_servis_bersih for order in current_orders if order.lead_time_servis_bersih)
-            prev_lead_time_bersih = sum(order.lead_time_servis_bersih for order in prev_orders if order.lead_time_servis_bersih)
+            current_lead_time_bersih = sum(order.lead_time_servis for order in current_orders if order.lead_time_servis)
+            prev_lead_time_bersih = sum(order.lead_time_servis for order in prev_orders if order.lead_time_servis)
             total_lead_time_bersih = current_lead_time_bersih + prev_lead_time_bersih
 
             # Add to metrics dictionary
             metrics.update({
-                'service_revenue': {
+                'service_revenue': {  # Omzet Jasa
                     'current': round(service_revenue, 2),
                     'previous': round(prev_service_revenue, 2),
                     'growth': round(((service_revenue - prev_service_revenue) / prev_service_revenue * 100) 
-                                if prev_service_revenue else 0, 2),
+                                    if prev_service_revenue else 0, 2),
                     'percentage': round((service_revenue / total_revenue * 100) 
                                     if total_revenue else 0, 2),
                     'prev_percentage': round((prev_service_revenue / prev_total_revenue * 100) 
                                         if prev_total_revenue else 0, 2)
                 },
-                'total_discount': {
+                'total_discount': {  # Diskon
                     'current': round(abs(total_discount), 2),  # Menggunakan nilai absolut karena diskon negatif
                     'previous': round(abs(prev_total_discount), 2),
                     'growth': round(((abs(total_discount) - abs(prev_total_discount)) / abs(prev_total_discount) * 100)
-                                if prev_total_discount else 0, 2),
+                                    if prev_total_discount else 0, 2),
                     'percentage': round((abs(total_discount) / total_revenue * 100)
                                     if total_revenue else 0, 2),
                     'prev_percentage': round((abs(prev_total_discount) / prev_total_revenue * 100)
@@ -3876,7 +3876,7 @@ class KPIController(http.Controller):
                     'current': round(product_revenue, 2),
                     'previous': round(prev_product_revenue, 2),
                     'growth': round(((product_revenue - prev_product_revenue) / prev_product_revenue * 100) 
-                                if prev_product_revenue else 0, 2),
+                                    if prev_product_revenue else 0, 2),
                     'percentage': round((product_revenue / total_revenue * 100) 
                                     if total_revenue else 0, 2),
                     'prev_percentage': round((prev_product_revenue / prev_total_revenue * 100) 
@@ -3886,7 +3886,7 @@ class KPIController(http.Controller):
                     'current': round(half_service_revenue, 2),
                     'previous': round(prev_half_service_revenue, 2),
                     'growth': round(((half_service_revenue - prev_half_service_revenue) / prev_half_service_revenue * 100) 
-                                if prev_half_service_revenue else 0, 2),
+                                    if prev_half_service_revenue else 0, 2),
                     'percentage': round((half_service_revenue / total_revenue * 100) 
                                     if total_revenue else 0, 2),
                     'prev_percentage': round((prev_half_service_revenue / prev_total_revenue * 100) 
@@ -3912,10 +3912,14 @@ class KPIController(http.Controller):
                                     if prev_half_flat_rate_value_per_hour else 0, 2)
                     }
                 },
-                'lead_time_servis_bersih': {
+                'lead_time_servis_bersih': {  # Lead Time Servis Bersih
                     'current': round(current_lead_time_bersih, 2),
                     'previous': round(prev_lead_time_bersih, 2),
-                    'total': round(total_lead_time_bersih, 2)
+                    'total': round(total_lead_time_bersih, 2),
+                    'growth': round(
+                        ((current_lead_time_bersih - prev_lead_time_bersih) / prev_lead_time_bersih * 100)
+                        if prev_lead_time_bersih else (100 if current_lead_time_bersih > 0 else 0), 2
+                    )
                 },
                 'flat_rate': {
                     'overall': {
@@ -3991,7 +3995,7 @@ class KPIController(http.Controller):
             # Format flat rate data per mechanic
             mechanic_flat_rate_data = []
             all_mechanic_ids = set(flat_rate_per_mechanic.keys()) | set(prev_flat_rate_per_mechanic.keys())
-            
+
             for mechanic_id in all_mechanic_ids:
                 current = flat_rate_per_mechanic.get(mechanic_id, {
                     'total_service_revenue': 0.0,

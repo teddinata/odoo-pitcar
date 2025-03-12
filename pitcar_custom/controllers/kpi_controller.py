@@ -3771,13 +3771,12 @@ class KPIController(http.Controller):
             # Calculate service and product revenue
             service_revenue = 0.0
             product_revenue = 0.0
-            total_flat_rate_hours = 0.0  # Tambah untuk akumulasi jam flat rate
+            total_flat_rate_hours = 0.0
             
             for order in current_orders:
                 for line in order.order_line:
                     if line.product_id.type == 'service':
                         service_revenue += line.price_subtotal
-                        # Akumulasi jam flat rate dari produk
                         if line.product_id.flat_rate > 0:
                             mechanics_count = len(order.car_mechanic_id_new) or 1
                             total_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
@@ -3808,21 +3807,13 @@ class KPIController(http.Controller):
             total_revenue = service_revenue + product_revenue
             prev_total_revenue = prev_service_revenue + prev_product_revenue
 
-            # Calculate flat rate value per hour (omzet jasa ÷ jam flat rate terjual)
-            flat_rate_value_per_hour = (
-                service_revenue / total_flat_rate_hours if total_flat_rate_hours > 0 else 0
-            )
-            prev_flat_rate_value_per_hour = (
-                prev_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
-            )
+            # Calculate flat rate value per hour
+            flat_rate_value_per_hour = service_revenue / total_flat_rate_hours if total_flat_rate_hours > 0 else 0
+            prev_flat_rate_value_per_hour = prev_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
 
-            # Calculate half service revenue per flat rate hour ((omzet jasa ÷ 2) ÷ jam flat rate terjual)
-            half_flat_rate_value_per_hour = (
-                half_service_revenue / total_flat_rate_hours if total_flat_rate_hours > 0 else 0
-            )
-            prev_half_flat_rate_value_per_hour = (
-                prev_half_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
-            )
+            # Calculate half service revenue per flat rate hour
+            half_flat_rate_value_per_hour = half_service_revenue / total_flat_rate_hours if total_flat_rate_hours > 0 else 0
+            prev_half_flat_rate_value_per_hour = prev_half_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
 
             # Add to metrics dictionary with percentages and flat rate values
             metrics.update({
@@ -3863,13 +3854,13 @@ class KPIController(http.Controller):
                         'growth': round(((total_flat_rate_hours - prev_total_flat_rate_hours) / prev_total_flat_rate_hours * 100)
                                     if prev_total_flat_rate_hours else 0, 2)
                     },
-                    'flat_rate_value_per_hour': {  # Omzet jasa ÷ jam flat rate terjual
+                    'flat_rate_value_per_hour': {
                         'current': round(flat_rate_value_per_hour, 2),
                         'previous': round(prev_flat_rate_value_per_hour, 2),
                         'growth': round(((flat_rate_value_per_hour - prev_flat_rate_value_per_hour) / prev_flat_rate_value_per_hour * 100)
                                     if prev_flat_rate_value_per_hour else 0, 2)
                     },
-                    'half_flat_rate_value_per_hour': {  # (Omzet jasa ÷ 2) ÷ jam flat rate terjual
+                    'half_flat_rate_value_per_hour': {
                         'current': round(half_flat_rate_value_per_hour, 2),
                         'previous': round(prev_half_flat_rate_value_per_hour, 2),
                         'growth': round(((half_flat_rate_value_per_hour - prev_half_flat_rate_value_per_hour) / prev_half_flat_rate_value_per_hour * 100)
@@ -3882,49 +3873,47 @@ class KPIController(http.Controller):
             flat_rate_per_mechanic = {}
             for order in current_orders:
                 if order.car_mechanic_id_new:
-                    mechanic_count = len(order.car_mechanic_id_new)
-                    if mechanic_count > 0:
-                        for mechanic in order.car_mechanic_id_new:
-                            if mechanic.id not in flat_rate_per_mechanic:
-                                flat_rate_per_mechanic[mechanic.id] = {
-                                    'id': mechanic.id,
-                                    'name': mechanic.name,
-                                    'total_service_revenue': 0.0,
-                                    'flat_rate_hours': 0.0,
-                                    'order_count': 0
-                                }
-                            for line in order.order_line:
-                                if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
-                                    flat_rate_per_mechanic[mechanic.id]['flat_rate_hours'] += (
-                                        line.product_id.flat_rate / mechanic_count * line.product_uom_qty
-                                    )
-                                    flat_rate_per_mechanic[mechanic.id]['total_service_revenue'] += line.price_subtotal
-                            flat_rate_per_mechanic[mechanic.id]['order_count'] += 1
+                    mechanic_count = len(order.car_mechanic_id_new) or 1
+                    for mechanic in order.car_mechanic_id_new:
+                        if mechanic.id not in flat_rate_per_mechanic:
+                            flat_rate_per_mechanic[mechanic.id] = {
+                                'id': mechanic.id,
+                                'name': mechanic.name,
+                                'total_service_revenue': 0.0,
+                                'flat_rate_hours': 0.0,
+                                'order_count': 0
+                            }
+                        mechanic_data = flat_rate_per_mechanic[mechanic.id]
+                        for line in order.order_line:
+                            if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                mechanic_data['flat_rate_hours'] += (
+                                    line.product_id.flat_rate / mechanic_count * line.product_uom_qty
+                                )
+                                mechanic_data['total_service_revenue'] += line.price_subtotal
+                        mechanic_data['order_count'] += 1
 
             # Calculate for previous period
             prev_flat_rate_per_mechanic = {}
             for order in prev_orders:
                 if order.car_mechanic_id_new:
-                    mechanic_count = len(order.car_mechanic_id_new)
-                    if mechanic_count > 0:
-                        order_service_revenue = sum(
-                            line.price_subtotal 
-                            for line in order.order_line 
-                            if line.product_id.type == 'service'
-                        )
-                        revenue_per_mechanic = order_service_revenue / mechanic_count
-                        
-                        for mechanic in order.car_mechanic_id_new:
-                            if mechanic.id not in prev_flat_rate_per_mechanic:
-                                prev_flat_rate_per_mechanic[mechanic.id] = {
-                                    'id': mechanic.id,
-                                    'name': mechanic.name,
-                                    'total_service_revenue': 0.0,
-                                    'flat_rate_hours': 0.0,
-                                    'order_count': 0
-                                }
-                            prev_flat_rate_per_mechanic[mechanic.id]['total_service_revenue'] += revenue_per_mechanic
-                            prev_flat_rate_per_mechanic[mechanic.id]['order_count'] += 1
+                    mechanic_count = len(order.car_mechanic_id_new) or 1
+                    for mechanic in order.car_mechanic_id_new:
+                        if mechanic.id not in prev_flat_rate_per_mechanic:
+                            prev_flat_rate_per_mechanic[mechanic.id] = {
+                                'id': mechanic.id,
+                                'name': mechanic.name,
+                                'total_service_revenue': 0.0,
+                                'flat_rate_hours': 0.0,
+                                'order_count': 0
+                            }
+                        mechanic_data = prev_flat_rate_per_mechanic[mechanic.id]
+                        for line in order.order_line:
+                            if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                mechanic_data['flat_rate_hours'] += (
+                                    line.product_id.flat_rate / mechanic_count * line.product_uom_qty
+                                )
+                                mechanic_data['total_service_revenue'] += line.price_subtotal
+                        mechanic_data['order_count'] += 1
 
             # Format flat rate data per mechanic
             mechanic_flat_rate_data = []
@@ -3945,7 +3934,7 @@ class KPIController(http.Controller):
                 })
                 mechanic_flat_rate = {
                     'id': mechanic_id,
-                    'name': current.get('name') or prev.get('name') or 'Unknown',
+                    'name': current['name'] or prev['name'] or 'Unknown',
                     'current': {
                         'total_service_revenue': round(current['total_service_revenue'], 2),
                         'flat_rate_hours': round(current['flat_rate_hours'], 2),
@@ -3967,7 +3956,7 @@ class KPIController(http.Controller):
                     'growth': {
                         'flat_rate_hours': round(
                             ((current['flat_rate_hours'] - prev['flat_rate_hours']) / prev['flat_rate_hours'] * 100)
-                            if prev['flat_rate_hours'] else 0, 2
+                            if prev['flat_rate_hours'] else (100 if current['flat_rate_hours'] > 0 else 0), 2
                         )
                     }
                 }

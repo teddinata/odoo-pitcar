@@ -173,7 +173,29 @@ class TeamProjectAPI(http.Controller):
         try:
             operation = kw.get('operation', 'create')
 
-            if operation == 'create':
+            if operation == 'list':
+                # Build domain filter
+                domain = []
+                
+                if kw.get('project_id'):
+                    domain.append(('project_id', '=', int(kw['project_id'])))
+                if kw.get('department_id'):
+                    domain.append(('department_id', '=', int(kw['department_id'])))
+                if kw.get('type_id'):
+                    domain.append(('type_id', '=', int(kw['type_id'])))
+                if kw.get('assigned_to'):
+                    domain.append(('assigned_to', 'in', [int(kw['assigned_to'])]))
+                    
+                # Get tasks based on domain filters
+                tasks = request.env['team.project.task'].sudo().search(domain)
+                
+                # Return formatted task data
+                return {
+                    'status': 'success',
+                    'data': [self._prepare_task_data(task) for task in tasks]
+                }
+
+            elif operation == 'create':
                 required_fields = ['name', 'project_id', 'assigned_to']
                 if not all(kw.get(field) for field in required_fields):
                     return {'status': 'error', 'message': 'Missing required fields'}
@@ -348,10 +370,23 @@ class TeamProjectAPI(http.Controller):
                 if not all(kw.get(field) for field in required_fields):
                     return {'status': 'error', 'message': 'Missing required fields'}
 
+                # Convert input times from Jakarta to UTC
+                start_datetime = fields.Datetime.from_string(kw['start_datetime'])
+                end_datetime = fields.Datetime.from_string(kw['end_datetime'])
+                
+                # Convert from local time (Jakarta) to UTC for storage
+                jakarta_tz = pytz.timezone('Asia/Jakarta')
+                start_jakarta = jakarta_tz.localize(start_datetime)
+                end_jakarta = jakarta_tz.localize(end_datetime)
+                
+                # Convert to UTC
+                start_utc = start_jakarta.astimezone(pytz.UTC)
+                end_utc = end_jakarta.astimezone(pytz.UTC)
+
                 values = {
                     'name': kw['name'],
-                    'start_datetime': kw['start_datetime'],
-                    'end_datetime': kw['end_datetime'],
+                    'start_datetime': fields.Datetime.to_string(start_utc),
+                    'end_datetime': fields.Datetime.to_string(end_utc),
                     'organizer_id': int(kw['organizer_id']),
                     'project_id': int(kw['project_id']) if kw.get('project_id') else False,
                     'location': kw.get('location'),

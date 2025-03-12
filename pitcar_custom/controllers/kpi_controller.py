@@ -3771,25 +3771,34 @@ class KPIController(http.Controller):
             # Calculate service and product revenue
             service_revenue = 0.0
             product_revenue = 0.0
+            total_flat_rate_hours = 0.0  # Tambah untuk akumulasi jam flat rate
             
             for order in current_orders:
                 for line in order.order_line:
                     if line.product_id.type == 'service':
                         service_revenue += line.price_subtotal
-                    else:  # 'consu' or 'product'
+                        # Akumulasi jam flat rate dari produk
+                        if line.product_id.flat_rate > 0:
+                            mechanics_count = len(order.car_mechanic_id_new) or 1
+                            total_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
+                    else:
                         product_revenue += line.price_subtotal
 
             # Calculate half service revenue
             half_service_revenue = service_revenue / 2
 
-            # Calculate previous period revenues
+            # Calculate previous period revenues and flat rate
             prev_service_revenue = 0.0
             prev_product_revenue = 0.0
+            prev_total_flat_rate_hours = 0.0
             
             for order in prev_orders:
                 for line in order.order_line:
                     if line.product_id.type == 'service':
                         prev_service_revenue += line.price_subtotal
+                        if line.product_id.flat_rate > 0:
+                            mechanics_count = len(order.car_mechanic_id_new) or 1
+                            prev_total_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
                     else:
                         prev_product_revenue += line.price_subtotal
 
@@ -3799,7 +3808,23 @@ class KPIController(http.Controller):
             total_revenue = service_revenue + product_revenue
             prev_total_revenue = prev_service_revenue + prev_product_revenue
 
-            # Add to metrics dictionary with percentages
+            # Calculate flat rate value per hour (omzet jasa ÷ jam flat rate terjual)
+            flat_rate_value_per_hour = (
+                service_revenue / total_flat_rate_hours if total_flat_rate_hours > 0 else 0
+            )
+            prev_flat_rate_value_per_hour = (
+                prev_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
+            )
+
+            # Calculate half service revenue per flat rate hour ((omzet jasa ÷ 2) ÷ jam flat rate terjual)
+            half_flat_rate_value_per_hour = (
+                half_service_revenue / total_flat_rate_hours if total_flat_rate_hours > 0 else 0
+            )
+            prev_half_flat_rate_value_per_hour = (
+                prev_half_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
+            )
+
+            # Add to metrics dictionary with percentages and flat rate values
             metrics.update({
                 'service_revenue': {
                     'current': round(service_revenue, 2),
@@ -3830,27 +3855,35 @@ class KPIController(http.Controller):
                                     if total_revenue else 0, 2),
                     'prev_percentage': round((prev_half_service_revenue / prev_total_revenue * 100) 
                                         if prev_total_revenue else 0, 2)
+                },
+                'flat_rate_metrics': {
+                    'total_flat_rate_hours': {
+                        'current': round(total_flat_rate_hours, 2),
+                        'previous': round(prev_total_flat_rate_hours, 2),
+                        'growth': round(((total_flat_rate_hours - prev_total_flat_rate_hours) / prev_total_flat_rate_hours * 100)
+                                    if prev_total_flat_rate_hours else 0, 2)
+                    },
+                    'flat_rate_value_per_hour': {  # Omzet jasa ÷ jam flat rate terjual
+                        'current': round(flat_rate_value_per_hour, 2),
+                        'previous': round(prev_flat_rate_value_per_hour, 2),
+                        'growth': round(((flat_rate_value_per_hour - prev_flat_rate_value_per_hour) / prev_flat_rate_value_per_hour * 100)
+                                    if prev_flat_rate_value_per_hour else 0, 2)
+                    },
+                    'half_flat_rate_value_per_hour': {  # (Omzet jasa ÷ 2) ÷ jam flat rate terjual
+                        'current': round(half_flat_rate_value_per_hour, 2),
+                        'previous': round(prev_half_flat_rate_value_per_hour, 2),
+                        'growth': round(((half_flat_rate_value_per_hour - prev_half_flat_rate_value_per_hour) / prev_half_flat_rate_value_per_hour * 100)
+                                    if prev_half_flat_rate_value_per_hour else 0, 2)
+                    }
                 }
             })
 
             # Calculate flat rate per mechanic based on work orders (PKB)
             flat_rate_per_mechanic = {}
-            default_flat_rate_value = 190000  # Nilai default dari product.template
-
             for order in current_orders:
-                if order.car_mechanic_id_new:  # Pastikan ada mekanik yang ditugaskan
+                if order.car_mechanic_id_new:
                     mechanic_count = len(order.car_mechanic_id_new)
                     if mechanic_count > 0:
-                        # Hitung revenue jasa per PKB
-                        order_service_revenue = sum(
-                            line.price_subtotal 
-                            for line in order.order_line 
-                            if line.product_id.type == 'service'
-                        )
-                        
-                        # Bagi revenue jasa dengan jumlah mekanik untuk distribusi
-                        revenue_per_mechanic = order_service_revenue / mechanic_count
-                        
                         for mechanic in order.car_mechanic_id_new:
                             if mechanic.id not in flat_rate_per_mechanic:
                                 flat_rate_per_mechanic[mechanic.id] = {
@@ -3860,12 +3893,13 @@ class KPIController(http.Controller):
                                     'flat_rate_hours': 0.0,
                                     'order_count': 0
                                 }
-                            flat_rate_per_mechanic[mechanic.id]['total_service_revenue'] += revenue_per_mechanic
+                            for line in order.order_line:
+                                if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                    flat_rate_per_mechanic[mechanic.id]['flat_rate_hours'] += (
+                                        line.product_id.flat_rate / mechanic_count * line.product_uom_qty
+                                    )
+                                    flat_rate_per_mechanic[mechanic.id]['total_service_revenue'] += line.price_subtotal
                             flat_rate_per_mechanic[mechanic.id]['order_count'] += 1
-                            # Hitung flat rate hours berdasarkan revenue dibagi flat_rate_value
-                            flat_rate_per_mechanic[mechanic.id]['flat_rate_hours'] += (
-                                revenue_per_mechanic / default_flat_rate_value
-                            )
 
             # Calculate for previous period
             prev_flat_rate_per_mechanic = {}
@@ -3891,9 +3925,6 @@ class KPIController(http.Controller):
                                 }
                             prev_flat_rate_per_mechanic[mechanic.id]['total_service_revenue'] += revenue_per_mechanic
                             prev_flat_rate_per_mechanic[mechanic.id]['order_count'] += 1
-                            prev_flat_rate_per_mechanic[mechanic.id]['flat_rate_hours'] += (
-                                revenue_per_mechanic / default_flat_rate_value
-                            )
 
             # Format flat rate data per mechanic
             mechanic_flat_rate_data = []

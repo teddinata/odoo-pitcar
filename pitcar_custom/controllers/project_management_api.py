@@ -720,3 +720,30 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_departments_with_tasks: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/team/messages', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_group_messages(self, **kw):
+        """Mengambil pesan-pesan dari grup kolaborasi."""
+        try:
+            group_id = kw.get('group_id')
+            if not group_id:
+                return {'status': 'error', 'message': 'Missing group_id'}
+                
+            # Limit dan offset opsional untuk pagination
+            limit = int(kw.get('limit', 50))
+            offset = int(kw.get('offset', 0))
+            
+            # Ambil pesan-pesan dari grup
+            domain = [('group_id', '=', int(group_id))]
+            messages = request.env['team.project.message'].sudo().search(
+                domain, limit=limit, offset=offset, order='date desc'
+            )
+            
+            return {
+                'status': 'success',
+                'data': [self._prepare_message_data(message) for message in messages],
+                'total': request.env['team.project.message'].sudo().search_count(domain)
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_group_messages: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

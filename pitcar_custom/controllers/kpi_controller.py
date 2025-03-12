@@ -3455,8 +3455,21 @@ class KPIController(http.Controller):
             # Calculate overall metrics
             current_order_count = len(current_orders)
             prev_order_count = len(prev_orders)
-            current_flat_rate_hours = sum(order.total_service_duration for order in current_orders)
-            prev_flat_rate_hours = sum(order.total_service_duration for order in prev_orders)
+            
+            # Hitung total flat rate hours berdasarkan flat_rate produk
+            current_flat_rate_hours = 0.0
+            for order in current_orders:
+                for line in order.order_line:
+                    if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                        mechanics_count = len(order.car_mechanic_id_new) or 1
+                        current_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
+
+            prev_flat_rate_hours = 0.0
+            for order in prev_orders:
+                for line in order.order_line:
+                    if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                        mechanics_count = len(order.car_mechanic_id_new) or 1
+                        prev_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
 
             # Overall flat rate metrics
             flat_rate_overall = {
@@ -3465,8 +3478,7 @@ class KPIController(http.Controller):
                     'previous': round(prev_flat_rate_hours, 2),
                     'growth': round(
                         ((current_flat_rate_hours - prev_flat_rate_hours) / prev_flat_rate_hours * 100)
-                        if prev_flat_rate_hours else 0,
-                        2
+                        if prev_flat_rate_hours else (100 if current_flat_rate_hours > 0 else 0), 2
                     ),
                 },
                 'average_flat_rate_per_order': {
@@ -3476,8 +3488,7 @@ class KPIController(http.Controller):
                         (((current_flat_rate_hours / current_order_count if current_order_count else 0) -
                         (prev_flat_rate_hours / prev_order_count if prev_order_count else 0)) /
                         (prev_flat_rate_hours / prev_order_count if prev_order_count else 1) * 100)
-                        if prev_flat_rate_hours else 0,
-                        2
+                        if prev_flat_rate_hours else (100 if current_flat_rate_hours > 0 else 0), 2
                     ),
                 },
             }
@@ -3487,19 +3498,22 @@ class KPIController(http.Controller):
                 mechanic_data = {}
                 for order in orders:
                     if order.car_mechanic_id_new:
-                        mechanic_count = len(order.car_mechanic_id_new)
-                        if mechanic_count > 0:
-                            flat_rate_per_mechanic = order.total_service_duration / mechanic_count
-                            for mechanic in order.car_mechanic_id_new:
-                                if mechanic.id not in mechanic_data:
-                                    mechanic_data[mechanic.id] = {
-                                        'id': mechanic.id,
-                                        'name': mechanic.name,
-                                        'total_flat_rate_hours': 0.0,
-                                        'order_count': 0,
-                                    }
-                                mechanic_data[mechanic.id]['total_flat_rate_hours'] += flat_rate_per_mechanic
-                                mechanic_data[mechanic.id]['order_count'] += 1
+                        mechanic_count = len(order.car_mechanic_id_new) or 1
+                        for mechanic in order.car_mechanic_id_new:
+                            if mechanic.id not in mechanic_data:
+                                mechanic_data[mechanic.id] = {
+                                    'id': mechanic.id,
+                                    'name': mechanic.name,
+                                    'total_flat_rate_hours': 0.0,
+                                    'order_count': 0,
+                                }
+                            mechanic_record = mechanic_data[mechanic.id]
+                            # Hitung flat rate dari produk jasa
+                            for line in order.order_line:
+                                if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                    flat_rate_per_mechanic = line.product_id.flat_rate / mechanic_count * line.product_uom_qty
+                                    mechanic_record['total_flat_rate_hours'] += flat_rate_per_mechanic
+                            mechanic_record['order_count'] += 1
                 return mechanic_data
 
             current_mechanic_data = calculate_mechanic_flat_rate(current_orders)
@@ -3532,8 +3546,7 @@ class KPIController(http.Controller):
                         'total_flat_rate_hours': round(
                             ((current['total_flat_rate_hours'] - prev['total_flat_rate_hours']) /
                             prev['total_flat_rate_hours'] * 100)
-                            if prev['total_flat_rate_hours'] else 0,
-                            2
+                            if prev['total_flat_rate_hours'] else (100 if current['total_flat_rate_hours'] > 0 else 0), 2
                         ),
                     },
                 }

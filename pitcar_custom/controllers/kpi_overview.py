@@ -1976,7 +1976,7 @@ class KPIOverview(http.Controller):
                     'no': 1,
                     'name': 'Jumlah flat rate sesuai target',
                     'type': 'flat_rate',
-                    'weight': 30,
+                    'weight': 25,
                     'target': 100,
                     'measurement': 'Diukur dari jumlah omset yang dihasilkan dari PKB yang ditangani'
                 },
@@ -1984,7 +1984,7 @@ class KPIOverview(http.Controller):
                     'no': 2,
                     'name': 'Jumlah PKB yang diberikan rekomendasi tambahan servis',
                     'type': 'service_recommendation',
-                    'weight': 20,
+                    'weight': 15,
                     'target': 80,
                     'measurement': 'Diukur dari persentase rekomendasi yang diberikan',
                     'include_in_calculation': True
@@ -1999,24 +1999,33 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 4,
-                    'name': 'Persentase sampel dari Lead: tim mekanik bekerja sesuai alur SOP',
-                    'type': 'sop_compliance_lead',
-                    'weight': 20,
-                    'target': 95,
-                    'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
+                    'name': 'Jumlah hand-tools sesuai antara dara sistem dengan kondisi aktual',
+                    'type': 'tools_check',
+                    'weight': 10,
+                    'target': 90,
+                    'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
                     'include_in_calculation': True
                 },
                 {
                     'no': 5,
-                    'name': 'Persentase sampel dari Kaizen: tim mekanik bekerja sesuai alur SOP',
-                    'type': 'sop_compliance_kaizen',
-                    'weight': 20,
+                    'name': 'Persentase sampel dari Lead: tim mekanik bekerja sesuai alur SOP',
+                    'type': 'sop_compliance_lead',
+                    'weight': 5,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 6,  # Tambahkan sebagai KPI terakhir
+                    'no': 6,
+                    'name': 'Persentase sampel dari Kaizen: tim mekanik bekerja sesuai alur SOP',
+                    'type': 'sop_compliance_kaizen',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 7,  # Tambahkan sebagai KPI terakhir
                     'name': 'Kedisiplinan (Informasi)',
                     'type': 'discipline',
                     'weight': 0,  # Weight 0 karena tidak dihitung
@@ -2209,6 +2218,38 @@ class KPIOverview(http.Controller):
                             
                         except Exception as e:
                             _logger.error(f"Error calculating flat rate for mechanic: {str(e)}")
+                            actual = 0
+                            kpi['measurement'] = f"Error: {str(e)}"
+
+                    elif kpi['type'] == 'tools_check':
+                        try:
+                            # Ambil data pengecekan hand tools untuk mechanic individu
+                            tool_checks = request.env['pitcar.mechanic.tool.check'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('mechanic_id', '=', employee.id),
+                                ('state', '=', 'done')
+                            ])
+                            
+                            if not tool_checks:
+                                actual = 0
+                                kpi['measurement'] = f"Belum ada pengecekan tools pada periode {month}/{year}"
+                            else:
+                                # Hitung total items dan yang sesuai
+                                total_items = sum(check.total_items for check in tool_checks)
+                                matched_items = sum(check.matched_items for check in tool_checks)
+                                
+                                # Hitung persentase kecocokan
+                                actual = (matched_items / total_items * 100) if total_items > 0 else 0
+                                
+                                # Format pesan measurement
+                                kpi['measurement'] = (
+                                    f"Hand-tools: {matched_items}/{total_items} tools sesuai ({actual:.1f}%)\n"
+                                    f"Jumlah pengecekan: {len(tool_checks)} kali"
+                                )
+                                
+                        except Exception as e:
+                            _logger.error(f"Error calculating tools check for mechanic: {str(e)}")
                             actual = 0
                             kpi['measurement'] = f"Error: {str(e)}"
 

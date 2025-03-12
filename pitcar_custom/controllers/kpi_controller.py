@@ -3912,7 +3912,7 @@ class KPIController(http.Controller):
                     'current': calculate_monthly_metrics(current_orders, month, year),
                     'previous': calculate_monthly_metrics(prev_orders, month, year)
                 }
-                current_date = current_date.replace(day=1) + datetime.timedelta(days=32)
+                current_date = current_date.replace(day=1) + timedelta(days=32)
                 current_date = current_date.replace(day=1)
 
             # Add to metrics dictionary (tanpa perubahan struktur asli)

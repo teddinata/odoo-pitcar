@@ -1,8 +1,10 @@
 import logging
+import csv
+from io import StringIO
 from datetime import datetime, timedelta, time
 from dateutil.relativedelta import relativedelta
 from odoo import http, _, fields
-from odoo.http import request
+from odoo.http import request, Response
 import pytz
 
 _logger = logging.getLogger(__name__)
@@ -3151,3 +3153,195 @@ class KPIOverview(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_mechanic_kpi: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    
+    @http.route('/web/v2/kpi/mechanic/export_csv', type='http', auth='user', methods=['POST'], csrf=False)
+    def export_mechanic_kpi_csv(self, **kw):
+        """Export KPI data for all Mechanics to CSV, grouped by mechanic"""
+        try:
+            # Get and validate month/year
+            current_date = datetime.now()
+            month = int(kw.get('month', current_date.month))
+            year = int(kw.get('year', current_date.year))
+
+            # Validate range
+            if not (1 <= month <= 12):
+                return Response('Month must be between 1 and 12', status=400)
+            if year < 2000 or year > 2100:
+                return Response('Invalid year', status=400)
+
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            
+            # Calculate date range in local timezone
+            local_start = datetime(year, month, 1)
+            if month == 12:
+                local_end = datetime(year + 1, 1, 1) - timedelta(days=1)
+            else:
+                local_end = datetime(year, month + 1, 1) - timedelta(days=1)
+            
+            local_start = local_start.replace(hour=0, minute=0, second=0)
+            local_end = local_end.replace(hour=23, minute=59, second=59)
+            
+            start_date = tz.localize(local_start)
+            end_date = tz.localize(local_end)
+            
+            start_date_utc = start_date.astimezone(pytz.UTC)
+            end_date_utc = end_date.astimezone(pytz.UTC)
+
+            # Get all mechanic employees
+            employees = request.env['hr.employee'].sudo().search([
+                ('department_id.name', 'ilike', 'Mechanic')  # Filter karyawan di departemen Mechanic
+            ])
+
+            if not employees:
+                return Response('No mechanic employees found', status=404)
+
+            # Prepare CSV output
+            output = StringIO()
+            writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+            
+            # Define header
+            header = [
+                'Employee ID', 'Employee Name', 'Position', 'Department', 'Period',
+                'KPI No', 'KPI Name', 'Type', 'Weight (%)', 'Target', 'Actual', 
+                'Weighted Score', 'Measurement', 
+                'Total Weight', 'Average Target', 'Total Score', 'Achievement Status'
+            ]
+            writer.writerow(header)
+
+            # KPI templates (sama seperti di endpoint asli)
+            mechanic_kpi_template = [
+                # ... (copy mechanic_kpi_template dari kode asli Anda)
+            ]
+            leader_kpi_template = [
+                # ... (copy leader_kpi_template dari kode asli Anda)
+            ]
+
+            # Process each employee
+            for employee in employees:
+                mechanic = request.env['pitcar.mechanic.new'].sudo().search([
+                    ('employee_id', '=', employee.id)
+                ], limit=1)
+                
+                if not mechanic:
+                    continue
+                    
+                job_title = mechanic.position_id.name
+                kpi_template = mechanic_kpi_template if 'Mechanic' in job_title else leader_kpi_template
+                
+                # Base domain for orders
+                base_domain = [
+                    ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('state', 'in', ['sale', 'done'])
+                ]
+
+                # Calculate KPI scores
+                kpi_scores = []
+                
+                if 'Mechanic' in job_title:
+                    orders = request.env['sale.order'].sudo().search([
+                        *base_domain,
+                        ('car_mechanic_id_new', 'in', [mechanic.id])
+                    ])
+                    # ... (copy logic perhitungan KPI mechanic dari kode asli)
+                    # Contoh: (tambahkan logika tools_check yang sudah saya buat sebelumnya)
+                    for kpi in mechanic_kpi_template:
+                        actual = 0
+                        if kpi['type'] == 'tools_check':
+                            try:
+                                tool_checks = request.env['pitcar.mechanic.tool.check'].sudo().search([
+                                    ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                    ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                    ('mechanic_id', '=', employee.id),
+                                    ('state', '=', 'done')
+                                ])
+                                if not tool_checks:
+                                    actual = 0
+                                    kpi['measurement'] = f"Belum ada pengecekan tools pada periode {month}/{year}"
+                                else:
+                                    total_items = sum(check.total_items for check in tool_checks)
+                                    matched_items = sum(check.matched_items for check in tool_checks)
+                                    actual = (matched_items / total_items * 100) if total_items > 0 else 0
+                                    kpi['measurement'] = (
+                                        f"Hand-tools: {matched_items}/{total_items} tools sesuai ({actual:.1f}%)\n"
+                                        f"Jumlah pengecekan: {len(tool_checks)} kali"
+                                    )
+                            except Exception as e:
+                                _logger.error(f"Error calculating tools check: {str(e)}")
+                                actual = 0
+                                kpi['measurement'] = f"Error: {str(e)}"
+                        # Tambahkan logika lain untuk KPI lainnya
+                        
+                        weighted_score = actual * (kpi['weight'] / 100)
+                        kpi_scores.append({
+                            'no': kpi['no'],
+                            'name': kpi['name'],
+                            'type': kpi['type'],
+                            'weight': kpi['weight'],
+                            'target': kpi['target'],
+                            'measurement': kpi['measurement'],
+                            'actual': actual,
+                            'weighted_score': weighted_score
+                        })
+                
+                elif 'Team Leader' in job_title:
+                    team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                        ('leader_id', '=', mechanic.id)
+                    ])
+                    team_orders = request.env['sale.order'].sudo().search([
+                        *base_domain,
+                        ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])
+                    ])
+                    # ... (copy logic perhitungan KPI team leader dari kode asli)
+
+                # Calculate summary
+                total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
+                total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
+                avg_target = sum(kpi['target'] * kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True)) / total_weight if total_weight else 0
+                achievement_status = 'Achieved' if total_score >= avg_target else 'Below Target'
+
+                # Write all KPIs for this mechanic
+                period = f"{month}/{year}"
+                for kpi in kpi_scores:
+                    row = [
+                        employee.id,
+                        employee.name,
+                        job_title,
+                        employee.department_id.name or '',
+                        period,
+                        kpi['no'],
+                        kpi['name'],
+                        kpi['type'],
+                        f"{kpi['weight']:.1f}",
+                        f"{kpi['target']:.1f}",
+                        f"{kpi['actual']:.1f}",
+                        f"{kpi['weighted_score']:.2f}",
+                        kpi['measurement'].replace('\n', ' | '),
+                        f"{total_weight:.1f}",
+                        f"{avg_target:.1f}",
+                        f"{total_score:.2f}",
+                        achievement_status
+                    ]
+                    writer.writerow(row)
+                
+                # Tambahkan baris kosong sebagai pemisah antar mekanik
+                writer.writerow([])
+
+            # Prepare response
+            filename = f"Mechanic_KPI_{month}_{year}.csv"
+            output.seek(0)
+            
+            return Response(
+                output.getvalue(),
+                headers={
+                    'Content-Type': 'text/csv',
+                    'Content-Disposition': f'attachment; filename="{filename}"'
+                },
+                status=200
+            )
+
+        except Exception as e:
+            _logger.error(f"Error exporting mechanic KPI to CSV: {str(e)}")
+            return Response(f"Error: {str(e)}", status=500)

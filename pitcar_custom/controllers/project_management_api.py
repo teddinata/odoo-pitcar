@@ -226,7 +226,7 @@ class TeamProjectAPI(http.Controller):
             if kw.get('mentions'):
                 for user_id in kw['mentions']:
                     # Buat notifikasi untuk setiap user yang di-mention
-                    self.env['pitcar.notification'].sudo().create_or_update_notification(
+                    request.env['pitcar.notification'].sudo().create_or_update_notification(
                         model='team.project.message',
                         res_id=message.id,
                         type='mention',

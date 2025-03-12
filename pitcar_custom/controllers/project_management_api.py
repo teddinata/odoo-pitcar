@@ -36,6 +36,42 @@ class TeamProjectAPI(http.Controller):
                 project = request.env['team.project'].sudo().create(values)
                 return {'status': 'success', 'data': self._prepare_project_data(project)}
 
+            # Di dalam metode manage_projects
+            elif operation == 'read':
+                project_id = kw.get('project_id')
+                if not project_id:
+                    return {'status': 'error', 'message': 'Missing project_id'}
+                
+                project = request.env['team.project'].sudo().browse(int(project_id))
+                if not project.exists():
+                    return {'status': 'error', 'message': 'Project not found'}
+                
+                # Get related tasks
+                tasks = []
+                for task in project.task_ids:
+                    tasks.append(self._prepare_task_data(task))
+                
+                # Get related meetings
+                meetings = []
+                for meeting in project.meeting_ids:
+                    meetings.append(self._prepare_meeting_data(meeting))
+                
+                # Get related BAU activities
+                bau_activities = []
+                for bau in project.bau_ids:
+                    bau_activities.append(self._prepare_bau_data(bau))
+                
+                # Prepare project data with additional related data
+                project_data = self._prepare_project_data(project)
+                project_data.update({
+                    'tasks': tasks,
+                    'meetings': meetings,
+                    'bau_activities': bau_activities,
+                    'stakeholders': [{'id': s.id, 'name': s.name} for s in project.stakeholder_ids]
+                })
+                
+                return {'status': 'success', 'data': project_data}
+
             elif operation == 'update':
                 project_id = kw.get('project_id')
                 if not project_id:

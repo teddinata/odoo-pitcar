@@ -3781,10 +3781,26 @@ class KPIController(http.Controller):
                 include_metrics=include_metrics
             )
 
+            # Hitung total flat rate hours berdasarkan flat_rate produk
+            current_flat_rate_hours = 0.0
+            for order in current_orders:
+                for line in order.order_line:
+                    if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                        mechanics_count = len(order.car_mechanic_id_new) or 1
+                        current_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
+
+            prev_flat_rate_hours = 0.0
+            for order in prev_orders:
+                for line in order.order_line:
+                    if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                        mechanics_count = len(order.car_mechanic_id_new) or 1
+                        prev_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
+
             # Calculate service and product revenue
             service_revenue = 0.0
             product_revenue = 0.0
             total_flat_rate_hours = 0.0
+            total_discount = 0.0  # Akumulasi diskon dari baris "Discount"
             
             for order in current_orders:
                 for line in order.order_line:
@@ -3793,16 +3809,18 @@ class KPIController(http.Controller):
                         if line.product_id.flat_rate > 0:
                             mechanics_count = len(order.car_mechanic_id_new) or 1
                             total_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
-                    else:
+                    elif line.product_id.type == 'product':
                         product_revenue += line.price_subtotal
+                    # Tambahkan diskon jika nama produk mengandung "discount" (case-insensitive)
+                    if 'discount' in (line.name or '').lower():
+                        total_discount += line.price_subtotal  # Nilai negatif akan diakumulasikan
 
-            # Calculate half service revenue
             half_service_revenue = service_revenue / 2
 
-            # Calculate previous period revenues and flat rate
             prev_service_revenue = 0.0
             prev_product_revenue = 0.0
             prev_total_flat_rate_hours = 0.0
+            prev_total_discount = 0.0
             
             for order in prev_orders:
                 for line in order.order_line:
@@ -3811,24 +3829,28 @@ class KPIController(http.Controller):
                         if line.product_id.flat_rate > 0:
                             mechanics_count = len(order.car_mechanic_id_new) or 1
                             prev_total_flat_rate_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
-                    else:
+                    elif line.product_id.type == 'product':
                         prev_product_revenue += line.price_subtotal
+                    if 'discount' in (line.name or '').lower():
+                        prev_total_discount += line.price_subtotal  # Nilai negatif akan diakumulasikan
 
             prev_half_service_revenue = prev_service_revenue / 2
 
-            # Calculate total revenue for percentage
             total_revenue = service_revenue + product_revenue
             prev_total_revenue = prev_service_revenue + prev_product_revenue
 
-            # Calculate flat rate value per hour
             flat_rate_value_per_hour = service_revenue / total_flat_rate_hours if total_flat_rate_hours > 0 else 0
             prev_flat_rate_value_per_hour = prev_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
 
-            # Calculate half service revenue per flat rate hour
             half_flat_rate_value_per_hour = half_service_revenue / total_flat_rate_hours if total_flat_rate_hours > 0 else 0
             prev_half_flat_rate_value_per_hour = prev_half_service_revenue / prev_total_flat_rate_hours if prev_total_flat_rate_hours > 0 else 0
 
-            # Add to metrics dictionary with percentages and flat rate values
+            # Calculate lead time servis bersih berdasarkan filter
+            current_lead_time_bersih = sum(order.lead_time_servis_bersih for order in current_orders if order.lead_time_servis_bersih)
+            prev_lead_time_bersih = sum(order.lead_time_servis_bersih for order in prev_orders if order.lead_time_servis_bersih)
+            total_lead_time_bersih = current_lead_time_bersih + prev_lead_time_bersih
+
+            # Add to metrics dictionary
             metrics.update({
                 'service_revenue': {
                     'current': round(service_revenue, 2),
@@ -3838,6 +3860,16 @@ class KPIController(http.Controller):
                     'percentage': round((service_revenue / total_revenue * 100) 
                                     if total_revenue else 0, 2),
                     'prev_percentage': round((prev_service_revenue / prev_total_revenue * 100) 
+                                        if prev_total_revenue else 0, 2)
+                },
+                'total_discount': {
+                    'current': round(abs(total_discount), 2),  # Menggunakan nilai absolut karena diskon negatif
+                    'previous': round(abs(prev_total_discount), 2),
+                    'growth': round(((abs(total_discount) - abs(prev_total_discount)) / abs(prev_total_discount) * 100)
+                                if prev_total_discount else 0, 2),
+                    'percentage': round((abs(total_discount) / total_revenue * 100)
+                                    if total_revenue else 0, 2),
+                    'prev_percentage': round((abs(prev_total_discount) / prev_total_revenue * 100)
                                         if prev_total_revenue else 0, 2)
                 },
                 'product_revenue': {
@@ -3879,6 +3911,34 @@ class KPIController(http.Controller):
                         'growth': round(((half_flat_rate_value_per_hour - prev_half_flat_rate_value_per_hour) / prev_half_flat_rate_value_per_hour * 100)
                                     if prev_half_flat_rate_value_per_hour else 0, 2)
                     }
+                },
+                'lead_time_servis_bersih': {
+                    'current': round(current_lead_time_bersih, 2),
+                    'previous': round(prev_lead_time_bersih, 2),
+                    'total': round(total_lead_time_bersih, 2)
+                },
+                'flat_rate': {
+                    'overall': {
+                        'total_flat_rate_hours': {
+                            'current': round(current_flat_rate_hours, 2),
+                            'previous': round(prev_flat_rate_hours, 2),
+                            'growth': round(
+                                ((current_flat_rate_hours - prev_flat_rate_hours) / prev_flat_rate_hours * 100)
+                                if prev_flat_rate_hours else (100 if current_flat_rate_hours > 0 else 0), 2
+                            ),
+                        },
+                        'average_flat_rate_per_order': {
+                            'current': round(current_flat_rate_hours / current_order_count, 2) if current_order_count else 0,
+                            'previous': round(prev_flat_rate_hours / prev_order_count, 2) if prev_order_count else 0,
+                            'growth': round(
+                                (((current_flat_rate_hours / current_order_count if current_order_count else 0) -
+                                (prev_flat_rate_hours / prev_order_count if prev_order_count else 0)) /
+                                (prev_flat_rate_hours / prev_order_count if prev_order_count else 1) * 100)
+                                if prev_flat_rate_hours else (100 if current_flat_rate_hours > 0 else 0), 2
+                            ),
+                        },
+                    },
+                    'per_mechanic': mechanic_flat_rate_data  # (Dari perhitungan sebelumnya)
                 }
             })
 

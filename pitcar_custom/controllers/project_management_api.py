@@ -4,7 +4,7 @@ from odoo.http import request
 import json
 import logging
 import pytz
-from datetime import datetime
+from datetime import datetime, date
 
 _logger = logging.getLogger(__name__)
 
@@ -15,12 +15,15 @@ class TeamProjectAPI(http.Controller):
             return False
         
         # If it's a Date field (not Datetime), just return the string representation
-        if isinstance(dt, fields.Date):
+        if isinstance(dt, datetime.date) and not isinstance(dt, datetime.datetime):
             return fields.Date.to_string(dt)
-            
+                
         # If dt is a string, convert to datetime object
         if isinstance(dt, str):
-            dt = fields.Datetime.from_string(dt)
+            if 'T' in dt or ' ' in dt:  # It's a datetime string
+                dt = fields.Datetime.from_string(dt)
+            else:  # It's a date string
+                return dt  # Just return the date string
         
         # Define Jakarta timezone
         jakarta_tz = pytz.timezone('Asia/Jakarta')

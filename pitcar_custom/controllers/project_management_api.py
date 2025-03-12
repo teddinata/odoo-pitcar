@@ -3,11 +3,34 @@ from odoo import http, fields
 from odoo.http import request
 import json
 import logging
+import pytz
 from datetime import datetime
 
 _logger = logging.getLogger(__name__)
 
 class TeamProjectAPI(http.Controller):
+    def _format_datetime_jakarta(self, dt):
+        """Convert UTC datetime/date to Jakarta timezone (UTC+7)"""
+        if not dt:
+            return False
+        
+        # If it's a Date field (not Datetime), just return the string representation
+        if isinstance(dt, fields.Date):
+            return fields.Date.to_string(dt)
+            
+        # If dt is a string, convert to datetime object
+        if isinstance(dt, str):
+            dt = fields.Datetime.from_string(dt)
+        
+        # Define Jakarta timezone
+        jakarta_tz = pytz.timezone('Asia/Jakarta')
+        
+        # Convert to Jakarta timezone
+        dt_utc = pytz.utc.localize(dt) if not dt.tzinfo else dt
+        dt_jakarta = dt_utc.astimezone(jakarta_tz)
+        
+        return fields.Datetime.to_string(dt_jakarta)
+    
     @http.route('/web/v2/team/projects', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_projects(self, **kw):
         """Mengelola operasi CRUD untuk proyek tim."""
@@ -278,10 +301,10 @@ class TeamProjectAPI(http.Controller):
             'assigned_to': [{'id': a.id, 'name': a.name} for a in task.assigned_to],
             'reviewer': {'id': task.reviewer_id.id, 'name': task.reviewer_id.name} if task.reviewer_id else None,
             'dates': {
-                'planned_start': fields.Datetime.to_string(task.planned_date_start) if task.planned_date_start else False,
-                'planned_end': fields.Datetime.to_string(task.planned_date_end) if task.planned_date_end else False,
-                'actual_start': fields.Datetime.to_string(task.actual_date_start) if task.actual_date_start else False,
-                'actual_end': fields.Datetime.to_string(task.actual_date_end) if task.actual_date_end else False
+                'planned_start': self._format_datetime_jakarta(task.planned_date_start) if task.planned_date_start else False,
+                'planned_end': self._format_datetime_jakarta(task.planned_date_end) if task.planned_date_end else False,
+                'actual_start': self._format_datetime_jakarta(task.actual_date_start) if task.actual_date_start else False,
+                'actual_end': self._format_datetime_jakarta(task.actual_date_end) if task.actual_date_end else False
             },
             'hours': {
                 'planned': task.planned_hours,
@@ -300,7 +323,7 @@ class TeamProjectAPI(http.Controller):
             'group_id': message.group_id.id,
             'author': {'id': message.author_id.id, 'name': message.author_id.name},
             'content': message.content,
-            'date': fields.Datetime.to_string(message.date),
+            'date': self._format_datetime_jakarta(message.date),
             'project_id': message.project_id.id if message.project_id else None,
             'is_pinned': message.is_pinned
         }
@@ -634,8 +657,8 @@ class TeamProjectAPI(http.Controller):
             'organizer': {'id': meeting.organizer_id.id, 'name': meeting.organizer_id.name},
             'attendees': [{'id': a.id, 'name': a.name} for a in meeting.attendee_ids],
             'dates': {
-                'start': fields.Datetime.to_string(meeting.start_datetime),
-                'end': fields.Datetime.to_string(meeting.end_datetime),
+                'start': self._format_datetime_jakarta(meeting.start_datetime),
+                'end': self._format_datetime_jakarta(meeting.end_datetime),
                 'duration': meeting.duration
             },
             'location': meeting.location,
@@ -653,7 +676,7 @@ class TeamProjectAPI(http.Controller):
             'name': action.name,
             'meeting': {'id': action.meeting_id.id, 'name': action.meeting_id.name},
             'assigned_to': {'id': action.assigned_to.id, 'name': action.assigned_to.name},
-            'due_date': fields.Date.to_string(action.due_date) if action.due_date else False,
+            'due_date': self._format_datetime_jakarta(action.due_date) if action.due_date else False,
             'state': action.state,
             'notes': action.notes
         }
@@ -665,14 +688,14 @@ class TeamProjectAPI(http.Controller):
             'name': bau.name,
             'project': {'id': bau.project_id.id, 'name': bau.project_id.name} if bau.project_id else None,
             'creator': {'id': bau.creator_id.id, 'name': bau.creator_id.name},
-            'date': fields.Date.to_string(bau.date),
+            'date': self._format_datetime_jakarta(bau.date),
             'activity_type': bau.activity_type,
             'hours_spent': bau.hours_spent,
             'description': bau.description,
             'state': bau.state,
             'verification': {
                 'verified_by': {'id': bau.verified_by.id, 'name': bau.verified_by.name} if bau.verified_by else None,
-                'date': fields.Datetime.to_string(bau.verification_date) if bau.verification_date else False
+                'date': self._format_datetime_jakarta(bau.verification_date) if bau.verification_date else False
             }
         }
     
@@ -696,7 +719,7 @@ class TeamProjectAPI(http.Controller):
             'task': {'id': timesheet.task_id.id, 'name': timesheet.task_id.name},
             'project': {'id': timesheet.project_id.id, 'name': timesheet.project_id.name},
             'employee': {'id': timesheet.employee_id.id, 'name': timesheet.employee_id.name},
-            'date': fields.Date.to_string(timesheet.date),
+            'date': self._format_datetime_jakarta(timesheet.date),
             'hours': timesheet.hours,
             'description': timesheet.description
         }

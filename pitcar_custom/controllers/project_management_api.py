@@ -644,3 +644,43 @@ class TeamProjectAPI(http.Controller):
             'hours': timesheet.hours,
             'description': timesheet.description
         }
+    
+    @http.route('/web/v2/team/task-types', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_task_types(self, **kw):
+        """Get task types for team projects."""
+        try:
+            task_types = request.env['team.project.task.type'].sudo().search_read(
+                [], ['id', 'name', 'description', 'color', 'default_planned_hours']
+            )
+            
+            return {
+                'status': 'success',
+                'data': task_types
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_task_types: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+            
+    @http.route('/web/v2/team/tasks/departments', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_departments_with_tasks(self, **kw):
+        """Get departments that have tasks."""
+        try:
+            # Get all departments that have tasks
+            query = """
+                SELECT DISTINCT d.id, d.name, COUNT(t.id) as task_count
+                FROM hr_department d
+                JOIN team_project p ON p.department_id = d.id
+                JOIN team_project_task t ON t.project_id = p.id
+                GROUP BY d.id, d.name
+                ORDER BY d.name
+            """
+            request.env.cr.execute(query)
+            departments = request.env.cr.dictfetchall()
+            
+            return {
+                'status': 'success',
+                'data': departments
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_departments_with_tasks: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

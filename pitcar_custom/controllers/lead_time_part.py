@@ -106,9 +106,9 @@ class LeadTimePartController(http.Controller):
             domain = [
                 ('sa_mulai_penerimaan', '!=', False),  # Sudah mulai penerimaan
                 ('car_arrival_time', '!=', False),  # Mobil sudah masuk
-                ('fo_unit_keluar', '=', False),  # Mobil belum keluar
+                # ('fo_unit_keluar', '=', False),  # Mobil belum keluar
                 ('controller_selesai' , '=', False),  # Servis belum selesai
-                ('need_part_purchase', '=', 'yes'),  # Sudah request part
+                # ('need_part_purchase', '=', 'yes'),  # Sudah request part
                 ('state', 'not in', ['cancel', 'done'])  # Order aktif
             ]
             

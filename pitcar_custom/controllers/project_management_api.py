@@ -419,45 +419,72 @@ class TeamProjectAPI(http.Controller):
     def _prepare_task_data(self, task):
         """Menyiapkan data tugas untuk respons API dengan error handling."""
         try:
-            assigned_to = []
-            for person in task.assigned_to:
-                try:
-                    assigned_to.append({'id': person.id, 'name': person.name})
-                except Exception as e:
-                    _logger.error(f"Error processing assigned_to: {e}")
-                    # Skip person yang error
-                    
-            reviewer = None
-            if task.reviewer_id:
-                try:
-                    reviewer = {'id': task.reviewer_id.id, 'name': task.reviewer_id.name}
-                except Exception as e:
-                    _logger.error(f"Error processing reviewer: {e}")
-            
-            return {
+            # Initialize an empty dictionary for task data
+            task_data = {
                 'id': task.id,
                 'name': task.name,
-                'project': {'id': task.project_id.id, 'name': task.project_id.name} if task.project_id else None,
-                'type': {'id': task.type_id.id, 'name': task.type_id.name} if hasattr(task, 'type_id') and task.type_id else None,
-                'assigned_to': assigned_to,
-                'reviewer': reviewer,
-                'dates': {
-                    'planned_start': self._format_datetime_jakarta(task.planned_date_start) if hasattr(task, 'planned_date_start') and task.planned_date_start else False,
-                    'planned_end': self._format_datetime_jakarta(task.planned_date_end) if hasattr(task, 'planned_date_end') and task.planned_date_end else False,
-                    'actual_start': self._format_datetime_jakarta(task.actual_date_start) if hasattr(task, 'actual_date_start') and task.actual_date_start else False,
-                    'actual_end': self._format_datetime_jakarta(task.actual_date_end) if hasattr(task, 'actual_date_end') and task.actual_date_end else False
-                },
-                'hours': {
-                    'planned': task.planned_hours if hasattr(task, 'planned_hours') else 0,
-                    'actual': task.actual_hours if hasattr(task, 'actual_hours') else 0
-                },
-                'state': task.state,
-                'progress': task.progress,
-                'description': task.description,
-                'checklist_progress': task.checklist_progress if hasattr(task, 'checklist_progress') else 0
             }
+            
+            # Add project info if available
+            if hasattr(task, 'project_id') and task.project_id:
+                task_data['project'] = {
+                    'id': task.project_id.id,
+                    'name': task.project_id.name
+                }
+            else:
+                task_data['project'] = None
+            
+            # Add type info if available
+            if hasattr(task, 'type_id') and task.type_id:
+                task_data['type'] = {
+                    'id': task.type_id.id,
+                    'name': task.type_id.name
+                }
+            else:
+                task_data['type'] = None
+            
+            # Add assigned_to info if available
+            task_data['assigned_to'] = []
+            if hasattr(task, 'assigned_to'):
+                for person in task.assigned_to:
+                    task_data['assigned_to'].append({
+                        'id': person.id,
+                        'name': person.name
+                    })
+            
+            # Add reviewer info if available
+            task_data['reviewer'] = None
+            if hasattr(task, 'reviewer_id') and task.reviewer_id:
+                task_data['reviewer'] = {
+                    'id': task.reviewer_id.id,
+                    'name': task.reviewer_id.name
+                }
+            
+            # Add dates info
+            task_data['dates'] = {
+                'planned_start': self._format_datetime_jakarta(task.planned_date_start) if hasattr(task, 'planned_date_start') and task.planned_date_start else False,
+                'planned_end': self._format_datetime_jakarta(task.planned_date_end) if hasattr(task, 'planned_date_end') and task.planned_date_end else False,
+                'actual_start': self._format_datetime_jakarta(task.actual_date_start) if hasattr(task, 'actual_date_start') and task.actual_date_start else False,
+                'actual_end': self._format_datetime_jakarta(task.actual_date_end) if hasattr(task, 'actual_date_end') and task.actual_date_end else False
+            }
+            
+            # Add hours info
+            task_data['hours'] = {
+                'planned': task.planned_hours if hasattr(task, 'planned_hours') else 0,
+                'actual': task.actual_hours if hasattr(task, 'actual_hours') else 0
+            }
+            
+            # Add other fields
+            task_data['state'] = task.state if hasattr(task, 'state') else 'draft'
+            task_data['progress'] = task.progress if hasattr(task, 'progress') else 0
+            task_data['description'] = task.description if hasattr(task, 'description') else ''
+            task_data['checklist_progress'] = task.checklist_progress if hasattr(task, 'checklist_progress') else 0
+            
+            return task_data
+        
         except Exception as e:
-            _logger.error(f"Error in _prepare_task_data: {e}")
+            import traceback
+            _logger.error(f"Error in _prepare_task_data: {str(e)}\n{traceback.format_exc()}")
             # Return minimal data to avoid complete failure
             return {
                 'id': task.id,

@@ -11,39 +11,49 @@ _logger = logging.getLogger(__name__)
 
 class TeamProjectAPI(http.Controller):
     def _format_datetime_jakarta(self, dt):
+        """Menyiapkan format datetime ke timezone Jakarta dengan penanganan error yang tepat."""
         if not dt:
             return False
         
-        # Untuk tipe Date (bukan Datetime)
-        if isinstance(dt, datetime.date) and not isinstance(dt, datetime.datetime):
-            return fields.Date.to_string(dt)
-                
-        # Jika dt adalah string, konversi ke objek datetime
-        if isinstance(dt, str):
-            try:
-                if 'T' in dt or ' ' in dt:  # Ini datetime string
-                    dt = fields.Datetime.from_string(dt)
-                else:  # Ini date string
-                    return dt  # Kembalikan date string langsung
-            except Exception as e:
-                _logger.error(f"Error converting date/time string '{dt}': {e}")
-                return dt  # Kembalikan string asli jika gagal convert
-        
-        # Define Jakarta timezone
-        jakarta_tz = pytz.timezone('Asia/Jakarta')
-        
-        # Convert ke Jakarta timezone (hanya untuk objek datetime)
         try:
-            dt_utc = pytz.utc.localize(dt) if not dt.tzinfo else dt
-            dt_jakarta = dt_utc.astimezone(jakarta_tz)
-            return fields.Datetime.to_string(dt_jakarta)
-        except AttributeError:
-            # Jika dt tidak memiliki atribut tzinfo
-            # Berarti kemungkinan objek date yang lolos dari pemeriksaan sebelumnya
-            return fields.Date.to_string(dt) if hasattr(dt, 'day') else str(dt)
+            # Import datetime langsung di dalam fungsi untuk memastikan ketersediaan
+            import datetime
+            
+            # Untuk tipe Date (bukan Datetime)
+            if hasattr(dt, 'day') and not hasattr(dt, 'hour'):
+                return fields.Date.to_string(dt)
+                    
+            # Jika dt adalah string, konversi ke objek datetime
+            if isinstance(dt, str):
+                try:
+                    if 'T' in dt or ' ' in dt:  # Ini datetime string
+                        dt = fields.Datetime.from_string(dt)
+                    else:  # Ini date string
+                        return dt  # Kembalikan date string langsung
+                except Exception as e:
+                    _logger.error(f"Error converting date/time string '{dt}': {e}")
+                    return dt  # Kembalikan string asli jika konversi gagal
+            
+            # Define Jakarta timezone
+            jakarta_tz = pytz.timezone('Asia/Jakarta')
+            
+            # Convert ke Jakarta timezone (hanya untuk objek datetime)
+            if hasattr(dt, 'hour'):  # Ini adalah datetime, bukan date
+                try:
+                    dt_utc = pytz.utc.localize(dt) if not hasattr(dt, 'tzinfo') or dt.tzinfo is None else dt
+                    dt_jakarta = dt_utc.astimezone(jakarta_tz)
+                    return fields.Datetime.to_string(dt_jakarta)
+                except Exception as e:
+                    _logger.error(f"Error converting datetime '{dt}': {e}")
+                    return str(dt)
+            else:
+                # Ini adalah objek date
+                return fields.Date.to_string(dt) if hasattr(dt, 'day') else str(dt)
+                
         except Exception as e:
-            _logger.error(f"Error converting datetime '{dt}': {e}")
-            return str(dt)  # Fallback ke string jika semua gagal
+            _logger.error(f"Unexpected error in _format_datetime_jakarta: {e}")
+            # Return nilai yang aman
+            return str(dt) if dt else False
     
     @http.route('/web/v2/team/projects', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_projects(self, **kw):

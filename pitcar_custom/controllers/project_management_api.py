@@ -228,126 +228,190 @@ class TeamProjectAPI(http.Controller):
                     _logger.error(f"Error in list operation: {str(e)}")
                     return {'status': 'error', 'message': str(e)}
 
-            # Di dalam metode manage_tasks di TeamProjectAPI
-            # Di dalam metode manage_tasks di TeamProjectAPI
             elif operation == 'read':
-                task_id = kw.get('task_id')
-                if not task_id:
-                    return {'status': 'error', 'message': 'Missing task_id'}
-                
-                task = request.env['team.project.task'].sudo().browse(int(task_id))
-                if not task.exists():
-                    return {'status': 'error', 'message': 'Task not found'}
-                
-                # Prepare task data
-                task_data = self._prepare_task_data(task)
-                
-                # Periksa apakah relasi tersebut ada di model
-                if hasattr(task, 'checklist_ids'):
-                    # Get checklist items
-                    checklist_items = []
-                    for item in task.checklist_ids:
-                        # Periksa apakah method _prepare_checklist_data tersedia
-                        if hasattr(self, '_prepare_checklist_data'):
-                            try:
-                                checklist_items.append(self._prepare_checklist_data(item))
-                            except Exception as e:
-                                _logger.error(f"Error preparing checklist data: {e}")
+                try:
+                    task_id = kw.get('task_id')
+                    if not task_id:
+                        return {'status': 'error', 'message': 'Missing task_id'}
                     
-                    # Add to task data
-                    task_data['checklists'] = checklist_items
-                
-                # Periksa apakah relasi tersebut ada di model
-                if hasattr(task, 'timesheet_ids'):
-                    # Get timesheets
-                    timesheets = []
-                    for timesheet in task.timesheet_ids:
-                        # Periksa apakah method _prepare_timesheet_data tersedia
-                        if hasattr(self, '_prepare_timesheet_data'):
-                            try:
-                                timesheets.append(self._prepare_timesheet_data(timesheet))
-                            except Exception as e:
-                                _logger.error(f"Error preparing timesheet data: {e}")
+                    task = request.env['team.project.task'].sudo().browse(int(task_id))
+                    if not task.exists():
+                        return {'status': 'error', 'message': 'Task not found'}
                     
-                    # Add to task data
-                    task_data['timesheets'] = timesheets
-                
-                return {'status': 'success', 'data': task_data}
+                    # Prepare task data
+                    task_data = self._prepare_task_data(task)
+                    
+                    # Get checklist items if available
+                    if hasattr(task, 'checklist_ids'):
+                        # Get checklist items
+                        checklist_items = []
+                        for item in task.checklist_ids:
+                            if hasattr(self, '_prepare_checklist_data'):
+                                try:
+                                    checklist_items.append(self._prepare_checklist_data(item))
+                                except Exception as e:
+                                    _logger.error(f"Error preparing checklist data: {e}")
+                        
+                        # Add to task data
+                        task_data['checklists'] = checklist_items
+                    
+                    # Get timesheets if available
+                    if hasattr(task, 'timesheet_ids'):
+                        # Get timesheets
+                        timesheets = []
+                        for timesheet in task.timesheet_ids:
+                            if hasattr(self, '_prepare_timesheet_data'):
+                                try:
+                                    timesheets.append(self._prepare_timesheet_data(timesheet))
+                                except Exception as e:
+                                    _logger.error(f"Error preparing timesheet data: {e}")
+                        
+                        # Add to task data
+                        task_data['timesheets'] = timesheets
+                    
+                    return {'status': 'success', 'data': task_data}
+                except Exception as e:
+                    _logger.error(f"Error reading task: {str(e)}")
+                    return {'status': 'error', 'message': f"Error reading task: {str(e)}"}
 
             elif operation == 'create':
-                required_fields = ['name', 'project_id', 'assigned_to']
-                if not all(kw.get(field) for field in required_fields):
-                    return {'status': 'error', 'message': 'Missing required fields'}
+                try:
+                    required_fields = ['name', 'project_id', 'assigned_to']
+                    if not all(kw.get(field) for field in required_fields):
+                        return {'status': 'error', 'message': 'Missing required fields'}
 
-                # The issue is likely here - 'values' needs to be defined before using it
-                values = {
-                    'name': kw['name'],
-                    'project_id': int(kw['project_id']),
-                    'description': kw.get('description', ''),
-                    'state': kw.get('state', 'draft'),
-                }
+                    # Initialize values dictionary
+                    values = {
+                        'name': kw['name'],
+                        'project_id': int(kw['project_id']),
+                        'description': kw.get('description', ''),
+                        'state': kw.get('state', 'draft'),
+                    }
 
-                # Handle assigned_to conversion
-                if kw.get('assigned_to'):
-                    assigned_to = kw['assigned_to']
-                    # If assigned_to is a string, try to convert it to a list
-                    if isinstance(assigned_to, str):
-                        try:
-                            assigned_to = json.loads(assigned_to)
-                        except (ValueError, json.JSONDecodeError):
-                            assigned_to = [int(assigned_to)] if assigned_to.isdigit() else []
-                    # Ensure assigned_to is a list
-                    if not isinstance(assigned_to, list):
-                        assigned_to = [assigned_to]
-                    values['assigned_to'] = [(6, 0, assigned_to)]
+                    # Handle assigned_to conversion
+                    if kw.get('assigned_to'):
+                        assigned_to = kw['assigned_to']
+                        # If assigned_to is a string, try to convert it to a list
+                        if isinstance(assigned_to, str):
+                            try:
+                                assigned_to = json.loads(assigned_to)
+                            except (ValueError, json.JSONDecodeError):
+                                assigned_to = [int(assigned_to)] if assigned_to.isdigit() else []
+                        # Ensure assigned_to is a list
+                        if not isinstance(assigned_to, list):
+                            assigned_to = [assigned_to]
+                        values['assigned_to'] = [(6, 0, assigned_to)]
 
-                # Add other optional fields
-                if kw.get('planned_date_start'):
-                    values['planned_date_start'] = kw['planned_date_start']
-                if kw.get('planned_date_end'):
-                    values['planned_date_end'] = kw['planned_date_end']
-                if kw.get('planned_hours'):
-                    values['planned_hours'] = float(kw.get('planned_hours', 0.0))
-                if kw.get('progress'):
-                    values['progress'] = float(kw.get('progress', 0.0))
+                    # Add other optional fields
+                    if kw.get('planned_date_start'):
+                        values['planned_date_start'] = kw['planned_date_start']
+                    if kw.get('planned_date_end'):
+                        values['planned_date_end'] = kw['planned_date_end']
+                    if kw.get('planned_hours'):
+                        values['planned_hours'] = float(kw.get('planned_hours', 0.0))
+                    if kw.get('progress'):
+                        values['progress'] = float(kw.get('progress', 0.0))
 
-                # Now create the task with the values
-                task = request.env['team.project.task'].sudo().create(values)
-                return {'status': 'success', 'data': self._prepare_task_data(task)}
+                    # Create the task with the values
+                    task = request.env['team.project.task'].sudo().create(values)
+                    return {'status': 'success', 'data': self._prepare_task_data(task)}
+                except Exception as e:
+                    _logger.error(f"Error creating task: {str(e)}")
+                    return {'status': 'error', 'message': f"Error creating task: {str(e)}"}
 
             elif operation == 'update':
-                task_id = kw.get('task_id')
-                if not task_id:
-                    return {'status': 'error', 'message': 'Missing task_id'}
-                task = request.env['team.project.task'].sudo().browse(int(task_id))
-                if not task.exists():
-                    return {'status': 'error', 'message': 'Task not found'}
+                try:
+                    task_id = kw.get('task_id')
+                    if not task_id:
+                        return {'status': 'error', 'message': 'Missing task_id'}
+                        
+                    task = request.env['team.project.task'].sudo().browse(int(task_id))
+                    if not task.exists():
+                        return {'status': 'error', 'message': 'Task not found'}
 
-                update_values = {}
-                for field in ['name', 'planned_date_start', 'planned_date_end', 
-                            'planned_hours', 'description', 'state', 'progress']:
-                    if field in kw:
-                        update_values[field] = kw[field] if field != 'planned_hours' else float(kw[field])
-                if kw.get('assigned_to'):
-                    assigned_to = kw['assigned_to'] if isinstance(kw['assigned_to'], list) else json.loads(kw['assigned_to'])
-                    update_values['assigned_to'] = [(6, 0, assigned_to)]
-                if kw.get('reviewer_id'):
-                    update_values['reviewer_id'] = int(kw['reviewer_id'])
-                if kw.get('type_id'):
-                    update_values['type_id'] = int(kw['type_id'])
-
-                task.write(update_values)
-                return {'status': 'success', 'data': self._prepare_task_data(task), 'message': 'Task updated'}
+                    # Initialize update values dictionary
+                    update_values = {}
+                    
+                    # Handle scalar fields
+                    scalar_fields = ['name', 'description', 'state', 'progress']
+                    for field in scalar_fields:
+                        if field in kw:
+                            # Convert progress to float if needed
+                            if field == 'progress' and kw[field] is not None:
+                                update_values[field] = float(kw[field])
+                            else:
+                                update_values[field] = kw[field]
+                    
+                    # Handle date fields
+                    date_fields = ['planned_date_start', 'planned_date_end']
+                    for field in date_fields:
+                        if field in kw and kw[field]:
+                            update_values[field] = kw[field]
+                    
+                    # Handle numeric fields
+                    if 'planned_hours' in kw and kw['planned_hours'] is not None:
+                        try:
+                            update_values['planned_hours'] = float(kw['planned_hours'])
+                        except (ValueError, TypeError):
+                            _logger.warning(f"Invalid planned_hours value: {kw['planned_hours']}")
+                    
+                    # Handle the assigned_to many2many relationship
+                    if kw.get('assigned_to'):
+                        try:
+                            # Ensure assigned_to is a list
+                            if isinstance(kw['assigned_to'], list):
+                                assigned_to = kw['assigned_to']
+                            else:
+                                # Try to parse JSON if it's a string
+                                try:
+                                    assigned_to = json.loads(kw['assigned_to'])
+                                except (ValueError, json.JSONDecodeError):
+                                    # If not JSON, convert to list
+                                    assigned_to = [int(kw['assigned_to'])]
+                            
+                            # Ensure all items are integers
+                            assigned_to = [int(id) for id in assigned_to if id]
+                            if assigned_to:
+                                update_values['assigned_to'] = [(6, 0, assigned_to)]
+                        except Exception as e:
+                            _logger.error(f"Error processing assigned_to: {str(e)}")
+                    
+                    # Handle single relations
+                    relation_fields = [('reviewer_id', 'reviewer_id'), ('type_id', 'type_id')]
+                    for param_name, field_name in relation_fields:
+                        if kw.get(param_name):
+                            try:
+                                update_values[field_name] = int(kw[param_name])
+                            except (ValueError, TypeError):
+                                _logger.warning(f"Invalid {param_name} value: {kw[param_name]}")
+                    
+                    # Apply updates
+                    _logger.info(f"Updating task {task_id} with values: {update_values}")
+                    task.write(update_values)
+                    
+                    # Return the updated task data
+                    return {'status': 'success', 'data': self._prepare_task_data(task), 'message': 'Task updated'}
+                except Exception as e:
+                    import traceback
+                    _logger.error(f"Error updating task: {str(e)}\n{traceback.format_exc()}")
+                    return {'status': 'error', 'message': f"Error updating task: {str(e)}"}
 
             elif operation == 'delete':
-                task_id = kw.get('task_id')
-                if not task_id:
-                    return {'status': 'error', 'message': 'Missing task_id'}
-                task = request.env['team.project.task'].sudo().browse(int(task_id))
-                if not task.exists():
-                    return {'status': 'error', 'message': 'Task not found'}
-                task.unlink()
-                return {'status': 'success', 'message': 'Task deleted'}
+                try:
+                    task_id = kw.get('task_id')
+                    if not task_id:
+                        return {'status': 'error', 'message': 'Missing task_id'}
+                    task = request.env['team.project.task'].sudo().browse(int(task_id))
+                    if not task.exists():
+                        return {'status': 'error', 'message': 'Task not found'}
+                    task.unlink()
+                    return {'status': 'success', 'message': 'Task deleted'}
+                except Exception as e:
+                    _logger.error(f"Error deleting task: {str(e)}")
+                    return {'status': 'error', 'message': f"Error deleting task: {str(e)}"}
+            
+            else:
+                return {'status': 'error', 'message': f'Unknown operation: {operation}'}
 
         except Exception as e:
             _logger.error(f"Error in manage_tasks: {str(e)}")
@@ -445,7 +509,7 @@ class TeamProjectAPI(http.Controller):
             
             # Add assigned_to info if available
             task_data['assigned_to'] = []
-            if hasattr(task, 'assigned_to'):
+            if hasattr(task, 'assigned_to') and task.assigned_to:
                 for person in task.assigned_to:
                     task_data['assigned_to'].append({
                         'id': person.id,

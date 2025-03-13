@@ -279,35 +279,39 @@ class TeamProjectAPI(http.Controller):
                 if not all(kw.get(field) for field in required_fields):
                     return {'status': 'error', 'message': 'Missing required fields'}
 
-                if kw.get('assigned_to'):
-                    # Perbaikan: Periksa tipe data terlebih dahulu
-                    if isinstance(kw['assigned_to'], str):
-                        try:
-                            assigned_to = json.loads(kw['assigned_to'])
-                        except (ValueError, json.JSONDecodeError):
-                            assigned_to = [int(kw['assigned_to'])] if kw['assigned_to'].isdigit() else []
-                    elif isinstance(kw['assigned_to'], list):
-                        assigned_to = kw['assigned_to']
-                    else:
-                        # Konversi ke list jika bukan list atau string
-                        assigned_to = [int(kw['assigned_to'])] if isinstance(kw['assigned_to'], (int, float)) else []
-                    
-                    values['assigned_to'] = [(6, 0, assigned_to)]
+                # The issue is likely here - 'values' needs to be defined before using it
                 values = {
                     'name': kw['name'],
                     'project_id': int(kw['project_id']),
-                    'assigned_to': [(6, 0, assigned_to)],
-                    'planned_date_start': kw.get('planned_date_start'),
-                    'planned_date_end': kw.get('planned_date_end'),
-                    'planned_hours': float(kw.get('planned_hours', 0.0)),
-                    'description': kw.get('description'),
+                    'description': kw.get('description', ''),
                     'state': kw.get('state', 'draft'),
                 }
-                if kw.get('reviewer_id'):
-                    values['reviewer_id'] = int(kw['reviewer_id'])
-                if kw.get('type_id'):
-                    values['type_id'] = int(kw['type_id'])
 
+                # Handle assigned_to conversion
+                if kw.get('assigned_to'):
+                    assigned_to = kw['assigned_to']
+                    # If assigned_to is a string, try to convert it to a list
+                    if isinstance(assigned_to, str):
+                        try:
+                            assigned_to = json.loads(assigned_to)
+                        except (ValueError, json.JSONDecodeError):
+                            assigned_to = [int(assigned_to)] if assigned_to.isdigit() else []
+                    # Ensure assigned_to is a list
+                    if not isinstance(assigned_to, list):
+                        assigned_to = [assigned_to]
+                    values['assigned_to'] = [(6, 0, assigned_to)]
+
+                # Add other optional fields
+                if kw.get('planned_date_start'):
+                    values['planned_date_start'] = kw['planned_date_start']
+                if kw.get('planned_date_end'):
+                    values['planned_date_end'] = kw['planned_date_end']
+                if kw.get('planned_hours'):
+                    values['planned_hours'] = float(kw.get('planned_hours', 0.0))
+                if kw.get('progress'):
+                    values['progress'] = float(kw.get('progress', 0.0))
+
+                # Now create the task with the values
                 task = request.env['team.project.task'].sudo().create(values)
                 return {'status': 'success', 'data': self._prepare_task_data(task)}
 

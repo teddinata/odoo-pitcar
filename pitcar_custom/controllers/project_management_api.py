@@ -1182,12 +1182,33 @@ class TeamProjectAPI(http.Controller):
 
                 values = {
                     'task_id': int(kw['task_id']),
-                    'employee_id': int(kw.get('employee_id', request.env.user.employee_id.id)),
-                    'date': kw.get('date', fields.Date.context_today(request)),
                     'hours': float(kw['hours']),
-                    'description': kw.get('description'),
                 }
+                
+                # Handle employee_id safely
+                if kw.get('employee_id'):
+                    values['employee_id'] = int(kw['employee_id'])
+                else:
+                    # Use current user's employee record without relying on context
+                    current_user = request.env['res.users'].sudo().browse(request.uid)
+                    if current_user.employee_id:
+                        values['employee_id'] = current_user.employee_id.id
+                    else:
+                        return {'status': 'error', 'message': 'No employee record found for current user'}
+                
+                # Handle date safely
+                if kw.get('date'):
+                    values['date'] = kw['date']
+                else:
+                    # Use current date without relying on context_today
+                    from datetime import date
+                    values['date'] = date.today().strftime('%Y-%m-%d')
+                
+                # Add description if provided
+                if kw.get('description'):
+                    values['description'] = kw['description']
 
+                # Create the timesheet record
                 timesheet = request.env['team.project.timesheet'].sudo().create(values)
                 return {'status': 'success', 'data': self._prepare_timesheet_data(timesheet)}
 

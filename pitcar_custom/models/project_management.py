@@ -620,6 +620,94 @@ class TeamProjectTimesheet(models.Model):
                 raise ValidationError(_('Hours must be positive.'))
             if record.hours > 24:
                 raise ValidationError(_('You cannot log more than 24 hours per day.'))
+            
+    # Add these methods to the TeamProjectTimesheet model class in models/team_project.py
+    # Extension for the TeamProjectTimesheet model
+    def _check_employee_availability(self):
+        """Check if employee has already logged too many hours on a given date."""
+        for timesheet in self:
+            # Get all other timesheets from the same employee on the same date
+            other_timesheets = self.env['team.project.timesheet'].search([
+                ('employee_id', '=', timesheet.employee_id.id),
+                ('date', '=', timesheet.date),
+                ('id', '!=', timesheet.id)
+            ])
+            
+            # Calculate total hours logged for that day
+            total_hours = sum(other_timesheets.mapped('hours')) + timesheet.hours
+            
+            # Check against the maximum allowed per day (8 or configurable)
+            # This is a soft warning - doesn't prevent saving but logs a warning
+            max_hours_per_day = 8  # Could be made configurable
+            if total_hours > max_hours_per_day:
+                _logger.warning(
+                    f"Employee {timesheet.employee_id.name} has logged {total_hours} hours "
+                    f"on {timesheet.date}, which exceeds the recommended {max_hours_per_day} hours."
+                )
+
+    # Add an SQL constraint to ensure hours are positive
+    _sql_constraints = [
+        ('check_timesheet_hours_positive', 'CHECK(hours > 0)', 'Hours must be greater than zero.'),
+    ]
+
+    # Add this method to get available employees for a task
+    @api.model
+    def get_available_employees_for_task(self, task_id):
+        """Get employees available for logging time on a specific task."""
+        if not task_id:
+            return []
+            
+        task = self.env['team.project.task'].browse(int(task_id))
+        if not task.exists():
+            return []
+            
+        # Get assigned employees plus project team members
+        available_employees = task.assigned_to
+        if task.project_id:
+            available_employees |= task.project_id.team_ids
+            available_employees |= task.project_id.project_manager_id
+            
+        return available_employees.mapped(lambda e: {'id': e.id, 'name': e.name})
+
+    # Add this method to analyze timesheet efficiency
+    @api.model
+    def analyze_timesheet_efficiency(self, domain=None):
+        """Analyze timesheet efficiency for reporting."""
+        if domain is None:
+            domain = []
+            
+        timesheets = self.search(domain)
+        
+        # Group timesheets by task
+        task_efficiency = {}
+        for timesheet in timesheets:
+            task_id = timesheet.task_id.id
+            if task_id not in task_efficiency:
+                task = timesheet.task_id
+                task_efficiency[task_id] = {
+                    'task_name': task.name,
+                    'planned_hours': task.planned_hours,
+                    'actual_hours': 0,
+                    'progress': task.progress,
+                    'efficiency': 0
+                }
+            task_efficiency[task_id]['actual_hours'] += timesheet.hours
+            
+        # Calculate efficiency
+        for task_id, data in task_efficiency.items():
+            if data['planned_hours'] > 0:
+                # Calculate hours efficiency (planned vs actual)
+                hours_ratio = data['planned_hours'] / max(data['actual_hours'], 0.1)
+                # Calculate progress efficiency (progress vs expected based on hours)
+                expected_progress = min(100, (data['actual_hours'] / data['planned_hours']) * 100)
+                progress_ratio = data['progress'] / max(expected_progress, 0.1)
+                
+                # Combined efficiency score (0-100%)
+                data['efficiency'] = min(100, (hours_ratio * 0.5 + progress_ratio * 0.5) * 100)
+            else:
+                data['efficiency'] = 0
+                
+        return list(task_efficiency.values())
 
 
 class TeamProjectMeeting(models.Model):

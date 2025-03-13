@@ -1407,3 +1407,1774 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_group_messages: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    # DASHBOARD
+    # Add these endpoints to your TeamProjectAPI class in controllers/team_project_api.py
+    @http.route('/web/v2/team/task/timesheets/list', type='json', auth='user', methods=['POST'], csrf=False)
+    def list_timesheets(self, **kw):
+        """Get a list of timesheets with filtering and pagination support."""
+        try:
+            # Build domain filter
+            domain = []
+            
+            # Handle project filter
+            if kw.get('project_id'):
+                domain.append(('project_id', '=', int(kw['project_id'])))
+            
+            # Handle task name filter (via search on related task)
+            if kw.get('task_name'):
+                task_name = kw['task_name']
+                # Search for tasks with this name
+                task_ids = request.env['team.project.task'].sudo().search([
+                    ('name', 'ilike', task_name)
+                ]).ids
+                if task_ids:
+                    domain.append(('task_id', 'in', task_ids))
+                else:
+                    # If no tasks match, return empty result
+                    return {
+                        'status': 'success',
+                        'data': [],
+                        'total': 0,
+                        'stats': self._get_timesheet_stats(domain)
+                    }
+            
+            # Handle date range filters
+            if kw.get('date_from'):
+                domain.append(('date', '>=', kw['date_from']))
+            if kw.get('date_to'):
+                domain.append(('date', '<=', kw['date_to']))
+            
+            # Handle employee filter
+            if kw.get('employee_id'):
+                domain.append(('employee_id', '=', int(kw['employee_id'])))
+            
+            # Pagination parameters
+            page = int(kw.get('page', 1))
+            limit = int(kw.get('limit', 10))
+            offset = (page - 1) * limit
+
+            # Get total count for pagination
+            total_count = request.env['team.project.timesheet'].sudo().search_count(domain)
+            
+            # Get timesheet entries
+            timesheets = request.env['team.project.timesheet'].sudo().search(
+                domain, limit=limit, offset=offset, order='date desc, id desc'
+            )
+            
+            # Format the data for frontend
+            timesheet_data = [self._prepare_timesheet_data(timesheet) for timesheet in timesheets]
+            
+            # Get statistics for display
+            stats = self._get_timesheet_stats(domain)
+            
+            return {
+                'status': 'success',
+                'data': timesheet_data,
+                'total': total_count,
+                'stats': stats
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in list_timesheets: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    def _get_timesheet_stats(self, domain):
+        """Calculate timesheet statistics based on the given domain."""
+        try:
+            # Get all timesheets matching domain for statistics
+            all_timesheets = request.env['team.project.timesheet'].sudo().search(domain)
+            
+            # Total hours
+            total_hours = sum(all_timesheets.mapped('hours'))
+            
+            # Get current week timesheets
+            today = fields.Date.today()
+            week_start = today - timedelta(days=today.weekday())
+            week_end = week_start + timedelta(days=6)
+            
+            weekly_domain = domain + [
+                ('date', '>=', week_start),
+                ('date', '<=', week_end)
+            ]
+            weekly_timesheets = request.env['team.project.timesheet'].sudo().search(weekly_domain)
+            weekly_hours = sum(weekly_timesheets.mapped('hours'))
+            
+            # Count unique team members
+            team_members_count = len(set(all_timesheets.mapped('employee_id.id')))
+            
+            # Count unique tasks
+            tasks_count = len(set(all_timesheets.mapped('task_id.id')))
+            
+            return {
+                'total_hours': round(total_hours, 1),
+                'weekly_hours': round(weekly_hours, 1),
+                'team_members_count': team_members_count,
+                'tasks_count': tasks_count
+            }
+        except Exception as e:
+            _logger.error(f"Error calculating timesheet stats: {str(e)}")
+            return {
+                'total_hours': 0,
+                'weekly_hours': 0,
+                'team_members_count': 0,
+                'tasks_count': 0
+            }
+
+    @http.route('/web/v2/team/task/timesheets/export', type='json', auth='user', methods=['POST'], csrf=False)
+    def export_timesheets(self, **kw):
+        """Export timesheets to CSV format."""
+        try:
+            # Build domain filter (similar to list_timesheets)
+            domain = []
+            
+            if kw.get('project_id'):
+                domain.append(('project_id', '=', int(kw['project_id'])))
+                
+            if kw.get('task_name'):
+                task_name = kw['task_name']
+                task_ids = request.env['team.project.task'].sudo().search([
+                    ('name', 'ilike', task_name)
+                ]).ids
+                if task_ids:
+                    domain.append(('task_id', 'in', task_ids))
+            
+            if kw.get('date_from'):
+                domain.append(('date', '>=', kw['date_from']))
+            if kw.get('date_to'):
+                domain.append(('date', '<=', kw['date_to']))
+            
+            if kw.get('employee_id'):
+                domain.append(('employee_id', '=', int(kw['employee_id'])))
+            
+            # Get all matching timesheet entries without pagination
+            timesheets = request.env['team.project.timesheet'].sudo().search(domain, order='date desc, id desc')
+            
+            # Generate CSV data
+            csv_data = "Date,Task,Project,Employee,Hours,Description\n"
+            
+            for ts in timesheets:
+                # Format date
+                date_str = fields.Date.to_string(ts.date)
+                
+                # Get related data
+                task_name = ts.task_id.name.replace(',', ' ') if ts.task_id.name else '-'
+                project_name = ts.project_id.name.replace(',', ' ') if ts.project_id.name else '-'
+                employee_name = ts.employee_id.name.replace(',', ' ') if ts.employee_id.name else '-'
+                
+                # Format description (escape commas and newlines)
+                description = (ts.description or '-').replace(',', ' ').replace('\n', ' ').replace('\r', ' ')
+                
+                # Add row to CSV
+                csv_data += f"{date_str},{task_name},{project_name},{employee_name},{ts.hours},{description}\n"
+                
+            return {
+                'status': 'success',
+                'data': csv_data
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in export_timesheets: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/reports/timesheet', type='json', auth='user', methods=['POST'], csrf=False)
+    def generate_timesheet_report(self, **kw):
+        """Generate timesheet reports with different aggregation options."""
+        try:
+            # Get report parameters
+            report_type = kw.get('report_type', 'employee')  # Default: by employee
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            employee_id = kw.get('employee_id') and int(kw['employee_id'])
+            project_id = kw.get('project_id') and int(kw['project_id'])
+            
+            if not date_from or not date_to:
+                return {'status': 'error', 'message': 'Date range is required for report generation'}
+            
+            # Build base domain
+            domain = [
+                ('date', '>=', date_from),
+                ('date', '<=', date_to)
+            ]
+            
+            if employee_id:
+                domain.append(('employee_id', '=', employee_id))
+            
+            if project_id:
+                domain.append(('project_id', '=', project_id))
+            
+            # Get all matching timesheet entries
+            timesheets = request.env['team.project.timesheet'].sudo().search(domain)
+            
+            # Generate report based on type
+            report_data = []
+            
+            if report_type == 'employee':
+                # Group by employee
+                employee_data = {}
+                
+                for ts in timesheets:
+                    employee_id = ts.employee_id.id
+                    if employee_id not in employee_data:
+                        employee_data[employee_id] = {
+                            'name': ts.employee_id.name,
+                            'hours': 0,
+                            'percentage': 0,
+                            'taskCount': 0,
+                            'tasks': set()
+                        }
+                    
+                    employee_data[employee_id]['hours'] += ts.hours
+                    employee_data[employee_id]['tasks'].add(ts.task_id.id)
+                
+                # Calculate percentages and task counts
+                total_hours = sum(data['hours'] for data in employee_data.values())
+                
+                for emp_id, data in employee_data.items():
+                    data['taskCount'] = len(data['tasks'])
+                    data['percentage'] = (data['hours'] / total_hours * 100) if total_hours else 0
+                    del data['tasks']  # Remove temporary set
+                    report_data.append(data)
+                    
+            elif report_type == 'project':
+                # Group by project
+                project_data = {}
+                
+                for ts in timesheets:
+                    project_id = ts.project_id.id
+                    if project_id not in project_data:
+                        project_data[project_id] = {
+                            'name': ts.project_id.name,
+                            'hours': 0,
+                            'percentage': 0,
+                            'employeeCount': 0,
+                            'employees': set()
+                        }
+                    
+                    project_data[project_id]['hours'] += ts.hours
+                    project_data[project_id]['employees'].add(ts.employee_id.id)
+                
+                # Calculate percentages and employee counts
+                total_hours = sum(data['hours'] for data in project_data.values())
+                
+                for proj_id, data in project_data.items():
+                    data['employeeCount'] = len(data['employees'])
+                    data['percentage'] = (data['hours'] / total_hours * 100) if total_hours else 0
+                    del data['employees']  # Remove temporary set
+                    report_data.append(data)
+                    
+            elif report_type == 'task':
+                # Group by task
+                for ts in timesheets:
+                    report_data.append({
+                        'name': ts.task_id.name,
+                        'project': ts.project_id.name,
+                        'employee': ts.employee_id.name,
+                        'hours': ts.hours
+                    })
+                    
+            elif report_type == 'date':
+                # Group by date
+                date_data = {}
+                
+                for ts in timesheets:
+                    date_str = fields.Date.to_string(ts.date)
+                    if date_str not in date_data:
+                        date_data[date_str] = {
+                            'date': date_str,
+                            'hours': 0,
+                            'taskCount': 0,
+                            'employeeCount': 0,
+                            'tasks': set(),
+                            'employees': set()
+                        }
+                    
+                    date_data[date_str]['hours'] += ts.hours
+                    date_data[date_str]['tasks'].add(ts.task_id.id)
+                    date_data[date_str]['employees'].add(ts.employee_id.id)
+                
+                # Calculate task and employee counts
+                for date_str, data in date_data.items():
+                    data['taskCount'] = len(data['tasks'])
+                    data['employeeCount'] = len(data['employees'])
+                    del data['tasks']
+                    del data['employees']
+                    report_data.append(data)
+            
+            return {
+                'status': 'success',
+                'data': report_data
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in generate_timesheet_report: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/session/get_employees', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_employees(self, **kw):
+        """Get list of employees for dropdown selection."""
+        try:
+            employees = request.env['hr.employee'].sudo().search_read(
+                [], ['id', 'name'], order='name asc'
+            )
+            
+            return {
+                'status': 'success',
+                'data': employees
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_employees: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    # Add these functions to your TeamProjectAPI class in controllers/team_project_api.py
+    @http.route('/web/v2/team/reports/timesheet/analytics', type='json', auth='user', methods=['POST'], csrf=False)
+    def timesheet_analytics(self, **kw):
+        """Generate analytics data for timesheet dashboards."""
+        try:
+            # Get parameters
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            employee_id = kw.get('employee_id') and int(kw['employee_id'])
+            project_id = kw.get('project_id') and int(kw['project_id'])
+            
+            if not date_from or not date_to:
+                return {'status': 'error', 'message': 'Date range is required for analytics'}
+                
+            # Build base domain
+            domain = [
+                ('date', '>=', date_from),
+                ('date', '<=', date_to)
+            ]
+            
+            if employee_id:
+                domain.append(('employee_id', '=', employee_id))
+            if project_id:
+                domain.append(('project_id', '=', project_id))
+                
+            # Get daily distribution data
+            daily_distribution = self._get_daily_distribution(domain)
+            
+            # Get productivity metrics
+            productivity_metrics = self._get_productivity_metrics(domain)
+            
+            # Get summary distribution data
+            summary_distribution = self._get_summary_distribution(domain)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'daily_distribution': daily_distribution,
+                    'productivity_metrics': productivity_metrics,
+                    'summary_distribution': summary_distribution
+                }
+            }
+        
+        except Exception as e:
+            _logger.error(f"Error in timesheet_analytics: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    def _get_daily_distribution(self, domain):
+        """Get daily distribution of hours for the week days."""
+        try:
+            # Create a dictionary to store hours by day of week
+            days_of_week = {
+                0: {'label': 'Mon', 'hours': 0},
+                1: {'label': 'Tue', 'hours': 0},
+                2: {'label': 'Wed', 'hours': 0},
+                3: {'label': 'Thu', 'hours': 0},
+                4: {'label': 'Fri', 'hours': 0},
+                5: {'label': 'Sat', 'hours': 0},
+                6: {'label': 'Sun', 'hours': 0}
+            }
+            
+            # Get timesheets matching domain
+            timesheets = request.env['team.project.timesheet'].sudo().search(domain)
+            
+            # Group hours by day of week
+            for ts in timesheets:
+                # Convert date to day of week (0=Monday, 6=Sunday)
+                day_of_week = fields.Date.from_string(ts.date).weekday()
+                days_of_week[day_of_week]['hours'] += ts.hours
+            
+            # Convert to list format for frontend
+            result = [days_of_week[i] for i in range(7)]
+            
+            # Calculate max hours for percentage calculation
+            max_hours = max([day['hours'] for day in result]) if result else 0
+            
+            # Add height percentage for chart visualization
+            for day in result:
+                day['heightPercentage'] = (day['hours'] / max_hours * 100) if max_hours > 0 else 0
+            
+            return result
+        
+        except Exception as e:
+            _logger.error(f"Error in _get_daily_distribution: {str(e)}")
+            return []
+
+    def _get_productivity_metrics(self, domain):
+        """Calculate productivity metrics based on tasks and timesheets."""
+        try:
+            # Get all timesheets matching domain
+            timesheets = request.env['team.project.timesheet'].sudo().search(domain)
+            
+            # Get unique tasks from timesheets
+            task_ids = list(set(timesheets.mapped('task_id.id')))
+            
+            if not task_ids:
+                return {
+                    'completionRate': 0,
+                    'utilization': 0,
+                    'efficiency': 0
+                }
+            
+            # Get tasks to check completion status
+            tasks = request.env['team.project.task'].sudo().browse(task_ids)
+            
+            # Calculate completion rate
+            total_tasks = len(tasks)
+            completed_tasks = len(tasks.filtered(lambda t: t.state == 'done'))
+            completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+            
+            # Calculate utilization
+            # Sum of logged hours / Sum of planned hours (capped at 100%)
+            total_logged_hours = sum(timesheets.mapped('hours'))
+            total_planned_hours = sum(tasks.mapped('planned_hours'))
+            utilization = min(100, (total_logged_hours / total_planned_hours * 100)) if total_planned_hours > 0 else 0
+            
+            # Calculate efficiency
+            # This could be a complex metric, but we'll use a simple formula:
+            # Average task progress / Average expected progress based on logged hours vs planned hours
+            avg_progress = sum(tasks.mapped('progress')) / total_tasks if total_tasks > 0 else 0
+            expected_progress = min(100, (total_logged_hours / total_planned_hours * 100)) if total_planned_hours > 0 else 0
+            
+            # If expected_progress is 0 (no planned hours), use a default value
+            if expected_progress == 0:
+                efficiency = avg_progress  # Just use average progress
+            else:
+                # Compare actual progress to expected progress, capped at 120%
+                efficiency = min(120, (avg_progress / expected_progress * 100))
+            
+            return {
+                'completionRate': round(completion_rate),
+                'utilization': round(utilization),
+                'efficiency': round(efficiency)
+            }
+        
+        except Exception as e:
+            _logger.error(f"Error in _get_productivity_metrics: {str(e)}")
+            return {
+                'completionRate': 0,
+                'utilization': 0,
+                'efficiency': 0
+            }
+
+    def _get_summary_distribution(self, domain):
+        """Get summary of time distribution based on report type context."""
+        try:
+            # Get context from parameters, default to project
+            context_type = domain.get('context_type', 'project')
+            
+            # Get all timesheets
+            timesheets = request.env['team.project.timesheet'].sudo().search(domain)
+            
+            if not timesheets:
+                return []
+                
+            result = []
+            
+            if context_type == 'project':
+                # Group by project
+                project_data = {}
+                
+                for ts in timesheets:
+                    project_id = ts.project_id.id
+                    if project_id not in project_data:
+                        project_data[project_id] = {
+                            'name': ts.project_id.name or 'Undefined',
+                            'hours': 0
+                        }
+                    project_data[project_id]['hours'] += ts.hours
+                
+                result = list(project_data.values())
+                
+            elif context_type == 'employee':
+                # Group by employee
+                employee_data = {}
+                
+                for ts in timesheets:
+                    employee_id = ts.employee_id.id
+                    if employee_id not in employee_data:
+                        employee_data[employee_id] = {
+                            'name': ts.employee_id.name or 'Undefined',
+                            'hours': 0
+                        }
+                    employee_data[employee_id]['hours'] += ts.hours
+                
+                result = list(employee_data.values())
+                
+            elif context_type == 'task':
+                # Group by task type
+                type_data = {}
+                
+                for ts in timesheets:
+                    # Use task type if available, otherwise "Undefined"
+                    type_name = ts.task_id.type_id.name if ts.task_id.type_id else 'Undefined'
+                    type_key = type_name  # Using name as key
+                    
+                    if type_key not in type_data:
+                        type_data[type_key] = {
+                            'name': type_name,
+                            'hours': 0
+                        }
+                    type_data[type_key]['hours'] += ts.hours
+                
+                result = list(type_data.values())
+                
+            else:  # 'date' or any other fallback
+                # Group by week
+                week_data = {}
+                
+                for ts in timesheets:
+                    # Get ISO week number
+                    date_obj = fields.Date.from_string(ts.date)
+                    year, week_num, _ = date_obj.isocalendar()
+                    week_key = f"Week {week_num}"
+                    
+                    if week_key not in week_data:
+                        week_data[week_key] = {
+                            'name': week_key,
+                            'hours': 0
+                        }
+                    week_data[week_key]['hours'] += ts.hours
+                
+                result = list(week_data.values())
+            
+            # Calculate total hours for percentage
+            total_hours = sum(item['hours'] for item in result)
+            
+            # Add percentage to each item
+            for item in result:
+                item['percentage'] = (item['hours'] / total_hours * 100) if total_hours > 0 else 0
+            
+            # Sort by hours in descending order
+            result.sort(key=lambda x: x['hours'], reverse=True)
+            
+            return result
+        
+        except Exception as e:
+            _logger.error(f"Error in _get_summary_distribution: {str(e)}")
+            return []
+    
+    # Add these endpoints to your TeamProjectAPI class in controllers/team_project_api.py
+    @http.route('/web/v2/team/dashboard/summary', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_dashboard_summary(self, **kw):
+        """Get project dashboard summary statistics."""
+        try:
+            # Get optional department filter
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            
+            # Build domain for projects
+            project_domain = []
+            if department_id:
+                project_domain.append(('department_id', '=', department_id))
+                
+            # Get projects based on domain
+            projects = request.env['team.project'].sudo().search(project_domain)
+            
+            # Calculate summary statistics
+            total_projects = len(projects)
+            active_projects = len(projects.filtered(lambda p: p.state == 'in_progress'))
+            completed_projects = len(projects.filtered(lambda p: p.state == 'completed'))
+            
+            # Get total planned hours vs actual hours
+            total_planned_hours = sum(projects.mapped('planned_hours'))
+            total_actual_hours = sum(projects.mapped('actual_hours'))
+            hours_efficiency = (total_planned_hours / total_actual_hours) * 100 if total_actual_hours else 0
+            
+            # Get task statistics
+            tasks = request.env['team.project.task'].sudo().search([('project_id', 'in', projects.ids)])
+            total_tasks = len(tasks)
+            completed_tasks = len(tasks.filtered(lambda t: t.state == 'done'))
+            
+            task_completion_rate = (completed_tasks / total_tasks) * 100 if total_tasks else 0
+            
+            # Get upcoming deadlines
+            today = fields.Date.today()
+            upcoming_deadline = today + timedelta(days=14)  # Next 14 days
+            
+            upcoming_tasks = request.env['team.project.task'].sudo().search([
+                ('project_id', 'in', projects.ids),
+                ('state', 'not in', ['done', 'cancelled']),
+                ('planned_date_end', '>=', today),
+                ('planned_date_end', '<=', upcoming_deadline)
+            ], limit=5, order='planned_date_end')
+            
+            upcoming_tasks_data = [self._prepare_task_data(task) for task in upcoming_tasks]
+            
+            # Get project progress data for visualization
+            project_progress_data = []
+            for project in projects:
+                if project.state not in ['cancelled', 'draft']:
+                    project_progress_data.append({
+                        'id': project.id,
+                        'name': project.name,
+                        'progress': project.progress,
+                        'state': project.state,
+                        'tasks_count': len(project.task_ids),
+                        'tasks_completed': len(project.task_ids.filtered(lambda t: t.state == 'done'))
+                    })
+                    
+            # Sort by progress for visualization
+            project_progress_data.sort(key=lambda p: p['progress'])
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'summary': {
+                        'total_projects': total_projects,
+                        'active_projects': active_projects,
+                        'completed_projects': completed_projects,
+                        'total_tasks': total_tasks,
+                        'completed_tasks': completed_tasks,
+                        'task_completion_rate': round(task_completion_rate, 1),
+                        'total_planned_hours': round(total_planned_hours, 1),
+                        'total_actual_hours': round(total_actual_hours, 1),
+                        'hours_efficiency': round(hours_efficiency, 1)
+                    },
+                    'upcoming_tasks': upcoming_tasks_data,
+                    'project_progress': project_progress_data[:10]  # Limit to top 10 projects
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_dashboard_summary: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/dashboard/activity', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_dashboard_activity(self, **kw):
+        """Get recent activity for dashboard."""
+        try:
+            # Get optional filters
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            limit = int(kw.get('limit', 10))
+            
+            # Build domain for projects
+            project_domain = []
+            if department_id:
+                project_domain.append(('department_id', '=', department_id))
+                
+            # Get projects based on domain
+            projects = request.env['team.project'].sudo().search(project_domain)
+            project_ids = projects.ids
+            
+            # Recent completed tasks
+            recent_tasks = request.env['team.project.task'].sudo().search([
+                ('project_id', 'in', project_ids),
+                ('state', '=', 'done'),
+                ('actual_date_end', '!=', False)
+            ], limit=limit, order='actual_date_end desc')
+            
+            # Recent timesheet entries
+            recent_timesheets = request.env['team.project.timesheet'].sudo().search([
+                ('project_id', 'in', project_ids)
+            ], limit=limit, order='create_date desc')
+            
+            # Recent meetings
+            recent_meetings = request.env['team.project.meeting'].sudo().search([
+                ('project_id', 'in', project_ids),
+                ('state', 'in', ['done', 'in_progress'])
+            ], limit=limit, order='start_datetime desc')
+            
+            # Format activity data
+            activity_data = []
+            
+            # Add tasks to activity
+            for task in recent_tasks:
+                activity_data.append({
+                    'type': 'task',
+                    'id': task.id,
+                    'title': task.name,
+                    'project': {
+                        'id': task.project_id.id,
+                        'name': task.project_id.name
+                    },
+                    'user': {
+                        'id': task.assigned_to[0].id if task.assigned_to else False,
+                        'name': task.assigned_to[0].name if task.assigned_to else 'Unassigned'
+                    },
+                    'date': self._format_datetime_jakarta(task.actual_date_end),
+                    'description': f"Task completed"
+                })
+                
+            # Add timesheets to activity
+            for timesheet in recent_timesheets:
+                activity_data.append({
+                    'type': 'timesheet',
+                    'id': timesheet.id,
+                    'title': timesheet.task_id.name or 'Time Entry',
+                    'project': {
+                        'id': timesheet.project_id.id,
+                        'name': timesheet.project_id.name
+                    },
+                    'user': {
+                        'id': timesheet.employee_id.id,
+                        'name': timesheet.employee_id.name
+                    },
+                    'date': self._format_datetime_jakarta(timesheet.create_date),
+                    'description': f"{timesheet.hours} hours logged" + (f": {timesheet.description}" if timesheet.description else "")
+                })
+                
+            # Add meetings to activity
+            for meeting in recent_meetings:
+                activity_data.append({
+                    'type': 'meeting',
+                    'id': meeting.id,
+                    'title': meeting.name,
+                    'project': {
+                        'id': meeting.project_id.id,
+                        'name': meeting.project_id.name
+                    },
+                    'user': {
+                        'id': meeting.organizer_id.id,
+                        'name': meeting.organizer_id.name
+                    },
+                    'date': self._format_datetime_jakarta(meeting.start_datetime),
+                    'description': f"Meeting {meeting.state}"
+                })
+                
+            # Sort all activity by date (newest first)
+            activity_data.sort(key=lambda x: x['date'], reverse=True)
+            
+            return {
+                'status': 'success',
+                'data': activity_data[:limit]  # Limit to requested number
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_dashboard_activity: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/dashboard/workload', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_dashboard_workload(self, **kw):
+        """Get team workload statistics for dashboard."""
+        try:
+            # Get optional department filter
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            
+            # Build domain for projects
+            project_domain = [('state', '=', 'in_progress')]
+            if department_id:
+                project_domain.append(('department_id', '=', department_id))
+                
+            # Get active projects
+            active_projects = request.env['team.project'].sudo().search(project_domain)
+            
+            # Get all team members from active projects
+            team_members = request.env['hr.employee']
+            for project in active_projects:
+                team_members |= project.team_ids
+                team_members |= project.project_manager_id
+                
+            # Remove duplicates
+            team_members = team_members.sorted(key=lambda e: e.name)
+            
+            # Calculate workload for each team member
+            workload_data = []
+            
+            for employee in team_members:
+                # Count assigned tasks
+                assigned_tasks = request.env['team.project.task'].sudo().search([
+                    ('project_id', 'in', active_projects.ids),
+                    ('assigned_to', 'in', [employee.id]),
+                    ('state', 'not in', ['done', 'cancelled'])
+                ])
+                
+                # Get last 7 days timesheets
+                today = fields.Date.today()
+                week_start = today - timedelta(days=7)
+                
+                recent_timesheets = request.env['team.project.timesheet'].sudo().search([
+                    ('employee_id', '=', employee.id),
+                    ('date', '>=', week_start),
+                    ('date', '<=', today)
+                ])
+                
+                # Calculate hours per day
+                hours_logged = sum(recent_timesheets.mapped('hours'))
+                days_worked = len(set(recent_timesheets.mapped('date')))
+                hours_per_day = hours_logged / max(days_worked, 1)
+                
+                # Calculate workload score (0-100%)
+                # Consider: task count, priority, and hours per day
+                task_count = len(assigned_tasks)
+                high_priority_count = len(assigned_tasks.filtered(lambda t: t.priority in ['2', '3']))
+                
+                # Base workload on task count (0-40%)
+                task_factor = min(40, task_count * 10)
+                
+                # Add high priority impact (0-30%)
+                priority_factor = min(30, high_priority_count * 15)
+                
+                # Add hours impact (0-30%)
+                hours_factor = min(30, hours_per_day * 5)  # 6 hours/day = 30%
+                
+                # Calculate total workload score
+                workload_score = task_factor + priority_factor + hours_factor
+                
+                # Determine workload level
+                if workload_score < 30:
+                    workload_level = 'low'
+                elif workload_score < 70:
+                    workload_level = 'medium'
+                else:
+                    workload_level = 'high'
+                    
+                # Add to results
+                workload_data.append({
+                    'employee': {
+                        'id': employee.id,
+                        'name': employee.name
+                    },
+                    'assigned_tasks': task_count,
+                    'high_priority_tasks': high_priority_count,
+                    'recent_hours': round(hours_logged, 1),
+                    'hours_per_day': round(hours_per_day, 1),
+                    'workload_score': workload_score,
+                    'workload_level': workload_level,
+                    'projects': [{
+                        'id': task.project_id.id,
+                        'name': task.project_id.name
+                    } for task in assigned_tasks]
+                })
+                
+            return {
+                'status': 'success',
+                'data': workload_data
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_dashboard_workload: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/dashboard/timeline', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_dashboard_timeline(self, **kw):
+        """Get project timeline data for Gantt chart."""
+        try:
+            # Get optional department filter
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            
+            # Build domain for projects
+            project_domain = [('state', 'not in', ['cancelled'])]
+            if department_id:
+                project_domain.append(('department_id', '=', department_id))
+                
+            # Get projects and their tasks
+            projects = request.env['team.project'].sudo().search(project_domain, order='date_start')
+            
+            timeline_data = []
+            
+            # Add project timeline data
+            for project in projects:
+                # Get tasks with planned dates
+                tasks_with_dates = project.task_ids.filtered(
+                    lambda t: t.planned_date_start and t.planned_date_end and t.state not in ['cancelled']
+                )
+                
+                project_data = {
+                    'id': f"project_{project.id}",
+                    'name': project.name,
+                    'type': 'project',
+                    'start': fields.Date.to_string(project.date_start),
+                    'end': fields.Date.to_string(project.date_end),
+                    'progress': project.progress,
+                    'dependencies': [],
+                    'style': {
+                        'base': {
+                            'fill': self._get_state_color(project.state),
+                            'stroke': '#000000'
+                        }
+                    },
+                    'children': []
+                }
+                
+                # Add tasks to the project
+                for task in tasks_with_dates:
+                    task_data = {
+                        'id': f"task_{task.id}",
+                        'name': task.name,
+                        'type': 'task',
+                        'start': fields.Datetime.to_string(task.planned_date_start),
+                        'end': fields.Datetime.to_string(task.planned_date_end),
+                        'progress': task.progress,
+                        'dependencies': [],
+                        'style': {
+                            'base': {
+                                'fill': self._get_state_color(task.state),
+                                'stroke': '#555555'
+                            }
+                        }
+                    }
+                    
+                    # Add task dependencies
+                    for dep in task.depends_on_ids:
+                        if dep in tasks_with_dates:
+                            task_data['dependencies'].append(f"task_{dep.id}")
+                    
+                    project_data['children'].append(task_data)
+                    
+                timeline_data.append(project_data)
+                
+            return {
+                'status': 'success',
+                'data': timeline_data
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_dashboard_timeline: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    def _get_state_color(self, state):
+        """Get color for state visualization."""
+        colors = {
+            # Project states
+            'draft': '#E0E0E0',
+            'planning': '#FFD700',
+            'in_progress': '#4CAF50',
+            'on_hold': '#FFA500',
+            'completed': '#2196F3',
+            'cancelled': '#F44336',
+            
+            # Task states
+            'planned': '#FFD700',
+            'review': '#9C27B0',
+            'done': '#2196F3'
+        }
+        return colors.get(state, '#E0E0E0')  # Default to light gray
+    # Add these endpoints to your TeamProjectAPI class in controllers/team_project_api.py
+
+    @http.route('/web/v2/team/dashboard/department-stats', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_department_stats(self, **kw):
+        """Get project statistics grouped by department for dashboard visualization."""
+        try:
+            # Get all departments that have projects
+            departments = request.env['hr.department'].sudo().search([])
+            departments_with_projects = departments.filtered(lambda d: d.id in request.env['team.project'].sudo().mapped('department_id.id'))
+            
+            department_stats = []
+            
+            for department in departments_with_projects:
+                # Get projects for this department
+                projects = request.env['team.project'].sudo().search([('department_id', '=', department.id)])
+                
+                if not projects:
+                    continue
+                    
+                total_projects = len(projects)
+                active_projects = len(projects.filtered(lambda p: p.state == 'in_progress'))
+                completed_projects = len(projects.filtered(lambda p: p.state == 'completed'))
+                
+                # Get total tasks and completed tasks
+                all_tasks = request.env['team.project.task'].sudo().search([('project_id', 'in', projects.ids)])
+                total_tasks = len(all_tasks)
+                completed_tasks = len(all_tasks.filtered(lambda t: t.state == 'done'))
+                
+                # Calculate task completion rate
+                task_completion_rate = (completed_tasks / total_tasks * 100) if total_tasks else 0
+                
+                # Calculate average project progress
+                avg_progress = sum(projects.mapped('progress')) / total_projects if total_projects else 0
+                
+                department_stats.append({
+                    'department': {
+                        'id': department.id,
+                        'name': department.name
+                    },
+                    'total_projects': total_projects,
+                    'active_projects': active_projects,
+                    'completed_projects': completed_projects,
+                    'total_tasks': total_tasks,
+                    'completed_tasks': completed_tasks,
+                    'task_completion_rate': round(task_completion_rate, 1),
+                    'avg_progress': round(avg_progress, 1)
+                })
+                
+            return {
+                'status': 'success',
+                'data': department_stats
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_department_stats: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/dashboard/project-milestones', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_project_milestones(self, **kw):
+        """Get important project milestones for dashboard timeline."""
+        try:
+            # Get optional filters
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            days_ahead = int(kw.get('days_ahead', 30))
+            
+            # Calculate date range
+            today = fields.Date.today()
+            end_date = today + timedelta(days=days_ahead)
+            
+            # Build domain for projects
+            project_domain = [
+                ('state', 'not in', ['cancelled', 'completed']),
+                ('date_end', '>=', today),
+                ('date_end', '<=', end_date)
+            ]
+            
+            if department_id:
+                project_domain.append(('department_id', '=', department_id))
+                
+            # Get projects with end dates in the upcoming period
+            projects = request.env['team.project'].sudo().search(project_domain, order='date_end')
+            
+            # Get tasks with due dates in the upcoming period
+            task_domain = [
+                ('state', 'not in', ['done', 'cancelled']),
+                ('planned_date_end', '>=', today),
+                ('planned_date_end', '<=', end_date)
+            ]
+            
+            if department_id:
+                # Get projects first then filter tasks
+                project_ids = request.env['team.project'].sudo().search([
+                    ('department_id', '=', department_id)
+                ]).ids
+                task_domain.append(('project_id', 'in', project_ids))
+                
+            tasks = request.env['team.project.task'].sudo().search(task_domain, order='planned_date_end')
+            
+            # Get meetings in the upcoming period
+            meeting_domain = [
+                ('start_datetime', '>=', fields.Datetime.now()),
+                ('start_datetime', '<=', fields.Datetime.to_string(
+                    fields.Datetime.from_string(fields.Datetime.now()) + timedelta(days=days_ahead)
+                ))
+            ]
+            
+            if department_id:
+                # Get department projects first
+                project_ids = request.env['team.project'].sudo().search([
+                    ('department_id', '=', department_id)
+                ]).ids
+                meeting_domain.append(('project_id', 'in', project_ids))
+                
+            meetings = request.env['team.project.meeting'].sudo().search(meeting_domain, order='start_datetime')
+            
+            # Prepare milestone data
+            milestones = []
+            
+            # Add project end dates
+            for project in projects:
+                days_to_deadline = (project.date_end - today).days
+                
+                milestones.append({
+                    'type': 'project_deadline',
+                    'id': project.id,
+                    'title': f"Project deadline: {project.name}",
+                    'date': fields.Date.to_string(project.date_end),
+                    'days_remaining': days_to_deadline,
+                    'status': 'warning' if days_to_deadline <= 7 else 'info',
+                    'project': {
+                        'id': project.id,
+                        'name': project.name
+                    },
+                    'progress': project.progress
+                })
+                
+            # Add task due dates
+            for task in tasks:
+                # Get due date from planned_date_end
+                due_date = fields.Datetime.from_string(task.planned_date_end).date()
+                days_to_deadline = (due_date - today).days
+                
+                milestones.append({
+                    'type': 'task_deadline',
+                    'id': task.id,
+                    'title': f"Task due: {task.name}",
+                    'date': fields.Date.to_string(due_date),
+                    'days_remaining': days_to_deadline,
+                    'status': 'danger' if days_to_deadline <= 2 else ('warning' if days_to_deadline <= 7 else 'info'),
+                    'project': {
+                        'id': task.project_id.id,
+                        'name': task.project_id.name
+                    },
+                    'assigned_to': [{'id': emp.id, 'name': emp.name} for emp in task.assigned_to],
+                    'progress': task.progress
+                })
+                
+            # Add upcoming meetings
+            for meeting in meetings:
+                meeting_date = fields.Datetime.from_string(meeting.start_datetime).date()
+                days_to_meeting = (meeting_date - today).days
+                
+                milestones.append({
+                    'type': 'meeting',
+                    'id': meeting.id,
+                    'title': f"Meeting: {meeting.name}",
+                    'date': fields.Date.to_string(meeting_date),
+                    'time': fields.Datetime.from_string(meeting.start_datetime).strftime('%H:%M'),
+                    'days_remaining': days_to_meeting,
+                    'status': 'info',
+                    'project': {
+                        'id': meeting.project_id.id,
+                        'name': meeting.project_id.name
+                    },
+                    'organizer': {
+                        'id': meeting.organizer_id.id,
+                        'name': meeting.organizer_id.name
+                    }
+                })
+                
+            # Sort by date
+            milestones.sort(key=lambda x: x['date'])
+            
+            return {
+                'status': 'success',
+                'data': milestones
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_project_milestones: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/dashboard/task-distribution', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_task_distribution(self, **kw):
+        """Get task distribution data for dashboard visualization."""
+        try:
+            # Get optional filters
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            project_id = kw.get('project_id') and int(kw['project_id'])
+            
+            # Build domain for tasks
+            domain = []
+            
+            if department_id:
+                # Get department projects first
+                project_ids = request.env['team.project'].sudo().search([
+                    ('department_id', '=', department_id)
+                ]).ids
+                domain.append(('project_id', 'in', project_ids))
+            
+            if project_id:
+                domain.append(('project_id', '=', project_id))
+                
+            # Get tasks
+            tasks = request.env['team.project.task'].sudo().search(domain)
+            
+            # Distribution by state
+            state_distribution = {}
+            for task in tasks:
+                state = task.state
+                if state not in state_distribution:
+                    state_distribution[state] = 0
+                state_distribution[state] += 1
+                
+            # Format for chart
+            state_labels = {
+                'draft': 'Draft',
+                'planned': 'Planned',
+                'in_progress': 'In Progress',
+                'review': 'In Review',
+                'done': 'Done',
+                'cancelled': 'Cancelled'
+            }
+            
+            state_colors = {
+                'draft': '#E0E0E0',
+                'planned': '#FFD700',
+                'in_progress': '#4CAF50',
+                'review': '#9C27B0',
+                'done': '#2196F3',
+                'cancelled': '#F44336'
+            }
+            
+            state_chart_data = [
+                {
+                    'label': state_labels.get(state, state),
+                    'value': count,
+                    'color': state_colors.get(state, '#E0E0E0')
+                }
+                for state, count in state_distribution.items()
+            ]
+            
+            # Distribution by priority
+            priority_distribution = {}
+            for task in tasks:
+                priority = task.priority
+                if priority not in priority_distribution:
+                    priority_distribution[priority] = 0
+                priority_distribution[priority] += 1
+                
+            # Format for chart
+            priority_labels = {
+                '0': 'Low',
+                '1': 'Medium',
+                '2': 'High',
+                '3': 'Critical'
+            }
+            
+            priority_colors = {
+                '0': '#2196F3',  # Blue
+                '1': '#4CAF50',  # Green
+                '2': '#FFA500',  # Orange
+                '3': '#F44336'   # Red
+            }
+            
+            priority_chart_data = [
+                {
+                    'label': priority_labels.get(priority, priority),
+                    'value': count,
+                    'color': priority_colors.get(priority, '#E0E0E0')
+                }
+                for priority, count in priority_distribution.items()
+            ]
+            
+            # Get task count per project
+            project_task_count = {}
+            for task in tasks:
+                project_id = task.project_id.id
+                if project_id not in project_task_count:
+                    project_task_count[project_id] = {
+                        'project': {
+                            'id': project_id,
+                            'name': task.project_id.name
+                        },
+                        'total': 0,
+                        'completed': 0
+                    }
+                project_task_count[project_id]['total'] += 1
+                if task.state == 'done':
+                    project_task_count[project_id]['completed'] += 1
+                    
+            # Format for chart
+            project_chart_data = list(project_task_count.values())
+            for project in project_chart_data:
+                project['completion_rate'] = (project['completed'] / project['total'] * 100) if project['total'] > 0 else 0
+                
+            # Sort by total task count (descending)
+            project_chart_data.sort(key=lambda x: x['total'], reverse=True)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'by_state': state_chart_data,
+                    'by_priority': priority_chart_data,
+                    'by_project': project_chart_data[:10]  # Limit to top 10 projects
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_task_distribution: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    # Add these endpoints to your TeamProjectAPI class in controllers/team_project_api.py
+
+    @http.route('/web/v2/team/dashboard/performance', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_project_performance(self, **kw):
+        """Get project performance analytics for dashboard."""
+        try:
+            # Get optional filters
+            project_id = kw.get('project_id') and int(kw['project_id'])
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            
+            # Build domain
+            project_domain = []
+            if project_id:
+                project_domain.append(('id', '=', project_id))
+            if department_id:
+                project_domain.append(('department_id', '=', department_id))
+                
+            # Get projects
+            projects = request.env['team.project'].sudo().search(project_domain)
+            
+            if not projects:
+                return {
+                    'status': 'success',
+                    'data': {
+                        'efficiency': 0,
+                        'on_time_completion': 0,
+                        'budget_utilization': 0,
+                        'team_allocation': 0,
+                        'timeline': [],
+                        'project_scores': []
+                    }
+                }
+                
+            # Calculate project performance metrics
+            
+            # 1. Time Efficiency (actual hours vs planned hours)
+            all_planned_hours = sum(projects.mapped('planned_hours'))
+            all_actual_hours = sum(projects.mapped('actual_hours'))
+            time_efficiency = (all_planned_hours / all_actual_hours * 100) if all_actual_hours > 0 else 0
+            
+            # 2. On-time Task Completion
+            all_tasks = request.env['team.project.task'].sudo().search([
+                ('project_id', 'in', projects.ids),
+                ('state', '=', 'done')
+            ])
+            
+            on_time_tasks = 0
+            for task in all_tasks:
+                if task.planned_date_end and task.actual_date_end:
+                    planned_end = fields.Datetime.from_string(task.planned_date_end)
+                    actual_end = fields.Datetime.from_string(task.actual_date_end)
+                    if actual_end <= planned_end:
+                        on_time_tasks += 1
+                        
+            on_time_completion = (on_time_tasks / len(all_tasks) * 100) if all_tasks else 0
+            
+            # 3. Budget Utilization (mock data - assuming 100 is optimal)
+            # In a real scenario, this would be calculated from budget tracking
+            budget_utilization = 85  # Mock value
+            
+            # 4. Team Allocation (% of team members actively contributing)
+            all_team_members = set()
+            contributing_members = set()
+            
+            for project in projects:
+                team_members = project.team_ids.ids + [project.project_manager_id.id]
+                all_team_members.update(team_members)
+                
+                # Check timesheet entries
+                for member_id in team_members:
+                    timesheet_count = request.env['team.project.timesheet'].sudo().search_count([
+                        ('employee_id', '=', member_id),
+                        ('project_id', '=', project.id)
+                    ])
+                    
+                    if timesheet_count > 0:
+                        contributing_members.add(member_id)
+                        
+            team_allocation = (len(contributing_members) / len(all_team_members) * 100) if all_team_members else 0
+            
+            # 5. Project Timeline Progression
+            timeline_data = []
+            for project in projects:
+                # Calculate total days in project
+                total_days = (project.date_end - project.date_start).days
+                if total_days <= 0:
+                    continue
+                    
+                # Calculate days elapsed
+                today = fields.Date.today()
+                if today < project.date_start:
+                    days_elapsed = 0
+                elif today > project.date_end:
+                    days_elapsed = total_days
+                else:
+                    days_elapsed = (today - project.date_start).days
+                    
+                # Calculate expected progress based on timeline
+                time_progress = (days_elapsed / total_days * 100) if total_days > 0 else 0
+                
+                # Project progress from model
+                actual_progress = project.progress
+                
+                # Add to timeline data
+                timeline_data.append({
+                    'project': {
+                        'id': project.id,
+                        'name': project.name
+                    },
+                    'time_progress': round(time_progress, 1),
+                    'actual_progress': round(actual_progress, 1),
+                    'variance': round(actual_progress - time_progress, 1),
+                    'on_track': actual_progress >= time_progress
+                })
+                
+            # 6. Calculate individual project performance scores
+            project_scores = []
+            for project in projects:
+                # Check tasks
+                project_tasks = request.env['team.project.task'].sudo().search([
+                    ('project_id', '=', project.id)
+                ])
+                
+                completed_tasks = len(project_tasks.filtered(lambda t: t.state == 'done'))
+                total_tasks = len(project_tasks)
+                task_completion = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+                
+                # Time management score
+                project_planned_hours = project.planned_hours or 0.1  # Avoid division by zero
+                project_actual_hours = project.actual_hours or 0
+                time_management = min(100, (project_planned_hours / project_actual_hours * 100)) if project_actual_hours > 0 else 100
+                
+                # On-time task completion
+                on_time_project_tasks = 0
+                for task in project_tasks.filtered(lambda t: t.state == 'done'):
+                    if task.planned_date_end and task.actual_date_end:
+                        planned_end = fields.Datetime.from_string(task.planned_date_end)
+                        actual_end = fields.Datetime.from_string(task.actual_date_end)
+                        if actual_end <= planned_end:
+                            on_time_project_tasks += 1
+                            
+                on_time_delivery = (on_time_project_tasks / completed_tasks * 100) if completed_tasks > 0 else 0
+                
+                # Calculate overall performance score (weighted average)
+                performance_score = (
+                    task_completion * 0.4 +
+                    time_management * 0.3 +
+                    on_time_delivery * 0.3
+                )
+                
+                project_scores.append({
+                    'project': {
+                        'id': project.id,
+                        'name': project.name
+                    },
+                    'progress': round(project.progress, 1),
+                    'task_completion': round(task_completion, 1),
+                    'time_management': round(time_management, 1),
+                    'on_time_delivery': round(on_time_delivery, 1),
+                    'performance_score': round(performance_score, 1)
+                })
+                
+            # Sort projects by performance score (descending)
+            project_scores.sort(key=lambda x: x['performance_score'], reverse=True)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'efficiency': round(time_efficiency, 1),
+                    'on_time_completion': round(on_time_completion, 1),
+                    'budget_utilization': round(budget_utilization, 1),
+                    'team_allocation': round(team_allocation, 1),
+                    'timeline': timeline_data,
+                    'project_scores': project_scores
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in get_project_performance: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/dashboard/team-performance', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_team_performance(self, **kw):
+        """Get team member performance analytics for dashboard."""
+        try:
+            # Get optional filters
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            project_id = kw.get('project_id') and int(kw['project_id'])
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            
+            # Build domain for timesheets
+            timesheet_domain = []
+            
+            if project_id:
+                timesheet_domain.append(('project_id', '=', project_id))
+            elif department_id:
+                # Get projects from department
+                project_ids = request.env['team.project'].sudo().search([
+                    ('department_id', '=', department_id)
+                ]).ids
+                
+                if project_ids:
+                    timesheet_domain.append(('project_id', 'in', project_ids))
+                    
+            # Date filters
+            if date_from:
+                timesheet_domain.append(('date', '>=', date_from))
+            if date_to:
+                timesheet_domain.append(('date', '<=', date_to))
+                
+            # Get timesheets
+            timesheets = request.env['team.project.timesheet'].sudo().search(timesheet_domain)
+            
+            if not timesheets:
+                return {
+                    'status': 'success',
+                    'data': {
+                        'team_members': [],
+                        'productivity_trend': [],
+                        'skill_distribution': []
+                    }
+                }
+                
+            # Get employees from timesheets
+            employee_ids = timesheets.mapped('employee_id.id')
+            employees = request.env['hr.employee'].sudo().browse(employee_ids)
+            
+            # Calculate performance metrics for each team member
+            team_member_data = []
+            
+            for employee in employees:
+                employee_timesheets = timesheets.filtered(lambda t: t.employee_id.id == employee.id)
+                
+                if not employee_timesheets:
+                    continue
+                    
+                # Get tasks for this employee
+                task_ids = employee_timesheets.mapped('task_id.id')
+                employee_tasks = request.env['team.project.task'].sudo().browse(task_ids)
+                
+                # Calculate metrics
+                total_hours = sum(employee_timesheets.mapped('hours'))
+                completed_tasks = len(employee_tasks.filtered(lambda t: t.state == 'done'))
+                total_tasks = len(employee_tasks)
+                task_completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+                
+                # On-time task completion
+                on_time_tasks = 0
+                for task in employee_tasks.filtered(lambda t: t.state == 'done'):
+                    if task.planned_date_end and task.actual_date_end:
+                        planned_end = fields.Datetime.from_string(task.planned_date_end)
+                        actual_end = fields.Datetime.from_string(task.actual_date_end)
+                        if actual_end <= planned_end:
+                            on_time_tasks += 1
+                            
+                on_time_rate = (on_time_tasks / completed_tasks * 100) if completed_tasks > 0 else 0
+                
+                # Calculate unique projects
+                project_ids = employee_timesheets.mapped('project_id.id')
+                
+                # Calculate productivity (hours per task)
+                productivity = (total_hours / total_tasks) if total_tasks > 0 else 0
+                
+                # Calculate performance score
+                performance_score = (
+                    task_completion_rate * 0.5 +
+                    on_time_rate * 0.5
+                )
+                
+                team_member_data.append({
+                    'employee': {
+                        'id': employee.id,
+                        'name': employee.name
+                    },
+                    'total_hours': round(total_hours, 1),
+                    'completed_tasks': completed_tasks,
+                    'total_tasks': total_tasks,
+                    'task_completion_rate': round(task_completion_rate, 1),
+                    'on_time_rate': round(on_time_rate, 1),
+                    'productivity': round(productivity, 2),
+                    'project_count': len(project_ids),
+                    'performance_score': round(performance_score, 1)
+                })
+                
+            # Sort by performance score (descending)
+            team_member_data.sort(key=lambda x: x['performance_score'], reverse=True)
+            
+            # Generate productivity trend (mock data)
+            # In a real implementation, this would be calculated from historical data
+            productivity_trend = [
+                {'date': '2023-01-01', 'productivity': 85},
+                {'date': '2023-02-01', 'productivity': 87},
+                {'date': '2023-03-01', 'productivity': 82},
+                {'date': '2023-04-01', 'productivity': 90},
+                {'date': '2023-05-01', 'productivity': 92},
+                {'date': '2023-06-01', 'productivity': 88}
+            ]
+            
+            # Generate skill distribution (mock data)
+            # In a real implementation, this would come from employee skills model
+            skill_distribution = [
+                {'skill': 'Project Management', 'count': 8},
+                {'skill': 'Development', 'count': 12},
+                {'skill': 'Design', 'count': 6},
+                {'skill': 'Testing', 'count': 5},
+                {'skill': 'Documentation', 'count': 4}
+            ]
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'team_members': team_member_data,
+                    'productivity_trend': productivity_trend,
+                    'skill_distribution': skill_distribution
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in get_team_performance: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/dashboard/resource-allocation', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_resource_allocation(self, **kw):
+        """Get resource allocation data for dashboard visualization."""
+        try:
+            # Get optional filters
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            date_from = kw.get('date_from', fields.Date.to_string(fields.Date.today()))
+            date_to = kw.get('date_to', fields.Date.to_string(fields.Date.today() + timedelta(days=30)))
+            
+            # Build domain for active projects
+            project_domain = [('state', '=', 'in_progress')]
+            if department_id:
+                project_domain.append(('department_id', '=', department_id))
+                
+            # Get active projects
+            active_projects = request.env['team.project'].sudo().search(project_domain)
+            
+            if not active_projects:
+                return {
+                    'status': 'success',
+                    'data': {
+                        'allocation_by_project': [],
+                        'allocation_by_employee': [],
+                        'project_resources': []
+                    }
+                }
+                
+            # Get all timesheets within date range for these projects
+            timesheet_domain = [
+                ('project_id', 'in', active_projects.ids),
+                ('date', '>=', date_from),
+                ('date', '<=', date_to)
+            ]
+            
+            timesheets = request.env['team.project.timesheet'].sudo().search(timesheet_domain)
+            
+            # 1. Allocation by project
+            project_allocation = {}
+            
+            for timesheet in timesheets:
+                project_id = timesheet.project_id.id
+                if project_id not in project_allocation:
+                    project_allocation[project_id] = {
+                        'project': {
+                            'id': project_id,
+                            'name': timesheet.project_id.name
+                        },
+                        'total_hours': 0,
+                        'employee_count': set()
+                    }
+                    
+                project_allocation[project_id]['total_hours'] += timesheet.hours
+                project_allocation[project_id]['employee_count'].add(timesheet.employee_id.id)
+                
+            # Format output and calculate percentages
+            allocation_by_project = []
+            total_hours = sum(data['total_hours'] for data in project_allocation.values())
+            
+            for project_id, data in project_allocation.items():
+                allocation_percentage = (data['total_hours'] / total_hours * 100) if total_hours > 0 else 0
+                allocation_by_project.append({
+                    'project': data['project'],
+                    'hours': round(data['total_hours'], 1),
+                    'percentage': round(allocation_percentage, 1),
+                    'employee_count': len(data['employee_count'])
+                })
+                
+            # Sort by hours (descending)
+            allocation_by_project.sort(key=lambda x: x['hours'], reverse=True)
+            
+            # 2. Allocation by employee
+            employee_allocation = {}
+            
+            for timesheet in timesheets:
+                employee_id = timesheet.employee_id.id
+                if employee_id not in employee_allocation:
+                    employee_allocation[employee_id] = {
+                        'employee': {
+                            'id': employee_id,
+                            'name': timesheet.employee_id.name
+                        },
+                        'total_hours': 0,
+                        'projects': set(),
+                        'project_allocation': {}
+                    }
+                    
+                employee_allocation[employee_id]['total_hours'] += timesheet.hours
+                employee_allocation[employee_id]['projects'].add(timesheet.project_id.id)
+                
+                # Track allocation per project
+                project_id = timesheet.project_id.id
+                if project_id not in employee_allocation[employee_id]['project_allocation']:
+                    employee_allocation[employee_id]['project_allocation'][project_id] = {
+                        'project': {
+                            'id': project_id,
+                            'name': timesheet.project_id.name
+                        },
+                        'hours': 0
+                    }
+                    
+                employee_allocation[employee_id]['project_allocation'][project_id]['hours'] += timesheet.hours
+                
+            # Format output and calculate percentages
+            allocation_by_employee = []
+            
+            for employee_id, data in employee_allocation.items():
+                # Calculate project percentages
+                project_allocation = []
+                for project_data in data['project_allocation'].values():
+                    percentage = (project_data['hours'] / data['total_hours'] * 100) if data['total_hours'] > 0 else 0
+                    project_allocation.append({
+                        'project': project_data['project'],
+                        'hours': round(project_data['hours'], 1),
+                        'percentage': round(percentage, 1)
+                    })
+                    
+                # Sort project allocation by hours
+                project_allocation.sort(key=lambda x: x['hours'], reverse=True)
+                
+                allocation_by_employee.append({
+                    'employee': data['employee'],
+                    'total_hours': round(data['total_hours'], 1),
+                    'project_count': len(data['projects']),
+                    'project_allocation': project_allocation
+                })
+                
+            # Sort by total hours (descending)
+            allocation_by_employee.sort(key=lambda x: x['total_hours'], reverse=True)
+            
+            # 3. Project resources overview
+            project_resources = []
+            
+            for project in active_projects:
+                # Get team members assigned to this project
+                team_members = project.team_ids | project.project_manager_id
+                
+                # Get tasks for this project
+                project_tasks = request.env['team.project.task'].sudo().search([
+                    ('project_id', '=', project.id),
+                    ('state', 'not in', ['cancelled', 'done'])
+                ])
+                
+                # Get resource allocation
+                team_allocation = {}
+                for task in project_tasks:
+                    for assignee in task.assigned_to:
+                        if assignee.id not in team_allocation:
+                            team_allocation[assignee.id] = {
+                                'employee': {
+                                    'id': assignee.id,
+                                    'name': assignee.name
+                                },
+                                'task_count': 0
+                            }
+                        team_allocation[assignee.id]['task_count'] += 1
+                        
+                # Calculate allocation percentages
+                assignee_data = list(team_allocation.values())
+                total_task_assignments = sum(data['task_count'] for data in assignee_data)
+                
+                for data in assignee_data:
+                    data['allocation_percentage'] = (data['task_count'] / total_task_assignments * 100) if total_task_assignments > 0 else 0
+                    
+                # Sort by task count (descending)
+                assignee_data.sort(key=lambda x: x['task_count'], reverse=True)
+                
+                project_resources.append({
+                    'project': {
+                        'id': project.id,
+                        'name': project.name
+                    },
+                    'team_size': len(team_members),
+                    'active_tasks': len(project_tasks),
+                    'team_allocation': assignee_data
+                })
+                
+            return {
+                'status': 'success',
+                'data': {
+                    'allocation_by_project': allocation_by_project,
+                    'allocation_by_employee': allocation_by_employee,
+                    'project_resources': project_resources
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in get_resource_allocation: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

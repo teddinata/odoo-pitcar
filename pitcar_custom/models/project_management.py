@@ -341,7 +341,13 @@ class TeamProjectTask(models.Model):
                 task.checklist_progress = 0.0
             else:
                 done_items = len(checklist_items.filtered(lambda c: c.is_done))
-                task.checklist_progress = (done_items / len(checklist_items)) * 100
+                progress = (done_items / len(checklist_items)) * 100
+                task.checklist_progress = progress
+                
+                # Opsional: Update task progress berdasarkan checklist
+                # Tambahkan hanya jika Anda ingin progress task otomatis diupdate
+                if hasattr(task, 'progress_based_on_checklist') and task.progress_based_on_checklist:
+                    task.progress = progress
 
     @api.depends('timesheet_ids.hours')
     def _compute_actual_hours(self):
@@ -582,8 +588,10 @@ class TeamProjectBAU(models.Model):
         ('not_done', 'Not Done')
     ], string='Status', default='planned', required=True, tracking=True)
     
+    # Add these fields if they don't exist already
     verified_by = fields.Many2one('hr.employee', string='Verified By', readonly=True)
     verification_date = fields.Datetime(string='Verification Date', readonly=True)
+    verification_reason = fields.Text(string='Verification Reason', help="Reason for H+1 verification")
     
     @api.constrains('hours_spent')
     def _check_hours_spent(self):

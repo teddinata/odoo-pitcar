@@ -11,33 +11,39 @@ _logger = logging.getLogger(__name__)
 
 class TeamProjectAPI(http.Controller):
     def _format_datetime_jakarta(self, dt):
-        """Convert UTC datetime/date to Jakarta timezone (UTC+7)"""
         if not dt:
             return False
         
-        # If it's a Date field (not Datetime)
+        # Untuk tipe Date (bukan Datetime)
         if isinstance(dt, datetime.date) and not isinstance(dt, datetime.datetime):
             return fields.Date.to_string(dt)
                 
-        # If dt is a string, convert to datetime object
+        # Jika dt adalah string, konversi ke objek datetime
         if isinstance(dt, str):
-            if 'T' in dt or ' ' in dt:  # It's a datetime string
-                dt = fields.Datetime.from_string(dt)
-            else:  # It's a date string
-                return dt  # Just return the date string
+            try:
+                if 'T' in dt or ' ' in dt:  # Ini datetime string
+                    dt = fields.Datetime.from_string(dt)
+                else:  # Ini date string
+                    return dt  # Kembalikan date string langsung
+            except Exception as e:
+                _logger.error(f"Error converting date/time string '{dt}': {e}")
+                return dt  # Kembalikan string asli jika gagal convert
         
         # Define Jakarta timezone
         jakarta_tz = pytz.timezone('Asia/Jakarta')
         
-        # Convert to Jakarta timezone (only for datetime objects)
+        # Convert ke Jakarta timezone (hanya untuk objek datetime)
         try:
             dt_utc = pytz.utc.localize(dt) if not dt.tzinfo else dt
             dt_jakarta = dt_utc.astimezone(jakarta_tz)
             return fields.Datetime.to_string(dt_jakarta)
         except AttributeError:
-            # If we get here, it means dt doesn't have tzinfo attribute
-            # So it's likely a date object that slipped through our checks
+            # Jika dt tidak memiliki atribut tzinfo
+            # Berarti kemungkinan objek date yang lolos dari pemeriksaan sebelumnya
             return fields.Date.to_string(dt) if hasattr(dt, 'day') else str(dt)
+        except Exception as e:
+            _logger.error(f"Error converting datetime '{dt}': {e}")
+            return str(dt)  # Fallback ke string jika semua gagal
     
     @http.route('/web/v2/team/projects', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_projects(self, **kw):
@@ -197,6 +203,7 @@ class TeamProjectAPI(http.Controller):
                 }
 
             # Di dalam metode manage_tasks di TeamProjectAPI
+            # Di dalam metode manage_tasks di TeamProjectAPI
             elif operation == 'read':
                 task_id = kw.get('task_id')
                 if not task_id:
@@ -209,21 +216,35 @@ class TeamProjectAPI(http.Controller):
                 # Prepare task data
                 task_data = self._prepare_task_data(task)
                 
-                # Get checklist items
-                checklist_items = []
-                for item in task.checklist_ids:
-                    checklist_items.append(self._prepare_checklist_data(item))
+                # Periksa apakah relasi tersebut ada di model
+                if hasattr(task, 'checklist_ids'):
+                    # Get checklist items
+                    checklist_items = []
+                    for item in task.checklist_ids:
+                        # Periksa apakah method _prepare_checklist_data tersedia
+                        if hasattr(self, '_prepare_checklist_data'):
+                            try:
+                                checklist_items.append(self._prepare_checklist_data(item))
+                            except Exception as e:
+                                _logger.error(f"Error preparing checklist data: {e}")
+                    
+                    # Add to task data
+                    task_data['checklists'] = checklist_items
                 
-                # Get timesheets
-                timesheets = []
-                for timesheet in task.timesheet_ids:
-                    timesheets.append(self._prepare_timesheet_data(timesheet))
-                
-                # Add to task data
-                task_data.update({
-                    'checklists': checklist_items,
-                    'timesheets': timesheets
-                })
+                # Periksa apakah relasi tersebut ada di model
+                if hasattr(task, 'timesheet_ids'):
+                    # Get timesheets
+                    timesheets = []
+                    for timesheet in task.timesheet_ids:
+                        # Periksa apakah method _prepare_timesheet_data tersedia
+                        if hasattr(self, '_prepare_timesheet_data'):
+                            try:
+                                timesheets.append(self._prepare_timesheet_data(timesheet))
+                            except Exception as e:
+                                _logger.error(f"Error preparing timesheet data: {e}")
+                    
+                    # Add to task data
+                    task_data['timesheets'] = timesheets
                 
                 return {'status': 'success', 'data': task_data}
 
@@ -232,7 +253,20 @@ class TeamProjectAPI(http.Controller):
                 if not all(kw.get(field) for field in required_fields):
                     return {'status': 'error', 'message': 'Missing required fields'}
 
-                assigned_to = kw['assigned_to'] if isinstance(kw['assigned_to'], list) else json.loads(kw['assigned_to'])
+                if kw.get('assigned_to'):
+                    # Perbaikan: Periksa tipe data terlebih dahulu
+                    if isinstance(kw['assigned_to'], str):
+                        try:
+                            assigned_to = json.loads(kw['assigned_to'])
+                        except (ValueError, json.JSONDecodeError):
+                            assigned_to = [int(kw['assigned_to'])] if kw['assigned_to'].isdigit() else []
+                    elif isinstance(kw['assigned_to'], list):
+                        assigned_to = kw['assigned_to']
+                    else:
+                        # Konversi ke list jika bukan list atau string
+                        assigned_to = [int(kw['assigned_to'])] if isinstance(kw['assigned_to'], (int, float)) else []
+                    
+                    values['assigned_to'] = [(6, 0, assigned_to)]
                 values = {
                     'name': kw['name'],
                     'project_id': int(kw['project_id']),
@@ -1111,24 +1145,24 @@ class TeamProjectAPI(http.Controller):
         return {
             'id': checklist.id,
             'name': checklist.name,
-            'task': {'id': checklist.task_id.id, 'name': checklist.task_id.name},
-            'sequence': checklist.sequence,
-            'assigned_to': {'id': checklist.assigned_to.id, 'name': checklist.assigned_to.name} if checklist.assigned_to else None,
-            'deadline': fields.Date.to_string(checklist.deadline) if checklist.deadline else False,
-            'is_done': checklist.is_done,
-            'notes': checklist.notes
+            'task': {'id': checklist.task_id.id, 'name': checklist.task_id.name} if checklist.task_id else None,
+            'sequence': checklist.sequence if hasattr(checklist, 'sequence') else 0,
+            'assigned_to': {'id': checklist.assigned_to.id, 'name': checklist.assigned_to.name} if hasattr(checklist, 'assigned_to') and checklist.assigned_to else None,
+            'deadline': fields.Date.to_string(checklist.deadline) if hasattr(checklist, 'deadline') and checklist.deadline else False,
+            'is_done': checklist.is_done if hasattr(checklist, 'is_done') else False,
+            'notes': checklist.notes if hasattr(checklist, 'notes') else ''
         }
-    
+        
     def _prepare_timesheet_data(self, timesheet):
         """Menyiapkan data timesheet untuk respons API."""
         return {
             'id': timesheet.id,
-            'task': {'id': timesheet.task_id.id, 'name': timesheet.task_id.name},
-            'project': {'id': timesheet.project_id.id, 'name': timesheet.project_id.name},
-            'employee': {'id': timesheet.employee_id.id, 'name': timesheet.employee_id.name},
-            'date': self._format_datetime_jakarta(timesheet.date),
-            'hours': timesheet.hours,
-            'description': timesheet.description
+            'task': {'id': timesheet.task_id.id, 'name': timesheet.task_id.name} if timesheet.task_id else None,
+            'project': {'id': timesheet.project_id.id, 'name': timesheet.project_id.name} if hasattr(timesheet, 'project_id') and timesheet.project_id else None,
+            'employee': {'id': timesheet.employee_id.id, 'name': timesheet.employee_id.name} if timesheet.employee_id else None,
+            'date': self._format_datetime_jakarta(timesheet.date) if timesheet.date else False,
+            'hours': timesheet.hours if hasattr(timesheet, 'hours') else 0.0,
+            'description': timesheet.description if hasattr(timesheet, 'description') else ''
         }
     
     @http.route('/web/v2/team/task-types', type='json', auth='user', methods=['POST'], csrf=False)

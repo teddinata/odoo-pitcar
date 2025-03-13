@@ -184,23 +184,49 @@ class TeamProjectAPI(http.Controller):
                 # Build domain filter
                 domain = []
                 
-                if kw.get('project_id'):
-                    domain.append(('project_id', '=', int(kw['project_id'])))
-                if kw.get('department_id'):
-                    domain.append(('department_id', '=', int(kw['department_id'])))
-                if kw.get('type_id'):
-                    domain.append(('type_id', '=', int(kw['type_id'])))
-                if kw.get('assigned_to'):
-                    domain.append(('assigned_to', 'in', [int(kw['assigned_to'])]))
+                # Tangani setiap parameter dengan aman
+                try:
+                    if kw.get('project_id'):
+                        domain.append(('project_id', '=', int(kw['project_id'])))
+                    if kw.get('department_id'):
+                        domain.append(('department_id', '=', int(kw['department_id'])))
+                    if kw.get('type_id'):
+                        domain.append(('type_id', '=', int(kw['type_id'])))
+                    if kw.get('assigned_to'):
+                        # Pastikan assigned_to diproses dengan benar
+                        assigned_to = kw['assigned_to']
+                        # Jika string, coba parse sebagai JSON jika berisi array
+                        if isinstance(assigned_to, str) and assigned_to.startswith('['):
+                            try:
+                                assigned_to = json.loads(assigned_to)
+                            except Exception:
+                                assigned_to = [int(assigned_to)]
+                        # Jika bukan list, konversi ke list
+                        if not isinstance(assigned_to, list):
+                            assigned_to = [int(assigned_to)]
+                        domain.append(('assigned_to', 'in', assigned_to))
                     
-                # Get tasks based on domain filters
-                tasks = request.env['team.project.task'].sudo().search(domain)
-                
-                # Return formatted task data
-                return {
-                    'status': 'success',
-                    'data': [self._prepare_task_data(task) for task in tasks]
-                }
+                    # Get tasks based on domain filters
+                    tasks = request.env['team.project.task'].sudo().search(domain)
+                    
+                    # Buat task data dengan error handling
+                    task_data = []
+                    for task in tasks:
+                        try:
+                            task_data.append(self._prepare_task_data(task))
+                        except Exception as e:
+                            _logger.error(f"Error preparing task data: {str(e)}")
+                            # Skip task yang error atau tambahkan data minimal
+                            continue
+                            
+                    # Return formatted task data
+                    return {
+                        'status': 'success',
+                        'data': task_data
+                    }
+                except Exception as e:
+                    _logger.error(f"Error in list operation: {str(e)}")
+                    return {'status': 'error', 'message': str(e)}
 
             # Di dalam metode manage_tasks di TeamProjectAPI
             # Di dalam metode manage_tasks di TeamProjectAPI
@@ -387,29 +413,53 @@ class TeamProjectAPI(http.Controller):
         }
 
     def _prepare_task_data(self, task):
-        """Menyiapkan data tugas untuk respons API."""
-        return {
-            'id': task.id,
-            'name': task.name,
-            'project': {'id': task.project_id.id, 'name': task.project_id.name},
-            'type': {'id': task.type_id.id, 'name': task.type_id.name} if task.type_id else None,
-            'assigned_to': [{'id': a.id, 'name': a.name} for a in task.assigned_to],
-            'reviewer': {'id': task.reviewer_id.id, 'name': task.reviewer_id.name} if task.reviewer_id else None,
-            'dates': {
-                'planned_start': self._format_datetime_jakarta(task.planned_date_start) if task.planned_date_start else False,
-                'planned_end': self._format_datetime_jakarta(task.planned_date_end) if task.planned_date_end else False,
-                'actual_start': self._format_datetime_jakarta(task.actual_date_start) if task.actual_date_start else False,
-                'actual_end': self._format_datetime_jakarta(task.actual_date_end) if task.actual_date_end else False
-            },
-            'hours': {
-                'planned': task.planned_hours,
-                'actual': task.actual_hours
-            },
-            'state': task.state,
-            'progress': task.progress,
-            'description': task.description,
-            'checklist_progress': task.checklist_progress
-        }
+        """Menyiapkan data tugas untuk respons API dengan error handling."""
+        try:
+            assigned_to = []
+            for person in task.assigned_to:
+                try:
+                    assigned_to.append({'id': person.id, 'name': person.name})
+                except Exception as e:
+                    _logger.error(f"Error processing assigned_to: {e}")
+                    # Skip person yang error
+                    
+            reviewer = None
+            if task.reviewer_id:
+                try:
+                    reviewer = {'id': task.reviewer_id.id, 'name': task.reviewer_id.name}
+                except Exception as e:
+                    _logger.error(f"Error processing reviewer: {e}")
+            
+            return {
+                'id': task.id,
+                'name': task.name,
+                'project': {'id': task.project_id.id, 'name': task.project_id.name} if task.project_id else None,
+                'type': {'id': task.type_id.id, 'name': task.type_id.name} if hasattr(task, 'type_id') and task.type_id else None,
+                'assigned_to': assigned_to,
+                'reviewer': reviewer,
+                'dates': {
+                    'planned_start': self._format_datetime_jakarta(task.planned_date_start) if hasattr(task, 'planned_date_start') and task.planned_date_start else False,
+                    'planned_end': self._format_datetime_jakarta(task.planned_date_end) if hasattr(task, 'planned_date_end') and task.planned_date_end else False,
+                    'actual_start': self._format_datetime_jakarta(task.actual_date_start) if hasattr(task, 'actual_date_start') and task.actual_date_start else False,
+                    'actual_end': self._format_datetime_jakarta(task.actual_date_end) if hasattr(task, 'actual_date_end') and task.actual_date_end else False
+                },
+                'hours': {
+                    'planned': task.planned_hours if hasattr(task, 'planned_hours') else 0,
+                    'actual': task.actual_hours if hasattr(task, 'actual_hours') else 0
+                },
+                'state': task.state,
+                'progress': task.progress,
+                'description': task.description,
+                'checklist_progress': task.checklist_progress if hasattr(task, 'checklist_progress') else 0
+            }
+        except Exception as e:
+            _logger.error(f"Error in _prepare_task_data: {e}")
+            # Return minimal data to avoid complete failure
+            return {
+                'id': task.id,
+                'name': task.name or "Unknown",
+                'error': str(e)
+            }
 
     def _prepare_message_data(self, message):
         """Menyiapkan data pesan untuk respons API."""

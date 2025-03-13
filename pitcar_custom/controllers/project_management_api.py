@@ -4,7 +4,8 @@ from odoo.http import request
 import json
 import logging
 import pytz
-import datetime  # Import the full datetime module
+import datetime  
+from datetime import datetime, timedelta
 
 _logger = logging.getLogger(__name__)
 
@@ -195,6 +196,37 @@ class TeamProjectAPI(http.Controller):
                     'data': [self._prepare_task_data(task) for task in tasks]
                 }
 
+            # Di dalam metode manage_tasks di TeamProjectAPI
+            elif operation == 'read':
+                task_id = kw.get('task_id')
+                if not task_id:
+                    return {'status': 'error', 'message': 'Missing task_id'}
+                
+                task = request.env['team.project.task'].sudo().browse(int(task_id))
+                if not task.exists():
+                    return {'status': 'error', 'message': 'Task not found'}
+                
+                # Prepare task data
+                task_data = self._prepare_task_data(task)
+                
+                # Get checklist items
+                checklist_items = []
+                for item in task.checklist_ids:
+                    checklist_items.append(self._prepare_checklist_data(item))
+                
+                # Get timesheets
+                timesheets = []
+                for timesheet in task.timesheet_ids:
+                    timesheets.append(self._prepare_timesheet_data(timesheet))
+                
+                # Add to task data
+                task_data.update({
+                    'checklists': checklist_items,
+                    'timesheets': timesheets
+                })
+                
+                return {'status': 'success', 'data': task_data}
+
             elif operation == 'create':
                 required_fields = ['name', 'project_id', 'assigned_to']
                 if not all(kw.get(field) for field in required_fields):
@@ -370,16 +402,18 @@ class TeamProjectAPI(http.Controller):
                 if not all(kw.get(field) for field in required_fields):
                     return {'status': 'error', 'message': 'Missing required fields'}
 
-                # Convert input times from Jakarta to UTC
-                start_datetime = fields.Datetime.from_string(kw['start_datetime'])
-                end_datetime = fields.Datetime.from_string(kw['end_datetime'])
+                # Handle timezone for datetime fields (assuming frontend sends local Jakarta time)
+                start_dt = fields.Datetime.from_string(kw['start_datetime'])
+                end_dt = fields.Datetime.from_string(kw['end_datetime'])
                 
-                # Convert from local time (Jakarta) to UTC for storage
+                # Assume times from frontend are in Jakarta time (+7)
                 jakarta_tz = pytz.timezone('Asia/Jakarta')
-                start_jakarta = jakarta_tz.localize(start_datetime)
-                end_jakarta = jakarta_tz.localize(end_datetime)
                 
-                # Convert to UTC
+                # Localize to Jakarta timezone
+                start_jakarta = jakarta_tz.localize(start_dt)
+                end_jakarta = jakarta_tz.localize(end_dt)
+                
+                # Convert to UTC for storage
                 start_utc = start_jakarta.astimezone(pytz.UTC)
                 end_utc = end_jakarta.astimezone(pytz.UTC)
 
@@ -526,6 +560,27 @@ class TeamProjectAPI(http.Controller):
 
                 bau = request.env['team.project.bau'].sudo().create(values)
                 return {'status': 'success', 'data': self._prepare_bau_data(bau)}
+            
+            elif operation == 'get':
+                domain = []
+                if kw.get('creator_id'):
+                    domain.append(('creator_id', '=', int(kw['creator_id'])))
+                if kw.get('project_id'):
+                    domain.append(('project_id', '=', int(kw['project_id'])))
+                if kw.get('date_from'):
+                    domain.append(('date', '>=', kw['date_from']))
+                if kw.get('date_to'):
+                    domain.append(('date', '<=', kw['date_to']))
+                if kw.get('activity_type'):
+                    domain.append(('activity_type', '=', kw['activity_type']))
+                if kw.get('state'):
+                    domain.append(('state', '=', kw['state']))
+
+                bau_activities = request.env['team.project.bau'].sudo().search(domain)
+                return {
+                    'status': 'success',
+                    'data': [self._prepare_bau_data(bau) for bau in bau_activities]
+                }
 
             elif operation == 'update':
                 bau_id = kw.get('bau_id')
@@ -563,6 +618,299 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in manage_bau_activities: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/team/bau/report', type='json', auth='user', methods=['POST'], csrf=False)
+    def team_bau_report(self, **kw):
+        """Generate BAU activity reports and analytics"""
+        try:
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            
+            domain = []
+            if date_from:
+                domain.append(('date', '>=', date_from))
+            if date_to:
+                domain.append(('date', '<=', date_to))
+                
+            # Get all BAU activities within date range
+            bau_activities = request.env['team.project.bau'].sudo().search(domain)
+            
+            # Calculate summary data
+            total_hours = sum(bau_activities.mapped('hours_spent'))
+            date_set = set(bau_activities.mapped('date'))
+            total_bau_days = len(date_set)
+            
+            # Group activities by creator
+            creators_data = []
+            creators = {}
+            
+            for activity in bau_activities:
+                creator_id = activity.creator_id.id
+                if creator_id not in creators:
+                    creators[creator_id] = {
+                        'creator_id': creator_id,
+                        'creator_name': activity.creator_id.name,
+                        'activities': []
+                    }
+                creators[creator_id]['activities'].append(self._prepare_bau_data(activity))
+            
+            for creator_id, data in creators.items():
+                creators_data.append(data)
+            
+            # Group activities by day
+            daily_data = []
+            days = {}
+            
+            for activity in bau_activities:
+                date_str = fields.Date.to_string(activity.date)
+                if date_str not in days:
+                    days[date_str] = {
+                        'date': date_str,
+                        'activities': []
+                    }
+                days[date_str]['activities'].append(self._prepare_bau_data(activity))
+            
+            for date_str, data in sorted(days.items()):
+                daily_data.append(data)
+            
+            # Calculate estimated project hours
+            # Assuming 8-hour workday and subtracting BAU hours
+            total_work_hours = total_bau_days * 8  # 8 hours per workday
+            project_hours = max(0, total_work_hours - total_hours)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'summary': {
+                        'total_hours': total_hours,
+                        'total_bau_days': total_bau_days,
+                        'project_hours': project_hours,
+                        'bau_vs_project_ratio': f"{total_hours}:{project_hours}"
+                    },
+                    'creators': creators_data,
+                    'daily_data': daily_data
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in team_bau_report: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/bau/calendar', type='json', auth='user', methods=['POST'], csrf=False)
+    def team_bau_calendar(self, **kw):
+        """Get BAU activities for calendar view"""
+        try:
+            # Validate input
+            if not kw.get('date_from') or not kw.get('date_to'):
+                return {'status': 'error', 'message': 'Date range is required'}
+                
+            domain = [
+                ('date', '>=', kw['date_from']),
+                ('date', '<=', kw['date_to'])
+            ]
+            
+            # Optional filter by creator
+            if kw.get('creator_id'):
+                domain.append(('creator_id', '=', int(kw['creator_id'])))
+                
+            # Get BAU activities
+            bau_activities = request.env['team.project.bau'].sudo().search(domain)
+            
+            # Group activities by date for calendar view
+            calendar_data = {}
+            for bau in bau_activities:
+                date_key = fields.Date.to_string(bau.date)
+                if date_key not in calendar_data:
+                    calendar_data[date_key] = {
+                        'date': date_key,
+                        'activities': [],
+                        'total_hours': 0,
+                        'target_achieved': False
+                    }
+                
+                # Add activity data
+                activity_data = self._prepare_bau_data(bau)
+                
+                # Add time information for week view (mock start/end times)
+                # In real implementation, you'd have actual start/end times
+                hours = int(bau.hours_spent)
+                minutes = int((bau.hours_spent - hours) * 60)
+                
+                # Mock start at 9 AM and calculate end time
+                start_hour = 9
+                end_hour = start_hour + hours
+                end_minutes = minutes
+                
+                # Adjust if hours overflow
+                if end_hour > 17:  # Cap at 5 PM
+                    end_hour = 17
+                    end_minutes = 0
+                
+                activity_data['time'] = {
+                    'start': f"{start_hour:02d}:{0:02d}",
+                    'end': f"{end_hour:02d}:{end_minutes:02d}",
+                    'duration': bau.hours_spent
+                }
+                
+                calendar_data[date_key]['activities'].append(activity_data)
+                calendar_data[date_key]['total_hours'] += bau.hours_spent
+                
+                # Update target achieved status (if relevant for your model)
+                target_hours = 2.0  # Default target hours per day
+                if bau.hours_spent >= target_hours:
+                    calendar_data[date_key]['target_achieved'] = True
+            
+            return {
+                'status': 'success',
+                'data': list(calendar_data.values())
+            }
+            
+        except Exception as e:
+            _logger.error('Error in team_bau_calendar: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error getting calendar data: {str(e)}'
+            }
+
+    @http.route('/web/v2/team/bau/batch', type='json', auth='user', methods=['POST'], csrf=False)
+    def team_bau_batch(self, **kw):
+        """Handle batch BAU activities creation with date range, excluding weekends if specified"""
+        try:
+            # Validate input
+            if not kw.get('activity') or not isinstance(kw['activity'], dict):
+                return {'status': 'error', 'message': 'Activity object is required'}
+            if not kw.get('date_from') or not kw.get('date_to'):
+                return {'status': 'error', 'message': 'Date range (date_from and date_to) is required'}
+
+            activity = kw['activity']
+            date_from = fields.Date.from_string(kw['date_from'])
+            date_to = fields.Date.from_string(kw['date_to'])
+            exclude_weekends = kw.get('exclude_weekends', True)
+
+            # Validate dates
+            if date_from > date_to:
+                return {'status': 'error', 'message': 'date_from must be before date_to'}
+
+            # Validate required fields for activities
+            required_fields = ['name', 'creator_id', 'activity_type']
+            if not all(activity.get(field) for field in required_fields):
+                return {'status': 'error', 'message': 'Missing required fields in activity'}
+
+            created_baus = []
+            errors = []
+
+            # Create activities for specified date range
+            current_date = date_from
+            while current_date <= date_to:
+                # Skip weekends if specified
+                if exclude_weekends and current_date.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+                    current_date += timedelta(days=1)
+                    continue
+                    
+                try:
+                    values = {
+                        'name': activity['name'],
+                        'creator_id': int(activity['creator_id']),
+                        'date': current_date,
+                        'activity_type': activity['activity_type'],
+                        'hours_spent': float(activity.get('hours_spent', 0.0)),
+                        'project_id': int(activity['project_id']) if activity.get('project_id') else False,
+                        'description': activity.get('description', ''),
+                        'state': 'planned',  # Always planned for future activities
+                    }
+
+                    bau = request.env['team.project.bau'].sudo().create(values)
+                    created_baus.append(self._prepare_bau_data(bau))
+
+                except Exception as e:
+                    errors.append(f"Error creating activity for {current_date}: {str(e)}")
+
+                current_date += timedelta(days=1)
+
+            return {
+                'status': 'partial_success' if errors else 'success',
+                'data': {
+                    'created': created_baus,
+                    'errors': errors
+                },
+                'message': f'Created {len(created_baus)} BAU activities with {len(errors)} errors'
+            }
+
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': f'Error processing batch BAU: {str(e)}'
+            }
+
+    @http.route('/web/v2/team/bau/verify', type='json', auth='user', methods=['POST'], csrf=False)
+    def verify_team_bau(self, **kw):
+        """Verify BAU activity status (done/not_done) on same day or H+1 with reason"""
+        try:
+            if not kw.get('bau_id') or not kw.get('state'):
+                return {'status': 'error', 'message': 'Missing bau_id or state'}
+            
+            bau = request.env['team.project.bau'].sudo().browse(int(kw['bau_id']))
+            if not bau.exists():
+                return {'status': 'error', 'message': 'BAU activity not found'}
+            
+            # Check current date
+            current_date = fields.Date.today()
+            activity_date = bau.date
+            delta_days = (current_date - activity_date).days
+            
+            # Validate verification date (H or H+1)
+            if delta_days < 0:
+                return {
+                    'status': 'error',
+                    'message': f'Sorry, you cannot verify activities for future dates (activity date: {activity_date}).'
+                }
+            elif delta_days > 1:
+                return {
+                    'status': 'error',
+                    'message': f'Verification must be done on the same day or H+1 (activity date: {activity_date})'
+                }
+            elif delta_days == 1:  # H+1
+                if not kw.get('verification_reason'):
+                    return {
+                        'status': 'error',
+                        'message': 'Verification reason is required for H+1 verification'
+                    }
+            
+            # Validate state
+            new_state = kw['state']
+            if new_state not in ['done', 'not_done']:
+                return {'status': 'error', 'message': 'State must be "done" or "not_done"'}
+            
+            # Update status and verification
+            update_values = {
+                'state': new_state,
+                'verified_by': request.env.user.employee_id.id,
+                'verification_date': fields.Datetime.now(),
+                'hours_spent': float(kw.get('hours_spent', bau.hours_spent)),
+            }
+            if delta_days == 1:
+                update_values['verification_reason'] = kw['verification_reason']
+            
+            bau.write(update_values)
+            
+            # Log activity
+            log_message = f"Status changed to {new_state} by {request.env.user.name}"
+            if delta_days == 1:
+                log_message += f"\nReason for H+1 verification: {kw['verification_reason']}"
+            bau.message_post(body=log_message)
+            
+            return {
+                'status': 'success',
+                'data': self._prepare_bau_data(bau),
+                'message': f'BAU activity {bau.name} verified as {new_state}'
+            }
+            
+        except Exception as e:
+            _logger.error('Error verifying BAU: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error verifying BAU: {str(e)}'
+            }
 
     @http.route('/web/v2/team/task/checklists', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_task_checklists(self, **kw):
@@ -653,6 +1001,23 @@ class TeamProjectAPI(http.Controller):
 
                 timesheet = request.env['team.project.timesheet'].sudo().create(values)
                 return {'status': 'success', 'data': self._prepare_timesheet_data(timesheet)}
+
+            # Di dalam metode manage_timesheets di TeamProjectAPI
+            elif operation == 'list':
+                task_id = kw.get('task_id')
+                if not task_id:
+                    return {'status': 'error', 'message': 'Missing task_id'}
+                
+                task = request.env['team.project.task'].sudo().browse(int(task_id))
+                if not task.exists():
+                    return {'status': 'error', 'message': 'Task not found'}
+                
+                timesheets = task.timesheet_ids
+                
+                return {
+                    'status': 'success',
+                    'data': [self._prepare_timesheet_data(timesheet) for timesheet in timesheets]
+                }
 
             elif operation == 'update':
                 timesheet_id = kw.get('timesheet_id')

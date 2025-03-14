@@ -965,78 +965,98 @@ class TeamProjectAPI(http.Controller):
     def get_bau_calendar(self, **kw):
         """Get BAU activities for calendar view."""
         try:
-            # Get params
-            date_from = kw.get('date_from')
-            date_to = kw.get('date_to')
-            creator_id = kw.get('creator_id')  # Optional filter for specific employee
-            team_view = kw.get('team_view', False)  # New parameter to enable team view
-            
-            # Validate required params
-            if not date_from or not date_to:
-                return {'status': 'error', 'message': 'Missing date range parameters'}
-            
-            # Domain for activities
+            # Validasi input
+            if not kw.get('date_from') or not kw.get('date_to'):
+                return {'status': 'error', 'message': 'Date range is required'}
+                
+            # Build domain for filtering
             domain = [
-                ('date', '>=', date_from),
-                ('date', '<=', date_to)
+                ('date', '>=', kw['date_from']),
+                ('date', '<=', kw['date_to'])
             ]
             
-            # Apply optional filters
-            if creator_id:
-                # Filter by specific creator if provided
-                domain.append(('creator_id', '=', int(creator_id)))
-            elif not team_view:
+            # Optional filter by creator
+            if kw.get('creator_id'):
+                domain.append(('creator_id', '=', int(kw['creator_id'])))
+            elif not kw.get('team_view', False):
                 # If not team view and no creator specified, default to current user
                 domain.append(('creator_id', '=', request.env.user.employee_id.id))
             
-            # Get activities based on domain
-            activities = request.env['team.project.bau'].sudo().search(domain, order='date ASC, time_start ASC')
-            activities_by_date = {}
-
+            # Get BAU activities
+            bau_activities = request.env['team.project.bau'].sudo().search(domain, order='date ASC, time_start ASC')
             
-            # Organize activities by date
-            for activity in activities:
-                date_str = str(activity.date)
-                if date_str not in activities_by_date:
-                    activities_by_date[date_str] = {
-                        'date': date_str,
+            # Group activities by date for calendar view
+            calendar_data = {}
+            for bau in bau_activities:
+                date_key = str(bau.date)
+                if date_key not in calendar_data:
+                    calendar_data[date_key] = {
+                        'date': date_key,
                         'activities': [],
-                        'total_hours': 0
+                        'total_hours': 0,
+                        'target_achieved': False  # Added to match content API
+                    }
+                    
+                # Add activity data
+                activity_data = self._prepare_bau_data(bau)
+                
+                # Add time information for week view (if not already in _prepare_bau_data)
+                if 'time' not in activity_data:
+                    hours = int(bau.hours_spent)
+                    minutes = int((bau.hours_spent - hours) * 60)
+                    
+                    # Mock start at 9 AM and calculate end time
+                    start_hour = 9
+                    end_hour = start_hour + hours
+                    end_minutes = minutes
+                    
+                    # Adjust if hours overflow
+                    if end_hour > 17:  # Cap at 5 PM
+                        end_hour = 17
+                        end_minutes = 0
+                    
+                    activity_data['time'] = {
+                        'start': f"{start_hour:02d}:{0:02d}",
+                        'end': f"{end_hour:02d}:{end_minutes:02d}",
+                        'duration': bau.hours_spent
                     }
                 
-                # Add activity data
-                activity_data = self._prepare_bau_data(activity)
-                activities_by_date[date_str]['activities'].append(activity_data)
-                activities_by_date[date_str]['total_hours'] += float(activity.hours_spent or 0)
-            
-            # Generate date range
-            try:
-                date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
-                date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                calendar_data[date_key]['activities'].append(activity_data)
+                calendar_data[date_key]['total_hours'] += bau.hours_spent
                 
-                # Ensure all dates in range have an entry, even if empty
-                current_date = date_from_obj
-                while current_date <= date_to_obj:
+                # Update target achieved status (matching content API)
+                target_hours = getattr(bau, 'target_hours', 2.0)  # Default to 2 hours if not defined
+                if bau.hours_spent >= target_hours and bau.state == 'done':
+                    calendar_data[date_key]['target_achieved'] = True
+            
+            # Ensure all dates in the range have an entry
+            try:
+                date_from = datetime.strptime(kw['date_from'], '%Y-%m-%d').date()
+                date_to = datetime.strptime(kw['date_to'], '%Y-%m-%d').date()
+                
+                current_date = date_from
+                while current_date <= date_to:
                     date_str = str(current_date)
-                    if date_str not in activities_by_date:
-                        activities_by_date[date_str] = {
+                    if date_str not in calendar_data:
+                        calendar_data[date_str] = {
                             'date': date_str,
                             'activities': [],
-                            'total_hours': 0
+                            'total_hours': 0,
+                            'target_achieved': False
                         }
                     current_date += timedelta(days=1)
             except Exception as e:
-                _logger.error(f"Error generating full date range: {str(e)}")
-                # Continue with available data
+                _logger.error(f"Error generating date range: {str(e)}")
             
             # Convert to list and sort by date
-            calendar_data = list(activities_by_date.values())
-            calendar_data.sort(key=lambda x: x['date'])
+            result = list(calendar_data.values())
+            result.sort(key=lambda x: x['date'])
             
             return {
                 'status': 'success',
-                'data': calendar_data
+                'data': result
             }
+            
         except Exception as e:
             _logger.error(f"Error in get_bau_calendar: {str(e)}")
             return {'status': 'error', 'message': str(e)}
@@ -1428,15 +1448,16 @@ class TeamProjectAPI(http.Controller):
     def _prepare_bau_data(self, bau):
         """
         Prepare BAU data for API response.
-        Now includes time fields.
+        Includes time fields to match ContentManagementAPI format.
         """
         if not bau:
             return {}
             
-        # Convert float time to string format HH:MM
-        time_start_str = self._format_time_float_to_string(bau.time_start)
-        time_end_str = self._format_time_float_to_string(bau.time_end)
+        # Format time values
+        time_start_str = self._format_time_float_to_string(bau.time_start if hasattr(bau, 'time_start') else False)
+        time_end_str = self._format_time_float_to_string(bau.time_end if hasattr(bau, 'time_end') else False)
         
+        # Prepare project info
         project_data = False
         if bau.project_id:
             project_data = {
@@ -1444,6 +1465,7 @@ class TeamProjectAPI(http.Controller):
                 'name': bau.project_id.name
             }
         
+        # Prepare verification info
         verified_by_data = False
         if bau.verified_by:
             verified_by_data = {
@@ -1451,7 +1473,7 @@ class TeamProjectAPI(http.Controller):
                 'name': bau.verified_by.name
             }
         
-        # Add time object
+        # Prepare time info
         time_data = {
             'start': time_start_str,
             'end': time_end_str,
@@ -1464,7 +1486,8 @@ class TeamProjectAPI(http.Controller):
             'project': project_data,
             'creator': {
                 'id': bau.creator_id.id,
-                'name': bau.creator_id.name
+                'name': bau.creator_id.name,
+                'position': bau.creator_id.job_id.name if hasattr(bau.creator_id, 'job_id') and bau.creator_id.job_id else ''
             },
             'date': bau.date,
             'activity_type': bau.activity_type,
@@ -1473,9 +1496,10 @@ class TeamProjectAPI(http.Controller):
             'state': bau.state,
             'verification': {
                 'verified_by': verified_by_data,
-                'date': bau.verification_date
+                'date': bau.verification_date if hasattr(bau, 'verification_date') else False
             },
-            'time': time_data  # Include the time object in the response
+            'time': time_data,
+            'impact_on_delivery': bau.impact_on_delivery if hasattr(bau, 'impact_on_delivery') else ''
         }
     
     def _prepare_checklist_data(self, checklist):

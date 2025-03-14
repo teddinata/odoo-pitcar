@@ -869,58 +869,6 @@ class TeamProjectAPI(http.Controller):
             _logger.error(f"Error validating time values: {str(e)}")
             return False
 
-    def _prepare_bau_data(self, bau):
-        """
-        Prepare BAU data for API response.
-        Now includes time fields.
-        """
-        if not bau:
-            return {}
-            
-        # Convert float time to string format HH:MM
-        time_start_str = self._format_time_float_to_string(bau.time_start)
-        time_end_str = self._format_time_float_to_string(bau.time_end)
-        
-        project_data = False
-        if bau.project_id:
-            project_data = {
-                'id': bau.project_id.id,
-                'name': bau.project_id.name
-            }
-        
-        verified_by_data = False
-        if bau.verified_by:
-            verified_by_data = {
-                'id': bau.verified_by.id,
-                'name': bau.verified_by.name
-            }
-        
-        # Add time object
-        time_data = {
-            'start': time_start_str,
-            'end': time_end_str,
-            'duration': bau.hours_spent
-        }
-        
-        return {
-            'id': bau.id,
-            'name': bau.name,
-            'project': project_data,
-            'creator': {
-                'id': bau.creator_id.id,
-                'name': bau.creator_id.name
-            },
-            'date': bau.date,
-            'activity_type': bau.activity_type,
-            'hours_spent': bau.hours_spent,
-            'description': bau.description,
-            'state': bau.state,
-            'verification': {
-                'verified_by': verified_by_data,
-                'date': bau.verification_date
-            },
-            'time': time_data  # Include the time object in the response
-        }
 
     def _format_time_float_to_string(self, time_float):
         """Convert float time (hours.fraction) to string format (HH:MM)"""
@@ -1468,21 +1416,56 @@ class TeamProjectAPI(http.Controller):
         }
     
     def _prepare_bau_data(self, bau):
-        """Menyiapkan data aktivitas BAU untuk respons API."""
+        """
+        Prepare BAU data for API response.
+        Now includes time fields.
+        """
+        if not bau:
+            return {}
+            
+        # Convert float time to string format HH:MM
+        time_start_str = self._format_time_float_to_string(bau.time_start)
+        time_end_str = self._format_time_float_to_string(bau.time_end)
+        
+        project_data = False
+        if bau.project_id:
+            project_data = {
+                'id': bau.project_id.id,
+                'name': bau.project_id.name
+            }
+        
+        verified_by_data = False
+        if bau.verified_by:
+            verified_by_data = {
+                'id': bau.verified_by.id,
+                'name': bau.verified_by.name
+            }
+        
+        # Add time object
+        time_data = {
+            'start': time_start_str,
+            'end': time_end_str,
+            'duration': bau.hours_spent
+        }
+        
         return {
             'id': bau.id,
             'name': bau.name,
-            'project': {'id': bau.project_id.id, 'name': bau.project_id.name} if bau.project_id else None,
-            'creator': {'id': bau.creator_id.id, 'name': bau.creator_id.name},
-            'date': self._format_datetime_jakarta(bau.date),
+            'project': project_data,
+            'creator': {
+                'id': bau.creator_id.id,
+                'name': bau.creator_id.name
+            },
+            'date': bau.date,
             'activity_type': bau.activity_type,
             'hours_spent': bau.hours_spent,
             'description': bau.description,
             'state': bau.state,
             'verification': {
-                'verified_by': {'id': bau.verified_by.id, 'name': bau.verified_by.name} if bau.verified_by else None,
-                'date': self._format_datetime_jakarta(bau.verification_date) if bau.verification_date else False
-            }
+                'verified_by': verified_by_data,
+                'date': bau.verification_date
+            },
+            'time': time_data  # Include the time object in the response
         }
     
     def _prepare_checklist_data(self, checklist):

@@ -3380,23 +3380,12 @@ class KPIOverview(http.Controller):
             start_date_utc = start_date.astimezone(pytz.UTC)
             end_date_utc = end_date.astimezone(pytz.UTC)
 
-            # Get all mechanic employees (active mechanics with a mechanic record)
-            mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
-            
-            if not mechanics:
-                return Response('No mechanic records found', status=404)
-
             # Prepare CSV output
             output = StringIO()
             writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
             
-            # Define header
-            header = [
-                'Employee ID', 'Employee Name', 'Position', 'Department', 'Period',
-                'KPI No', 'KPI Name', 'Weight (%)', 'Target', 'Actual (%)', 
-                'Achievement (%)', 'Weighted Score', 'Measurement'
-            ]
-            writer.writerow(header)
+            # Get all mechanic employees
+            mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
             
             # KPI templates
             mechanic_kpi_template = [
@@ -3547,13 +3536,7 @@ class KPIOverview(http.Controller):
                 }
             ]
 
-            # Add summary row header
-            header_with_summary = header + ['Total Weight', 'Total Score', 'Achievement Status']
-
-            # Log progress
-            _logger.info(f"Starting export of KPI data for {len(mechanics)} mechanics for period {month}/{year}")
-            
-            # Process each mechanic
+           # Loop per mekanik untuk data ekspor
             for mechanic in mechanics:
                 employee = mechanic.employee_id
                 
@@ -3562,6 +3545,7 @@ class KPIOverview(http.Controller):
                     continue
                     
                 job_title = mechanic.position_id.name if mechanic.position_id else "Mechanic"
+                department = employee.department_id.name if employee.department_id else "Mechanic Department"
                 
                 # Base domain for order queries
                 base_domain = [
@@ -4109,57 +4093,43 @@ class KPIOverview(http.Controller):
                 total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
                 achievement_status = 'Achieved' if total_score >= 80 else 'Below Target'  # 80% sebagai batas pencapaian
                 
-                # Format period string
-                period = f"{month}/{year}"
-                department = employee.department_id.name if employee.department_id else "Mechanic Department"
+                # Format untuk ekspor yang lebih rapi
+                # Heading section for employee
+                period = f"Mar-{str(year)[-2:]}"  # Format: Mar-23 untuk 2023
+                writer.writerow([])  # Empty row as separator
+                writer.writerow([employee.id, employee.name, job_title, period])
                 
-                # Write rows for each KPI
-                for kpi in kpi_scores:
-                    row = [
-                        employee.id,
-                        employee.name,
-                        job_title,
-                        department,
-                        period,
-                        kpi['no'],
-                        kpi['name'],
-                        f"{kpi['weight']:.1f}",
-                        f"{kpi['target']:.1f}",
-                        f"{kpi['actual']:.1f}",
-                        f"{kpi['achievement']:.1f}",
-                        f"{kpi['weighted_score']:.2f}",
-                        kpi['measurement'].replace('\n', ' | ').replace('<div', '').replace('</div>', '').replace('<br>', ' | ')
-                    ]
-                    writer.writerow(row)
+                # KPI data untuk employee
+                for i, kpi in enumerate(kpi_scores, 1):
+                    measurement = kpi['measurement']
+                    # Membersihkan measurement dari HTML tags atau newlines
+                    if isinstance(measurement, str):
+                        measurement = measurement.replace('\n', ' ').replace('<div', '').replace('</div>', '')
+                    
+                    writer.writerow([
+                        i,                                        # No
+                        f"KPI {kpi['no']}",                       # KPI identifier
+                        f"{kpi['weight']:.0f}",                   # Weight
+                        f"{kpi['target']:.0f}",                   # Target
+                        f"{kpi['actual']:.1f}",                   # Actual
+                        f"{kpi['achievement']:.2f}",              # Achievement
+                        measurement                               # Measurement
+                    ])
                 
-                # Add a summary row
-                summary_row = [
-                    employee.id,
-                    employee.name,
-                    job_title,
-                    department,
-                    period,
-                    "",  # No KPI number
-                    "SUMMARY",  # KPI name
-                    f"{total_weight:.1f}",  # Total weight
-                    "",  # No target
-                    "",  # No actual
-                    "",  # No achievement
-                    f"{total_score:.2f}",  # Total score
-                    achievement_status  # Status
-                ]
-                writer.writerow(summary_row)
-                
-                # Add an empty row for better readability
-                writer.writerow([])
-                
-                _logger.info(f"Processed KPI for {employee.name} ({job_title}): Score {total_score:.2f}")
-
-            # Prepare file response
-            filename = f"All_Mechanics_KPI_{month}_{year}.csv"
+                # Summary row
+                writer.writerow([
+                    "SUMMARY",
+                    "",
+                    f"{total_weight:.0f}",
+                    "",
+                    f"{total_score:.2f}",
+                    achievement_status,
+                    ""
+                ])
+            
+            # Prepare response
+            filename = f"Mechanic_KPI_{month}_{year}.csv"
             output.seek(0)
-
-            _logger.info(f"Completed export to {filename}")
             
             return Response(
                 output.getvalue(),

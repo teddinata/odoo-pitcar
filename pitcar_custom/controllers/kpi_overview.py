@@ -3362,6 +3362,9 @@ class KPIOverview(http.Controller):
             if year < 2000 or year > 2100:
                 return Response('Invalid year', status=400)
 
+            # Import regex module
+            import re
+            
             # Set timezone
             tz = pytz.timezone('Asia/Jakarta')
             
@@ -3537,7 +3540,7 @@ class KPIOverview(http.Controller):
                 }
             ]
 
-           # Loop per mekanik untuk data ekspor
+            # Loop per mekanik untuk data ekspor
             for mechanic in mechanics:
                 employee = mechanic.employee_id
                 
@@ -4089,7 +4092,7 @@ class KPIOverview(http.Controller):
                             'weighted_score': weighted_score
                         })
                 
-                 # Calculate summary
+                # Calculate summary
                 total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
                 total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
                 achievement_status = 'Achieved' if total_score >= 80 else 'Below Target'
@@ -4102,6 +4105,17 @@ class KPIOverview(http.Controller):
                 # Heading section for employee
                 writer.writerow([])  # Empty row as separator
                 writer.writerow([employee.id, employee.name, job_title, period])
+                
+                # Add header row
+                writer.writerow([
+                    "No", 
+                    "KPI", 
+                    "Bobot", 
+                    "Target", 
+                    "Actual", 
+                    "Achievement", 
+                    "Formula"
+                ])
                 
                 # KPI data untuk employee - format sesuai contoh yang diberikan
                 for i, kpi in enumerate(kpi_scores, 1):
@@ -4119,7 +4133,7 @@ class KPIOverview(http.Controller):
                         f"{kpi['target']:.1f}",  # Target
                         f"{kpi['actual']:.1f}",  # Actual
                         f"{kpi['achievement']:.2f}",  # Achievement
-                        display_measurement  # Measurement
+                        display_measurement  # Measurement/Formula
                     ])
                 
                 # Summary row

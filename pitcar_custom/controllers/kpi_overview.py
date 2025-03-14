@@ -6,6 +6,7 @@ from dateutil.relativedelta import relativedelta
 from odoo import http, _, fields
 from odoo.http import request, Response
 import pytz
+import re
 
 _logger = logging.getLogger(__name__)
 
@@ -4088,39 +4089,44 @@ class KPIOverview(http.Controller):
                             'weighted_score': weighted_score
                         })
                 
-                # Calculate summary
+                 # Calculate summary
                 total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
                 total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
-                achievement_status = 'Achieved' if total_score >= 80 else 'Below Target'  # 80% sebagai batas pencapaian
+                achievement_status = 'Achieved' if total_score >= 80 else 'Below Target'
                 
-                # Format untuk ekspor yang lebih rapi
+                # Format bulan untuk display, contoh: Mar-23
+                month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                month_display = month_names[month-1]
+                period = f"{month_display}-{str(year)[-2:]}"
+                
                 # Heading section for employee
-                period = f"Mar-{str(year)[-2:]}"  # Format: Mar-23 untuk 2023
                 writer.writerow([])  # Empty row as separator
                 writer.writerow([employee.id, employee.name, job_title, period])
                 
-                # KPI data untuk employee
+                # KPI data untuk employee - format sesuai contoh yang diberikan
                 for i, kpi in enumerate(kpi_scores, 1):
-                    measurement = kpi['measurement']
-                    # Membersihkan measurement dari HTML tags atau newlines
-                    if isinstance(measurement, str):
-                        measurement = measurement.replace('\n', ' ').replace('<div', '').replace('</div>', '')
+                    # Format measurement untuk tampilan lebih baik di CSV
+                    display_measurement = kpi['measurement']
+                    if isinstance(display_measurement, str):
+                        # Bersihkan dari HTML tags jika ada
+                        display_measurement = re.sub(r'<.*?>', '', display_measurement)
+                        display_measurement = display_measurement.replace('\n', ' ')
                     
                     writer.writerow([
-                        i,                                        # No
-                        f"KPI {kpi['no']}",                       # KPI identifier
-                        f"{kpi['weight']:.0f}",                   # Weight
-                        f"{kpi['target']:.0f}",                   # Target
-                        f"{kpi['actual']:.1f}",                   # Actual
-                        f"{kpi['achievement']:.2f}",              # Achievement
-                        measurement                               # Measurement
+                        i,  # No row
+                        kpi['name'],  # Nama KPI lengkap
+                        f"{kpi['weight']:.1f}",  # Weight
+                        f"{kpi['target']:.1f}",  # Target
+                        f"{kpi['actual']:.1f}",  # Actual
+                        f"{kpi['achievement']:.2f}",  # Achievement
+                        display_measurement  # Measurement
                     ])
                 
                 # Summary row
                 writer.writerow([
                     "SUMMARY",
                     "",
-                    f"{total_weight:.0f}",
+                    f"{total_weight:.1f}",
                     "",
                     f"{total_score:.2f}",
                     achievement_status,

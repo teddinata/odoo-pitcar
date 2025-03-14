@@ -4297,8 +4297,20 @@ class KPIOverview(http.Controller):
             
             # Render PDF using QWeb report
             # Perbaikan untuk versi Odoo baru
-            report_action = request.env.ref('pitcar_custom.action_report_mechanic_kpi')
-            pdf_content, _ = report_action._render_qweb_pdf(report_ref=[mechanic.id for mechanic in mechanics], data=report_data)
+            # Pendekatan dengan template QWeb langsung
+            template = request.env.ref('pitcar_custom.report_mechanic_kpi')
+            html = template._render(report_data)
+            pdf_content = request.env['ir.actions.report']._run_wkhtmltopdf(
+                [html],
+                header=b'', footer=b'',
+                landscape=True,
+                specific_paperformat_args={
+                    'data-report-margin-top': 10,
+                    'data-report-margin-bottom': 10,
+                    'data-report-margin-left': 5,
+                    'data-report-margin-right': 5,
+                }
+            )
 
             # Prepare filename
             filename = f"Mechanic_KPI_{month}_{year}.pdf"

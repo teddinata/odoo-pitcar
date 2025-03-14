@@ -968,6 +968,8 @@ class TeamProjectAPI(http.Controller):
             # Get params
             date_from = kw.get('date_from')
             date_to = kw.get('date_to')
+            creator_id = kw.get('creator_id')  # Optional filter for specific employee
+            team_view = kw.get('team_view', False)  # New parameter to enable team view
             
             # Validate required params
             if not date_from or not date_to:
@@ -975,14 +977,22 @@ class TeamProjectAPI(http.Controller):
             
             # Domain for activities
             domain = [
-                ('creator_id', '=', request.env.user.employee_id.id),
                 ('date', '>=', date_from),
                 ('date', '<=', date_to)
             ]
             
-            # Group by date
+            # Apply optional filters
+            if creator_id:
+                # Filter by specific creator if provided
+                domain.append(('creator_id', '=', int(creator_id)))
+            elif not team_view:
+                # If not team view and no creator specified, default to current user
+                domain.append(('creator_id', '=', request.env.user.employee_id.id))
+            
+            # Get activities based on domain
             activities = request.env['team.project.bau'].sudo().search(domain, order='date ASC, time_start ASC')
             activities_by_date = {}
+
             
             # Organize activities by date
             for activity in activities:

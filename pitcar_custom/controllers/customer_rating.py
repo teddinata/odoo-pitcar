@@ -98,7 +98,7 @@ class CustomerRatingAPI(Controller):
 
     @route('/web/rating/orders', type='json', auth='public', methods=['POST'], csrf=False)
     def get_available_orders(self, **kwargs):
-        """Get list of orders available for rating (completed today or still in progress)"""
+        """Get list of orders available for rating (completed and paid today, or still in progress)"""
         try:
             params = kwargs
             dbname = params.get('db')
@@ -125,6 +125,7 @@ class CustomerRatingAPI(Controller):
                 _logger.warning(f"Invalid date format, using today: {today.strftime('%Y-%m-%d')}")
 
             SaleOrder = request.env['sale.order'].sudo()
+            InvoicePayment = request.env['account.payment'].sudo()
 
             # Create datetime bounds for the search date
             start_of_day = parsed_date.replace(hour=0, minute=0, second=0)
@@ -136,25 +137,24 @@ class CustomerRatingAPI(Controller):
 
             _logger.info(f"Search range: {date_start} to {date_end}")
 
-            # Build domain to include only orders that have:
-            # 1. Printed PKB today AND started service
-            # 2. Orders where service has been completed today using controller_selesai
-            # 3. Orders where service has started but not finished yet
+            # Build domain to include:
+            # 1. Orders paid today (regardless of rating status)
+            # 2. Orders where service completed but not yet paid
+            # 3. Orders where service is in progress
             domain = [
                 '|', '|',
-                # Orders with PKB printed today AND service started
+                # Orders paid today
+                ('invoice_ids.payment_state', 'in', ['paid', 'in_payment']),
+                ('invoice_ids.payment_date', '>=', date_start),
+                ('invoice_ids.payment_date', '<=', date_end),
+                # OR Orders with service completed but not paid
                 '&',
-                ('sa_cetak_pkb', '>=', date_start),
-                ('sa_cetak_pkb', '<=', date_end),
-                ('controller_mulai_servis', '!=', False),  # Service has started
-                # OR Orders where service has been completed today
+                ('controller_selesai', '!=', False),
+                ('invoice_ids.payment_state', 'not in', ['paid', 'in_payment']),
+                # OR Orders where service is in progress
                 '&',
-                ('controller_selesai', '>=', date_start),
-                ('controller_selesai', '<=', date_end),
-                # OR Orders where service has started but not finished yet
-                '&',
-                ('controller_mulai_servis', '!=', False),  # Service has started
-                ('controller_selesai', '=', False)  # But service hasn't finished yet
+                ('controller_mulai_servis', '!=', False),
+                ('controller_selesai', '=', False)
             ]
 
             # Execute search with ordering
@@ -164,9 +164,10 @@ class CustomerRatingAPI(Controller):
             # Process results
             result = []
             for order in orders:
-                if order.sa_cetak_pkb:
-                    # Include both today's orders and not-yet-completed orders
+                if order.sa_cetak_pkb:  # Only include orders with PKB printed
+                    # Set default values
                     is_today_order = False
+                    is_paid_today = False
                     completion_message = ""
                     
                     # Extract the date part for comparison
@@ -175,27 +176,28 @@ class CustomerRatingAPI(Controller):
                         search_date_str = parsed_date.strftime('%Y-%m-%d')
                         is_today_order = (order_date == search_date_str)
                     
-                    # Check if service has started but not finished (in progress)
+                    # Check if service is in progress
                     service_in_progress = order.controller_mulai_servis and not order.controller_selesai
                     
-                    # Check if service has started
-                    service_started = order.controller_mulai_servis
+                    # Check if payment was made today (even if it has rating)
+                    if order.invoice_ids:
+                        for invoice in order.invoice_ids:
+                            if (invoice.payment_state in ['paid', 'in_payment'] and 
+                                invoice.payment_date and 
+                                invoice.payment_date.strftime('%Y-%m-%d') == search_date_str):
+                                is_paid_today = True
+                                break
                     
-                    # Check if service has been completed today
-                    service_completed_today = False
-                    if order.controller_selesai:
-                        completion_date = order.controller_selesai.strftime('%Y-%m-%d')
-                        search_date_str = parsed_date.strftime('%Y-%m-%d')
-                        service_completed_today = (completion_date == search_date_str)
-                    
-                    # Add order if it meets any of our criteria:
-                    # 1. Today's order with service started
-                    # 2. Service in progress (started but not finished)
-                    # 3. Service completed today
-                    if (is_today_order and service_started) or service_in_progress or service_completed_today:
+                    # Add order if:
+                    # 1. Paid today (include even if already rated)
+                    # 2. Service completed awaiting payment
+                    # 3. Service in progress
+                    if is_paid_today or (order.controller_selesai and not is_paid_today) or service_in_progress:
                         # Add appropriate status messages
-                        if service_completed_today:
-                            completion_message = "Servis Selesai"
+                        if is_paid_today:
+                            completion_message = "Dibayar Hari Ini"
+                        elif order.controller_selesai and not is_paid_today:
+                            completion_message = "Belum Dibayar"
                         elif service_in_progress:
                             if not is_today_order:
                                 completion_message = "Menginap"
@@ -211,11 +213,12 @@ class CustomerRatingAPI(Controller):
                             'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                             'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
                             'has_rating': bool(order.customer_rating),
-                            'status': completion_message or ("Selesai" if order.controller_selesai else "Dalam Proses")
+                            'status': completion_message
                         }
                         result.append(order_data)
-                        _logger.info(f"Added order {order.name} with date {order_date if order.sa_cetak_pkb else 'N/A'}, " 
-                                    f"status: {'service complete' if service_completed_today else 'overnight' if service_in_progress and not is_today_order else 'service in progress'}")
+                        _logger.info(f"Added order {order.name} with date {order_date}, " 
+                                    f"status: {'paid today' if is_paid_today else 'completed not paid' if order.controller_selesai else 'service in progress'}, "
+                                    f"has_rating: {bool(order.customer_rating)}")
 
             if not result:
                 _logger.info("No orders found, retrieving sample data")
@@ -226,6 +229,10 @@ class CustomerRatingAPI(Controller):
                 
                 sample_data = []
                 for order in sample_orders:
+                    payment_status = "Belum Dibayar"
+                    if order.invoice_ids and any(inv.payment_state in ['paid', 'in_payment'] for inv in order.invoice_ids):
+                        payment_status = "Sudah Dibayar"
+                    
                     sample_data.append({
                         'id': order.id,
                         'name': order.name,
@@ -235,7 +242,7 @@ class CustomerRatingAPI(Controller):
                         'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                         'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
                         'has_rating': bool(order.customer_rating),
-                        'status': 'Selesai' if order.controller_selesai else 'Dalam Proses'
+                        'status': payment_status
                     })
 
                 _logger.info(f"Sample data size: {len(sample_data)}")

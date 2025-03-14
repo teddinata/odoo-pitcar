@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <template id="report_mechanic_kpi">
+        <t t-call="web.html_container">
+            <t t-call="web.external_layout">
+                <div class="page">
+                    <!-- Report Title -->
+                    <div class="row mb-4">
+                        <div class="col-12 text-center">
+                            <h3>Mechanic KPI Report</h3>
+                            <h4>Period: <t t-esc="period"/></h4>
+                            <p>Generated on: <t t-esc="current_date"/></p>
+                        </div>
+                    </div>
+                    
+                    <!-- For each mechanic, create a section -->
+                    <t t-foreach="mechanics" t-as="mechanic">
+                        <div class="page-break" t-if="not mechanic_first">
+                            <div style="page-break-before: always;"></div>
+                        </div>
+                        
+                        <!-- Mechanic Header -->
+                        <div class="row mb-3 mt-4">
+                            <div class="col-12">
+                                <h4><t t-esc="mechanic['employee']['name']"/> - <t t-esc="mechanic['employee']['position']"/></h4>
+                                <p>Department: <t t-esc="mechanic['employee']['department']"/></p>
+                            </div>
+                        </div>
+                        
+                        <!-- KPI Table -->
+                        <div class="row">
+                            <div class="col-12">
+                                <table class="table table-sm table-bordered">
+                                    <thead class="thead-dark">
+                                        <tr>
+                                            <th class="text-center" style="width: 5%;">No</th>
+                                            <th style="width: 30%;">KPI</th>
+                                            <th class="text-center" style="width: 8%;">Bobot</th>
+                                            <th class="text-center" style="width: 8%;">Target</th>
+                                            <th class="text-center" style="width: 8%;">Actual</th>
+                                            <th class="text-center" style="width: 10%;">Achievement</th>
+                                            <th style="width: 31%;">Formula</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-foreach="mechanic['kpi_scores']" t-as="kpi">
+                                            <tr>
+                                                <td class="text-center"><t t-esc="kpi_index + 1"/></td>
+                                                <td><t t-esc="kpi['name']"/></td>
+                                                <td class="text-center"><t t-esc="'%.1f' % kpi['weight']"/></td>
+                                                <td class="text-center"><t t-esc="'%.1f' % kpi['target']"/></td>
+                                                <td class="text-center"><t t-esc="'%.1f' % kpi['actual']"/></td>
+                                                <td class="text-center">
+                                                    <t t-esc="'%.2f' % kpi['achievement']"/>
+                                                </td>
+                                                <td><t t-esc="kpi['measurement']"/></td>
+                                            </tr>
+                                        </t>
+                                        <!-- Summary Row -->
+                                        <tr style="background-color: #f8f9fa; font-weight: bold;">
+                                            <td colspan="2" class="text-center">SUMMARY</td>
+                                            <td class="text-center"><t t-esc="'%.1f' % mechanic['summary']['total_weight']"/></td>
+                                            <td class="text-center"></td>
+                                            <td class="text-center"></td>
+                                            <td class="text-center"><t t-esc="'%.2f' % mechanic['summary']['total_score']"/></td>
+                                            <td><t t-esc="mechanic['summary']['achievement_status']"/></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </t>
+                    
+                    <!-- Summary Page -->
+                    <div class="page-break">
+                        <div style="page-break-before: always;"></div>
+                    </div>
+                    
+                    <div class="row mb-4 mt-4">
+                        <div class="col-12 text-center">
+                            <h3>KPI Summary</h3>
+                            <h4>Period: <t t-esc="period"/></h4>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <table class="table table-sm table-bordered">
+                                <thead class="thead-dark">
+                                    <tr>
+                                        <th class="text-center" style="width: 5%;">No</th>
+                                        <th style="width: 30%;">Employee</th>
+                                        <th style="width: 25%;">Position</th>
+                                        <th class="text-center" style="width: 15%;">Total Score</th>
+                                        <th class="text-center" style="width: 25%;">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="mechanics" t-as="mechanic">
+                                        <tr>
+                                            <td class="text-center"><t t-esc="mechanic_index + 1"/></td>
+                                            <td><t t-esc="mechanic['employee']['name']"/></td>
+                                            <td><t t-esc="mechanic['employee']['position']"/></td>
+                                            <td class="text-center">
+                                                <t t-esc="'%.2f' % mechanic['summary']['total_score']"/>
+                                            </td>
+                                            <td class="text-center">
+                                                <t t-esc="mechanic['summary']['achievement_status']"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </t>
+        </t>
+    </template>
+</odoo>

@@ -139,8 +139,9 @@ class CustomerRatingAPI(Controller):
             # Build domain to include:
             # 1. Orders completed today
             # 2. Orders still in progress (car not out yet)
+            # 3. Orders where service has already started
             domain = [
-                '|',
+                '|', '|',
                 # Orders with PKB printed today
                 '&',
                 ('sa_cetak_pkb', '>=', date_start),
@@ -148,6 +149,10 @@ class CustomerRatingAPI(Controller):
                 # OR Orders in progress (car entered, PKB printed, but car not out yet)
                 '&',
                 ('sa_cetak_pkb', '!=', False),  # Has PKB printed
+                ('controller_selesai', '=', False),  # But unit has not left yet
+                # OR Orders where service has already started
+                '&',
+                ('controller_mulai_servis', '!=', False),  # Service has started
                 ('controller_selesai', '=', False)  # But unit has not left yet
             ]
 
@@ -170,13 +175,18 @@ class CustomerRatingAPI(Controller):
                         is_today_order = (order_date == search_date_str)
                     
                     # Check if order is still in progress (overnight case)
-                    is_ongoing = order.sa_cetak_pkb and not order.fo_unit_keluar
+                    is_ongoing = order.sa_cetak_pkb and not order.controller_selesai
                     
-                    # Add order if it's from today OR still in progress
-                    if is_today_order or is_ongoing:
-                        # Add a message for overnight orders
+                    # Check if service has started
+                    service_started = order.controller_mulai_servis and not order.controller_selesai
+                    
+                    # Add order if it's from today OR still in progress OR service has started
+                    if is_today_order or is_ongoing or service_started:
+                        # Add appropriate status messages
                         if is_ongoing and not is_today_order:
                             completion_message = "Menginap"
+                        elif service_started:
+                            completion_message = "Servis Dimulai"
                         
                         order_data = {
                             'id': order.id,
@@ -187,11 +197,11 @@ class CustomerRatingAPI(Controller):
                             'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                             'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
                             'has_rating': bool(order.customer_rating),
-                            'status': completion_message or ("Selesai" if order.fo_unit_keluar else "Dalam Proses")
+                            'status': completion_message or ("Selesai" if order.controller_selesai else "Dalam Proses")
                         }
                         result.append(order_data)
                         _logger.info(f"Added order {order.name} with date {order_date if order.sa_cetak_pkb else 'N/A'}, " 
-                                    f"status: {'overnight' if is_ongoing and not is_today_order else 'today or in progress'}")
+                                    f"status: {'overnight' if is_ongoing and not is_today_order else 'service started' if service_started else 'today or in progress'}")
 
             if not result:
                 _logger.info("No orders found, retrieving sample data")
@@ -211,7 +221,7 @@ class CustomerRatingAPI(Controller):
                         'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                         'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
                         'has_rating': bool(order.customer_rating),
-                        'status': 'Selesai' if order.fo_unit_keluar else 'Dalam Proses'
+                        'status': 'Selesai' if order.controller_selesai else 'Dalam Proses'
                     })
 
                 _logger.info(f"Sample data size: {len(sample_data)}")

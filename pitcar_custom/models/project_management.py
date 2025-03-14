@@ -571,7 +571,14 @@ class TeamProjectBAU(models.Model):
     creator_id = fields.Many2one('hr.employee', string='Creator', required=True, tracking=True,
                              default=lambda self: self.env.user.employee_id.id)
     date = fields.Date(string='Date', required=True)
-    hours_spent = fields.Float(string='Hours Spent', default=0.0)
+    
+    # Add time fields
+    time_start = fields.Float(string='Start Time', required=True, default=9.0,
+                              help="Start time in 24-hour format (e.g., 9.5 = 9:30 AM)")
+    time_end = fields.Float(string='End Time', required=True, default=10.0,
+                            help="End time in 24-hour format (e.g., 17.5 = 5:30 PM)")
+    
+    hours_spent = fields.Float(string='Hours Spent', compute='_compute_hours_spent', store=True, readonly=False)
     
     activity_type = fields.Selection([
         ('meeting', 'Meeting'),
@@ -588,16 +595,42 @@ class TeamProjectBAU(models.Model):
         ('not_done', 'Not Done')
     ], string='Status', default='planned', required=True, tracking=True)
     
-    # Add these fields if they don't exist already
+    # Verification fields
     verified_by = fields.Many2one('hr.employee', string='Verified By', readonly=True)
     verification_date = fields.Datetime(string='Verification Date', readonly=True)
     verification_reason = fields.Text(string='Verification Reason', help="Reason for H+1 verification")
     
-    @api.constrains('hours_spent')
-    def _check_hours_spent(self):
+    @api.depends('time_start', 'time_end')
+    def _compute_hours_spent(self):
+        """Compute hours spent based on start and end time"""
         for record in self:
+            if record.time_start is not False and record.time_end is not False:
+                if record.time_end >= record.time_start:
+                    record.hours_spent = record.time_end - record.time_start
+                else:
+                    # Handle overnight activities (end time is on next day)
+                    record.hours_spent = (24.0 - record.time_start) + record.time_end
+            else:
+                record.hours_spent = 0.0
+    
+    @api.constrains('time_start', 'time_end', 'hours_spent')
+    def _check_time_validity(self):
+        """Validate time inputs"""
+        for record in self:
+            if record.time_start < 0 or record.time_start >= 24:
+                raise ValidationError(_('Start time must be between 0:00 and 23:59.'))
+            if record.time_end < 0 or record.time_end >= 24:
+                raise ValidationError(_('End time must be between 0:00 and 23:59.'))
+            
+            # If end time is less than start time, assume overnight and allow
+            if record.time_end < record.time_start and (record.time_start - record.time_end) > 16:
+                # Prevent unrealistic time spans (over 16 hours)
+                raise ValidationError(_('The time span between start and end time is too long.'))
+            
             if record.hours_spent < 0:
                 raise ValidationError(_('Hours spent cannot be negative.'))
+            if record.hours_spent > 24:
+                raise ValidationError(_('Hours spent cannot exceed 24 hours.'))
     
 
 class TeamProjectTimesheet(models.Model):

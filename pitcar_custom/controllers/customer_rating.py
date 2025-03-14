@@ -98,7 +98,7 @@ class CustomerRatingAPI(Controller):
 
     @route('/web/rating/orders', type='json', auth='public', methods=['POST'], csrf=False)
     def get_available_orders(self, **kwargs):
-        """Get list of orders available for rating (completed and paid today, or still in progress)"""
+        """Get list of orders available for rating (completed today or still in progress)"""
         try:
             params = kwargs
             dbname = params.get('db')
@@ -136,80 +136,73 @@ class CustomerRatingAPI(Controller):
 
             _logger.info(f"Search range: {date_start} to {date_end}")
 
-            # Build domain that includes:
-            # 1. Orders that received customer rating today (regardless of service completion date)
-            # 2. Orders with service completed today
-            # 3. Orders with service in progress
-            domain = [
-                '|', '|',
-                # Orders that received rating today
-                '&',
-                ('customer_rating', '!=', False),
-                ('customer_rating_date', '>=', date_start),
-                ('customer_rating_date', '<=', date_end),
-                # OR Orders with service completed today
-                '&',
-                ('controller_selesai', '>=', date_start),
-                ('controller_selesai', '<=', date_end),
-                # OR Orders where service is in progress
-                '&',
-                ('controller_mulai_servis', '!=', False),
-                ('controller_selesai', '=', False)
-            ]
+            # Approach 1: Get all orders with PKB printed (we'll filter more in Python)
+            all_orders = SaleOrder.search([
+                ('sa_cetak_pkb', '!=', False),  # Has PKB printed
+            ], order='sa_cetak_pkb desc')
+            
+            _logger.info(f"Found {len(all_orders)} total orders with PKB printed")
 
-            # Execute search with ordering
-            orders = SaleOrder.search(domain, order='sa_cetak_pkb desc')
-            _logger.info(f"Found {len(orders)} orders")
-
-            # Process results
+            # Process results - filter in Python for greater flexibility
             result = []
-            for order in orders:
-                if order.sa_cetak_pkb:  # Only include orders with PKB printed
-                    # Set default values
-                    is_today_order = False
-                    rated_today = False
-                    completed_today = False
-                    completion_message = ""
+            search_date_str = parsed_date.strftime('%Y-%m-%d')
+            
+            for order in all_orders:
+                try:
+                    # Check dates
+                    order_date = False
+                    service_started = False
+                    service_completed = False
+                    service_completed_today = False
                     
-                    # Extract the date part for comparison
                     if order.sa_cetak_pkb:
                         order_date = order.sa_cetak_pkb.strftime('%Y-%m-%d')
-                        search_date_str = parsed_date.strftime('%Y-%m-%d')
                         is_today_order = (order_date == search_date_str)
                     
-                    # Check if service is in progress
-                    service_in_progress = order.controller_mulai_servis and not order.controller_selesai
+                    if order.controller_mulai_servis:
+                        service_started = True
                     
-                    # Check if service was completed today
                     if order.controller_selesai:
-                        completed_date = order.controller_selesai.strftime('%Y-%m-%d')
-                        completed_today = (completed_date == search_date_str)
+                        service_completed = True
+                        completion_date = order.controller_selesai.strftime('%Y-%m-%d')
+                        service_completed_today = (completion_date == search_date_str)
                     
-                    # Check if rating was given today
-                    if order.customer_rating and hasattr(order, 'customer_rating_date') and order.customer_rating_date:
-                        rating_date = order.customer_rating_date.strftime('%Y-%m-%d')
-                        rated_today = (rating_date == search_date_str)
+                    # Skip orders without PKB or service not started
+                    if not order.sa_cetak_pkb or not service_started:
+                        continue
                     
-                    # Include if:
-                    # 1. Rated today (for reference)
-                    # 2. Service completed today 
-                    # 3. Service in progress
-                    if rated_today or completed_today or service_in_progress:
-                        # Add appropriate status messages
-                        if rated_today:
-                            completion_message = "Sudah Dirating Hari Ini"
-                        elif completed_today:
-                            completion_message = "Servis Selesai Hari Ini"
-                        elif service_in_progress:
-                            if not is_today_order:
-                                completion_message = "Menginap"
-                            else:
-                                completion_message = "Servis Dimulai"
-                        
-                        # Try to determine if order is paid
+                    # Determine if this order should be shown
+                    should_show = False
+                    status_message = ""
+                    
+                    # Today's orders that have service completed
+                    if is_today_order and service_completed:
+                        should_show = True
+                        status_message = "Selesai Hari Ini"
+                    # Service completed today (any day's order)
+                    elif service_completed_today:
+                        should_show = True
+                        status_message = "Selesai Hari Ini"
+                    # Service in progress
+                    elif service_started and not service_completed:
+                        should_show = True
+                        if is_today_order:
+                            status_message = "Servis Dimulai"
+                        else:
+                            status_message = "Menginap"
+                    # Always show orders with rating (even if old)
+                    elif order.customer_rating:
+                        # For now, show all rated orders, regardless of date
+                        # Later we can make this more restrictive if needed
+                        should_show = True
+                        status_message = "Sudah Dirating"
+                    
+                    # Add the order to the result if it should be shown
+                    if should_show:
+                        # Check if service has any invoice that's paid
                         is_paid = False
-                        if order.invoice_ids:
-                            is_paid = any(inv.payment_state in ['paid', 'in_payment'] for inv in order.invoice_ids)
+                        if hasattr(order, 'invoice_ids') and order.invoice_ids:
+                            is_paid = any(inv.state == 'paid' for inv in order.invoice_ids)
                         
                         order_data = {
                             'id': order.id,
@@ -220,55 +213,19 @@ class CustomerRatingAPI(Controller):
                             'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                             'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
                             'has_rating': bool(order.customer_rating),
-                            'is_paid': is_paid,
-                            'status': completion_message
+                            'status': status_message
                         }
                         result.append(order_data)
-                        _logger.info(f"Added order {order.name} with date {order_date}, " 
-                                    f"status: {'rated today' if rated_today else 'completed today' if completed_today else 'service in progress'}, "
-                                    f"has_rating: {bool(order.customer_rating)}")
-
-            if not result:
-                _logger.info("No orders found, retrieving sample data")
-                # If no results, get some orders from any date for debugging
-                sample_orders = SaleOrder.search([
-                    ('sa_cetak_pkb', '!=', False)
-                ], limit=5, order='sa_cetak_pkb desc')
-                
-                sample_data = []
-                for order in sample_orders:
-                    is_paid = False
-                    if order.invoice_ids:
-                        is_paid = any(inv.payment_state in ['paid', 'in_payment'] for inv in order.invoice_ids)
+                        _logger.info(f"Added order {order.name}, status: {status_message}")
                     
-                    status = "Dalam Proses"
-                    if order.controller_selesai:
-                        status = "Servis Selesai"
-                    
-                    sample_data.append({
-                        'id': order.id,
-                        'name': order.name,
-                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else 'No Plate',
-                        'completion_time': order.sa_cetak_pkb.strftime('%Y-%m-%d %H:%M:%S'),
-                        'customer_name': order.partner_id.name if order.partner_id else '',
-                        'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
-                        'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
-                        'has_rating': bool(order.customer_rating),
-                        'is_paid': is_paid,
-                        'status': status
-                    })
+                except Exception as e:
+                    _logger.error(f"Error processing order {order.name}: {str(e)}")
+                    # Continue to next order
 
-                _logger.info(f"Sample data size: {len(sample_data)}")
-
-                return {
-                    'status': 'success',
-                    'data': []  # Return empty data as requested
-                }
-
-            # Sort by completion_time if needed (should already be sorted from search)
+            # Sort by completion_time if needed
             result.sort(key=lambda x: x['completion_time'], reverse=True)
             
-            _logger.info(f"Returning {len(result)} orders")
+            _logger.info(f"Returning {len(result)} filtered orders")
             return {
                 'status': 'success',
                 'data': result

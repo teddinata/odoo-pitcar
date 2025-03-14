@@ -60,6 +60,9 @@
         'report/report_invoice.xml',
         'report/booking_quotation_template.xml',  # Tambahkan ini
 
+        'report/report_mechanic_kpi.xml',
+        'report/mechanic_kpi_reports.xml',
+
         'security/mechanic_security.xml',
         'security/lead_time_security.xml',
         'security/ir.model.access.csv',

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Define landscape paper format -->
+    <record id="paperformat_mechanic_kpi_landscape" model="report.paperformat">
+        <field name="name">Mechanic KPI Landscape</field>
+        <field name="default" eval="False"/>
+        <field name="format">A4</field>
+        <field name="orientation">Landscape</field>
+        <field name="margin_top">40</field>
+        <field name="margin_right">7</field>
+        <field name="margin_bottom">23</field>
+        <field name="margin_left">7</field>
+        <field name="header_line" eval="False"/>
+        <field name="header_spacing">35</field>
+        <field name="dpi">90</field>
+    </record>
+
+    <!-- Define the report -->
+    <record id="action_report_mechanic_kpi" model="ir.actions.report">
+        <field name="name">Mechanic KPI Report</field>
+        <field name="model">pitcar.mechanic.new</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">pitcar_custom.report_mechanic_kpi</field>
+        <field name="report_file">pitcar_custom.report_mechanic_kpi</field>
+        <field name="binding_model_id" ref="model_pitcar_mechanic_new"/>
+        <field name="binding_type">report</field>
+        <field name="paperformat_id" ref="paperformat_mechanic_kpi_landscape"/>
+    </record>
+</odoo>

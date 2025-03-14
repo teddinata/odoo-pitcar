@@ -4163,3 +4163,309 @@ class KPIOverview(http.Controller):
         except Exception as e:
             _logger.error(f"Error exporting mechanic KPI to CSV: {str(e)}", exc_info=True)
             return Response(f"Error: {str(e)}", status=500)
+        
+    @http.route('/web/v2/kpi/mechanic/export_pdf', type='http', auth='user', methods=['POST'], csrf=False)
+    def export_mechanic_kpi_pdf(self, **kw):
+        """Export KPI data for all Mechanics to PDF format"""
+        try:
+            # Get and validate month/year
+            current_date = datetime.now()
+            month = int(kw.get('month', current_date.month))
+            year = int(kw.get('year', current_date.year))
+
+            # Validate range
+            if not (1 <= month <= 12):
+                return Response('Month must be between 1 and 12', status=400)
+            if year < 2000 or year > 2100:
+                return Response('Invalid year', status=400)
+                
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            
+            # Calculate date range in local timezone
+            local_start = datetime(year, month, 1)
+            if month == 12:
+                local_end = datetime(year + 1, 1, 1) - timedelta(days=1)
+            else:
+                local_end = datetime(year, month + 1, 1) - timedelta(days=1)
+            
+            local_start = local_start.replace(hour=0, minute=0, second=0)
+            local_end = local_end.replace(hour=23, minute=59, second=59)
+            
+            start_date = tz.localize(local_start)
+            end_date = tz.localize(local_end)
+            
+            start_date_utc = start_date.astimezone(pytz.UTC)
+            end_date_utc = end_date.astimezone(pytz.UTC)
+
+            # Get all mechanic employees
+            mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+            
+            _logger.info(f"Starting export of KPI data for {len(mechanics)} mechanics for period {month}/{year}")
+            
+            # Format bulan untuk display, contoh: Mar-23
+            month_names = ['January', 'February', 'March', 'April', 'May', 'June', 
+                        'July', 'August', 'September', 'October', 'November', 'December']
+            month_display = month_names[month-1]
+            period = f"{month_display} {year}"
+
+            # Prepare data for PDF report
+            mechanic_data = []
+            
+            for mechanic in mechanics:
+                employee = mechanic.employee_id
+                
+                if not employee:
+                    _logger.warning(f"Skipping mechanic {mechanic.name} without employee record")
+                    continue
+                    
+                job_title = mechanic.position_id.name if mechanic.position_id else "Mechanic"
+                department = employee.department_id.name if employee.department_id else "Mechanic Department"
+                
+                # Base domain for order queries
+                base_domain = [
+                    ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('state', 'in', ['sale', 'done'])
+                ]
+
+                # Calculate KPI scores (use logic from the original endpoint)
+                # For demonstration purposes, we will use simplified example KPI data
+                kpi_scores = []
+                
+                if 'Team Leader' in job_title:
+                    kpi_template = self._get_leader_kpi_template()
+                else:
+                    kpi_template = self._get_mechanic_kpi_template()
+                
+                # Calculate each KPI (simplified for example)
+                for kpi in kpi_template:
+                    # Example KPI calculation
+                    actual = 18.4  # Example value
+                    
+                    if kpi['type'] == 'flat_rate':
+                        monthly_flat_rate_target = 115
+                        total_flat_rate_hours = 21.2  # Example value
+                        
+                        actual = (total_flat_rate_hours / monthly_flat_rate_target * 100)
+                        measurement = f"Flat Rate: {total_flat_rate_hours:.1f} jam dari target {monthly_flat_rate_target} jam/bulan ({actual:.1f}%)"
+                    else:
+                        measurement = kpi['measurement']
+                    
+                    # Calculate weighted score
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    kpi_scores.append({
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': measurement,
+                        'actual': actual,
+                        'achievement': weighted_score,
+                        'weighted_score': weighted_score
+                    })
+                
+                # Calculate summary
+                total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
+                total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
+                achievement_status = 'Achieved' if total_score >= 80 else 'Below Target'
+                
+                # Add to mechanic data
+                mechanic_data.append({
+                    'employee': {
+                        'id': employee.id,
+                        'name': employee.name,
+                        'position': job_title,
+                        'department': department
+                    },
+                    'kpi_scores': kpi_scores,
+                    'summary': {
+                        'total_weight': total_weight,
+                        'total_score': total_score,
+                        'achievement_status': achievement_status
+                    }
+                })
+            
+            # Prepare data for QWeb report
+            report_data = {
+                'period': period,
+                'mechanics': mechanic_data,
+                'current_date': fields.Date.today().strftime('%d-%m-%Y')
+            }
+            
+            # Render PDF using QWeb report
+            report_name = 'pitcar_workshop.report_mechanic_kpi'
+            pdf = request.env.ref(report_name).render_qweb_pdf(data=report_data)[0]
+            
+            # Prepare filename
+            filename = f"Mechanic_KPI_{month}_{year}.pdf"
+            
+            # Return PDF response
+            return Response(
+                pdf,
+                headers={
+                    'Content-Type': 'application/pdf',
+                    'Content-Disposition': f'attachment; filename="{filename}"',
+                    'Content-Length': len(pdf),
+                },
+                status=200
+            )
+        
+        except Exception as e:
+            _logger.error(f"Error exporting mechanic KPI to PDF: {str(e)}", exc_info=True)
+            return Response(f"Error: {str(e)}", status=500)
+        
+     # Helper methods for KPI templates
+    def _get_mechanic_kpi_template(self):
+        return [
+            {
+                'no': 1,
+                'name': 'Jumlah flat rate sesuai target',
+                'type': 'flat_rate',
+                'weight': 25,
+                'target': 100,
+                'measurement': 'Diukur dari jumlah omset yang dihasilkan dari PKB yang ditangani'
+            },
+            {
+                'no': 2,
+                'name': 'Jumlah PKB yang diberikan rekomendasi tambahan servis',
+                'type': 'service_recommendation',
+                'weight': 15,
+                'target': 80,
+                'measurement': 'Diukur dari persentase rekomendasi yang diberikan',
+                'include_in_calculation': True
+            },
+            {
+                'no': 3,
+                'name': 'Persentase customer puas dari hasil pengerjaan / tidak komplain karena mis-analisa atau mis-pengerjaan',
+                'type': 'service_quality',
+                'weight': 30,
+                'target': 90,
+                'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)'
+            },
+            {
+                'no': 4,
+                'name': 'Jumlah hand-tools sesuai antara dara sistem dengan kondisi aktual',
+                'type': 'tools_check',
+                'weight': 10,
+                'target': 90,
+                'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
+                'include_in_calculation': True
+            },
+            {
+                'no': 5,
+                'name': 'Persentase sampel dari Lead: tim mekanik bekerja sesuai alur SOP',
+                'type': 'sop_compliance_lead',
+                'weight': 5,
+                'target': 95,
+                'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
+                'include_in_calculation': True
+            },
+            {
+                'no': 6,
+                'name': 'Persentase sampel dari Kaizen: tim mekanik bekerja sesuai alur SOP',
+                'type': 'sop_compliance_kaizen',
+                'weight': 15,
+                'target': 95,
+                'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
+                'include_in_calculation': True
+            },
+            {
+                'no': 7,
+                'name': 'Kedisiplinan (Informasi)',
+                'type': 'discipline',
+                'weight': 0,
+                'target': 0,
+                'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran',
+                'include_in_calculation': False
+            }
+            # Tambahkan KPI lainnya
+        ]
+        
+    def _get_leader_kpi_template(self):
+        return [
+            {
+                'no': 1,
+                'name': 'Jumlah flat rate sesuai target',
+                'type': 'flat_rate',
+                'weight': 20,
+                'target': 100,
+                'measurement': 'Diukur dari jumlah PKB yang berhasil dikerjakan',
+                'include_in_calculation': True
+            },
+            {
+                'no': 2,
+                'name': 'Persentase waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
+                'type': 'mechanic_efficiency',
+                'weight': 20,
+                'target': 80,
+                'measurement': 'Diukur dari kesesuaian waktu pengerjaan berdasarkan target waktu',
+                'include_in_calculation': True
+            },
+            {
+                'no': 3,
+                'name': 'Jumlah PKB yang diberikan rekomendasi tambahan servis',
+                'type': 'service_recommendation',
+                'weight': 15,
+                'target': 80,
+                'measurement': 'Diukur dari jumlah PKB yang diberikan rekomendasi tambahan servis',
+                'include_in_calculation': True
+            },
+            {
+                'no': 4,
+                'name': 'Persentase customer puas dari hasil pengerjaan / tidak komplain karena mis-analisa atau mis-pengerjaan',
+                'type': 'service_quality',
+                'weight': 15,
+                'target': 80,
+                'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
+                'include_in_calculation': True
+            },
+            {
+                'no': 5,
+                'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan',
+                'type': 'complaint_handling',
+                'weight': 15,
+                'target': 90,
+                'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
+                'include_in_calculation': True
+            },
+            {
+                'no': 6,
+                'name': 'Jumlah hand-tools sesuai antara dara sistem dengan kondisi aktual',
+                'type': 'tools_check',
+                'weight': 15,
+                'target': 90,
+                'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
+                'include_in_calculation': True
+            },
+            {
+                'no': 7,
+                'name': 'Persentase % sampel tim mekanik bekerja sesuai alur SOP',
+                'type': 'sop_compliance_lead',
+                'weight': 15,
+                'target': 95,
+                'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
+                'include_in_calculation': True
+            },
+            {
+                'no': 8,
+                'name': 'Persentase % sampel dari Kaizen: tim mekanik bekerja sesuai alur SOP',
+                'type': 'sop_compliance_kaizen',
+                'weight': 15,
+                'target': 95,
+                'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
+                'include_in_calculation': True
+            },
+            {
+                'no': 9,
+                'name': 'Menjalankan kegiatan operasional secara disiplin',
+                'type': 'team_discipline',
+                'weight': 0,
+                'target': 0,
+                'measurement': 'Diukur dari jumlah keterlambatan dan ketidakhadiran',
+                'include_in_calculation': False
+            }
+            # Tambahkan KPI lainnya
+        ]

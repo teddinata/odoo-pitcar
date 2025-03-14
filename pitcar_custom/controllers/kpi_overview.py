@@ -4296,19 +4296,19 @@ class KPIOverview(http.Controller):
             }
             
             # Render PDF using QWeb report
-            report_name = 'pitcar_custom.report_mechanic_kpi'
-            pdf = request.env.ref(report_name).render_qweb_pdf(data=report_data)[0]
-            
+            report_name = 'pitcar_custom.action_report_mechanic_kpi'
+            pdf_content, _ = request.env.ref(report_name)._render_qweb_pdf(data=report_data)
+
             # Prepare filename
             filename = f"Mechanic_KPI_{month}_{year}.pdf"
             
             # Return PDF response
             return Response(
-                pdf,
+                pdf_content,
                 headers={
                     'Content-Type': 'application/pdf',
                     'Content-Disposition': f'attachment; filename="{filename}"',
-                    'Content-Length': len(pdf),
+                    'Content-Length': len(pdf_content),
                 },
                 status=200
             )

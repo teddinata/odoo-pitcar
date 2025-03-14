@@ -2043,7 +2043,7 @@ class KPIOverview(http.Controller):
                     'no': 1,
                     'name': 'Jumlah flat rate sesuai target',
                     'type': 'flat_rate',
-                    'weight': 20,
+                    'weight': 15,
                     'target': 100,
                     'measurement': 'Diukur dari jumlah PKB yang berhasil dikerjakan',
                     'include_in_calculation': True
@@ -2052,7 +2052,7 @@ class KPIOverview(http.Controller):
                     'no': 2,
                     'name': 'Persentase waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
                     'type': 'mechanic_efficiency',
-                    'weight': 20,
+                    'weight': 10,
                     'target': 80,
                     'measurement': 'Diukur dari kesesuaian waktu pengerjaan berdasarkan target waktu',
                     'include_in_calculation': True
@@ -2070,7 +2070,7 @@ class KPIOverview(http.Controller):
                     'no': 4,
                     'name': 'Persentase customer puas dari hasil pengerjaan / tidak komplain karena mis-analisa atau mis-pengerjaan',
                     'type': 'service_quality',
-                    'weight': 15,
+                    'weight': 20,
                     'target': 80,
                     'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
                     'include_in_calculation': True
@@ -2088,7 +2088,7 @@ class KPIOverview(http.Controller):
                     'no': 6,
                     'name': 'Jumlah hand-tools sesuai antara dara sistem dengan kondisi aktual',
                     'type': 'tools_check',
-                    'weight': 15,
+                    'weight': 5,
                     'target': 90,
                     'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
                     'include_in_calculation': True
@@ -2106,7 +2106,7 @@ class KPIOverview(http.Controller):
                     'no': 7,
                     'name': 'Persentase % sampel tim mekanik bekerja sesuai alur SOP',
                     'type': 'sop_compliance_lead',
-                    'weight': 15,
+                    'weight': 5,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
                     'include_in_calculation': True
@@ -4404,7 +4404,7 @@ class KPIOverview(http.Controller):
                 'no': 1,
                 'name': 'Jumlah flat rate sesuai target',
                 'type': 'flat_rate',
-                'weight': 20,
+                'weight': 15,
                 'target': 100,
                 'measurement': 'Diukur dari jumlah PKB yang berhasil dikerjakan',
                 'include_in_calculation': True
@@ -4413,7 +4413,7 @@ class KPIOverview(http.Controller):
                 'no': 2,
                 'name': 'Persentase waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
                 'type': 'mechanic_efficiency',
-                'weight': 20,
+                'weight': 10,
                 'target': 80,
                 'measurement': 'Diukur dari kesesuaian waktu pengerjaan berdasarkan target waktu',
                 'include_in_calculation': True
@@ -4431,7 +4431,7 @@ class KPIOverview(http.Controller):
                 'no': 4,
                 'name': 'Persentase customer puas dari hasil pengerjaan / tidak komplain karena mis-analisa atau mis-pengerjaan',
                 'type': 'service_quality',
-                'weight': 15,
+                'weight': 20,
                 'target': 80,
                 'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
                 'include_in_calculation': True
@@ -4449,7 +4449,7 @@ class KPIOverview(http.Controller):
                 'no': 6,
                 'name': 'Jumlah hand-tools sesuai antara dara sistem dengan kondisi aktual',
                 'type': 'tools_check',
-                'weight': 15,
+                'weight': 5,
                 'target': 90,
                 'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
                 'include_in_calculation': True
@@ -4458,7 +4458,7 @@ class KPIOverview(http.Controller):
                 'no': 7,
                 'name': 'Persentase % sampel tim mekanik bekerja sesuai alur SOP',
                 'type': 'sop_compliance_lead',
-                'weight': 15,
+                'weight': 5,
                 'target': 95,
                 'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
                 'include_in_calculation': True

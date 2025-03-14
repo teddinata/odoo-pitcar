@@ -98,7 +98,7 @@ class CustomerRatingAPI(Controller):
 
     @route('/web/rating/orders', type='json', auth='public', methods=['POST'], csrf=False)
     def get_available_orders(self, **kwargs):
-        """Get list of orders available for rating (completed today)"""
+        """Get list of orders available for rating (completed today or still in progress)"""
         try:
             params = kwargs
             dbname = params.get('db')
@@ -136,11 +136,19 @@ class CustomerRatingAPI(Controller):
 
             _logger.info(f"Search range: {date_start} to {date_end}")
 
-            # Build domain for exact date match
+            # Build domain to include:
+            # 1. Orders completed today
+            # 2. Orders still in progress (car not out yet)
             domain = [
-                # ('state', 'in', ['sale', 'done']),
+                '|',
+                # Orders with PKB printed today
+                '&',
                 ('sa_cetak_pkb', '>=', date_start),
-                ('sa_cetak_pkb', '<=', date_end)
+                ('sa_cetak_pkb', '<=', date_end),
+                # OR Orders in progress (car entered, PKB printed, but car not out yet)
+                '&',
+                ('sa_cetak_pkb', '!=', False),  # Has PKB printed
+                ('controller_selesai', '=', False)  # But unit has not left yet
             ]
 
             # Execute search with ordering
@@ -151,12 +159,25 @@ class CustomerRatingAPI(Controller):
             result = []
             for order in orders:
                 if order.sa_cetak_pkb:
-                    # Extract the date part for comparison
-                    order_date = order.sa_cetak_pkb.strftime('%Y-%m-%d')
-                    search_date_str = parsed_date.strftime('%Y-%m-%d')
+                    # Include both today's orders and not-yet-completed orders
+                    is_today_order = False
+                    completion_message = ""
                     
-                    # Only include if dates match exactly
-                    if order_date == search_date_str:
+                    # Extract the date part for comparison
+                    if order.sa_cetak_pkb:
+                        order_date = order.sa_cetak_pkb.strftime('%Y-%m-%d')
+                        search_date_str = parsed_date.strftime('%Y-%m-%d')
+                        is_today_order = (order_date == search_date_str)
+                    
+                    # Check if order is still in progress (overnight case)
+                    is_ongoing = order.sa_cetak_pkb and not order.fo_unit_keluar
+                    
+                    # Add order if it's from today OR still in progress
+                    if is_today_order or is_ongoing:
+                        # Add a message for overnight orders
+                        if is_ongoing and not is_today_order:
+                            completion_message = "Menginap"
+                        
                         order_data = {
                             'id': order.id,
                             'name': order.name,
@@ -165,19 +186,17 @@ class CustomerRatingAPI(Controller):
                             'customer_name': order.partner_id.name if order.partner_id else '',
                             'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                             'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
-                            # 'state': order.state,
-                            'has_rating': bool(order.customer_rating)
+                            'has_rating': bool(order.customer_rating),
+                            'status': completion_message or ("Selesai" if order.fo_unit_keluar else "Dalam Proses")
                         }
                         result.append(order_data)
-                        _logger.info(f"Added order {order.name} with date {order_date}")
-                    else:
-                        _logger.info(f"Skipped order {order.name} with date {order_date} (doesn't match {search_date_str})")
+                        _logger.info(f"Added order {order.name} with date {order_date if order.sa_cetak_pkb else 'N/A'}, " 
+                                    f"status: {'overnight' if is_ongoing and not is_today_order else 'today or in progress'}")
 
             if not result:
-                _logger.info("No orders found, retrieving sample data with correct date filter")
-                # If no results, get orders from any date for debugging
+                _logger.info("No orders found, retrieving sample data")
+                # If no results, get some orders from any date for debugging
                 sample_orders = SaleOrder.search([
-                    # ('state', 'in', ['sale', 'done']),
                     ('sa_cetak_pkb', '!=', False)
                 ], limit=5, order='sa_cetak_pkb desc')
                 
@@ -191,8 +210,8 @@ class CustomerRatingAPI(Controller):
                         'customer_name': order.partner_id.name if order.partner_id else '',
                         'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                         'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
-                        # 'state': order.state,
-                        'has_rating': bool(order.customer_rating)
+                        'has_rating': bool(order.customer_rating),
+                        'status': 'Selesai' if order.fo_unit_keluar else 'Dalam Proses'
                     })
 
                 _logger.info(f"Sample data size: {len(sample_data)}")

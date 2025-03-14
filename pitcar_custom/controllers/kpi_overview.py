@@ -4296,7 +4296,7 @@ class KPIOverview(http.Controller):
             }
             
             # Render PDF using QWeb report
-            report_name = 'pitcar_workshop.report_mechanic_kpi'
+            report_name = 'pitcar_custom.report_mechanic_kpi'
             pdf = request.env.ref(report_name).render_qweb_pdf(data=report_data)[0]
             
             # Prepare filename

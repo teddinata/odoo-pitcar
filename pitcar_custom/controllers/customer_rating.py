@@ -136,24 +136,25 @@ class CustomerRatingAPI(Controller):
 
             _logger.info(f"Search range: {date_start} to {date_end}")
 
-            # Build domain to include:
-            # 1. Orders completed today
-            # 2. Orders still in progress (car not out yet)
-            # 3. Orders where service has already started
+            # Build domain to include only orders that have:
+            # 1. Printed PKB today AND started service
+            # 2. Orders where service has been completed today using controller_selesai
+            # 3. Orders where service has started but not finished yet
             domain = [
                 '|', '|',
-                # Orders with PKB printed today
+                # Orders with PKB printed today AND service started
                 '&',
                 ('sa_cetak_pkb', '>=', date_start),
                 ('sa_cetak_pkb', '<=', date_end),
-                # OR Orders in progress (car entered, PKB printed, but car not out yet)
+                ('controller_mulai_servis', '!=', False),  # Service has started
+                # OR Orders where service has been completed today
                 '&',
-                ('sa_cetak_pkb', '!=', False),  # Has PKB printed
-                ('controller_selesai', '=', False),  # But unit has not left yet
-                # OR Orders where service has already started
+                ('controller_selesai', '>=', date_start),
+                ('controller_selesai', '<=', date_end),
+                # OR Orders where service has started but not finished yet
                 '&',
                 ('controller_mulai_servis', '!=', False),  # Service has started
-                ('controller_selesai', '=', False)  # But unit has not left yet
+                ('controller_selesai', '=', False)  # But service hasn't finished yet
             ]
 
             # Execute search with ordering
@@ -174,19 +175,32 @@ class CustomerRatingAPI(Controller):
                         search_date_str = parsed_date.strftime('%Y-%m-%d')
                         is_today_order = (order_date == search_date_str)
                     
-                    # Check if order is still in progress (overnight case)
-                    is_ongoing = order.sa_cetak_pkb and not order.controller_selesai
+                    # Check if service has started but not finished (in progress)
+                    service_in_progress = order.controller_mulai_servis and not order.controller_selesai
                     
                     # Check if service has started
-                    service_started = order.controller_mulai_servis and not order.controller_selesai
+                    service_started = order.controller_mulai_servis
                     
-                    # Add order if it's from today OR still in progress OR service has started
-                    if is_today_order or is_ongoing or service_started:
+                    # Check if service has been completed today
+                    service_completed_today = False
+                    if order.controller_selesai:
+                        completion_date = order.controller_selesai.strftime('%Y-%m-%d')
+                        search_date_str = parsed_date.strftime('%Y-%m-%d')
+                        service_completed_today = (completion_date == search_date_str)
+                    
+                    # Add order if it meets any of our criteria:
+                    # 1. Today's order with service started
+                    # 2. Service in progress (started but not finished)
+                    # 3. Service completed today
+                    if (is_today_order and service_started) or service_in_progress or service_completed_today:
                         # Add appropriate status messages
-                        if is_ongoing and not is_today_order:
-                            completion_message = "Menginap"
-                        elif service_started:
-                            completion_message = "Servis Dimulai"
+                        if service_completed_today:
+                            completion_message = "Servis Selesai"
+                        elif service_in_progress:
+                            if not is_today_order:
+                                completion_message = "Menginap"
+                            else:
+                                completion_message = "Servis Dimulai"
                         
                         order_data = {
                             'id': order.id,
@@ -201,7 +215,7 @@ class CustomerRatingAPI(Controller):
                         }
                         result.append(order_data)
                         _logger.info(f"Added order {order.name} with date {order_date if order.sa_cetak_pkb else 'N/A'}, " 
-                                    f"status: {'overnight' if is_ongoing and not is_today_order else 'service started' if service_started else 'today or in progress'}")
+                                    f"status: {'service complete' if service_completed_today else 'overnight' if service_in_progress and not is_today_order else 'service in progress'}")
 
             if not result:
                 _logger.info("No orders found, retrieving sample data")

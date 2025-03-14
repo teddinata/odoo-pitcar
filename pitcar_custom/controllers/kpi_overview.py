@@ -4229,43 +4229,501 @@ class KPIOverview(http.Controller):
                     ('state', 'in', ['sale', 'done'])
                 ]
 
-                # Calculate KPI scores (use logic from the original endpoint)
-                # For demonstration purposes, we will use simplified example KPI data
+                # Calculate KPI scores using real data
                 kpi_scores = []
                 
                 if 'Team Leader' in job_title:
+                    # Team Leader KPI calculations
                     kpi_template = self._get_leader_kpi_template()
-                else:
-                    kpi_template = self._get_mechanic_kpi_template()
-                
-                # Calculate each KPI (simplified for example)
-                for kpi in kpi_template:
-                    # Example KPI calculation
-                    actual = 18.4  # Example value
                     
-                    if kpi['type'] == 'flat_rate':
-                        monthly_flat_rate_target = 115
-                        total_flat_rate_hours = 21.2  # Example value
-                        
-                        actual = (total_flat_rate_hours / monthly_flat_rate_target * 100)
-                        measurement = f"Flat Rate: {total_flat_rate_hours:.1f} jam dari target {monthly_flat_rate_target} jam/bulan ({actual:.1f}%)"
-                    else:
+                    # Get team members
+                    team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                        ('leader_id', '=', mechanic.id)
+                    ])
+                    
+                    # Get all orders for the team including leader's orders
+                    team_orders = request.env['sale.order'].sudo().search([
+                        *base_domain,
+                        ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])
+                    ])
+                    
+                    for kpi in kpi_template:
+                        actual = 0
                         measurement = kpi['measurement']
+                        
+                        # Calculate KPI values based on type
+                        if kpi['type'] == 'flat_rate':
+                            try:
+                                # Get team members
+                                all_mechanics_ids = team_members.ids + [mechanic.id]
+                                
+                                # Target flat rate bulanan tim (115 jam per mekanik)
+                                monthly_flat_rate_target_per_mechanic = 115
+                                team_size = len(all_mechanics_ids)
+                                team_monthly_target = monthly_flat_rate_target_per_mechanic * team_size
+                                
+                                # Get completed orders
+                                completed_orders = request.env['sale.order'].sudo().search([
+                                    ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('state', '=', 'sale'),
+                                    ('car_mechanic_id_new', 'in', all_mechanics_ids)
+                                ])
+                                
+                                # Calculate total flat rate hours
+                                team_total_flat_rate = 0
+                                for order in completed_orders:
+                                    order_mechanics = order.car_mechanic_id_new
+                                    mechanics_count = len(order_mechanics) or 1
+                                    
+                                    for line in order.order_line:
+                                        if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                            line_flat_rate = line.product_id.flat_rate * line.product_uom_qty
+                                            team_total_flat_rate += line_flat_rate
+                                
+                                # Calculate achievement percentage
+                                actual = (team_total_flat_rate / team_monthly_target * 100) if team_monthly_target > 0 else 0
+                                measurement = f"Flat Rate: {team_total_flat_rate:.1f} jam dari target {team_monthly_target} jam/bulan ({actual:.1f}%)"
+                            except Exception as e:
+                                _logger.error(f"Error calculating flat rate for team leader: {str(e)}")
+                                actual = 0
+                                measurement = f"Error: {str(e)}"
+                                
+                        elif kpi['type'] == 'mechanic_efficiency':
+                            try:
+                                # Get team members including leader
+                                all_mechanics = team_members.ids + [mechanic.id]
+                                
+                                # Get orders for the team
+                                team_orders = request.env['sale.order'].sudo().search([
+                                    *base_domain,
+                                    ('car_mechanic_id_new', 'in', all_mechanics)
+                                ])
+                                
+                                if not team_orders:
+                                    actual = 0
+                                    measurement = f"Tidak ada orders untuk tim pada periode {month}/{year}"
+                                else:
+                                    # Calculate average processing time per mechanic
+                                    member_averages = {}
+                                    for member_id in all_mechanics:
+                                        member = request.env['pitcar.mechanic.new'].sudo().browse(member_id)
+                                        member_orders = team_orders.filtered(lambda o: member.id in o.car_mechanic_id_new.ids)
+                                        if member_orders:
+                                            member_times = [
+                                                o.lead_time_servis / len(o.car_mechanic_id_new) 
+                                                for o in member_orders 
+                                                if o.lead_time_servis
+                                            ]
+                                            if member_times:
+                                                member_averages[member.id] = {
+                                                    'name': member.name,
+                                                    'avg_time': sum(member_times) / len(member_times),
+                                                    'orders': len(member_times),
+                                                    'is_leader': member.id == mechanic.id
+                                                }
+                                    
+                                    if member_averages:
+                                        # Calculate team average
+                                        team_avg = sum(data['avg_time'] for data in member_averages.values()) / len(member_averages)
+                                        
+                                        # Calculate tolerance limits (±5%)
+                                        upper_limit = team_avg * 1.05
+                                        lower_limit = team_avg * 0.95
+                                        
+                                        # Count mechanics within range
+                                        mechanics_in_range = sum(1 for data in member_averages.values() 
+                                                                if lower_limit <= data['avg_time'] <= upper_limit)
+                                        total_mechanics = len(member_averages)
+                                        actual = (mechanics_in_range / total_mechanics * 100) if total_mechanics > 0 else 0
+                                        
+                                        measurement = f"Mekanik dalam rentang target: {mechanics_in_range}/{total_mechanics}, Rata-rata tim: {team_avg:.1f} jam"
+                                    else:
+                                        actual = 0
+                                        measurement = f"Tidak cukup data untuk analisis pada periode {month}/{year}"
+                            except Exception as e:
+                                _logger.error(f"Error calculating mechanic efficiency: {str(e)}")
+                                actual = 0
+                                measurement = f"Error: {str(e)}"
+                                
+                        elif kpi['type'] == 'service_recommendation':
+                            if team_orders:
+                                total_orders = len(team_orders)
+                                orders_with_recs = len(team_orders.filtered(lambda o: o.recommendation_ids))
+                                actual = (orders_with_recs / total_orders * 100) if total_orders else 0
+                                measurement = f"PKB dengan rekomendasi: {orders_with_recs} dari {total_orders} PKB ({actual:.1f}%)"
+                            else:
+                                actual = 0
+                                measurement = f"Tidak ada orders pada periode {month}/{year}"
+                        
+                        elif kpi['type'] == 'service_quality':
+                            # Use post_service_rating for service quality
+                            rated_orders = team_orders.filtered(lambda o: o.detailed_ratings and 'service_rating' in o.detailed_ratings)
+                            total_rated_orders = len(rated_orders)
+                            
+                            if total_rated_orders > 0:
+                                # Calculate average service_rating
+                                total_service_rating = 0
+                                for order in rated_orders:
+                                    try:
+                                        service_rating = int(order.detailed_ratings.get('service_rating', 0))
+                                        total_service_rating += service_rating
+                                    except (ValueError, TypeError):
+                                        continue
+                                        
+                                avg_service_rating = total_service_rating / total_rated_orders if total_service_rating > 0 else 0
+                                
+                                # Count complaints (rating < 3)
+                                complaints = 0
+                                for order in rated_orders:
+                                    try:
+                                        service_rating = int(order.detailed_ratings.get('service_rating', 0))
+                                        if service_rating < 3:
+                                            complaints += 1
+                                    except (ValueError, TypeError):
+                                        continue
+                                
+                                satisfied_customers = total_rated_orders - complaints
+                                
+                                # Implementasi formula perhitungan
+                                if avg_service_rating > 4.8:
+                                    actual = 120
+                                elif avg_service_rating == 4.8:
+                                    actual = 100
+                                elif 4.6 <= avg_service_rating <= 4.7:
+                                    actual = 50
+                                else:  # < 4.6
+                                    actual = 0
+                                    
+                                measurement = f"Orders rated: {total_rated_orders}, Puas: {satisfied_customers}, Komplain: {complaints}, Rating: {avg_service_rating:.1f}"
+                            else:
+                                actual = 0
+                                measurement = f"Belum ada rating pada periode {month}/{year}"
+                        
+                        elif kpi['type'] == 'complaint_handling':
+                            complaints = team_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                            total_complaints = len(complaints)
+                            resolved_complaints = len(complaints.filtered(lambda o: o.complaint_status == 'solved'))
+                            actual = (resolved_complaints / total_complaints * 100) if total_complaints else 100
+                            measurement = f"Komplain terselesaikan: {resolved_complaints} dari {total_complaints} komplain"
+                        
+                        elif kpi['type'] == 'tools_check':
+                            try:
+                                # Get team members
+                                team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                    ('leader_id', '=', mechanic.id)
+                                ])
+                                
+                                # List all employee IDs including leader
+                                all_mechanic_employee_ids = team_members.mapped('employee_id').ids + [employee.id]
+                                
+                                # Get tool checks
+                                tool_checks = request.env['pitcar.mechanic.tool.check'].sudo().search([
+                                    ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                    ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                    ('mechanic_id', 'in', all_mechanic_employee_ids),
+                                    ('state', '=', 'done')
+                                ])
+                                
+                                if not tool_checks:
+                                    actual = 0
+                                    measurement = f"Belum ada pengecekan tools pada periode {month}/{year}"
+                                else:
+                                    # Calculate team totals
+                                    team_total_items = sum(check.total_items for check in tool_checks)
+                                    team_matched_items = sum(check.matched_items for check in tool_checks)
+                                    
+                                    # Calculate match percentage
+                                    actual = (team_matched_items / team_total_items * 100) if team_total_items > 0 else 0
+                                    
+                                    # Format measurement message
+                                    measurement = f"Tim hand-tools: {team_matched_items}/{team_total_items} tools sesuai ({actual:.1f}%)"
+                                    
+                            except Exception as e:
+                                _logger.error(f"Error calculating tools check for team leader: {str(e)}")
+                                actual = 0
+                                measurement = f"Error: {str(e)}"
+                        
+                        elif kpi['type'] == 'sop_compliance_lead':
+                            # Get team members
+                            team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                ('leader_id', '=', mechanic.id)
+                            ])
+                            
+                            # List all mechanic IDs including leader
+                            all_mechanic_ids = team_members.ids + [mechanic.id]
+                            
+                            # Get SOP samplings from Leader for the team
+                            team_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('mechanic_id', 'in', all_mechanic_ids),
+                                ('sop_id.role', '=', 'mechanic'),
+                                ('sampling_type', '=', 'lead'),
+                                ('state', '=', 'done')
+                            ])
+                            
+                            if not team_samplings:
+                                actual = 100
+                                measurement = f"Belum ada sampling SOP (Leader) pada periode {month}/{year}"
+                            else:
+                                # Count total samplings and passed ones
+                                total_samplings = len(team_samplings)
+                                passed_samplings = len(team_samplings.filtered(lambda s: s.result == 'pass'))
+                                
+                                # Calculate compliance percentage
+                                actual = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                                
+                                # Format measurement message
+                                measurement = f"Sesuai SOP (Leader): {passed_samplings} dari {total_samplings} sampel ({actual:.1f}%)"
+                        
+                        elif kpi['type'] == 'sop_compliance_kaizen':
+                            # Get team members
+                            team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                ('leader_id', '=', mechanic.id)
+                            ])
+                            
+                            # List all mechanic IDs including leader
+                            all_mechanic_ids = team_members.ids + [mechanic.id]
+                            
+                            # Get SOP samplings from Kaizen for the team
+                            team_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('mechanic_id', 'in', all_mechanic_ids),
+                                ('sop_id.role', '=', 'mechanic'),
+                                ('sampling_type', '=', 'kaizen'),
+                                ('state', '=', 'done')
+                            ])
+                            
+                            if not team_samplings:
+                                actual = 100
+                                measurement = f"Belum ada sampling SOP (Kaizen) pada periode {month}/{year}"
+                            else:
+                                # Count total samplings and passed ones
+                                total_samplings = len(team_samplings)
+                                passed_samplings = len(team_samplings.filtered(lambda s: s.result == 'pass'))
+                                
+                                # Calculate compliance percentage
+                                actual = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                                
+                                # Format measurement message
+                                measurement = f"Sesuai SOP (Kaizen): {passed_samplings} dari {total_samplings} sampel ({actual:.1f}%)"
+                        
+                        elif kpi['type'] == 'team_discipline':
+                            # Get team members
+                            team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                ('leader_id', '=', mechanic.id)
+                            ])
+                            
+                            # List all employee IDs including leader
+                            all_mechanic_employee_ids = team_members.mapped('employee_id').ids + [employee.id]
+                            
+                            # Get attendance records
+                            attendance_domain = [
+                                ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('employee_id', 'in', all_mechanic_employee_ids)
+                            ]
+                            team_attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+                            late_count = sum(1 for att in team_attendances if att.is_late)
+                            
+                            actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
+                            measurement = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
+                        
+                        # Calculate weighted score
+                        weighted_score = actual * (kpi['weight'] / 100)
+                        
+                        # Add to KPI scores
+                        kpi_scores.append({
+                            'no': kpi['no'],
+                            'name': kpi['name'],
+                            'type': kpi['type'],
+                            'weight': kpi['weight'],
+                            'target': kpi['target'],
+                            'measurement': measurement,
+                            'actual': actual,
+                            'achievement': weighted_score,
+                            'weighted_score': weighted_score
+                        })
+                        
+                else:  # Regular mechanic
+                    # Regular Mechanic KPI calculations
+                    kpi_template = self._get_mechanic_kpi_template()
                     
-                    # Calculate weighted score
-                    weighted_score = actual * (kpi['weight'] / 100)
+                    # Get orders for the mechanic
+                    orders = request.env['sale.order'].sudo().search([
+                        *base_domain,
+                        ('car_mechanic_id_new', 'in', [mechanic.id])
+                    ])
                     
-                    kpi_scores.append({
-                        'no': kpi['no'],
-                        'name': kpi['name'],
-                        'type': kpi['type'],
-                        'weight': kpi['weight'],
-                        'target': kpi['target'],
-                        'measurement': measurement,
-                        'actual': actual,
-                        'achievement': weighted_score,
-                        'weighted_score': weighted_score
-                    })
+                    for kpi in kpi_template:
+                        actual = 0
+                        measurement = kpi['measurement']
+                        
+                        # Calculate KPI values based on type
+                        if kpi['type'] == 'flat_rate':
+                            try:
+                                # Get flat rate target
+                                monthly_flat_rate_target = 115  # Default target
+                                
+                                # Use specific target if available
+                                if hasattr(mechanic, 'flat_rate_target') and mechanic.flat_rate_target:
+                                    monthly_flat_rate_target = mechanic.flat_rate_target
+                                
+                                # Get completed orders
+                                completed_orders = request.env['sale.order'].sudo().search([
+                                    ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('state', '=', 'sale'),
+                                    ('car_mechanic_id_new', 'in', [mechanic.id])
+                                ])
+                                
+                                # Calculate total flat rate hours
+                                total_flat_rate_hours = 0
+                                
+                                for order in completed_orders:
+                                    # Calculate flat rate for each service line
+                                    for line in order.order_line:
+                                        if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                            # If multiple mechanics, divide flat rate
+                                            mechanics_count = len(order.car_mechanic_id_new) or 1
+                                            line_flat_rate = line.product_id.flat_rate / mechanics_count
+                                            total_flat_rate_hours += line_flat_rate * line.product_uom_qty
+                                
+                                # Calculate achievement percentage
+                                actual = (total_flat_rate_hours / monthly_flat_rate_target * 100) if monthly_flat_rate_target > 0 else 0
+                                
+                                measurement = f"Flat Rate: {total_flat_rate_hours:.1f} jam dari target {monthly_flat_rate_target} jam/bulan ({actual:.1f}%)"
+                            except Exception as e:
+                                _logger.error(f"Error calculating flat rate for mechanic: {str(e)}")
+                                actual = 0
+                                measurement = f"Error: {str(e)}"
+                                
+                        elif kpi['type'] == 'service_quality':
+                            # Use post_service_rating for service quality
+                            orders_with_rating = orders.filtered(lambda o: o.post_service_rating)
+                            if orders_with_rating:
+                                total_rated_orders = len(orders_with_rating)
+                                satisfied_orders = len(orders_with_rating.filtered(lambda o: o.post_service_rating not in ['1', '2']))
+                                complaints = len(orders_with_rating.filtered(lambda o: o.post_service_rating in ['1', '2']))
+                                
+                                actual = (satisfied_orders / total_rated_orders * 100) if total_rated_orders else 100
+                                measurement = f"Order dengan rating: {total_rated_orders}, Customer puas: {satisfied_orders}, Komplain: {complaints} ({actual:.1f}%)"
+                            else:
+                                actual = 0
+                                measurement = f"Belum ada rating post-service pada periode {month}/{year}"
+                        
+                        elif kpi['type'] == 'service_recommendation':
+                            if orders:
+                                total_orders = len(orders)
+                                orders_with_recs = len(orders.filtered(lambda o: o.total_recommendations > 0))
+                                avg_realization = sum(orders.mapped('recommendation_realization_rate')) / total_orders if total_orders else 0
+                                
+                                measurement = f"Orders dengan rekomendasi: {orders_with_recs}/{total_orders}, Rata-rata realisasi: {avg_realization:.1f}%"
+                                actual = avg_realization
+                            else:
+                                actual = 0
+                                measurement = f"Tidak ada orders pada periode {month}/{year}"
+                        
+                        elif kpi['type'] == 'tools_check':
+                            try:
+                                # Get tool checks for this mechanic
+                                tool_checks = request.env['pitcar.mechanic.tool.check'].sudo().search([
+                                    ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                    ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                    ('mechanic_id', '=', employee.id),
+                                    ('state', '=', 'done')
+                                ])
+                                
+                                if not tool_checks:
+                                    actual = 0
+                                    measurement = f"Belum ada pengecekan tools pada periode {month}/{year}"
+                                else:
+                                    # Calculate totals
+                                    total_items = sum(check.total_items for check in tool_checks)
+                                    matched_items = sum(check.matched_items for check in tool_checks)
+                                    
+                                    # Calculate match percentage
+                                    actual = (matched_items / total_items * 100) if total_items > 0 else 0
+                                    
+                                    # Format measurement message
+                                    measurement = f"Hand-tools: {matched_items}/{total_items} tools sesuai ({actual:.1f}%)"
+                                    
+                            except Exception as e:
+                                _logger.error(f"Error calculating tools check for mechanic: {str(e)}")
+                                actual = 0
+                                measurement = f"Error: {str(e)}"
+                        
+                        elif kpi['type'] == 'sop_compliance_lead':
+                            # Get SOP samplings from Leader for this mechanic
+                            mechanic_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('mechanic_id', 'in', [mechanic.id]),
+                                ('sop_id.role', '=', 'mechanic'),
+                                ('sampling_type', '=', 'lead'),
+                                ('state', '=', 'done')
+                            ])
+                            
+                            total_samplings = len(mechanic_samplings)
+                            passed_samplings = len(mechanic_samplings.filtered(lambda s: s.result == 'pass'))
+                            
+                            if total_samplings > 0:
+                                actual = (passed_samplings / total_samplings * 100)
+                                measurement = f"Sesuai SOP (Leader): {passed_samplings} dari {total_samplings} sampel ({actual:.1f}%)"
+                            else:
+                                actual = 100
+                                measurement = f"Belum ada sampling SOP dari Leader pada periode {month}/{year}"
+                        
+                        elif kpi['type'] == 'sop_compliance_kaizen':
+                            # Get SOP samplings from Kaizen for this mechanic
+                            mechanic_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('mechanic_id', 'in', [mechanic.id]),
+                                ('sop_id.role', '=', 'mechanic'),
+                                ('sampling_type', '=', 'kaizen'),
+                                ('state', '=', 'done')
+                            ])
+                            
+                            total_samplings = len(mechanic_samplings)
+                            passed_samplings = len(mechanic_samplings.filtered(lambda s: s.result == 'pass'))
+                            
+                            if total_samplings > 0:
+                                actual = (passed_samplings / total_samplings * 100)
+                                measurement = f"Sesuai SOP (Kaizen): {passed_samplings} dari {total_samplings} sampel ({actual:.1f}%)"
+                            else:
+                                actual = 100
+                                measurement = f"Belum ada sampling SOP dari Kaizen pada periode {month}/{year}"
+                        
+                        elif kpi['type'] == 'discipline':
+                            # Get attendance records
+                            attendance_domain = [
+                                ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
+                                ('employee_id', '=', employee.id)
+                            ]
+                            attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
+                            late_count = sum(1 for att in attendances if att.is_late)
+                            actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
+                            measurement = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
+                        
+                        # Calculate weighted score
+                        weighted_score = actual * (kpi['weight'] / 100)
+                        
+                        # Add to KPI scores
+                        kpi_scores.append({
+                            'no': kpi['no'],
+                            'name': kpi['name'],
+                            'type': kpi['type'],
+                            'weight': kpi['weight'],
+                            'target': kpi['target'],
+                            'measurement': measurement,
+                            'actual': actual,
+                            'achievement': weighted_score,
+                            'weighted_score': weighted_score
+                        })
                 
                 # Calculate summary
                 total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
@@ -4296,10 +4754,6 @@ class KPIOverview(http.Controller):
             }
             
             # Render PDF using QWeb report
-            # Perbaikan untuk versi Odoo baru
-            # Pendekatan dengan template QWeb langsung
-            template = request.env.ref('pitcar_custom.report_mechanic_kpi')
-            # Alternatif: Gunakan metode render_template pada qweb
             html = request.env['ir.qweb']._render('pitcar_custom.report_mechanic_kpi', report_data)
             pdf_content = request.env['ir.actions.report']._run_wkhtmltopdf(
                 [html],

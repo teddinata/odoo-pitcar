@@ -732,9 +732,17 @@ class TeamProjectAPI(http.Controller):
             operation = kw.get('operation', 'create')
 
             if operation == 'create':
-                required_fields = ['name', 'date', 'activity_type']
+                required_fields = ['name', 'date', 'activity_type', 'time_start', 'time_end']
                 if not all(kw.get(field) for field in required_fields):
                     return {'status': 'error', 'message': 'Missing required fields'}
+
+                # Convert time from string format (HH:MM) to float format (hours.fraction)
+                time_start = self._convert_time_to_float(kw['time_start'])
+                time_end = self._convert_time_to_float(kw['time_end'])
+                
+                # Validate time values
+                if not self._validate_time_values(time_start, time_end):
+                    return {'status': 'error', 'message': 'Invalid time values or time range'}
 
                 values = {
                     'name': kw['name'],
@@ -742,10 +750,16 @@ class TeamProjectAPI(http.Controller):
                     'activity_type': kw['activity_type'],
                     'creator_id': kw.get('creator_id', request.env.user.employee_id.id),
                     'project_id': int(kw['project_id']) if kw.get('project_id') else False,
-                    'hours_spent': float(kw.get('hours_spent', 0.0)),
+                    'time_start': time_start,
+                    'time_end': time_end,
                     'description': kw.get('description'),
                     'state': kw.get('state', 'planned'),
                 }
+
+                # Let the model compute hours_spent based on time_start and time_end
+                # If hours_spent is explicitly provided, use it
+                if kw.get('hours_spent'):
+                    values['hours_spent'] = float(kw.get('hours_spent', 0.0))
 
                 bau = request.env['team.project.bau'].sudo().create(values)
                 return {'status': 'success', 'data': self._prepare_bau_data(bau)}
@@ -784,6 +798,17 @@ class TeamProjectAPI(http.Controller):
                     if field in kw:
                         update_values[field] = kw[field]
                 
+                # Handle time fields
+                if kw.get('time_start'):
+                    update_values['time_start'] = self._convert_time_to_float(kw['time_start'])
+                if kw.get('time_end'):
+                    update_values['time_end'] = self._convert_time_to_float(kw['time_end'])
+                
+                # If both times are updated, verify them
+                if 'time_start' in update_values and 'time_end' in update_values:
+                    if not self._validate_time_values(update_values['time_start'], update_values['time_end']):
+                        return {'status': 'error', 'message': 'Invalid time values or time range'}
+                
                 if kw.get('hours_spent'):
                     update_values['hours_spent'] = float(kw['hours_spent'])
                 if kw.get('project_id'):
@@ -807,6 +832,102 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in manage_bau_activities: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    def _convert_time_to_float(self, time_str):
+        """Convert time string (HH:MM) to float (hours.fraction)"""
+        try:
+            if isinstance(time_str, float) or isinstance(time_str, int):
+                return float(time_str)
+                
+            # Handle already float-like strings
+            if isinstance(time_str, str) and not ':' in time_str:
+                return float(time_str)
+                
+            # Parse time in HH:MM format
+            hours, minutes = map(int, time_str.split(':'))
+            return hours + (minutes / 60.0)
+        except Exception as e:
+            _logger.error(f"Error converting time: {str(e)}")
+            return 0.0
+
+    def _validate_time_values(self, time_start, time_end):
+        """Validate time values"""
+        try:
+            # Check time ranges
+            if time_start < 0 or time_start >= 24:
+                return False
+            if time_end < 0 or time_end >= 24:
+                return False
+                
+            # Allow overnight spans (end time < start time)
+            # But limit unrealistic spans (over 16 hours)
+            if time_end < time_start and (time_start - time_end) > 16:
+                return False
+                
+            return True
+        except Exception as e:
+            _logger.error(f"Error validating time values: {str(e)}")
+            return False
+
+    def _prepare_bau_data(self, bau):
+        """
+        Prepare BAU data for API response.
+        Update this method to include time fields.
+        """
+        if not bau:
+            return {}
+            
+        # Convert float time to string format HH:MM
+        time_start_str = self._format_time_float_to_string(bau.time_start)
+        time_end_str = self._format_time_float_to_string(bau.time_end)
+        
+        project_data = False
+        if bau.project_id:
+            project_data = {
+                'id': bau.project_id.id,
+                'name': bau.project_id.name
+            }
+        
+        verified_by_data = False
+        if bau.verified_by:
+            verified_by_data = {
+                'id': bau.verified_by.id,
+                'name': bau.verified_by.name
+            }
+        
+        return {
+            'id': bau.id,
+            'name': bau.name,
+            'date': bau.date,
+            'time_start': time_start_str,
+            'time_end': time_end_str,
+            'hours_spent': bau.hours_spent,
+            'activity_type': bau.activity_type,
+            'description': bau.description,
+            'state': bau.state,
+            'project': project_data,
+            'creator': {
+                'id': bau.creator_id.id,
+                'name': bau.creator_id.name
+            },
+            'verified_by': verified_by_data,
+            'verification_date': bau.verification_date,
+            'verification_reason': bau.verification_reason
+        }
+
+    def _format_time_float_to_string(self, time_float):
+        """Convert float time (hours.fraction) to string format (HH:MM)"""
+        try:
+            if time_float is False or time_float is None:
+                return "00:00"
+                
+            hours = int(time_float)
+            minutes = int((time_float - hours) * 60)
+            return f"{hours:02d}:{minutes:02d}"
+        except Exception as e:
+            _logger.error(f"Error formatting time: {str(e)}")
+            return "00:00"
+
         
     @http.route('/web/v2/team/bau/report', type='json', auth='user', methods=['POST'], csrf=False)
     def team_bau_report(self, **kw):
@@ -886,220 +1007,261 @@ class TeamProjectAPI(http.Controller):
             return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/v2/team/bau/calendar', type='json', auth='user', methods=['POST'], csrf=False)
-    def team_bau_calendar(self, **kw):
-        """Get BAU activities for calendar view"""
+    def get_bau_calendar(self, **kw):
+        """Get BAU activities for calendar view."""
         try:
-            # Validate input
-            if not kw.get('date_from') or not kw.get('date_to'):
-                return {'status': 'error', 'message': 'Date range is required'}
-                
+            # Get params
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            
+            # Validate required params
+            if not date_from or not date_to:
+                return {'status': 'error', 'message': 'Missing date range parameters'}
+            
+            # Domain for activities
             domain = [
-                ('date', '>=', kw['date_from']),
-                ('date', '<=', kw['date_to'])
+                ('creator_id', '=', request.env.user.employee_id.id),
+                ('date', '>=', date_from),
+                ('date', '<=', date_to)
             ]
             
-            # Optional filter by creator
-            if kw.get('creator_id'):
-                domain.append(('creator_id', '=', int(kw['creator_id'])))
-                
-            # Get BAU activities
-            bau_activities = request.env['team.project.bau'].sudo().search(domain)
+            # Group by date
+            activities = request.env['team.project.bau'].sudo().search(domain, order='date ASC, time_start ASC')
+            activities_by_date = {}
             
-            # Group activities by date for calendar view
-            calendar_data = {}
-            for bau in bau_activities:
-                date_key = fields.Date.to_string(bau.date)
-                if date_key not in calendar_data:
-                    calendar_data[date_key] = {
-                        'date': date_key,
+            # Organize activities by date
+            for activity in activities:
+                date_str = str(activity.date)
+                if date_str not in activities_by_date:
+                    activities_by_date[date_str] = {
+                        'date': date_str,
                         'activities': [],
-                        'total_hours': 0,
-                        'target_achieved': False
+                        'total_hours': 0
                     }
                 
                 # Add activity data
-                activity_data = self._prepare_bau_data(bau)
+                activity_data = self._prepare_bau_data(activity)
+                activities_by_date[date_str]['activities'].append(activity_data)
+                activities_by_date[date_str]['total_hours'] += float(activity.hours_spent or 0)
+            
+            # Generate date range
+            try:
+                date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
                 
-                # Add time information for week view (mock start/end times)
-                # In real implementation, you'd have actual start/end times
-                hours = int(bau.hours_spent)
-                minutes = int((bau.hours_spent - hours) * 60)
-                
-                # Mock start at 9 AM and calculate end time
-                start_hour = 9
-                end_hour = start_hour + hours
-                end_minutes = minutes
-                
-                # Adjust if hours overflow
-                if end_hour > 17:  # Cap at 5 PM
-                    end_hour = 17
-                    end_minutes = 0
-                
-                activity_data['time'] = {
-                    'start': f"{start_hour:02d}:{0:02d}",
-                    'end': f"{end_hour:02d}:{end_minutes:02d}",
-                    'duration': bau.hours_spent
-                }
-                
-                calendar_data[date_key]['activities'].append(activity_data)
-                calendar_data[date_key]['total_hours'] += bau.hours_spent
-                
-                # Update target achieved status (if relevant for your model)
-                target_hours = 2.0  # Default target hours per day
-                if bau.hours_spent >= target_hours:
-                    calendar_data[date_key]['target_achieved'] = True
+                # Ensure all dates in range have an entry, even if empty
+                current_date = date_from_obj
+                while current_date <= date_to_obj:
+                    date_str = str(current_date)
+                    if date_str not in activities_by_date:
+                        activities_by_date[date_str] = {
+                            'date': date_str,
+                            'activities': [],
+                            'total_hours': 0
+                        }
+                    current_date += timedelta(days=1)
+            except Exception as e:
+                _logger.error(f"Error generating full date range: {str(e)}")
+                # Continue with available data
+            
+            # Convert to list and sort by date
+            calendar_data = list(activities_by_date.values())
+            calendar_data.sort(key=lambda x: x['date'])
             
             return {
                 'status': 'success',
-                'data': list(calendar_data.values())
+                'data': calendar_data
             }
-            
         except Exception as e:
-            _logger.error('Error in team_bau_calendar: %s', str(e))
-            return {
-                'status': 'error',
-                'message': f'Error getting calendar data: {str(e)}'
-            }
+            _logger.error(f"Error in get_bau_calendar: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/v2/team/bau/batch', type='json', auth='user', methods=['POST'], csrf=False)
-    def team_bau_batch(self, **kw):
-        """Handle batch BAU activities creation with date range, excluding weekends if specified"""
+    def create_batch_bau_activities(self, **kw):
+        """Create BAU activities in batch for a date range."""
         try:
-            # Validate input
-            if not kw.get('activity') or not isinstance(kw['activity'], dict):
-                return {'status': 'error', 'message': 'Activity object is required'}
-            if not kw.get('date_from') or not kw.get('date_to'):
-                return {'status': 'error', 'message': 'Date range (date_from and date_to) is required'}
-
-            activity = kw['activity']
-            date_from = fields.Date.from_string(kw['date_from'])
-            date_to = fields.Date.from_string(kw['date_to'])
-            exclude_weekends = kw.get('exclude_weekends', True)
-
-            # Validate dates
-            if date_from > date_to:
-                return {'status': 'error', 'message': 'date_from must be before date_to'}
-
-            # Validate required fields for activities
-            required_fields = ['name', 'creator_id', 'activity_type']
+            # Get params
+            params = kw.get('params', {})
+            activity = params.get('activity', {})
+            date_from = params.get('date_from')
+            date_to = params.get('date_to')
+            exclude_weekends = params.get('exclude_weekends', True)
+            
+            # Validate required params
+            if not all([activity, date_from, date_to]):
+                return {'status': 'error', 'message': 'Missing required parameters'}
+            
+            # Validate activity parameters
+            required_fields = ['name', 'activity_type', 'time_start', 'time_end']
             if not all(activity.get(field) for field in required_fields):
-                return {'status': 'error', 'message': 'Missing required fields in activity'}
-
-            created_baus = []
-            errors = []
-
-            # Create activities for specified date range
-            current_date = date_from
-            while current_date <= date_to:
-                # Skip weekends if specified
-                if exclude_weekends and current_date.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
-                    current_date += timedelta(days=1)
-                    continue
+                return {'status': 'error', 'message': 'Activity is missing required fields'}
+            
+            # Convert time values
+            time_start = self._convert_time_to_float(activity['time_start'])
+            time_end = self._convert_time_to_float(activity['time_end'])
+            
+            # Validate time values
+            if not self._validate_time_values(time_start, time_end):
+                return {'status': 'error', 'message': 'Invalid time values or time range'}
+            
+            # Generate date range
+            try:
+                date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                
+                if date_from_obj > date_to_obj:
+                    return {'status': 'error', 'message': 'Start date must be before end date'}
                     
+                # Generate all dates in range
+                date_range = []
+                current_date = date_from_obj
+                while current_date <= date_to_obj:
+                    # Skip weekends if requested
+                    if exclude_weekends and current_date.weekday() >= 5:  # 5=Saturday, 6=Sunday
+                        current_date += timedelta(days=1)
+                        continue
+                        
+                    date_range.append(current_date)
+                    current_date += timedelta(days=1)
+            except Exception as e:
+                _logger.error(f"Error generating date range: {str(e)}")
+                return {'status': 'error', 'message': f"Error with date format: {str(e)}"}
+            
+            # Create activities for each date
+            created_activities = []
+            errors = []
+            
+            for date in date_range:
+                date_str = date.strftime('%Y-%m-%d')
                 try:
+                    # Prepare values
                     values = {
                         'name': activity['name'],
-                        'creator_id': int(activity['creator_id']),
-                        'date': current_date,
                         'activity_type': activity['activity_type'],
-                        'hours_spent': float(activity.get('hours_spent', 0.0)),
-                        'project_id': int(activity['project_id']) if activity.get('project_id') else False,
+                        'date': date_str,
+                        'time_start': time_start,
+                        'time_end': time_end,
+                        'creator_id': activity.get('creator_id', request.env.user.employee_id.id),
                         'description': activity.get('description', ''),
-                        'state': 'planned',  # Always planned for future activities
+                        'state': 'planned',
                     }
-
+                    
+                    # Add project_id if provided
+                    if activity.get('project_id'):
+                        values['project_id'] = activity['project_id']
+                    
+                    # Add hours_spent if provided, otherwise let the model compute it
+                    if activity.get('hours_spent'):
+                        values['hours_spent'] = float(activity['hours_spent'])
+                    
+                    # Create activity
                     bau = request.env['team.project.bau'].sudo().create(values)
-                    created_baus.append(self._prepare_bau_data(bau))
-
+                    created_activities.append(self._prepare_bau_data(bau))
                 except Exception as e:
-                    errors.append(f"Error creating activity for {current_date}: {str(e)}")
-
-                current_date += timedelta(days=1)
-
+                    _logger.error(f"Error creating BAU activity for date {date_str}: {str(e)}")
+                    errors.append({'date': date_str, 'error': str(e)})
+            
+            # Return result
+            if not created_activities and errors:
+                return {'status': 'error', 'message': 'Failed to create any activities', 'data': {'errors': errors}}
+            
+            if errors:
+                return {
+                    'status': 'partial_success',
+                    'message': f'Created {len(created_activities)} activities with {len(errors)} errors',
+                    'data': {
+                        'created': created_activities,
+                        'errors': errors
+                    }
+                }
+            
             return {
-                'status': 'partial_success' if errors else 'success',
+                'status': 'success',
+                'message': f'Successfully created {len(created_activities)} activities',
                 'data': {
-                    'created': created_baus,
-                    'errors': errors
-                },
-                'message': f'Created {len(created_baus)} BAU activities with {len(errors)} errors'
+                    'created': created_activities
+                }
             }
-
         except Exception as e:
-            return {
-                'status': 'error',
-                'message': f'Error processing batch BAU: {str(e)}'
-            }
+            _logger.error(f"Error in create_batch_bau_activities: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/v2/team/bau/verify', type='json', auth='user', methods=['POST'], csrf=False)
-    def verify_team_bau(self, **kw):
-        """Verify BAU activity status (done/not_done) on same day or H+1 with reason"""
+    def verify_bau_activity(self, **kw):
+        """Verify a BAU activity (mark as done or not done)."""
         try:
-            if not kw.get('bau_id') or not kw.get('state'):
-                return {'status': 'error', 'message': 'Missing bau_id or state'}
+            # Get params
+            bau_id = kw.get('bau_id')
+            state = kw.get('state')
+            verification_reason = kw.get('verification_reason')
+            hours_spent = kw.get('hours_spent')
+            time_start = kw.get('time_start')
+            time_end = kw.get('time_end')
             
-            bau = request.env['team.project.bau'].sudo().browse(int(kw['bau_id']))
+            # Validate required params
+            if not bau_id:
+                return {'status': 'error', 'message': 'Missing bau_id parameter'}
+            
+            if state not in ['done', 'not_done']:
+                return {'status': 'error', 'message': 'Invalid state parameter (must be "done" or "not_done")'}
+            
+            # Get BAU activity
+            bau = request.env['team.project.bau'].sudo().browse(int(bau_id))
             if not bau.exists():
                 return {'status': 'error', 'message': 'BAU activity not found'}
             
-            # Check current date
-            current_date = fields.Date.today()
+            # Check if activity can be verified
+            today = fields.Date.today()
             activity_date = bau.date
-            delta_days = (current_date - activity_date).days
             
-            # Validate verification date (H or H+1)
-            if delta_days < 0:
-                return {
-                    'status': 'error',
-                    'message': f'Sorry, you cannot verify activities for future dates (activity date: {activity_date}).'
-                }
-            elif delta_days > 1:
-                return {
-                    'status': 'error',
-                    'message': f'Verification must be done on the same day or H+1 (activity date: {activity_date})'
-                }
-            elif delta_days == 1:  # H+1
-                if not kw.get('verification_reason'):
-                    return {
-                        'status': 'error',
-                        'message': 'Verification reason is required for H+1 verification'
-                    }
+            # Can only verify activities from today or yesterday
+            delta_days = (today - activity_date).days
+            if delta_days > 1:
+                return {'status': 'error', 'message': 'Cannot verify activities older than 1 day'}
             
-            # Validate state
-            new_state = kw['state']
-            if new_state not in ['done', 'not_done']:
-                return {'status': 'error', 'message': 'State must be "done" or "not_done"'}
+            # If verifying H+1 activity, require a reason
+            requires_reason = delta_days == 1
+            if requires_reason and not verification_reason:
+                return {'status': 'error', 'message': 'Verification reason required for H+1 activities'}
             
-            # Update status and verification
-            update_values = {
-                'state': new_state,
+            # Update values
+            values = {
+                'state': state,
                 'verified_by': request.env.user.employee_id.id,
                 'verification_date': fields.Datetime.now(),
-                'hours_spent': float(kw.get('hours_spent', bau.hours_spent)),
             }
-            if delta_days == 1:
-                update_values['verification_reason'] = kw['verification_reason']
             
-            bau.write(update_values)
+            # Update time fields if provided
+            if time_start:
+                values['time_start'] = self._convert_time_to_float(time_start)
             
-            # Log activity
-            log_message = f"Status changed to {new_state} by {request.env.user.name}"
-            if delta_days == 1:
-                log_message += f"\nReason for H+1 verification: {kw['verification_reason']}"
-            bau.message_post(body=log_message)
+            if time_end:
+                values['time_end'] = self._convert_time_to_float(time_end)
+            
+            # If both time_start and time_end are provided, validate them
+            if time_start and time_end:
+                if not self._validate_time_values(values['time_start'], values['time_end']):
+                    return {'status': 'error', 'message': 'Invalid time values or time range'}
+            
+            # Add hours_spent if explicitly provided
+            if hours_spent is not None:
+                values['hours_spent'] = float(hours_spent)
+                
+            # Add verification reason if provided
+            if verification_reason:
+                values['verification_reason'] = verification_reason
+            
+            # Update BAU activity
+            bau.write(values)
             
             return {
                 'status': 'success',
-                'data': self._prepare_bau_data(bau),
-                'message': f'BAU activity {bau.name} verified as {new_state}'
+                'message': f'Activity successfully verified as "{state}"',
+                'data': self._prepare_bau_data(bau)
             }
-            
         except Exception as e:
-            _logger.error('Error verifying BAU: %s', str(e))
-            return {
-                'status': 'error',
-                'message': f'Error verifying BAU: {str(e)}'
-            }
+            _logger.error(f"Error in verify_bau_activity: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/v2/team/task/checklists', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_task_checklists(self, **kw):
@@ -2279,7 +2441,8 @@ class TeamProjectAPI(http.Controller):
                 )
                 
                 project_data = {
-                    'id': f"project_{project.id}",
+                    'id': project.id,
+                    'project_id': f"project_{project.id}",
                     'name': project.name,
                     'type': 'project',
                     'start': fields.Date.to_string(project.date_start),
@@ -2298,7 +2461,8 @@ class TeamProjectAPI(http.Controller):
                 # Add tasks to the project
                 for task in tasks_with_dates:
                     task_data = {
-                        'id': f"task_{task.id}",
+                        'id': task.id,
+                        'task_id': f"task_{task.id}",
                         'name': task.name,
                         'type': 'task',
                         'start': fields.Datetime.to_string(task.planned_date_start),

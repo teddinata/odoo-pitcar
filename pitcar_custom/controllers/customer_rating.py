@@ -125,7 +125,6 @@ class CustomerRatingAPI(Controller):
                 _logger.warning(f"Invalid date format, using today: {today.strftime('%Y-%m-%d')}")
 
             SaleOrder = request.env['sale.order'].sudo()
-            InvoicePayment = request.env['account.payment'].sudo()
 
             # Create datetime bounds for the search date
             start_of_day = parsed_date.replace(hour=0, minute=0, second=0)
@@ -137,20 +136,21 @@ class CustomerRatingAPI(Controller):
 
             _logger.info(f"Search range: {date_start} to {date_end}")
 
-            # Build domain to include:
-            # 1. Orders paid today (regardless of rating status)
-            # 2. Orders where service completed but not yet paid
-            # 3. Orders where service is in progress
+            # Build domain that includes:
+            # 1. Orders that received customer rating today (regardless of service completion date)
+            # 2. Orders with service completed today
+            # 3. Orders with service in progress
             domain = [
                 '|', '|',
-                # Orders paid today
-                ('invoice_ids.payment_state', 'in', ['paid', 'in_payment']),
-                ('invoice_ids.payment_date', '>=', date_start),
-                ('invoice_ids.payment_date', '<=', date_end),
-                # OR Orders with service completed but not paid
+                # Orders that received rating today
                 '&',
-                ('controller_selesai', '!=', False),
-                ('invoice_ids.payment_state', 'not in', ['paid', 'in_payment']),
+                ('customer_rating', '!=', False),
+                ('customer_rating_date', '>=', date_start),
+                ('customer_rating_date', '<=', date_end),
+                # OR Orders with service completed today
+                '&',
+                ('controller_selesai', '>=', date_start),
+                ('controller_selesai', '<=', date_end),
                 # OR Orders where service is in progress
                 '&',
                 ('controller_mulai_servis', '!=', False),
@@ -167,7 +167,8 @@ class CustomerRatingAPI(Controller):
                 if order.sa_cetak_pkb:  # Only include orders with PKB printed
                     # Set default values
                     is_today_order = False
-                    is_paid_today = False
+                    rated_today = False
+                    completed_today = False
                     completion_message = ""
                     
                     # Extract the date part for comparison
@@ -179,30 +180,36 @@ class CustomerRatingAPI(Controller):
                     # Check if service is in progress
                     service_in_progress = order.controller_mulai_servis and not order.controller_selesai
                     
-                    # Check if payment was made today (even if it has rating)
-                    if order.invoice_ids:
-                        for invoice in order.invoice_ids:
-                            if (invoice.payment_state in ['paid', 'in_payment'] and 
-                                invoice.payment_date and 
-                                invoice.payment_date.strftime('%Y-%m-%d') == search_date_str):
-                                is_paid_today = True
-                                break
+                    # Check if service was completed today
+                    if order.controller_selesai:
+                        completed_date = order.controller_selesai.strftime('%Y-%m-%d')
+                        completed_today = (completed_date == search_date_str)
                     
-                    # Add order if:
-                    # 1. Paid today (include even if already rated)
-                    # 2. Service completed awaiting payment
+                    # Check if rating was given today
+                    if order.customer_rating and hasattr(order, 'customer_rating_date') and order.customer_rating_date:
+                        rating_date = order.customer_rating_date.strftime('%Y-%m-%d')
+                        rated_today = (rating_date == search_date_str)
+                    
+                    # Include if:
+                    # 1. Rated today (for reference)
+                    # 2. Service completed today 
                     # 3. Service in progress
-                    if is_paid_today or (order.controller_selesai and not is_paid_today) or service_in_progress:
+                    if rated_today or completed_today or service_in_progress:
                         # Add appropriate status messages
-                        if is_paid_today:
-                            completion_message = "Dibayar Hari Ini"
-                        elif order.controller_selesai and not is_paid_today:
-                            completion_message = "Belum Dibayar"
+                        if rated_today:
+                            completion_message = "Sudah Dirating Hari Ini"
+                        elif completed_today:
+                            completion_message = "Servis Selesai Hari Ini"
                         elif service_in_progress:
                             if not is_today_order:
                                 completion_message = "Menginap"
                             else:
                                 completion_message = "Servis Dimulai"
+                        
+                        # Try to determine if order is paid
+                        is_paid = False
+                        if order.invoice_ids:
+                            is_paid = any(inv.payment_state in ['paid', 'in_payment'] for inv in order.invoice_ids)
                         
                         order_data = {
                             'id': order.id,
@@ -213,11 +220,12 @@ class CustomerRatingAPI(Controller):
                             'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                             'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
                             'has_rating': bool(order.customer_rating),
+                            'is_paid': is_paid,
                             'status': completion_message
                         }
                         result.append(order_data)
                         _logger.info(f"Added order {order.name} with date {order_date}, " 
-                                    f"status: {'paid today' if is_paid_today else 'completed not paid' if order.controller_selesai else 'service in progress'}, "
+                                    f"status: {'rated today' if rated_today else 'completed today' if completed_today else 'service in progress'}, "
                                     f"has_rating: {bool(order.customer_rating)}")
 
             if not result:
@@ -229,9 +237,13 @@ class CustomerRatingAPI(Controller):
                 
                 sample_data = []
                 for order in sample_orders:
-                    payment_status = "Belum Dibayar"
-                    if order.invoice_ids and any(inv.payment_state in ['paid', 'in_payment'] for inv in order.invoice_ids):
-                        payment_status = "Sudah Dibayar"
+                    is_paid = False
+                    if order.invoice_ids:
+                        is_paid = any(inv.payment_state in ['paid', 'in_payment'] for inv in order.invoice_ids)
+                    
+                    status = "Dalam Proses"
+                    if order.controller_selesai:
+                        status = "Servis Selesai"
                     
                     sample_data.append({
                         'id': order.id,
@@ -242,7 +254,8 @@ class CustomerRatingAPI(Controller):
                         'car_brand': order.partner_car_brand.name if order.partner_car_brand else '',
                         'car_type': order.partner_car_brand_type.name if order.partner_car_brand_type else '',
                         'has_rating': bool(order.customer_rating),
-                        'status': payment_status
+                        'is_paid': is_paid,
+                        'status': status
                     })
 
                 _logger.info(f"Sample data size: {len(sample_data)}")

@@ -872,7 +872,7 @@ class TeamProjectAPI(http.Controller):
     def _prepare_bau_data(self, bau):
         """
         Prepare BAU data for API response.
-        Update this method to include time fields.
+        Now includes time fields.
         """
         if not bau:
             return {}
@@ -895,24 +895,31 @@ class TeamProjectAPI(http.Controller):
                 'name': bau.verified_by.name
             }
         
+        # Add time object
+        time_data = {
+            'start': time_start_str,
+            'end': time_end_str,
+            'duration': bau.hours_spent
+        }
+        
         return {
             'id': bau.id,
             'name': bau.name,
-            'date': bau.date,
-            'time_start': time_start_str,
-            'time_end': time_end_str,
-            'hours_spent': bau.hours_spent,
-            'activity_type': bau.activity_type,
-            'description': bau.description,
-            'state': bau.state,
             'project': project_data,
             'creator': {
                 'id': bau.creator_id.id,
                 'name': bau.creator_id.name
             },
-            'verified_by': verified_by_data,
-            'verification_date': bau.verification_date,
-            'verification_reason': bau.verification_reason
+            'date': bau.date,
+            'activity_type': bau.activity_type,
+            'hours_spent': bau.hours_spent,
+            'description': bau.description,
+            'state': bau.state,
+            'verification': {
+                'verified_by': verified_by_data,
+                'date': bau.verification_date
+            },
+            'time': time_data  # Include the time object in the response
         }
 
     def _format_time_float_to_string(self, time_float):

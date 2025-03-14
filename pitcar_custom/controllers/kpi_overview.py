@@ -4299,7 +4299,7 @@ class KPIOverview(http.Controller):
             # Perbaikan untuk versi Odoo baru
             # Pendekatan dengan template QWeb langsung
             template = request.env.ref('pitcar_custom.report_mechanic_kpi')
-            html = template._render(report_data)
+            html = template.render(report_data)  # Hapus underscore
             pdf_content = request.env['ir.actions.report']._run_wkhtmltopdf(
                 [html],
                 header=b'', footer=b'',

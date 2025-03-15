@@ -5,6 +5,7 @@ import logging
 import json
 from datetime import datetime, timedelta
 from odoo.exceptions import AccessError, ValidationError
+from collections import defaultdict
 
 _logger = logging.getLogger(__name__)
 
@@ -1139,4 +1140,1648 @@ class ContentManagementAPI(http.Controller):
             return {
                 'status': 'error',
                 'message': f'Error verifying BAU: {str(e)}'
+            }
+        
+    @http.route('/web/v2/content/dashboard', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_dashboard_data(self, **kw):
+        """
+        Get comprehensive dashboard data for monitoring projects, tasks, and BAU activities
+        """
+        try:
+            # Dapatkan filter dari parameter
+            date_from = kw.get('date_from', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
+            date_to = kw.get('date_to', datetime.now().strftime('%Y-%m-%d'))
+            filter_creator_id = int(kw['creator_id']) if kw.get('creator_id') else False
+            filter_project_id = int(kw['project_id']) if kw.get('project_id') else False
+            
+            # Buat tanggal untuk query
+            date_from_obj = fields.Date.from_string(date_from)
+            date_to_obj = fields.Date.from_string(date_to)
+            
+            # Inisialisasi data dashboard
+            dashboard_data = {
+                'summary': self._get_dashboard_summary(date_from, date_to, filter_creator_id, filter_project_id),
+                'projects': self._get_dashboard_projects(date_from, date_to, filter_project_id),
+                'tasks': self._get_dashboard_tasks(date_from, date_to, filter_creator_id, filter_project_id),
+                'bau': self._get_dashboard_bau(date_from, date_to, filter_creator_id),
+                'team_performance': self._get_team_performance(date_from, date_to, filter_project_id),
+                'revisions': self._get_revision_metrics(date_from, date_to, filter_creator_id, filter_project_id),
+                'time_tracking': self._get_time_tracking_data(date_from, date_to, filter_creator_id, filter_project_id),
+                'trends': self._get_trend_data(date_from, date_to)
+            }
+            
+            return {
+                'status': 'success',
+                'data': dashboard_data
+            }
+            
+        except Exception as e:
+            _logger.error('Error in dashboard data: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error fetching dashboard data: {str(e)}'
+            }
+    
+    def _get_dashboard_summary(self, date_from, date_to, filter_creator_id, filter_project_id):
+        """
+        Get summary statistics for dashboard
+        """
+        # Setup domain filters
+        project_domain = []
+        task_domain = []
+        bau_domain = [
+            ('date', '>=', date_from),
+            ('date', '<=', date_to)
+        ]
+        
+        if filter_project_id:
+            project_domain.append(('id', '=', filter_project_id))
+            task_domain.append(('project_id', '=', filter_project_id))
+            bau_domain.append(('project_id', '=', filter_project_id))
+        
+        if filter_creator_id:
+            task_domain.append(('assigned_to', 'in', [filter_creator_id]))
+            bau_domain.append(('creator_id', '=', filter_creator_id))
+        
+        # Get projects statistics
+        projects = request.env['content.project'].sudo().search(project_domain)
+        active_projects = projects.filtered(lambda p: p.state == 'in_progress')
+        completed_projects = projects.filtered(lambda p: p.state == 'completed')
+        
+        # Get tasks statistics
+        all_tasks = request.env['content.task'].sudo().search(task_domain)
+        pending_tasks = all_tasks.filtered(lambda t: t.state in ['draft', 'in_progress', 'review', 'revision'])
+        completed_tasks = all_tasks.filtered(lambda t: t.state == 'done')
+        
+        # Filter tasks in date range
+        tasks_in_period = all_tasks.filtered(
+            lambda t: (t.actual_date_start and t.actual_date_start.date() >= fields.Date.from_string(date_from)) or
+                    (t.planned_date_start and t.planned_date_start.date() >= fields.Date.from_string(date_from))
+        )
+        
+        # Calculate on-time completion rate
+        on_time_tasks = 0
+        delayed_tasks = 0
+        for task in completed_tasks:
+            if task.planned_date_end and task.actual_date_end:
+                if task.actual_date_end <= task.planned_date_end:
+                    on_time_tasks += 1
+                else:
+                    delayed_tasks += 1
+        
+        on_time_rate = (on_time_tasks / len(completed_tasks) * 100) if completed_tasks else 0
+        
+        # Get BAU statistics
+        bau_activities = request.env['content.bau'].sudo().search(bau_domain)
+        planned_bau = bau_activities.filtered(lambda b: b.state == 'planned')
+        completed_bau = bau_activities.filtered(lambda b: b.state == 'done')
+        
+        bau_completion_rate = (len(completed_bau) / len(bau_activities) * 100) if bau_activities else 0
+        
+        # Get time tracking data for tasks
+        total_planned = 0
+        total_actual = 0
+        
+        planned_vs_actual = []
+        for task in all_tasks.filtered(lambda t: t.state == 'done'):
+            if task.planned_hours > 0:
+                planned_vs_actual.append({
+                    'id': task.id,
+                    'name': task.name,
+                    'content_type': task.content_type,
+                    'planned_hours': task.planned_hours,
+                    'actual_hours': task.actual_hours,
+                    'variance': task.actual_hours - task.planned_hours,
+                    'variance_percent': ((task.actual_hours - task.planned_hours) / task.planned_hours * 100) if task.planned_hours else 0
+                })
+                total_planned += task.planned_hours
+                total_actual += task.actual_hours
+        
+        # Sort by variance (highest first)
+        planned_vs_actual.sort(key=lambda x: abs(x['variance']), reverse=True)
+        
+        # Time spent by content type
+        time_by_type = defaultdict(lambda: {'planned': 0, 'actual': 0, 'tasks': 0})
+        
+        for task in all_tasks:
+            if task.content_type:
+                time_by_type[task.content_type]['planned'] += task.planned_hours
+                time_by_type[task.content_type]['actual'] += task.actual_hours
+                time_by_type[task.content_type]['tasks'] += 1
+        
+        type_time_data = []
+        for type_name, data in time_by_type.items():
+            avg_planned = data['planned'] / data['tasks'] if data['tasks'] > 0 else 0
+            avg_actual = data['actual'] / data['tasks'] if data['tasks'] > 0 else 0
+            
+            type_time_data.append({
+                'type': type_name,
+                'total_planned': round(data['planned'], 1),
+                'total_actual': round(data['actual'], 1),
+                'avg_planned': round(avg_planned, 1),
+                'avg_actual': round(avg_actual, 1),
+                'task_count': data['tasks']
+            })
+        
+        # BAU hours by day
+        hours_by_day = defaultdict(float)
+        for bau in bau_activities:
+            day_key = str(bau.date)
+            hours_by_day[day_key] += bau.hours_spent
+        
+        daily_hours = []
+        for day, hours in hours_by_day.items():
+            daily_hours.append({
+                'date': day,
+                'hours': round(hours, 1)
+            })
+        
+        # Sort by date
+        daily_hours.sort(key=lambda x: x['date'])
+        
+        # Combine into summary
+        summary = {
+            'period': {
+                'from': date_from,
+                'to': date_to
+            },
+            'projects': {
+                'total': len(projects),
+                'active': len(active_projects),
+                'completed': len(completed_projects),
+                'avg_progress': sum(p.progress for p in projects) / len(projects) if projects else 0,
+            },
+            'tasks': {
+                'total': len(all_tasks),
+                'pending': len(pending_tasks),
+                'completed': len(completed_tasks),
+                'completion_rate': (len(completed_tasks) / len(all_tasks) * 100) if all_tasks else 0,
+                'on_time_rate': on_time_rate
+            },
+            'bau': {
+                'total': len(bau_activities),
+                'planned': len(planned_bau),
+                'completed': len(completed_bau),
+                'completion_rate': bau_completion_rate
+            },
+            'time_tracking': {
+                'planned_vs_actual': planned_vs_actual[:10],  # Top 10 by variance
+                'by_content_type': type_time_data,
+                'bau_daily_hours': daily_hours,
+                'summary': {
+                    'total_planned_hours': round(total_planned, 1),
+                    'total_actual_hours': round(total_actual, 1),
+                    'variance': round(total_actual - total_planned, 1),
+                    'variance_percent': round(((total_actual - total_planned) / total_planned * 100) if total_planned else 0, 1),
+                    'total_bau_hours': round(sum(bau.hours_spent for bau in bau_activities), 1)
+                }
+            }
+        }
+        
+        return summary
+    
+    def _get_dashboard_projects(self, date_from, date_to, filter_project_id):
+        """
+        Get detailed project data for dashboard
+        """
+        domain = []
+        if filter_project_id:
+            domain.append(('id', '=', filter_project_id))
+        
+        projects = request.env['content.project'].sudo().search(domain)
+        
+        # Calculate additional metrics for each project
+        project_data = []
+        for project in projects:
+            # Task statistics
+            total_tasks = len(project.task_ids)
+            completed_tasks = len(project.task_ids.filtered(lambda t: t.state == 'done'))
+            
+            # Detect potential delays
+            delayed_tasks = 0
+            for task in project.task_ids:
+                if task.state != 'done' and task.planned_date_end and fields.Datetime.now() > task.planned_date_end:
+                    delayed_tasks += 1
+            
+            # Calculate time to completion estimate
+            remaining_tasks = total_tasks - completed_tasks
+            avg_task_days = 0
+            if completed_tasks:
+                completed_with_dates = project.task_ids.filtered(lambda t: t.state == 'done' and t.actual_date_start and t.actual_date_end)
+                if completed_with_dates:
+                    total_days = sum((t.actual_date_end - t.actual_date_start).days + 1 for t in completed_with_dates)
+                    avg_task_days = total_days / len(completed_with_dates)
+            
+            estimated_days_left = remaining_tasks * avg_task_days if avg_task_days else 0
+            
+            # Calculate if project is at risk
+            is_at_risk = False
+            if project.state == 'in_progress':
+                if delayed_tasks > 0:
+                    is_at_risk = True
+                elif project.date_end:
+                    days_left = (project.date_end - fields.Date.today()).days
+                    if estimated_days_left > days_left and days_left > 0:
+                        is_at_risk = True
+            
+            project_item = {
+                'id': project.id,
+                'name': project.name,
+                'code': project.code,
+                'dates': {
+                    'start': project.date_start,
+                    'end': project.date_end,
+                    'days_left': (project.date_end - fields.Date.today()).days if project.date_end else 0
+                },
+                'manager': {
+                    'id': project.project_manager_id.id,
+                    'name': project.project_manager_id.name
+                },
+                'content_plan': {
+                    'video': project.planned_video_count,
+                    'design': project.planned_design_count,
+                    'total': project.planned_video_count + project.planned_design_count
+                },
+                'tasks': {
+                    'total': total_tasks,
+                    'completed': completed_tasks,
+                    'delayed': delayed_tasks,
+                    'completion_rate': (completed_tasks / total_tasks * 100) if total_tasks else 0
+                },
+                'progress': project.progress,
+                'state': project.state,
+                'risk_assessment': {
+                    'is_at_risk': is_at_risk,
+                    'estimated_days_left': round(estimated_days_left, 1),
+                    'risk_factors': []
+                }
+            }
+            
+            # Add risk factors
+            risk_factors = []
+            if delayed_tasks > 0:
+                risk_factors.append(f"{delayed_tasks} delayed tasks")
+            if project.date_end and estimated_days_left > (project.date_end - fields.Date.today()).days > 0:
+                risk_factors.append("Estimated completion exceeds deadline")
+            if project.progress < 40 and (project.date_end - fields.Date.today()).days < 7:
+                risk_factors.append("Low progress with approaching deadline")
+                
+            project_item['risk_assessment']['risk_factors'] = risk_factors
+            
+            project_data.append(project_item)
+        
+        # Sort projects by risk (at-risk first) and then by days left
+        project_data.sort(key=lambda x: (not x['risk_assessment']['is_at_risk'], x['dates']['days_left']))
+        
+        return project_data
+    
+    def _get_dashboard_tasks(self, date_from, date_to, filter_creator_id, filter_project_id):
+        """
+        Get task analytics for dashboard
+        """
+        domain = []
+        if filter_project_id:
+            domain.append(('project_id', '=', filter_project_id))
+        if filter_creator_id:
+            domain.append(('assigned_to', 'in', [filter_creator_id]))
+        
+        # Get all tasks within projects (even if outside date range)
+        all_tasks = request.env['content.task'].sudo().search(domain)
+        
+        # Task completion trend
+        completed_by_week = defaultdict(int)
+        pending_by_status = defaultdict(int)
+        
+        for task in all_tasks:
+            # Count tasks by status
+            if task.state != 'done':
+                pending_by_status[task.state] += 1
+            elif task.actual_date_end:
+                # Group completed tasks by week
+                week = task.actual_date_end.strftime('%Y-W%W')
+                completed_by_week[week] += 1
+        
+        # Task distribution by type
+        task_types = defaultdict(int)
+        for task in all_tasks:
+            task_types[task.content_type] += 1
+        
+        # Task duration analysis
+        task_durations = []
+        for task in all_tasks:
+            if task.state == 'done' and task.actual_date_start and task.actual_date_end:
+                duration_days = (task.actual_date_end - task.actual_date_start).days
+                task_durations.append({
+                    'task_id': task.id,
+                    'name': task.name,
+                    'duration_days': duration_days,
+                    'content_type': task.content_type
+                })
+        
+        # Sort by duration (longest first)
+        task_durations.sort(key=lambda x: x['duration_days'], reverse=True)
+        
+        # Recent completed tasks
+        recent_completed = []
+        for task in all_tasks:
+            if task.state == 'done' and task.actual_date_end:
+                if fields.Date.from_string(date_from) <= task.actual_date_end.date() <= fields.Date.from_string(date_to):
+                    recent_completed.append({
+                        'id': task.id,
+                        'name': task.name,
+                        'project_id': task.project_id.id,
+                        'project_name': task.project_id.name,
+                        'content_type': task.content_type,
+                        'completed_date': task.actual_date_end,
+                        'assigned_to': [{
+                            'id': member.id,
+                            'name': member.name
+                        } for member in task.assigned_to]
+                    })
+        
+        # Sort by completion date (most recent first)
+        recent_completed.sort(key=lambda x: x['completed_date'], reverse=True)
+        
+        # Upcoming deadlines
+        upcoming_deadlines = []
+        for task in all_tasks:
+            if task.state != 'done' and task.planned_date_end:
+                # Include tasks with deadlines in next 7 days
+                days_until_deadline = (task.planned_date_end - fields.Datetime.now()).days
+                if 0 <= days_until_deadline <= 7:
+                    upcoming_deadlines.append({
+                        'id': task.id,
+                        'name': task.name,
+                        'project_id': task.project_id.id,
+                        'project_name': task.project_id.name,
+                        'days_left': days_until_deadline,
+                        'deadline': task.planned_date_end,
+                        'state': task.state,
+                        'assigned_to': [{
+                            'id': member.id,
+                            'name': member.name
+                        } for member in task.assigned_to]
+                    })
+        
+        # Sort by days left (urgent first)
+        upcoming_deadlines.sort(key=lambda x: x['days_left'])
+        
+        return {
+            'completion_trend': [{'week': week, 'count': count} for week, count in sorted(completed_by_week.items())],
+            'pending_by_status': [{'status': status, 'count': count} for status, count in pending_by_status.items()],
+            'by_type': [{'type': type, 'count': count} for type, count in task_types.items()],
+            'durations': task_durations[:10],  # Top 10 longest tasks
+            'recent_completed': recent_completed[:5],  # 5 most recent completions
+            'upcoming_deadlines': upcoming_deadlines[:10]  # 10 most urgent deadlines
+        }
+    
+    def _get_dashboard_bau(self, date_from, date_to, filter_creator_id):
+        """
+        Get BAU analytics for dashboard
+        """
+        domain = [
+            ('date', '>=', date_from),
+            ('date', '<=', date_to)
+        ]
+        
+        if filter_creator_id:
+            domain.append(('creator_id', '=', filter_creator_id))
+        
+        bau_activities = request.env['content.bau'].sudo().search(domain)
+        
+        # BAU completion rate by day
+        bau_by_day = defaultdict(lambda: {'total': 0, 'completed': 0})
+        
+        # BAU hours by type
+        hours_by_type = defaultdict(float)
+        
+        # BAU activities by creator
+        activities_by_creator = defaultdict(lambda: {'total': 0, 'completed': 0, 'hours': 0.0})
+        
+        for bau in bau_activities:
+            # Group by day
+            day_key = str(bau.date)
+            bau_by_day[day_key]['total'] += 1
+            if bau.state == 'done':
+                bau_by_day[day_key]['completed'] += 1
+            
+            # Sum hours by type
+            hours_by_type[bau.activity_type] += bau.hours_spent
+            
+            # Group by creator
+            creator_key = bau.creator_id.id
+            creator_name = bau.creator_id.name
+            activities_by_creator[creator_key]['name'] = creator_name
+            activities_by_creator[creator_key]['total'] += 1
+            activities_by_creator[creator_key]['hours'] += bau.hours_spent
+            if bau.state == 'done':
+                activities_by_creator[creator_key]['completed'] += 1
+        
+        # Calculate completion rates for each day and creator
+        daily_completion = []
+        for day, counts in bau_by_day.items():
+            completion_rate = (counts['completed'] / counts['total'] * 100) if counts['total'] else 0
+            daily_completion.append({
+                'date': day,
+                'total': counts['total'],
+                'completed': counts['completed'],
+                'completion_rate': round(completion_rate, 1)
+            })
+        
+        # Sort by date
+        daily_completion.sort(key=lambda x: x['date'])
+        
+        # Format hours by type
+        hours_data = [{'type': type, 'hours': hours} for type, hours in hours_by_type.items()]
+        
+        # Format and calculate for creators
+        creator_performance = []
+        for creator_id, data in activities_by_creator.items():
+            completion_rate = (data['completed'] / data['total'] * 100) if data['total'] else 0
+            creator_performance.append({
+                'id': creator_id,
+                'name': data['name'],
+                'total': data['total'],
+                'completed': data['completed'],
+                'hours': round(data['hours'], 1),
+                'completion_rate': round(completion_rate, 1)
+            })
+        
+        # Sort by completion rate (highest first)
+        creator_performance.sort(key=lambda x: x['completion_rate'], reverse=True)
+        
+        return {
+            'daily_completion': daily_completion,
+            'hours_by_type': hours_data,
+            'creator_performance': creator_performance,
+            'summary': {
+                'total_activities': sum(data['total'] for data in daily_completion),
+                'completed_activities': sum(data['completed'] for data in daily_completion),
+                'total_hours': sum(data['hours'] for data in hours_data),
+                'avg_completion_rate': round(sum(data['completion_rate'] for data in daily_completion) / len(daily_completion), 1) if daily_completion else 0
+            }
+        }
+    
+    def _get_team_performance(self, date_from, date_to, filter_project_id):
+        """
+        Get team performance metrics for dashboard
+        """
+        # Get all employees involved in projects
+        domain = []
+        if filter_project_id:
+            domain.append(('id', '=', filter_project_id))
+        
+        projects = request.env['content.project'].sudo().search(domain)
+        
+        team_members = set()
+        for project in projects:
+            if project.project_manager_id:
+                team_members.add(project.project_manager_id.id)
+            team_members.update(member.id for member in project.team_ids)
+        
+        # Get tasks assigned to each team member
+        performance_data = []
+        for member_id in team_members:
+            employee = request.env['hr.employee'].sudo().browse(member_id)
+            if not employee.exists():
+                continue
+            
+            # Tasks assigned to this member
+            task_domain = [('assigned_to', 'in', [member_id])]
+            if filter_project_id:
+                task_domain.append(('project_id', '=', filter_project_id))
+            
+            tasks = request.env['content.task'].sudo().search(task_domain)
+            
+            # Calculate metrics
+            total_tasks = len(tasks)
+            completed_tasks = len(tasks.filtered(lambda t: t.state == 'done'))
+            tasks_in_progress = len(tasks.filtered(lambda t: t.state in ['in_progress', 'review', 'revision']))
+            
+            # On-time completion
+            on_time_tasks = 0
+            for task in tasks.filtered(lambda t: t.state == 'done'):
+                if task.planned_date_end and task.actual_date_end and task.actual_date_end <= task.planned_date_end:
+                    on_time_tasks += 1
+            
+            # Calculate average revision count
+            avg_revisions = sum(task.revision_count for task in tasks) / total_tasks if total_tasks else 0
+            
+            # Projects involved
+            project_ids = set(task.project_id.id for task in tasks if task.project_id)
+            projects_involved = len(project_ids)
+            
+            # Get BAU activities for this member
+            bau_domain = [
+                ('creator_id', '=', member_id), 
+                ('date', '>=', date_from),
+                ('date', '<=', date_to)
+            ]
+            bau_activities = request.env['content.bau'].sudo().search(bau_domain)
+            
+            # Calculate BAU metrics
+            total_bau = len(bau_activities)
+            completed_bau = len(bau_activities.filtered(lambda b: b.state == 'done'))
+            total_hours = sum(bau.hours_spent for bau in bau_activities)
+            
+            # Add to performance data
+            performance_data.append({
+                'id': employee.id,
+                'name': employee.name,
+                'position': employee.job_id.name if employee.job_id else '',
+                'tasks': {
+                    'total': total_tasks,
+                    'completed': completed_tasks,
+                    'in_progress': tasks_in_progress,
+                    'completion_rate': (completed_tasks / total_tasks * 100) if total_tasks else 0,
+                    'on_time_rate': (on_time_tasks / completed_tasks * 100) if completed_tasks else 0
+                },
+                'bau': {
+                    'total': total_bau,
+                    'completed': completed_bau,
+                    'completion_rate': (completed_bau / total_bau * 100) if total_bau else 0,
+                    'hours': total_hours
+                },
+                'revisions': {
+                    'avg_per_task': round(avg_revisions, 1)
+                },
+                'projects_involved': projects_involved
+            })
+        
+        # Sort by task completion rate (highest first)
+        performance_data.sort(key=lambda x: x['tasks']['completion_rate'], reverse=True)
+        
+        return performance_data
+    
+    def _get_revision_metrics(self, date_from, date_to, filter_creator_id, filter_project_id):
+        """
+        Get revision analytics for dashboard
+        """
+        domain = []
+        if filter_project_id:
+            domain.append(('project_id', '=', filter_project_id))
+        
+        all_tasks = request.env['content.task'].sudo().search(domain)
+        
+        # Filter by assigned to if needed
+        if filter_creator_id:
+            all_tasks = all_tasks.filtered(lambda t: filter_creator_id in t.assigned_to.ids)
+        
+        # Tasks with high revision counts
+        high_revision_tasks = all_tasks.filtered(lambda t: t.revision_count > 0)
+        high_revision_tasks = sorted(high_revision_tasks, key=lambda t: t.revision_count, reverse=True)
+        
+        high_revision_data = []
+        for task in high_revision_tasks[:10]:  # Top 10
+            high_revision_data.append({
+                'id': task.id,
+                'name': task.name,
+                'project_id': task.project_id.id,
+                'project_name': task.project_id.name,
+                'revision_count': task.revision_count,
+                'state': task.state,
+                'assigned_to': [{
+                    'id': member.id,
+                    'name': member.name
+                } for member in task.assigned_to]
+            })
+        
+        # Revision reasons analysis
+        revisions = request.env['content.revision'].sudo().search([('task_id', 'in', all_tasks.ids)])
+        
+        # Count common phrases in feedback
+        feedback_keywords = defaultdict(int)
+        common_phrases = ["quality", "deadline", "format", "incorrect", "missing", "rework", "clarity", "alignment", "brand"]
+        
+        for revision in revisions:
+            feedback_lower = revision.feedback.lower()
+            for phrase in common_phrases:
+                if phrase in feedback_lower:
+                    feedback_keywords[phrase] += 1
+        
+        # Count revisions by requestor
+        revisions_by_requestor = defaultdict(int)
+        for revision in revisions:
+            if revision.requested_by:
+                requestor_id = revision.requested_by.id
+                requestor_name = revision.requested_by.name
+                key = f"{requestor_id}:{requestor_name}"
+                revisions_by_requestor[key] += 1
+        
+        # Format for output
+        feedback_analysis = [{'keyword': k, 'count': v} for k, v in feedback_keywords.items()]
+        feedback_analysis.sort(key=lambda x: x['count'], reverse=True)
+        
+        requestor_analysis = []
+        for key, count in revisions_by_requestor.items():
+            id_str, name = key.split(':', 1)
+            requestor_analysis.append({
+                'id': int(id_str),
+                'name': name,
+                'count': count
+            })
+        
+        requestor_analysis.sort(key=lambda x: x['count'], reverse=True)
+        
+        # Average revisions by content type
+        revisions_by_type = defaultdict(lambda: {'count': 0, 'tasks': 0})
+        for task in all_tasks:
+            if task.content_type:
+                revisions_by_type[task.content_type]['count'] += task.revision_count
+                revisions_by_type[task.content_type]['tasks'] += 1
+        
+        type_analysis = []
+        for type_name, data in revisions_by_type.items():
+            avg_revisions = data['count'] / data['tasks'] if data['tasks'] > 0 else 0
+            type_analysis.append({
+                'type': type_name,
+                'avg_revisions': round(avg_revisions, 2),
+                'total_revisions': data['count'],
+                'total_tasks': data['tasks']
+            })
+        
+        type_analysis.sort(key=lambda x: x['avg_revisions'], reverse=True)
+        
+        return {
+            'high_revision_tasks': high_revision_data,
+            'feedback_analysis': feedback_analysis,
+            'by_requestor': requestor_analysis,
+            'by_content_type': type_analysis,
+            'summary': {
+                'total_revisions': sum(task.revision_count for task in all_tasks),
+                'tasks_with_revisions': len(high_revision_tasks),
+                'excessive_revisions_count': len(all_tasks.filtered(lambda t: t.has_excessive_revisions))
+            }
+        }
+    
+    def _get_time_tracking_data(self, date_from, date_to, filter_creator_id, filter_project_id):
+        """
+        Get time tracking analytics for dashboard
+        """
+        domain = []
+        if filter_project_id:
+            domain.append(('project_id', '=', filter_project_id))
+        
+        all_tasks = request.env['content.task'].sudo().search(domain)
+        
+        # Filter by assigned to if needed
+        if filter_creator_id:
+            all_tasks = all_tasks.filtered(lambda t: filter_creator_id in t.assigned_to.ids)
+        
+        # Planned vs. actual hours
+        planned_vs_actual = []
+        total_planned = 0
+        total_actual = 0
+        
+        for task in all_tasks:
+            if task.planned_hours > 0 and task.state == 'done':
+                planned_vs_actual.append({
+                    'id': task.id,
+                    'name': task.name,
+                    'content_type': task.content_type,
+                    'planned_hours': task.planned_hours,
+                    'actual_hours': task.actual_hours,
+                    'variance': task.actual_hours - task.planned_hours,
+                    'variance_percent': ((task.actual_hours - task.planned_hours) / task.planned_hours * 100) if task.planned_hours else 0
+                })
+                total_planned += task.planned_hours
+                total_actual += task.actual_hours
+        
+        # Sort by variance (highest first)
+        planned_vs_actual.sort(key=lambda x: abs(x['variance']), reverse=True)
+        
+        # Time spent by content type
+        time_by_type = defaultdict(lambda: {'planned': 0, 'actual': 0, 'tasks': 0})
+        
+        for task in all_tasks:
+            if task.content_type:
+                time_by_type[task.content_type]['planned'] += task.planned_hours
+                time_by_type[task.content_type]['actual'] += task.actual_hours
+                time_by_type[task.content_type]['tasks'] += 1
+        
+        type_time_data = []
+        for type_name, data in time_by_type.items():
+            avg_planned = data['planned'] / data['tasks'] if data['tasks'] > 0 else 0
+            avg_actual = data['actual'] / data['tasks'] if data['tasks'] > 0 else 0
+            
+            type_time_data.append({
+                'type': type_name,
+                'total_planned': round(data['planned'], 1),
+                'total_actual': round(data['actual'], 1),
+                'avg_planned': round(avg_planned, 1),
+                'avg_actual': round(avg_actual, 1),
+                'task_count': data['tasks']
+            })
+        
+    @http.route('/web/v2/content/dashboard/workload', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_workload_analysis(self, **kw):
+        """
+        Get detailed workload analysis for team members
+        """
+        try:
+            # Dapatkan filter dari parameter
+            date_from = kw.get('date_from', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
+            date_to = kw.get('date_to', datetime.now().strftime('%Y-%m-%d'))
+            
+            # Get all employees
+            employees = request.env['hr.employee'].sudo().search([])
+            
+            workload_data = []
+            for employee in employees:
+                # Get tasks assigned to this employee
+                task_domain = [
+                    ('assigned_to', 'in', [employee.id]),
+                    '|',
+                    '&', ('planned_date_start', '>=', date_from), ('planned_date_start', '<=', date_to),
+                    '&', ('planned_date_end', '>=', date_from), ('planned_date_end', '<=', date_to)
+                ]
+                
+                tasks = request.env['content.task'].sudo().search(task_domain)
+                
+                if not tasks:
+                    continue  # Skip employees without tasks
+                    
+                # Calculate task distribution by day
+                workload_by_day = defaultdict(int)
+                
+                for task in tasks:
+                    if task.planned_date_start and task.planned_date_end:
+                        # Calculate duration in days
+                        start_date = task.planned_date_start.date()
+                        end_date = task.planned_date_end.date()
+                        
+                        # Ensure dates are within range
+                        if start_date < fields.Date.from_string(date_from):
+                            start_date = fields.Date.from_string(date_from)
+                        if end_date > fields.Date.from_string(date_to):
+                            end_date = fields.Date.from_string(date_to)
+                        
+                        # Distribute workload across days
+                        current_date = start_date
+                        while current_date <= end_date:
+                            workload_by_day[str(current_date)] += 1
+                            current_date += timedelta(days=1)
+                
+                # Get BAU activities
+                bau_domain = [
+                    ('creator_id', '=', employee.id),
+                    ('date', '>=', date_from),
+                    ('date', '<=', date_to)
+                ]
+                
+                bau_activities = request.env['content.bau'].sudo().search(bau_domain)
+                
+                # Add BAU activities to workload
+                for bau in bau_activities:
+                    workload_by_day[str(bau.date)] += 1
+                
+                # Format daily workload
+                daily_workload = []
+                for day, count in workload_by_day.items():
+                    daily_workload.append({
+                        'date': day,
+                        'count': count
+                    })
+                
+                # Sort by date
+                daily_workload.sort(key=lambda x: x['date'])
+                
+                # Calculate metrics
+                total_task_days = sum(day['count'] for day in daily_workload)
+                avg_daily_workload = round(total_task_days / len(daily_workload), 1) if daily_workload else 0
+                
+                # Find peak workload days
+                peak_days = sorted(daily_workload, key=lambda x: x['count'], reverse=True)[:5]
+                
+                # Calculate overall capacity
+                capacity_percent = min(avg_daily_workload / 5 * 100, 100)  # Assuming 5 tasks per day is 100% capacity
+                
+                workload_data.append({
+                    'id': employee.id,
+                    'name': employee.name,
+                    'position': employee.job_id.name if employee.job_id else '',
+                    'daily_workload': daily_workload,
+                    'peak_days': peak_days,
+                    'metrics': {
+                        'total_tasks': len(tasks),
+                        'total_bau': len(bau_activities),
+                        'avg_daily_workload': avg_daily_workload,
+                        'capacity_percent': round(capacity_percent, 1)
+                    }
+                })
+            
+            # Sort by capacity (highest first)
+            workload_data.sort(key=lambda x: x['metrics']['capacity_percent'], reverse=True)
+            
+            return {
+                'status': 'success',
+                'data': workload_data
+            }
+            
+        except Exception as e:
+            _logger.error('Error in workload analysis: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error fetching workload data: {str(e)}'
+            }
+
+    @http.route('/web/v2/content/dashboard/risk', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_risk_assessment(self, **kw):
+        """
+        Get risk assessment for projects and tasks
+        """
+        try:
+            # Get all active projects
+            projects = request.env['content.project'].sudo().search([
+                ('state', '=', 'in_progress')
+            ])
+            
+            risk_data = {
+                'at_risk_projects': [],
+                'at_risk_tasks': [],
+                'overdue_tasks': [],
+                'bottlenecks': []
+            }
+            
+            # Identify at-risk projects
+            for project in projects:
+                risk_factors = []
+                risk_score = 0
+                
+                # Check deadline proximity
+                if project.date_end:
+                    days_left = (project.date_end - fields.Date.today()).days
+                    if days_left < 0:
+                        risk_factors.append("Project is past deadline")
+                        risk_score += 50
+                    elif days_left < 7:
+                        risk_factors.append(f"Deadline approaching ({days_left} days left)")
+                        risk_score += 30
+                    elif days_left < 14:
+                        risk_factors.append(f"Deadline approaching ({days_left} days left)")
+                        risk_score += 15
+                
+                # Check progress vs time passed
+                if project.date_start and project.date_end and project.progress:
+                    total_days = (project.date_end - project.date_start).days
+                    days_passed = (fields.Date.today() - project.date_start).days
+                    
+                    if total_days > 0 and 0 <= days_passed <= total_days:
+                        expected_progress = (days_passed / total_days) * 100
+                        progress_gap = expected_progress - project.progress
+                        
+                        if progress_gap > 30:
+                            risk_factors.append(f"Significant progress gap ({round(progress_gap)}%)")
+                            risk_score += 40
+                        elif progress_gap > 15:
+                            risk_factors.append(f"Progress gap ({round(progress_gap)}%)")
+                            risk_score += 20
+                
+                # Check for delayed tasks
+                delayed_tasks = 0
+                for task in project.task_ids:
+                    if task.state != 'done' and task.planned_date_end and fields.Datetime.now() > task.planned_date_end:
+                        delayed_tasks += 1
+                
+                if delayed_tasks > 5:
+                    risk_factors.append(f"Many delayed tasks ({delayed_tasks})")
+                    risk_score += 40
+                elif delayed_tasks > 0:
+                    risk_factors.append(f"Some delayed tasks ({delayed_tasks})")
+                    risk_score += delayed_tasks * 5
+                
+                # Check for excessive revisions
+                excessive_revisions = len(project.task_ids.filtered(lambda t: t.has_excessive_revisions))
+                if excessive_revisions > 3:
+                    risk_factors.append(f"Multiple tasks with excessive revisions ({excessive_revisions})")
+                    risk_score += 30
+                elif excessive_revisions > 0:
+                    risk_factors.append(f"Some tasks with excessive revisions ({excessive_revisions})")
+                    risk_score += 15
+                
+                # Add to at-risk list if score is high
+                if risk_score >= 30:
+                    risk_level = "high" if risk_score >= 60 else "medium" if risk_score >= 30 else "low"
+                    
+                    risk_data['at_risk_projects'].append({
+                        'id': project.id,
+                        'name': project.name,
+                        'manager': {
+                            'id': project.project_manager_id.id,
+                            'name': project.project_manager_id.name
+                        },
+                        'deadline': project.date_end,
+                        'progress': project.progress,
+                        'risk_factors': risk_factors,
+                        'risk_score': risk_score,
+                        'risk_level': risk_level
+                    })
+            
+            # Sort at-risk projects by risk score
+            risk_data['at_risk_projects'].sort(key=lambda x: x['risk_score'], reverse=True)
+            
+            # Identify at-risk tasks
+            all_active_tasks = request.env['content.task'].sudo().search([
+                ('state', 'in', ['draft', 'in_progress', 'review', 'revision'])
+            ])
+            
+            for task in all_active_tasks:
+                risk_factors = []
+                risk_score = 0
+                
+                # Check deadline proximity
+                if task.planned_date_end:
+                    days_left = (task.planned_date_end - fields.Datetime.now()).days
+                    if days_left < 0:
+                        risk_factors.append("Task is past deadline")
+                        risk_score += 50
+                    elif days_left < 2:
+                        risk_factors.append(f"Imminent deadline ({days_left} days left)")
+                        risk_score += 40
+                    elif days_left < 5:
+                        risk_factors.append(f"Approaching deadline ({days_left} days left)")
+                        risk_score += 20
+                
+                # Check revision count
+                if task.revision_count > 3:
+                    risk_factors.append(f"Multiple revisions ({task.revision_count})")
+                    risk_score += task.revision_count * 5
+                
+                # Check if task is stuck in a status
+                if task.state == 'in_progress' and task.actual_date_start:
+                    days_in_progress = (fields.Datetime.now() - task.actual_date_start).days
+                    if days_in_progress > 14:
+                        risk_factors.append(f"Stuck in progress ({days_in_progress} days)")
+                        risk_score += 30
+                    elif days_in_progress > 7:
+                        risk_factors.append(f"Long time in progress ({days_in_progress} days)")
+                        risk_score += 15
+                
+                elif task.state == 'review':
+                    # Assume review info is in activity logs/tracking
+                    # This is a simplification - you may need to extract actual review time
+                    risk_factors.append("Awaiting review")
+                    risk_score += 10
+                
+                # Add to at-risk list if score is high
+                if risk_score >= 30:
+                    risk_level = "high" if risk_score >= 50 else "medium" if risk_score >= 30 else "low"
+                    
+                    at_risk_task = {
+                        'id': task.id,
+                        'name': task.name,
+                        'project': {
+                            'id': task.project_id.id,
+                            'name': task.project_id.name
+                        },
+                        'assigned_to': [{
+                            'id': member.id,
+                            'name': member.name
+                        } for member in task.assigned_to],
+                        'deadline': task.planned_date_end,
+                        'state': task.state,
+                        'risk_factors': risk_factors,
+                        'risk_score': risk_score,
+                        'risk_level': risk_level
+                    }
+                    
+                    # Add to at-risk tasks
+                    risk_data['at_risk_tasks'].append(at_risk_task)
+                    
+                    # Also add to overdue if past deadline
+                    if task.planned_date_end and fields.Datetime.now() > task.planned_date_end:
+                        risk_data['overdue_tasks'].append(at_risk_task)
+            
+            # Sort at-risk tasks by risk score
+            risk_data['at_risk_tasks'].sort(key=lambda x: x['risk_score'], reverse=True)
+            risk_data['overdue_tasks'].sort(key=lambda x: x['risk_score'], reverse=True)
+            
+            # Identify bottlenecks - areas where tasks get stuck
+            status_counts = defaultdict(int)
+            for task in all_active_tasks:
+                status_counts[task.state] += 1
+            
+            bottlenecks = []
+            for status, count in status_counts.items():
+                if count > 5:  # Arbitrary threshold
+                    bottlenecks.append({
+                        'status': status,
+                        'task_count': count,
+                        'percentage': round(count / len(all_active_tasks) * 100, 1) if all_active_tasks else 0
+                    })
+            
+            # Sort bottlenecks by count
+            bottlenecks.sort(key=lambda x: x['task_count'], reverse=True)
+            risk_data['bottlenecks'] = bottlenecks
+            
+            return {
+                'status': 'success',
+                'data': risk_data
+            }
+            
+        except Exception as e:
+            _logger.error('Error in risk assessment: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error in risk assessment: {str(e)}'
+            }
+
+    @http.route('/web/v2/content/dashboard/efficiency', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_efficiency_metrics(self, **kw):
+        """
+        Get efficiency metrics and benchmarks for content production
+        """
+        try:
+            # Dapatkan filter dari parameter
+            date_from = kw.get('date_from', (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d'))
+            date_to = kw.get('date_to', datetime.now().strftime('%Y-%m-%d'))
+            
+            # Get completed tasks in date range
+            completed_tasks = request.env['content.task'].sudo().search([
+                ('state', '=', 'done'),
+                ('actual_date_end', '>=', date_from),
+                ('actual_date_end', '<=', date_to)
+            ])
+            
+            efficiency_data = {
+                'completion_time': {
+                    'by_type': {},
+                    'by_team_size': {},
+                    'top_performers': []
+                },
+                'revision_efficiency': {
+                    'by_type': {},
+                    'by_assigned_to': []
+                },
+                'benchmarks': {
+                    'ideal_completion_days': {},
+                    'revision_benchmarks': {}
+                }
+            }
+            
+            # Analyze completion time by content type
+            completion_by_type = defaultdict(list)
+            
+            for task in completed_tasks:
+                if task.actual_date_start and task.actual_date_end and task.content_type:
+                    # Calculate completion days
+                    completion_days = (task.actual_date_end - task.actual_date_start).days + 1
+                    
+                    # Track by content type
+                    completion_by_type[task.content_type].append({
+                        'task_id': task.id,
+                        'days': completion_days,
+                        'assigned_to': len(task.assigned_to)
+                    })
+            
+            # Calculate averages by type
+            for content_type, tasks in completion_by_type.items():
+                avg_days = sum(task['days'] for task in tasks) / len(tasks) if tasks else 0
+                
+                efficiency_data['completion_time']['by_type'][content_type] = {
+                    'avg_days': round(avg_days, 1),
+                    'task_count': len(tasks),
+                    'fastest': min(tasks, key=lambda x: x['days'])['days'] if tasks else 0,
+                    'slowest': max(tasks, key=lambda x: x['days'])['days'] if tasks else 0
+                }
+            
+            # Analyze completion time by team size
+            completion_by_team_size = defaultdict(list)
+            
+            for task in completed_tasks:
+                if task.actual_date_start and task.actual_date_end:
+                    team_size = len(task.assigned_to)
+                    completion_days = (task.actual_date_end - task.actual_date_start).days + 1
+                    
+                    completion_by_team_size[team_size].append({
+                        'task_id': task.id,
+                        'days': completion_days,
+                        'content_type': task.content_type
+                    })
+            
+            # Calculate averages by team size
+            for team_size, tasks in completion_by_team_size.items():
+                avg_days = sum(task['days'] for task in tasks) / len(tasks) if tasks else 0
+                
+                efficiency_data['completion_time']['by_team_size'][str(team_size)] = {
+                    'avg_days': round(avg_days, 1),
+                    'task_count': len(tasks)
+                }
+            
+            # Identify top performers
+            employee_efficiency = defaultdict(lambda: {'tasks': 0, 'total_days': 0, 'revisions': 0})
+            
+            for task in completed_tasks:
+                if task.actual_date_start and task.actual_date_end:
+                    completion_days = (task.actual_date_end - task.actual_date_start).days + 1
+                    
+                    for employee in task.assigned_to:
+                        employee_efficiency[employee.id]['name'] = employee.name
+                        employee_efficiency[employee.id]['tasks'] += 1
+                        employee_efficiency[employee.id]['total_days'] += completion_days
+                        employee_efficiency[employee.id]['revisions'] += task.revision_count
+            
+            # Calculate efficiency metrics for employees
+            top_performers = []
+            for employee_id, data in employee_efficiency.items():
+                if data['tasks'] >= 3:  # Only include employees with enough tasks for meaningful data
+                    avg_days = data['total_days'] / data['tasks']
+                    avg_revisions = data['revisions'] / data['tasks']
+                    
+                    efficiency_score = 100 - (avg_days * 5) - (avg_revisions * 10)  # Simple scoring formula
+                    
+                    top_performers.append({
+                        'id': employee_id,
+                        'name': data['name'],
+                        'tasks_completed': data['tasks'],
+                        'avg_days_per_task': round(avg_days, 1),
+                        'avg_revisions': round(avg_revisions, 1),
+                        'efficiency_score': max(round(efficiency_score, 1), 0)  # Ensure score isn't negative
+                    })
+            
+            # Sort by efficiency score (highest first)
+            top_performers.sort(key=lambda x: x['efficiency_score'], reverse=True)
+            efficiency_data['completion_time']['top_performers'] = top_performers[:5]  # Top 5
+            
+            # Analyze revision efficiency
+            revision_by_type = defaultdict(list)
+            
+            for task in completed_tasks:
+                if task.content_type:
+                    revision_by_type[task.content_type].append(task.revision_count)
+            
+            # Calculate revision averages by type
+            for content_type, revisions in revision_by_type.items():
+                avg_revisions = sum(revisions) / len(revisions) if revisions else 0
+                
+                efficiency_data['revision_efficiency']['by_type'][content_type] = {
+                    'avg_revisions': round(avg_revisions, 1),
+                    'min_revisions': min(revisions) if revisions else 0,
+                    'max_revisions': max(revisions) if revisions else 0,
+                    'task_count': len(revisions)
+                }
+            
+            # Get revision efficiency by employee
+            revision_by_employee = defaultdict(lambda: {'tasks': 0, 'revisions': 0})
+            
+            for task in completed_tasks:
+                for employee in task.assigned_to:
+                    revision_by_employee[employee.id]['name'] = employee.name
+                    revision_by_employee[employee.id]['tasks'] += 1
+                    revision_by_employee[employee.id]['revisions'] += task.revision_count
+            
+            # Calculate employee revision efficiency
+            for employee_id, data in revision_by_employee.items():
+                if data['tasks'] >= 3:  # Only include employees with enough tasks
+                    avg_revisions = data['revisions'] / data['tasks']
+                    
+                    efficiency_data['revision_efficiency']['by_assigned_to'].append({
+                        'id': employee_id,
+                        'name': data['name'],
+                        'tasks': data['tasks'],
+                        'avg_revisions': round(avg_revisions, 1)
+                    })
+            
+            # Sort by average revisions (lowest first, as fewer is better)
+            efficiency_data['revision_efficiency']['by_assigned_to'].sort(key=lambda x: x['avg_revisions'])
+            
+            # Set benchmarks based on collected data
+            for content_type, metrics in efficiency_data['completion_time']['by_type'].items():
+                # Set ideal completion time as slightly better than average
+                ideal_days = max(1, round(metrics['avg_days'] * 0.8, 1))  # 20% faster than average
+                efficiency_data['benchmarks']['ideal_completion_days'][content_type] = ideal_days
+            
+            for content_type, metrics in efficiency_data['revision_efficiency']['by_type'].items():
+                # Set revision benchmark as slightly better than average
+                ideal_revisions = max(0, round(metrics['avg_revisions'] * 0.7, 1))  # 30% fewer revisions
+                efficiency_data['benchmarks']['revision_benchmarks'][content_type] = ideal_revisions
+            
+            return {
+                'status': 'success',
+                'data': efficiency_data
+            }
+            
+        except Exception as e:
+            _logger.error('Error in efficiency metrics: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error calculating efficiency metrics: {str(e)}'
+            }
+        
+    @http.route('/web/v2/content/dashboard/forecast', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_forecast_data(self, **kw):
+        """
+        Get forecast data for resource planning and delivery predictions
+        """
+        try:
+            # Get filter parameters
+            weeks_ahead = int(kw.get('weeks_ahead', 4))
+            date_from = fields.Date.today()
+            date_to = date_from + timedelta(days=weeks_ahead * 7)
+            
+            # Initialize forecast data
+            forecast_data = {
+                'resource_forecast': [],
+                'delivery_forecast': [],
+                'capacity_planning': {}
+            }
+            
+            # Get all active projects
+            active_projects = request.env['content.project'].sudo().search([
+                ('state', '=', 'in_progress')
+            ])
+            
+            # Get all pending tasks
+            pending_tasks = request.env['content.task'].sudo().search([
+                ('state', 'in', ['draft', 'in_progress', 'review', 'revision']),
+                '|',
+                ('planned_date_end', '>=', date_from),
+                ('planned_date_end', '=', False)
+            ])
+            
+            # Group tasks by planned completion date
+            tasks_by_week = defaultdict(list)
+            for task in pending_tasks:
+                if task.planned_date_end:
+                    week_num = (task.planned_date_end.date() - date_from).days // 7
+                    if 0 <= week_num < weeks_ahead:
+                        week_str = f"Week {week_num+1}"
+                        tasks_by_week[week_str].append(task)
+            
+            # Format delivery forecast by week
+            for week_num in range(weeks_ahead):
+                week_str = f"Week {week_num+1}"
+                week_start = date_from + timedelta(days=week_num * 7)
+                week_end = week_start + timedelta(days=6)
+                
+                week_tasks = tasks_by_week.get(week_str, [])
+                
+                # Count by type
+                video_count = len([t for t in week_tasks if t.content_type == 'video'])
+                design_count = len([t for t in week_tasks if t.content_type == 'design'])
+                
+                forecast_data['delivery_forecast'].append({
+                    'week': week_str,
+                    'date_range': f"{week_start} to {week_end}",
+                    'video_count': video_count,
+                    'design_count': design_count,
+                    'total_tasks': len(week_tasks),
+                    'projects': len(set(t.project_id.id for t in week_tasks if t.project_id))
+                })
+            
+            # Get all employees involved in content tasks
+            employees_domain = []
+            employees = request.env['hr.employee'].sudo().search(employees_domain)
+            
+            # Calculate resource allocation by week
+            employee_allocations = {}
+            for employee in employees:
+                # Get tasks assigned to this employee in forecast period
+                assigned_tasks = request.env['content.task'].sudo().search([
+                    ('assigned_to', 'in', [employee.id]),
+                    ('state', 'in', ['draft', 'in_progress', 'review', 'revision']),
+                    '|',
+                    '&', ('planned_date_start', '>=', date_from), ('planned_date_start', '<=', date_to),
+                    '&', ('planned_date_end', '>=', date_from), ('planned_date_end', '<=', date_to)
+                ])
+                
+                # Skip employees without upcoming tasks
+                if not assigned_tasks:
+                    continue
+                
+                # Initialize allocation data
+                employee_data = {
+                    'id': employee.id,
+                    'name': employee.name,
+                    'position': employee.job_id.name if employee.job_id else '',
+                    'weekly_allocation': []
+                }
+                
+                # Calculate allocation by week
+                for week_num in range(weeks_ahead):
+                    week_start = date_from + timedelta(days=week_num * 7)
+                    week_end = week_start + timedelta(days=6)
+                    week_str = f"Week {week_num+1}"
+                    
+                    # Count tasks active during this week
+                    week_tasks = []
+                    for task in assigned_tasks:
+                        if (task.planned_date_start and task.planned_date_end and
+                            ((task.planned_date_start.date() <= week_end and task.planned_date_end.date() >= week_start) or
+                            (task.planned_date_start.date() >= week_start and task.planned_date_start.date() <= week_end))):
+                            week_tasks.append(task)
+                    
+                    # Calculate allocation percentage (5 tasks = 100% allocation)
+                    allocation_percent = min(len(week_tasks) * 20, 100)
+                    
+                    employee_data['weekly_allocation'].append({
+                        'week': week_str,
+                        'date_range': f"{week_start} to {week_end}",
+                        'task_count': len(week_tasks),
+                        'allocation_percent': allocation_percent,
+                        'task_ids': [t.id for t in week_tasks]
+                    })
+                
+                forecast_data['resource_forecast'].append(employee_data)
+            
+            # Sort by highest allocation
+            forecast_data['resource_forecast'].sort(
+                key=lambda x: sum(w['allocation_percent'] for w in x['weekly_allocation']), 
+                reverse=True
+            )
+            
+            # Calculate team capacity planning
+            video_capacity = sum(1 for e in employees if e.job_id and 'video' in e.job_id.name.lower()) * 5  # Assuming 5 videos per video specialist per week
+            design_capacity = sum(1 for e in employees if e.job_id and 'design' in e.job_id.name.lower()) * 5  # Assuming 5 designs per designer per week
+            
+            # If job titles don't include these terms, estimate based on past tasks
+            if video_capacity == 0 or design_capacity == 0:
+                # Get tasks in past 30 days
+                past_tasks = request.env['content.task'].sudo().search([
+                    ('state', '=', 'done'),
+                    ('actual_date_end', '>=', fields.Date.today() - timedelta(days=30))
+                ])
+                
+                # Count by type
+                video_completed = len([t for t in past_tasks if t.content_type == 'video'])
+                design_completed = len([t for t in past_tasks if t.content_type == 'design'])
+                
+                # Estimate weekly capacity
+                if video_capacity == 0:
+                    video_capacity = video_completed // 4  # Divide by 4 weeks
+                if design_capacity == 0:
+                    design_capacity = design_completed // 4  # Divide by 4 weeks
+            
+            # Calculate capacity utilization for each week
+            capacity_utilization = []
+            for week_num in range(weeks_ahead):
+                week_str = f"Week {week_num+1}"
+                week_forecast = next((w for w in forecast_data['delivery_forecast'] if w['week'] == week_str), None)
+                
+                if week_forecast:
+                    video_utilization = (week_forecast['video_count'] / video_capacity * 100) if video_capacity > 0 else 0
+                    design_utilization = (week_forecast['design_count'] / design_capacity * 100) if design_capacity > 0 else 0
+                    
+                    capacity_utilization.append({
+                        'week': week_str,
+                        'video': {
+                            'capacity': video_capacity,
+                            'planned': week_forecast['video_count'],
+                            'utilization_percent': round(video_utilization, 1)
+                        },
+                        'design': {
+                            'capacity': design_capacity,
+                            'planned': week_forecast['design_count'],
+                            'utilization_percent': round(design_utilization, 1)
+                        }
+                    })
+            
+            forecast_data['capacity_planning'] = {
+                'weekly_utilization': capacity_utilization,
+                'team_capacity': {
+                    'video': video_capacity,
+                    'design': design_capacity
+                }
+            }
+            
+            return {
+                'status': 'success',
+                'data': forecast_data
+            }
+            
+        except Exception as e:
+            _logger.error('Error in forecast data: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error generating forecast: {str(e)}'
+            }
+
+    @http.route('/web/v2/content/dashboard/kpi', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_kpi_metrics(self, **kw):
+        """
+        Get KPI metrics for dashboard
+        """
+        try:
+            # Get filter parameters
+            date_from = kw.get('date_from', (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'))
+            date_to = kw.get('date_to', datetime.now().strftime('%Y-%m-%d'))
+            
+            # Initialize KPI data
+            kpi_data = {
+                'task_metrics': {},
+                'project_metrics': {},
+                'team_metrics': {},
+                'quality_metrics': {}
+            }
+            
+            # Get tasks in date range
+            task_domain = [
+                '|',
+                '&', ('planned_date_start', '>=', date_from), ('planned_date_start', '<=', date_to),
+                '&', ('actual_date_end', '>=', date_from), ('actual_date_end', '<=', date_to)
+            ]
+            
+            tasks = request.env['content.task'].sudo().search(task_domain)
+            
+            # Task completion KPIs
+            completed_tasks = tasks.filtered(lambda t: t.state == 'done')
+            total_tasks = len(tasks)
+            completion_rate = (len(completed_tasks) / total_tasks * 100) if total_tasks > 0 else 0
+            
+            # On-time delivery
+            on_time_tasks = 0
+            delayed_tasks = 0
+            
+            for task in completed_tasks:
+                if task.planned_date_end and task.actual_date_end:
+                    if task.actual_date_end <= task.planned_date_end:
+                        on_time_tasks += 1
+                    else:
+                        delayed_tasks += 1
+            
+            on_time_rate = (on_time_tasks / len(completed_tasks) * 100) if completed_tasks else 0
+            
+            # Average time to complete
+            completion_days = []
+            for task in completed_tasks:
+                if task.actual_date_start and task.actual_date_end:
+                    days = (task.actual_date_end - task.actual_date_start).days + 1
+                    completion_days.append(days)
+            
+            avg_completion_days = sum(completion_days) / len(completion_days) if completion_days else 0
+            
+            # Task KPIs
+            kpi_data['task_metrics'] = {
+                'total_tasks': total_tasks,
+                'completed_tasks': len(completed_tasks),
+                'completion_rate': round(completion_rate, 1),
+                'on_time_delivery_rate': round(on_time_rate, 1),
+                'avg_days_to_complete': round(avg_completion_days, 1),
+                'by_content_type': {}
+            }
+            
+            # KPIs by content type
+            for content_type in ['video', 'design']:
+                type_tasks = tasks.filtered(lambda t: t.content_type == content_type)
+                type_completed = type_tasks.filtered(lambda t: t.state == 'done')
+                
+                if type_tasks:
+                    type_completion_rate = (len(type_completed) / len(type_tasks) * 100)
+                    
+                    # Calculate on-time rate for this type
+                    type_on_time = 0
+                    for task in type_completed:
+                        if task.planned_date_end and task.actual_date_end and task.actual_date_end <= task.planned_date_end:
+                            type_on_time += 1
+                    
+                    type_on_time_rate = (type_on_time / len(type_completed) * 100) if type_completed else 0
+                    
+                    # Calculate average completion days
+                    type_days = []
+                    for task in type_completed:
+                        if task.actual_date_start and task.actual_date_end:
+                            days = (task.actual_date_end - task.actual_date_start).days + 1
+                            type_days.append(days)
+                    
+                    type_avg_days = sum(type_days) / len(type_days) if type_days else 0
+                    
+                    kpi_data['task_metrics']['by_content_type'][content_type] = {
+                        'total': len(type_tasks),
+                        'completed': len(type_completed),
+                        'completion_rate': round(type_completion_rate, 1),
+                        'on_time_rate': round(type_on_time_rate, 1),
+                        'avg_days': round(type_avg_days, 1)
+                    }
+            
+            # Project KPIs
+            projects = request.env['content.project'].sudo().search([
+                '|',
+                '&', ('date_start', '>=', date_from), ('date_start', '<=', date_to),
+                '&', ('date_end', '>=', date_from), ('date_end', '<=', date_to)
+            ])
+            
+            active_projects = len(projects.filtered(lambda p: p.state == 'in_progress'))
+            completed_projects = len(projects.filtered(lambda p: p.state == 'completed'))
+            
+            # Calculate average project completion percentage
+            avg_progress = sum(p.progress for p in projects) / len(projects) if projects else 0
+            
+            # Calculate estimated completion accuracy
+            completion_accuracy = 0
+            completed_with_dates = projects.filtered(lambda p: p.state == 'completed' and p.date_start and p.date_end)
+            if completed_with_dates:
+                for project in completed_with_dates:
+                    planned_days = (project.date_end - project.date_start).days
+                    # This is an estimation since we don't have actual completion date
+                    # In a real system, you might store actual completion date
+                    # For now, we'll use today's date as a proxy for completed projects
+                    actual_days = (fields.Date.today() - project.date_start).days
+                    
+                    accuracy = (1 - abs(planned_days - actual_days) / planned_days) * 100 if planned_days > 0 else 0
+                    completion_accuracy += accuracy
+                
+                completion_accuracy /= len(completed_with_dates)
+            
+            kpi_data['project_metrics'] = {
+                'total_projects': len(projects),
+                'active_projects': active_projects,
+                'completed_projects': completed_projects,
+                'avg_progress': round(avg_progress, 1),
+                'completion_estimate_accuracy': round(completion_accuracy, 1)
+            }
+            
+            # Team KPIs
+            # Get all employees involved in content tasks
+            employee_ids = set()
+            for task in tasks:
+                for employee in task.assigned_to:
+                    employee_ids.add(employee.id)
+            
+            employees = request.env['hr.employee'].sudo().browse(list(employee_ids))
+            
+            # Calculate workload and productivity metrics
+            productivity_data = []
+            for employee in employees:
+                employee_tasks = tasks.filtered(lambda t: employee.id in t.assigned_to.ids)
+                completed = len(employee_tasks.filtered(lambda t: t.state == 'done'))
+                
+                # Skip employees with no completed tasks
+                if completed == 0:
+                    continue
+                
+                total = len(employee_tasks)
+                
+                # Calculate productivity score
+                completion_rate = (completed / total * 100) if total > 0 else 0
+                
+                # Calculate average days to complete
+                avg_days = 0
+                days_count = 0
+                for task in employee_tasks.filtered(lambda t: t.state == 'done' and t.actual_date_start and t.actual_date_end):
+                    avg_days += (task.actual_date_end - task.actual_date_start).days + 1
+                    days_count += 1
+                
+                if days_count > 0:
+                    avg_days /= days_count
+                
+                # Calculate quality score based on revisions
+                avg_revisions = sum(task.revision_count for task in employee_tasks) / total if total > 0 else 0
+                quality_score = max(0, 100 - (avg_revisions * 15))  # Simple formula: fewer revisions = higher quality
+                
+                # Calculate overall productivity score
+                productivity_score = (completion_rate * 0.4) + ((1 / (avg_days or 1)) * 50) + (quality_score * 0.3)
+                
+                productivity_data.append({
+                    'id': employee.id,
+                    'name': employee.name,
+                    'position': employee.job_id.name if employee.job_id else '',
+                    'tasks_total': total,
+                    'tasks_completed': completed,
+                    'completion_rate': round(completion_rate, 1),
+                    'avg_days_to_complete': round(avg_days, 1),
+                    'avg_revisions': round(avg_revisions, 1),
+                    'quality_score': round(quality_score, 1),
+                    'productivity_score': round(min(productivity_score, 100), 1)  # Cap at 100
+                })
+            
+            # Sort by productivity score
+            productivity_data.sort(key=lambda x: x['productivity_score'], reverse=True)
+            
+            kpi_data['team_metrics'] = {
+                'team_size': len(employees),
+                'avg_tasks_per_person': round(total_tasks / len(employees), 1) if employees else 0,
+                'productivity_ranking': productivity_data,
+                'avg_team_productivity': round(sum(p['productivity_score'] for p in productivity_data) / len(productivity_data), 1) if productivity_data else 0
+            }
+            
+            # Quality KPIs
+            revisions_data = []
+            for task in tasks:
+                if task.revision_count > 0:
+                    revisions_data.append(task.revision_count)
+            
+            avg_revisions = sum(revisions_data) / len(revisions_data) if revisions_data else 0
+            revision_rate = (len(revisions_data) / total_tasks * 100) if total_tasks > 0 else 0
+            
+            # Calculate first-time approval rate
+            first_time_approved = len(tasks.filtered(lambda t: t.state == 'done' and t.revision_count == 0))
+            first_time_approval_rate = (first_time_approved / len(completed_tasks) * 100) if completed_tasks else 0
+            
+            kpi_data['quality_metrics'] = {
+                'avg_revisions_per_task': round(avg_revisions, 1),
+                'tasks_with_revisions_percent': round(revision_rate, 1),
+                'first_time_approval_rate': round(first_time_approval_rate, 1),
+                'excessive_revisions_count': len(tasks.filtered(lambda t: t.has_excessive_revisions))
+            }
+            
+            return {
+                'status': 'success',
+                'data': kpi_data
+            }
+            
+        except Exception as e:
+            _logger.error('Error in KPI metrics: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error calculating KPI metrics: {str(e)}'
             }

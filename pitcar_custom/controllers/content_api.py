@@ -1339,6 +1339,229 @@ class ContentManagementAPI(http.Controller):
         }
         
         return summary
+
+    def _get_trend_data(self, date_from, date_to):
+        """
+        Get trend data for various metrics over time
+        """
+        # Convert date strings to date objects
+        start_date = fields.Date.from_string(date_from)
+        end_date = fields.Date.from_string(date_to)
+        
+        # Calculate date range
+        delta = (end_date - start_date).days + 1
+        
+        # Determine appropriate grouping (daily, weekly, or monthly)
+        grouping = 'daily'
+        if delta > 60:
+            grouping = 'monthly'
+        elif delta > 14:
+            grouping = 'weekly'
+        
+        # Initialize data structures based on grouping
+        time_periods = []
+        if grouping == 'daily':
+            current = start_date
+            while current <= end_date:
+                time_periods.append(str(current))
+                current += timedelta(days=1)
+        elif grouping == 'weekly':
+            # Get start of week
+            current = start_date - timedelta(days=start_date.weekday())
+            while current <= end_date:
+                week_end = current + timedelta(days=6)
+                time_periods.append(f"{current} to {week_end}")
+                current += timedelta(days=7)
+        else:  # monthly
+            current = start_date.replace(day=1)
+            while current <= end_date:
+                # Get last day of month
+                if current.month == 12:
+                    last_day = current.replace(day=31)
+                else:
+                    last_day = current.replace(month=current.month+1, day=1) - timedelta(days=1)
+                time_periods.append(f"{current.year}-{current.month}")
+                
+                # Move to next month
+                if current.month == 12:
+                    current = current.replace(year=current.year+1, month=1)
+                else:
+                    current = current.replace(month=current.month+1)
+        
+        # Initialize trend data
+        trend_data = {
+            'time_periods': time_periods,
+            'grouping': grouping,
+            'task_completion': [0] * len(time_periods),
+            'task_creation': [0] * len(time_periods),
+            'bau_completion': [0] * len(time_periods),
+            'avg_revision_count': [0] * len(time_periods),
+            'project_progress': []  # Will store project progress over time
+        }
+        
+        # Get task data
+        tasks = request.env['content.task'].sudo().search([])
+        
+        for task in tasks:
+            # Track task creation and completion
+            if task.create_date:
+                created_date = task.create_date.date()
+                if start_date <= created_date <= end_date:
+                    if grouping == 'daily':
+                        idx = time_periods.index(str(created_date))
+                    elif grouping == 'weekly':
+                        # Find the week
+                        week_start = created_date - timedelta(days=created_date.weekday())
+                        week_end = week_start + timedelta(days=6)
+                        week_str = f"{week_start} to {week_end}"
+                        if week_str in time_periods:
+                            idx = time_periods.index(week_str)
+                        else:
+                            idx = -1
+                    else:  # monthly
+                        month_str = f"{created_date.year}-{created_date.month}"
+                        if month_str in time_periods:
+                            idx = time_periods.index(month_str)
+                        else:
+                            idx = -1
+                    
+                    if idx >= 0:
+                        trend_data['task_creation'][idx] += 1
+            
+            if task.state == 'done' and task.actual_date_end:
+                completed_date = task.actual_date_end.date()
+                if start_date <= completed_date <= end_date:
+                    if grouping == 'daily':
+                        idx = time_periods.index(str(completed_date))
+                    elif grouping == 'weekly':
+                        # Find the week
+                        week_start = completed_date - timedelta(days=completed_date.weekday())
+                        week_end = week_start + timedelta(days=6)
+                        week_str = f"{week_start} to {week_end}"
+                        if week_str in time_periods:
+                            idx = time_periods.index(week_str)
+                        else:
+                            idx = -1
+                    else:  # monthly
+                        month_str = f"{completed_date.year}-{completed_date.month}"
+                        if month_str in time_periods:
+                            idx = time_periods.index(month_str)
+                        else:
+                            idx = -1
+                    
+                    if idx >= 0:
+                        trend_data['task_completion'][idx] += 1
+        
+        # Get BAU data
+        bau_activities = request.env['content.bau'].sudo().search([
+            ('date', '>=', date_from),
+            ('date', '<=', date_to)
+        ])
+        
+        for bau in bau_activities:
+            if bau.state == 'done' and bau.date:
+                completed_date = bau.date
+                if start_date <= completed_date <= end_date:
+                    if grouping == 'daily':
+                        idx = time_periods.index(str(completed_date))
+                    elif grouping == 'weekly':
+                        # Find the week
+                        week_start = completed_date - timedelta(days=completed_date.weekday())
+                        week_end = week_start + timedelta(days=6)
+                        week_str = f"{week_start} to {week_end}"
+                        if week_str in time_periods:
+                            idx = time_periods.index(week_str)
+                        else:
+                            idx = -1
+                    else:  # monthly
+                        month_str = f"{completed_date.year}-{completed_date.month}"
+                        if month_str in time_periods:
+                            idx = time_periods.index(month_str)
+                        else:
+                            idx = -1
+                    
+                    if idx >= 0:
+                        trend_data['bau_completion'][idx] += 1
+        
+        # Get revision data over time
+        revisions = request.env['content.revision'].sudo().search([])
+        
+        # Group revisions by time period
+        revisions_by_period = [[] for _ in range(len(time_periods))]
+        for revision in revisions:
+            if revision.date_requested:
+                revision_date = revision.date_requested.date()
+                if start_date <= revision_date <= end_date:
+                    if grouping == 'daily':
+                        idx = time_periods.index(str(revision_date))
+                    elif grouping == 'weekly':
+                        # Find the week
+                        week_start = revision_date - timedelta(days=revision_date.weekday())
+                        week_end = week_start + timedelta(days=6)
+                        week_str = f"{week_start} to {week_end}"
+                        if week_str in time_periods:
+                            idx = time_periods.index(week_str)
+                        else:
+                            idx = -1
+                    else:  # monthly
+                        month_str = f"{revision_date.year}-{revision_date.month}"
+                        if month_str in time_periods:
+                            idx = time_periods.index(month_str)
+                        else:
+                            idx = -1
+                    
+                    if idx >= 0:
+                        revisions_by_period[idx].append(revision)
+        
+        # Calculate average revision count
+        for i, period_revisions in enumerate(revisions_by_period):
+            if period_revisions:
+                # Count unique tasks with revisions in this period
+                unique_tasks = set(r.task_id.id for r in period_revisions if r.task_id)
+                if unique_tasks:
+                    trend_data['avg_revision_count'][i] = round(len(period_revisions) / len(unique_tasks), 1)
+        
+        # Get project progress over time for active projects
+        active_projects = request.env['content.project'].sudo().search([
+            ('state', '=', 'in_progress')
+        ])
+        
+        for project in active_projects:
+            # Get task completion dates to estimate progress over time
+            completed_tasks = project.task_ids.filtered(lambda t: t.state == 'done' and t.actual_date_end)
+            if not completed_tasks:
+                continue
+                
+            # Sort by completion date
+            sorted_tasks = sorted(completed_tasks, key=lambda t: t.actual_date_end)
+            
+            total_tasks = len(project.task_ids)
+            if total_tasks == 0:
+                continue
+                
+            # Track progress over time
+            project_progress = {
+                'id': project.id,
+                'name': project.name,
+                'progress': []
+            }
+            
+            task_count = 0
+            for task in sorted_tasks:
+                task_count += 1
+                progress = (task_count / total_tasks) * 100
+                
+                completed_date = task.actual_date_end.date()
+                if start_date <= completed_date <= end_date:
+                    project_progress['progress'].append({
+                        'date': str(completed_date),
+                        'progress': round(progress, 1)
+                    })
+            
+            if project_progress['progress']:
+                trend_data['project_progress'].append(project_progress)
+        
+        return trend_data
     
     def _get_dashboard_projects(self, date_from, date_to, filter_project_id):
         """

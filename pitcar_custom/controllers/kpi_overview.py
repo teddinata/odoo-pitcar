@@ -3440,27 +3440,11 @@ class KPIOverview(http.Controller):
                             kpi['measurement'] = "Tidak ada order dengan rating customer"
                     
                     elif kpi['type'] == 'complaint_handling':
-                        # Calculate complaint handling effectiveness
-                        complaints = store_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                        complaints = team_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
                         total_complaints = len(complaints)
-                        
-                        if total_complaints > 0:
-                            # Check if complaints are resolved within 3 days
-                            resolved_on_time = 0
-                            for complaint in complaints:
-                                if complaint.complaint_date and complaint.resolution_date:
-                                    complaint_date = fields.Datetime.from_string(complaint.complaint_date)
-                                    resolution_date = fields.Datetime.from_string(complaint.resolution_date)
-                                    days_to_resolve = (resolution_date - complaint_date).days
-                                    
-                                    if days_to_resolve <= 3:
-                                        resolved_on_time += 1
-                            
-                            actual = (resolved_on_time / total_complaints * 100)
-                            kpi['measurement'] = f"Komplain diselesaikan dalam 3 hari: {resolved_on_time}/{total_complaints} ({actual:.1f}%)"
-                        else:
-                            actual = 100  # No complaints = perfect score
-                            kpi['measurement'] = "Tidak ada komplain dalam periode ini"
+                        resolved_complaints = len(complaints.filtered(lambda o: o.complaint_status == 'solved'))
+                        actual = (resolved_complaints / total_complaints * 100) if total_complaints else 100
+                        kpi['measurement'] = f"Komplain terselesaikan: {resolved_complaints} dari {total_complaints} komplain"
                     
                     elif kpi['type'] == 'sop_compliance':
                         # Calculate SOP compliance for all operational staff

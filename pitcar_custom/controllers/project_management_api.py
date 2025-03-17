@@ -1361,19 +1361,86 @@ class TeamProjectAPI(http.Controller):
 
             # Di dalam metode manage_timesheets di TeamProjectAPI
             elif operation == 'list':
-                task_id = kw.get('task_id')
-                if not task_id:
-                    return {'status': 'error', 'message': 'Missing task_id'}
+                domain = []
                 
-                task = request.env['team.project.task'].sudo().browse(int(task_id))
-                if not task.exists():
-                    return {'status': 'error', 'message': 'Task not found'}
+                # Optional filtering by task
+                if kw.get('task_id'):
+                    domain.append(('task_id', '=', int(kw['task_id'])))
                 
-                timesheets = task.timesheet_ids
+                # Other optional filters
+                if kw.get('date_from'):
+                    domain.append(('date', '>=', kw['date_from']))
+                if kw.get('date_to'):
+                    domain.append(('date', '<=', kw['date_to']))
+                if kw.get('project_id'):
+                    domain.append(('project_id', '=', int(kw['project_id'])))
+                if kw.get('task_name'):
+                    # Search tasks by name first, then filter timesheets by those task IDs
+                    tasks = request.env['team.project.task'].sudo().search([
+                        ('name', 'ilike', kw['task_name'])
+                    ])
+                    if tasks:
+                        domain.append(('task_id', 'in', tasks.ids))
+                    else:
+                        # No matching tasks, return empty result
+                        return {
+                            'status': 'success',
+                            'data': [],
+                            'total': 0,
+                            'stats': {
+                                'total_hours': 0,
+                                'weekly_hours': 0,
+                                'team_members_count': 0,
+                                'tasks_count': 0
+                            }
+                        }
+                
+                # Pagination
+                page = int(kw.get('page', 1))
+                limit = int(kw.get('limit', 10))
+                offset = (page - 1) * limit
+                
+                # Get total count for pagination
+                total_count = request.env['team.project.timesheet'].sudo().search_count(domain)
+                
+                # Get paginated timesheets
+                timesheets = request.env['team.project.timesheet'].sudo().search(
+                    domain, limit=limit, offset=offset, order='date desc'
+                )
+                
+                # Calculate stats
+                from datetime import date, timedelta
+                
+                # Weekly hours (current week)
+                today = date.today()
+                start_of_week = today - timedelta(days=today.weekday())
+                end_of_week = start_of_week + timedelta(days=6)
+                
+                weekly_timesheets = request.env['team.project.timesheet'].sudo().search([
+                    ('date', '>=', start_of_week.strftime('%Y-%m-%d')),
+                    ('date', '<=', end_of_week.strftime('%Y-%m-%d'))
+                ] + domain)
+                
+                weekly_hours = sum(weekly_timesheets.mapped('hours'))
+                
+                # Total hours for all filtered timesheets
+                all_timesheets = request.env['team.project.timesheet'].sudo().search(domain)
+                total_hours = sum(all_timesheets.mapped('hours'))
+                
+                # Unique team members and tasks
+                team_members_count = len(set(all_timesheets.mapped('employee_id.id')))
+                tasks_count = len(set(all_timesheets.mapped('task_id.id')))
                 
                 return {
                     'status': 'success',
-                    'data': [self._prepare_timesheet_data(timesheet) for timesheet in timesheets]
+                    'data': [self._prepare_timesheet_data(timesheet) for timesheet in timesheets],
+                    'total': total_count,
+                    'stats': {
+                        'total_hours': total_hours,
+                        'weekly_hours': weekly_hours,
+                        'team_members_count': team_members_count,
+                        'tasks_count': tasks_count
+                    }
                 }
 
             elif operation == 'update':

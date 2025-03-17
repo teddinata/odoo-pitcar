@@ -2006,15 +2006,16 @@ class KPIOverview(http.Controller):
             start_date_utc = start_date.astimezone(pytz.UTC)
             end_date_utc = end_date.astimezone(pytz.UTC)
             
-            # Get job position directly from the employee record first
+            # Check if employee is Head Store directly from job title
             job_title = employee.job_id.name if employee.job_id else "Unknown"
             
-            # Check for special Head Store role
+            # Check for Head Store role
             is_head_store = False
-            if "Head Store" in job_title or "Kepala Bengkel" in job_title:
+            if job_title and ("Head Store" in job_title or "Kepala Bengkel" in job_title):
                 is_head_store = True
+                _logger.info(f"Employee {employee.name} identified as Head Store from job title: {job_title}")
             
-            # Try to get mechanic record if not Head Store
+            # Only try to get mechanic record if not Head Store
             mechanic = None
             if not is_head_store:
                 mechanic = request.env['pitcar.mechanic.new'].sudo().search([
@@ -2024,7 +2025,7 @@ class KPIOverview(http.Controller):
                 if not mechanic:
                     return {'status': 'error', 'message': 'Mechanic record not found'}
                     
-                job_title = mechanic.position_id.name
+                job_title = mechanic.position_id.name if mechanic.position_id else job_title
 
             # Get stored KPI details
             kpi_details = request.env['cs.kpi.detail'].sudo().search([
@@ -3282,17 +3283,22 @@ class KPIOverview(http.Controller):
 
 
             
+            # Handle Head Store KPI
             elif is_head_store or 'Head Store' in job_title or 'Kepala Bengkel' in job_title:
+                _logger.info(f"Processing KPI for Head Store: {employee.name}")
+                
                 # Get all mechanics in the store
                 all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+                _logger.info(f"Found {len(all_mechanics)} mechanics in the store")
                 
                 # Get all orders for the store
                 store_orders = request.env['sale.order'].sudo().search(base_domain)
+                _logger.info(f"Found {len(store_orders)} orders in the period")
                 
                 # Calculate KPI scores for Head Store
-                kpi_scores = []
                 for kpi in head_store_kpi_template:
                     actual = 0
+                    editable_fields = ['weight', 'target']
                     
                     if kpi['type'] == 'revenue_target':
                         # Calculate total revenue vs target
@@ -3515,8 +3521,8 @@ class KPIOverview(http.Controller):
                         else:
                             kpi['measurement'] = 'Data editable - training belum tersedia'
                         
-                        # Mark this KPI as editable
-                        kpi['editable'] = True
+                        # Make this field directly editable for user input
+                        editable_fields.extend(['actual', 'measurement'])
                     
                     # Calculate weighted score
                     weighted_score = actual * (kpi['weight'] / 100)
@@ -3534,7 +3540,7 @@ class KPIOverview(http.Controller):
                         'actual': actual,
                         'achievement': achievement,
                         'weighted_score': weighted_score,
-                        'editable': kpi.get('editable', ['weight', 'target'])
+                        'editable': editable_fields
                     })
 
             # Calculate total score
@@ -3555,7 +3561,7 @@ class KPIOverview(http.Controller):
                         'id': employee.id,
                         'name': employee.name,
                         'position': job_title,
-                        'department': employee.department_id.name
+                        'department': employee.department_id.name if employee.department_id else 'Not Assigned'
                     },
                     'period': {
                         'month': month,

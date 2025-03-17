@@ -2007,7 +2007,8 @@ class KPIOverview(http.Controller):
             end_date_utc = end_date.astimezone(pytz.UTC)
             
             # Check if employee is Head Store directly from job title
-            job_title = employee.job_id.name if employee.job_id else "Unknown"
+            job_title = employee.job_title if employee.job_title else "Unknown"
+            _logger.info(f"Employee job title: {job_title}")
             
             # Check for Head Store role
             is_head_store = False
@@ -2025,7 +2026,9 @@ class KPIOverview(http.Controller):
                 if not mechanic:
                     return {'status': 'error', 'message': 'Mechanic record not found'}
                     
-                job_title = mechanic.position_id.name if mechanic.position_id else job_title
+                # Only update job_title if mechanic record exists and has position_id
+                if mechanic.position_id:
+                    job_title = mechanic.position_id.name
 
             # Get stored KPI details
             kpi_details = request.env['cs.kpi.detail'].sudo().search([
@@ -2297,7 +2300,7 @@ class KPIOverview(http.Controller):
             ]
             
             # Handle regular mechanic KPI
-            if 'Mechanic' in job_title:
+            if 'Mechanic' in job_title and not is_head_store and mechanic:
                 orders = request.env['sale.order'].sudo().search([
                     *base_domain,
                     ('car_mechanic_id_new', 'in', [mechanic.id])
@@ -2602,7 +2605,7 @@ class KPIOverview(http.Controller):
 
 
             # Handle Lead Mechanic KPI
-            elif 'Team Leader' in job_title:
+            elif ('Team Leader' in job_title or 'Lead Mechanic' in job_title) and not is_head_store and mechanic:
                 # Get team members
                 team_members = request.env['pitcar.mechanic.new'].sudo().search([
                     ('leader_id', '=', mechanic.id)
@@ -3287,11 +3290,11 @@ class KPIOverview(http.Controller):
             elif is_head_store or 'Head Store' in job_title or 'Kepala Bengkel' in job_title:
                 _logger.info(f"Processing KPI for Head Store: {employee.name}")
                 
-                # Get all mechanics in the store
+                # Get all mechanics in the store - safely without using mechanic
                 all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
                 _logger.info(f"Found {len(all_mechanics)} mechanics in the store")
                 
-                # Get all orders for the store
+                # Get all orders for the store - without filtering by mechanic
                 store_orders = request.env['sale.order'].sudo().search(base_domain)
                 _logger.info(f"Found {len(store_orders)} orders in the period")
                 
@@ -3356,20 +3359,25 @@ class KPIOverview(http.Controller):
                             actual = 0
                             kpi['measurement'] = "Tidak ada data waktu servis dan penerimaan yang tersedia"
                     
-                    # Add implementations for other KPI types...
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # Calculate mechanic efficiency - similar to team leader calculation but for all mechanics
+                        # Safe way to calculate mechanic efficiency without assuming mechanic exists
                         all_mechanics_data = {}
                         
+                        # Safer iteration over orders and mechanics
                         for order in store_orders:
-                            for mech in order.car_mechanic_id_new:
-                                if mech.id not in all_mechanics_data:
-                                    all_mechanics_data[mech.id] = []
-                                
-                                if order.lead_time_servis:
-                                    all_mechanics_data[mech.id].append(order.lead_time_servis / len(order.car_mechanic_id_new))
+                            # Check if car_mechanic_id_new exists and has values
+                            if order.car_mechanic_id_new:
+                                for mech in order.car_mechanic_id_new:
+                                    if mech and mech.id:  # Ensure mechanic record exists
+                                        if mech.id not in all_mechanics_data:
+                                            all_mechanics_data[mech.id] = []
+                                        
+                                        if order.lead_time_servis:
+                                            # Calculate per-mechanic time safely
+                                            mechanic_count = len(order.car_mechanic_id_new) or 1  # Avoid division by zero
+                                            all_mechanics_data[mech.id].append(order.lead_time_servis / mechanic_count)
                         
-                        # Calculate average times
+                        # Calculate average times for mechanics with data
                         mechanics_with_data = {mech_id: avg_times for mech_id, avg_times in all_mechanics_data.items() if avg_times}
                         
                         if mechanics_with_data:
@@ -3471,7 +3479,7 @@ class KPIOverview(http.Controller):
                             # Group by role/department for detailed measurement
                             role_stats = {}
                             for sampling in sop_samplings:
-                                role = sampling.sop_id.role or 'Other'
+                                role = sampling.sop_id.role or 'Other' if sampling.sop_id else 'Unknown'
                                 if role not in role_stats:
                                     role_stats[role] = {'total': 0, 'passed': 0}
                                 
@@ -3501,7 +3509,7 @@ class KPIOverview(http.Controller):
                                 ('date', '<=', end_date_utc.strftime('%Y-%m-%d'))
                             ])
                             total_days = (end_date - start_date).days + 1
-                            stockout_days = len(set(stockouts.mapped('date')))
+                            stockout_days = len(set(stockouts.mapped('date'))) if stockouts else 0
                             actual = ((total_days - stockout_days) / total_days * 100)
                             kpi['measurement'] = f'Hari tanpa stockout: {total_days - stockout_days} dari {total_days} hari'
                         except Exception as e:

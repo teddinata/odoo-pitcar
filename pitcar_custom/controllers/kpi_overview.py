@@ -980,12 +980,11 @@ class KPIOverview(http.Controller):
                 team_sa = request.env['pitcar.service.advisor'].sudo().search([
                     ('user_id', 'in', team_members.mapped('user_id').ids)
                 ])
-
                 all_orders = request.env['sale.order'].sudo().search(base_domain)
                 
                 # Calculate team metrics
                 non_compliant_orders = all_orders.filtered(
-                    lambda o: not o.sa_mulai_penerimaan or 
+                    lambda o: not o.sa_mulai_penerimaan or
                             not o.sa_cetak_pkb or
                             not o.controller_mulai_servis or
                             not o.controller_selesai
@@ -995,7 +994,6 @@ class KPIOverview(http.Controller):
                 
                 team_revenue = sum(all_orders.mapped('amount_total'))
                 team_target = sum(team_sa.mapped('monthly_target'))
-
                 kpi_scores = []
                 for kpi in lead_cs_kpi_template:
                     actual = 0
@@ -1008,17 +1006,90 @@ class KPIOverview(http.Controller):
                         else:
                             actual = (team_revenue / team_target * 100)  # Persentase pencapaian target revenue
                         measurement = f"Revenue tim: Rp {team_revenue:,.0f} dari target Rp {team_target:,.0f}/bulan"
-
+                    
                     elif kpi['type'] == 'service_efficiency':
-                        # Otomatis ambil data efisiensi waktu dari sistem
-                        orders_with_duration = all_orders.filtered(lambda o: o.duration_deviation is not False)
-                        if orders_with_duration:
-                            avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
-                            actual = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
-                            measurement = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
+                        # Update to use lead_time_penerimaan instead of duration_deviation
+                        orders_with_reception = all_orders.filtered(lambda o: o.lead_time_penerimaan > 0)
+                        
+                        if orders_with_reception:
+                            # Target: reception time <= 15 minutes (0.25 hours)
+                            reception_target = 0.25  # 15 minutes in hours
+                            orders_on_time = len(orders_with_reception.filtered(lambda o: o.lead_time_penerimaan <= reception_target))
+                            total_receptions = len(orders_with_reception)
+                            
+                            # Calculate efficiency percentage
+                            actual = (orders_on_time / total_receptions * 100) if total_receptions > 0 else 0
+                            
+                            # Calculate average reception time
+                            avg_reception_time = sum(orders_with_reception.mapped('lead_time_penerimaan')) / total_receptions
+                            avg_minutes = avg_reception_time * 60  # Convert to minutes
+                            
+                            # Group by Service Advisor for detailed measurement
+                            sa_stats = {}
+                            for order in orders_with_reception:
+                                sa_id = order.service_advisor_id.id if order.service_advisor_id else 0
+                                sa_name = order.service_advisor_id.name if order.service_advisor_id else "Tidak ada SA"
+                                
+                                if sa_id not in sa_stats:
+                                    sa_stats[sa_id] = {
+                                        'name': sa_name,
+                                        'total': 0,
+                                        'on_time': 0,
+                                        'total_time': 0
+                                    }
+                                
+                                sa_stats[sa_id]['total'] += 1
+                                if order.lead_time_penerimaan <= reception_target:
+                                    sa_stats[sa_id]['on_time'] += 1
+                                sa_stats[sa_id]['total_time'] += order.lead_time_penerimaan
+                            
+                            # Format SA-specific stats for HTML display
+                            sa_details = []
+                            for sa_id, stats in sa_stats.items():
+                                if stats['total'] > 0:
+                                    sa_efficiency = (stats['on_time'] / stats['total'] * 100)
+                                    sa_avg_time = (stats['total_time'] / stats['total']) * 60  # Convert to minutes
+                                    sa_details.append({
+                                        'name': stats['name'],
+                                        'efficiency': sa_efficiency,
+                                        'avg_time': sa_avg_time,
+                                        'on_time': stats['on_time'],
+                                        'total': stats['total']
+                                    })
+                            
+                            # Sort by efficiency (descending)
+                            sa_details.sort(key=lambda x: x['efficiency'], reverse=True)
+                            
+                            # Format HTML for the measurement display
+                            measurement = '<div class="kpi-measurement">'
+                            measurement += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
+                            
+                            measurement += '<div class="summary-stats">'
+                            measurement += f'<div>Efisiensi penerimaan tim: {actual:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)</div>'
+                            measurement += f'<div>Rata-rata waktu penerimaan: {avg_minutes:.1f} menit</div>'
+                            measurement += '</div>'
+                            
+                            measurement += '<div class="sa-performance">'
+                            measurement += '<h4>Detail per Service Advisor:</h4>'
+                            measurement += '<table class="sa-table">'
+                            measurement += '<tr><th>Service Advisor</th><th>Efisiensi</th><th>Rata-rata</th><th>Detail</th></tr>'
+                            
+                            for sa in sa_details:
+                                measurement += '<tr>'
+                                measurement += f'<td>{sa["name"]}</td>'
+                                measurement += f'<td>{sa["efficiency"]:.1f}%</td>'
+                                measurement += f'<td>{sa["avg_time"]:.1f} menit</td>'
+                                measurement += f'<td>{sa["on_time"]}/{sa["total"]}</td>'
+                                measurement += '</tr>'
+                            
+                            measurement += '</table>'
+                            measurement += '</div>'
+                            
+                            measurement += '</div>'
                         else:
                             actual = 0
-                            measurement = f"Belum ada data deviasi waktu pada periode {month}/{year}"
+                            measurement = f'<div class="kpi-measurement"><div class="no-data">Belum ada data waktu penerimaan pada periode {month}/{year}</div></div>'
+
 
                     elif kpi['type'] == 'customer_satisfaction':
                         # Filter orders berdasarkan periode yang dipilih
@@ -1208,15 +1279,28 @@ class KPIOverview(http.Controller):
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan"
 
                     elif kpi['type'] == 'service_efficiency':
-                        # Ambil data efisiensi waktu dari sistem
-                        orders_with_duration = orders.filtered(lambda o: o.duration_deviation is not False)
-                        if orders_with_duration:
-                            avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
-                            actual = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
-                            kpi['measurement'] = f"Rata-rata deviasi waktu: {avg_deviation:.1f}%, Efisiensi: {actual:.1f}%"
+                        # Update to use lead_time_penerimaan instead of duration_deviation
+                        orders_with_reception = orders.filtered(lambda o: o.lead_time_penerimaan > 0)
+                        if orders_with_reception:
+                            # Target: reception time <= 15 minutes (0.25 hours)
+                            reception_target = 0.25  # 15 minutes in hours
+                            orders_on_time = len(orders_with_reception.filtered(lambda o: o.lead_time_penerimaan <= reception_target))
+                            total_receptions = len(orders_with_reception)
+                            
+                            # Calculate efficiency percentage
+                            actual = (orders_on_time / total_receptions * 100) if total_receptions > 0 else 0
+                            
+                            # More detailed measurement info
+                            avg_reception_time = sum(orders_with_reception.mapped('lead_time_penerimaan')) / total_receptions
+                            avg_minutes = avg_reception_time * 60  # Convert to minutes
+                            
+                            kpi['measurement'] = (
+                                f"Efisiensi penerimaan: {actual:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
+                                f"Rata-rata waktu penerimaan: {avg_minutes:.1f} menit"
+                            )
                         else:
                             actual = 0
-                            kpi['measurement'] = "Belum ada data deviasi waktu pengerjaan"
+                            kpi['measurement'] = f"Belum ada data waktu penerimaan pada periode {month}/{year}"
                     
                     elif kpi['type'] == 'service_recommendation':
                         # Mengadopsi dari implementasi mekanik
@@ -1243,24 +1327,20 @@ class KPIOverview(http.Controller):
                             ('service_advisor_id', '=', service_advisor.id)  # Hanya order dari SA yang bersangkutan
                         ])
                         
-                        # Ambil order yang memiliki detailed_ratings dan service_rating
                         rated_orders = period_orders.filtered(lambda o: o.detailed_ratings and 'service_rating' in o.detailed_ratings)
                         total_rated_orders = len(rated_orders)
                         
                         if total_rated_orders > 0:
-                            # Hitung rata-rata service_rating
                             total_service_rating = 0
                             for order in rated_orders:
                                 try:
                                     service_rating = int(order.detailed_ratings.get('service_rating', 0))
                                     total_service_rating += service_rating
                                 except (ValueError, TypeError):
-                                    # Skip this order if service_rating cannot be converted to int
                                     continue
                                     
                             avg_service_rating = total_service_rating / total_rated_orders
                             
-                            # Implementasi formula khusus berdasarkan service_rating
                             if avg_service_rating > 4.8:
                                 actual = 120
                             elif avg_service_rating == 4.8:
@@ -1303,14 +1383,11 @@ class KPIOverview(http.Controller):
                             ('sampling_type', '=', 'lead')  # Filter untuk sampel dari Leader
                         ])
                         
-                        # Hitung total sampling dan pelanggaran
                         total_samplings = len(sa_samplings)
                         sop_violations = len(sa_samplings.filtered(lambda s: s.result == 'fail'))
                         
-                        # Hitung actual score
                         actual = ((total_samplings - sop_violations) / total_samplings * 100) if total_samplings else 100
                         
-                        # Format measurement message
                         if total_samplings > 0:
                             kpi['measurement'] = f"Sampling sesuai SOP (Leader): {total_samplings - sop_violations} dari {total_samplings} sampling ({actual:.1f}%)"
                         else:
@@ -2130,6 +2207,82 @@ class KPIOverview(http.Controller):
                     'include_in_calculation': False
                 }
             ]
+
+             # Add new KPI template for Head Store position
+            head_store_kpi_template = [
+                {
+                    'no': 1,
+                    'name': 'Jumlah omzet pitcar service sesuai target',
+                    'type': 'revenue_target',
+                    'weight': 15,
+                    'target': 100,
+                    'measurement': 'Jumlah omzet / target omzet',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 2,
+                    'name': '% rata-rata waktu servis & penanganan customer yang sesuai target waktu',
+                    'type': 'service_time',
+                    'weight': 10,
+                    'target': 80,
+                    'measurement': '% waktu servis & penanganan yang tepat waktu / total sampel',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 3,
+                    'name': '% waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
+                    'type': 'mechanic_efficiency',
+                    'weight': 15,
+                    'target': 80,
+                    'measurement': '% pengerjaan mekanik waktu sesuai rata-rata / total mekanik',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 4,
+                    'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
+                    'type': 'customer_satisfaction',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': 'Formula khusus: > 4,8 = 120%, = 4,8 = 100%, 4,6-4,7 = 50%, < 4,6 = 0%',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 5,
+                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
+                    'type': 'complaint_handling',
+                    'weight': 10,
+                    'target': 95,
+                    'measurement': 'Jumlah customer puas penanganan komplain / jumlah komplain',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 6,
+                    'name': '% sampel tim operasional bekerja sesuai alur SOP',
+                    'type': 'sop_compliance',
+                    'weight': 15,
+                    'target': 95,
+                    'measurement': '% individu sesuai SOP / sampel',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 7,
+                    'name': 'Jumlah hari stok part tersedia (tidak habis)',
+                    'type': 'parts_availability',
+                    'weight': 10,
+                    'target': 90,
+                    'measurement': 'Jumlah hari stok part tidak habis / jumlah hari',
+                    'include_in_calculation': True
+                },
+                {
+                    'no': 8,
+                    'name': '% karyawan mengikuti program pengembangan sesuai target yang ditetapkan',
+                    'type': 'employee_development',
+                    'weight': 10,
+                    'target': 80,
+                    'measurement': '% karyawan mengikuti program / total program karyawan',
+                    'include_in_calculation': True
+                }
+            ]
             
             # Handle regular mechanic KPI
             if 'Mechanic' in job_title:
@@ -2170,7 +2323,7 @@ class KPIOverview(http.Controller):
                             actual = (satisfied_orders / total_rated_orders * 100) if total_rated_orders else 100
                             kpi['measurement'] = f"Order dengan rating: {total_rated_orders}, Customer puas: {satisfied_orders}, Komplain: {complaints} ({actual:.1f}%)"
                         else:
-                            actual = 0
+                            actual = 100
                             kpi['measurement'] = f"Belum ada rating post-service pada periode {month}/{year}"
                         
                     elif kpi['type'] == 'productivity':
@@ -3117,6 +3270,259 @@ class KPIOverview(http.Controller):
                     })
 
 
+            
+            elif 'Head Store' in job_title or 'Kepala Bengkel' in job_title:
+                # Get all mechanics in the store
+                all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+                
+                # Get all orders for the store
+                store_orders = request.env['sale.order'].sudo().search(base_domain)
+                
+                # Calculate KPI scores for Head Store
+                kpi_scores = []
+                for kpi in head_store_kpi_template:
+                    actual = 0
+                    
+                    if kpi['type'] == 'revenue_target':
+                        # Calculate total revenue vs target
+                        total_revenue = sum(store_orders.mapped('amount_total'))
+                        monthly_target = 550000000  # Fixed target: 550 million
+                        
+                        actual = (total_revenue / monthly_target * 100) if monthly_target > 0 else 0
+                        formatted_revenue = "{:,.0f}".format(total_revenue)
+                        formatted_target = "{:,.0f}".format(monthly_target)
+                        kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan ({actual:.1f}%)"
+                    
+                    elif kpi['type'] == 'service_time':
+                        # Calculate service time compliance - combines service efficiency and reception time
+                        
+                        # Part 1: Service Efficiency (duration_deviation)
+                        orders_with_duration = store_orders.filtered(lambda o: o.duration_deviation is not False)
+                        if orders_with_duration:
+                            avg_deviation = abs(sum(orders_with_duration.mapped('duration_deviation'))) / len(orders_with_duration)
+                            service_efficiency = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
+                        else:
+                            service_efficiency = 0
+                        
+                        # Part 2: Reception Time (lead_time_penerimaan)
+                        orders_with_reception = store_orders.filtered(lambda o: o.lead_time_penerimaan > 0)
+                        if orders_with_reception:
+                            # Target: reception time <= 15 minutes (0.25 hours)
+                            reception_target = 0.25  # 15 minutes in hours
+                            orders_on_time = len(orders_with_reception.filtered(lambda o: o.lead_time_penerimaan <= reception_target))
+                            total_receptions = len(orders_with_reception)
+                            reception_efficiency = (orders_on_time / total_receptions * 100) if total_receptions > 0 else 0
+                        else:
+                            reception_efficiency = 0
+                        
+                        # Combine both metrics (50% weight each)
+                        if orders_with_duration and orders_with_reception:
+                            actual = (service_efficiency * 0.5) + (reception_efficiency * 0.5)
+                            kpi['measurement'] = (
+                                f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
+                                f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
+                                f"Total efisiensi waktu: {actual:.1f}%"
+                            )
+                        elif orders_with_duration:
+                            actual = service_efficiency
+                            kpi['measurement'] = (
+                                f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
+                                f"Tidak ada data waktu penerimaan"
+                            )
+                        elif orders_with_reception:
+                            actual = reception_efficiency
+                            kpi['measurement'] = (
+                                f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
+                                f"Tidak ada data deviasi waktu pengerjaan"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Tidak ada data waktu servis dan penerimaan yang tersedia"
+                    
+                    elif kpi['type'] == 'mechanic_efficiency':
+                        # Calculate mechanic efficiency - similar to team leader calculation but for all mechanics
+                        all_mechanics_data = {}
+                        
+                        for order in store_orders:
+                            for mech in order.car_mechanic_id_new:
+                                if mech.id not in all_mechanics_data:
+                                    all_mechanics_data[mech.id] = []
+                                
+                                if order.lead_time_servis:
+                                    all_mechanics_data[mech.id].append(order.lead_time_servis / len(order.car_mechanic_id_new))
+                        
+                        # Calculate average times
+                        mechanics_with_data = {mech_id: avg_times for mech_id, avg_times in all_mechanics_data.items() if avg_times}
+                        
+                        if mechanics_with_data:
+                            mechanic_averages = {mech_id: sum(times)/len(times) for mech_id, times in mechanics_with_data.items()}
+                            
+                            # Calculate overall average
+                            overall_avg = sum(mechanic_averages.values()) / len(mechanic_averages)
+                            
+                            # Calculate how many mechanics are within 5% of average
+                            upper_limit = overall_avg * 1.05
+                            lower_limit = overall_avg * 0.95
+                            
+                            mechanics_in_range = sum(1 for avg in mechanic_averages.values() 
+                                                    if lower_limit <= avg <= upper_limit)
+                            
+                            actual = (mechanics_in_range / len(mechanic_averages) * 100)
+                            
+                            kpi['measurement'] = (
+                                f"Mekanik dalam rentang waktu rata-rata (±5%): {mechanics_in_range}/{len(mechanic_averages)}\n"
+                                f"Rata-rata waktu pengerjaan: {overall_avg:.1f} jam\n"
+                                f"Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam"
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Tidak ada data pengerjaan mekanik yang tersedia"
+                    
+                    elif kpi['type'] == 'customer_satisfaction':
+                        # Calculate customer satisfaction rating
+                        rated_orders = store_orders.filtered(lambda o: o.customer_rating)
+                        
+                        if rated_orders:
+                            # Convert ratings to numeric values
+                            ratings = []
+                            for order in rated_orders:
+                                try:
+                                    rating = float(order.customer_rating)
+                                    ratings.append(rating)
+                                except (ValueError, TypeError):
+                                    continue
+                            
+                            if ratings:
+                                avg_rating = sum(ratings) / len(ratings)
+                                
+                                # Apply special formula as specified
+                                if avg_rating > 4.8:
+                                    actual = 120
+                                elif avg_rating == 4.8:
+                                    actual = 100
+                                elif 4.6 <= avg_rating <= 4.7:
+                                    actual = 50
+                                else:  # < 4.6
+                                    actual = 0
+                                
+                                kpi['measurement'] = f"Rating rata-rata: {avg_rating:.1f}/5 dari {len(ratings)} ulasan"
+                            else:
+                                actual = 0
+                                kpi['measurement'] = "Tidak ada data rating yang valid"
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Tidak ada order dengan rating customer"
+                    
+                    elif kpi['type'] == 'complaint_handling':
+                        # Calculate complaint handling effectiveness
+                        complaints = store_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                        total_complaints = len(complaints)
+                        
+                        if total_complaints > 0:
+                            # Check if complaints are resolved within 3 days
+                            resolved_on_time = 0
+                            for complaint in complaints:
+                                if complaint.complaint_date and complaint.resolution_date:
+                                    complaint_date = fields.Datetime.from_string(complaint.complaint_date)
+                                    resolution_date = fields.Datetime.from_string(complaint.resolution_date)
+                                    days_to_resolve = (resolution_date - complaint_date).days
+                                    
+                                    if days_to_resolve <= 3:
+                                        resolved_on_time += 1
+                            
+                            actual = (resolved_on_time / total_complaints * 100)
+                            kpi['measurement'] = f"Komplain diselesaikan dalam 3 hari: {resolved_on_time}/{total_complaints} ({actual:.1f}%)"
+                        else:
+                            actual = 100  # No complaints = perfect score
+                            kpi['measurement'] = "Tidak ada komplain dalam periode ini"
+                    
+                    elif kpi['type'] == 'sop_compliance':
+                        # Calculate SOP compliance for all operational staff
+                        sop_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                            ('state', '=', 'done')
+                        ])
+                        
+                        if sop_samplings:
+                            total_samplings = len(sop_samplings)
+                            passed_samplings = len(sop_samplings.filtered(lambda s: s.result == 'pass'))
+                            
+                            actual = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                            
+                            # Group by role/department for detailed measurement
+                            role_stats = {}
+                            for sampling in sop_samplings:
+                                role = sampling.sop_id.role or 'Other'
+                                if role not in role_stats:
+                                    role_stats[role] = {'total': 0, 'passed': 0}
+                                
+                                role_stats[role]['total'] += 1
+                                if sampling.result == 'pass':
+                                    role_stats[role]['passed'] += 1
+                            
+                            # Format role-specific stats
+                            role_details = []
+                            for role, stats in role_stats.items():
+                                role_compliance = (stats['passed'] / stats['total'] * 100) if stats['total'] > 0 else 0
+                                role_details.append(f"{role.capitalize()}: {stats['passed']}/{stats['total']} ({role_compliance:.1f}%)")
+                            
+                            kpi['measurement'] = (
+                                f"Kepatuhan SOP keseluruhan: {passed_samplings}/{total_samplings} ({actual:.1f}%)\n\n"
+                                f"Detail per departemen:\n" + "\n".join([f"• {detail}" for detail in role_details])
+                            )
+                        else:
+                            actual = 0
+                            kpi['measurement'] = "Tidak ada sampling SOP dalam periode ini"
+                    
+                    elif kpi['type'] == 'parts_availability':
+                        # Calculate parts availability using stock.mandatory.stockout model
+                        try:
+                            stockouts = request.env['stock.mandatory.stockout'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d'))
+                            ])
+                            total_days = (end_date - start_date).days + 1
+                            stockout_days = len(set(stockouts.mapped('date')))
+                            actual = ((total_days - stockout_days) / total_days * 100)
+                            kpi['measurement'] = f'Hari tanpa stockout: {total_days - stockout_days} dari {total_days} hari'
+                        except Exception as e:
+                            _logger.error(f"Error calculating parts availability: {str(e)}")
+                            actual = 0
+                            kpi['measurement'] = f"Error: {str(e)}"
+                    
+                    elif kpi['type'] == 'employee_development':
+                        # Make this field editable since the training feature isn't available yet
+                        actual = 0
+                        
+                        # Check if there's a stored value in kpi_values
+                        if 'employee_development' in kpi_values:
+                            stored_kpi = kpi_values['employee_development']
+                            actual = stored_kpi.get('actual', 0)
+                            kpi['measurement'] = stored_kpi.get('measurement', 'Data editable - training belum tersedia')
+                        else:
+                            kpi['measurement'] = 'Data editable - training belum tersedia'
+                        
+                        # Mark this KPI as editable
+                        kpi['editable'] = True
+                    
+                    # Calculate weighted score
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Set achievement same as weighted_score for frontend compatibility
+                    achievement = weighted_score
+                    
+                    kpi_scores.append({
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': kpi['measurement'],
+                        'actual': actual,
+                        'achievement': achievement,
+                        'weighted_score': weighted_score
+                    })
             # Calculate total score
             # total_weight = sum(kpi['weight'] for kpi in kpi_scores)
             # total_score = sum(kpi['weighted_score'] for kpi in kpi_scores)

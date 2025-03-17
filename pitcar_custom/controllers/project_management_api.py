@@ -154,25 +154,90 @@ class TeamProjectAPI(http.Controller):
             _logger.error(f"Error in manage_projects: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
+    # @http.route('/web/v2/team/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
+    # def get_projects(self, **kw):
+    #     """Mengambil daftar proyek dengan filter."""
+    #     try:
+    #         domain = []
+    #         if kw.get('department_id'):
+    #             domain.append(('department_id', '=', int(kw['department_id'])))
+    #         if kw.get('state'):
+    #             domain.append(('state', '=', kw['state']))
+    #         if kw.get('date_start'):
+    #             domain.append(('date_start', '>=', kw['date_start']))
+    #         if kw.get('date_end'):
+    #             domain.append(('date_end', '<=', kw['date_end']))
+    #         limit = kw.get('limit', 10)
+    #         offset = kw.get('offset', 0)
+
+    #         projects = request.env['team.project'].sudo().search(domain, limit=limit, offset=offset)
+    #         total = request.env['team.project'].sudo().search_count(domain)
+
+    #         return {
+    #             'status': 'success',
+    #             'data': [self._prepare_project_data(project) for project in projects],
+    #             'total': total,
+    #             'limit': limit,
+    #             'offset': offset
+    #         }
+    #     except Exception as e:
+    #         _logger.error(f"Error in get_projects: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
+    
     @http.route('/web/v2/team/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
     def get_projects(self, **kw):
         """Mengambil daftar proyek dengan filter."""
         try:
             domain = []
+            
+            # Filter departemen
             if kw.get('department_id'):
                 domain.append(('department_id', '=', int(kw['department_id'])))
+            
+            # Filter status
             if kw.get('state'):
                 domain.append(('state', '=', kw['state']))
-            if kw.get('date_start'):
-                domain.append(('date_start', '>=', kw['date_start']))
-            if kw.get('date_end'):
-                domain.append(('date_end', '<=', kw['date_end']))
-            limit = kw.get('limit', 10)
-            offset = kw.get('offset', 0)
-
+            
+            # Filter tanggal - ubah logika untuk menangkap proyek yang overlap dengan rentang
+            if kw.get('date_start') and kw.get('date_end'):
+                # Proyek yang berakhir setelah date_start dan dimulai sebelum date_end
+                # Ini menangkap semua proyek yang overlap dengan rentang tanggal
+                domain.append('|')
+                domain.append('&')
+                domain.append(('date_start', '<=', kw['date_end']))  # Proyek dimulai sebelum atau pada tanggal akhir filter
+                domain.append(('date_end', '>=', kw['date_start']))  # Proyek berakhir setelah atau pada tanggal awal filter
+                
+                # Atau proyek yang belum memiliki tanggal akhir (date_end = False)
+                domain.append('&')
+                domain.append(('date_start', '<=', kw['date_end']))
+                domain.append(('date_end', '=', False))
+            
+            # Jika hanya date_start yang diisi
+            elif kw.get('date_start'):
+                domain.append(('date_end', '>=', kw['date_start']))  # Proyek yang berakhir setelah date_start
+            
+            # Jika hanya date_end yang diisi
+            elif kw.get('date_end'):
+                domain.append(('date_start', '<=', kw['date_end']))  # Proyek yang dimulai sebelum date_end
+            
+            # Filter manager proyek jika ada
+            if kw.get('project_manager_id'):
+                domain.append(('project_manager_id', '=', int(kw['project_manager_id'])))
+            
+            # Pagination
+            limit = int(kw.get('limit', 10))
+            offset = int(kw.get('offset', 0))
+            
+            # Tambahkan logging untuk debugging
+            _logger.info(f"Project filter domain: {domain}")
+            
+            # Cari proyek dengan domain filter
             projects = request.env['team.project'].sudo().search(domain, limit=limit, offset=offset)
             total = request.env['team.project'].sudo().search_count(domain)
-
+            
+            # Log jumlah hasil
+            _logger.info(f"Found {len(projects)} projects matching the filter criteria")
+            
             return {
                 'status': 'success',
                 'data': [self._prepare_project_data(project) for project in projects],

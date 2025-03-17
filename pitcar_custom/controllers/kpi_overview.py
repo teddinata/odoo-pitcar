@@ -3464,42 +3464,71 @@ class KPIOverview(http.Controller):
                     
                     elif kpi['type'] == 'sop_compliance':
                         # Calculate SOP compliance for all operational staff
-                        sop_samplings = request.env['pitcar.sop.sampling'].sudo().search([
-                            ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
-                            ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
-                            ('state', '=', 'done')
-                        ])
-                        
-                        if sop_samplings:
-                            total_samplings = len(sop_samplings)
-                            passed_samplings = len(sop_samplings.filtered(lambda s: s.result == 'pass'))
+                        try:
+                            # Add additional logging
+                            _logger.info(f"Calculating SOP compliance for Head Store: {employee.name}")
                             
-                            actual = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                            # Filter samplings to ensure they have a valid sop_id to avoid NoneType errors
+                            sop_samplings = request.env['pitcar.sop.sampling'].sudo().search([
+                                ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                                ('date', '<=', end_date_utc.strftime('%Y-%m-%d')),
+                                ('state', '=', 'done'),
+                                ('sop_id', '!=', False)  # Ensure sop_id exists
+                            ])
                             
-                            # Group by role/department for detailed measurement
-                            role_stats = {}
-                            for sampling in sop_samplings:
-                                role = sampling.sop_id.role or 'Other' if sampling.sop_id else 'Unknown'
-                                if role not in role_stats:
-                                    role_stats[role] = {'total': 0, 'passed': 0}
+                            _logger.info(f"Found {len(sop_samplings)} valid SOP samplings in the period")
+                            
+                            if sop_samplings:
+                                total_samplings = len(sop_samplings)
+                                passed_samplings = len(sop_samplings.filtered(lambda s: s.result == 'pass'))
                                 
-                                role_stats[role]['total'] += 1
-                                if sampling.result == 'pass':
-                                    role_stats[role]['passed'] += 1
-                            
-                            # Format role-specific stats
-                            role_details = []
-                            for role, stats in role_stats.items():
-                                role_compliance = (stats['passed'] / stats['total'] * 100) if stats['total'] > 0 else 0
-                                role_details.append(f"{role.capitalize()}: {stats['passed']}/{stats['total']} ({role_compliance:.1f}%)")
-                            
-                            kpi['measurement'] = (
-                                f"Kepatuhan SOP keseluruhan: {passed_samplings}/{total_samplings} ({actual:.1f}%)\n\n"
-                                f"Detail per departemen:\n" + "\n".join([f"• {detail}" for detail in role_details])
-                            )
-                        else:
+                                actual = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                                
+                                # Group by role/department for detailed measurement
+                                role_stats = {}
+                                for sampling in sop_samplings:
+                                    # Extra safeguard to ensure sop_id exists for this sampling
+                                    if not sampling.sop_id:
+                                        continue
+                                        
+                                    # Safely access role with default fallback
+                                    role = sampling.sop_id.role or 'Other'
+                                    
+                                    if role not in role_stats:
+                                        role_stats[role] = {'total': 0, 'passed': 0}
+                                    
+                                    role_stats[role]['total'] += 1
+                                    if sampling.result == 'pass':
+                                        role_stats[role]['passed'] += 1
+                                
+                                # Format role-specific stats
+                                role_details = []
+                                for role, stats in role_stats.items():
+                                    # Get readable role name from selection field
+                                    role_name = role.capitalize()
+                                    try:
+                                        role_selection = dict(request.env['pitcar.sop']._fields['role'].selection)
+                                        if role in role_selection:
+                                            role_name = role_selection[role]
+                                    except Exception:
+                                        # If we can't get role name, just use the role code
+                                        pass
+                                    
+                                    role_compliance = (stats['passed'] / stats['total'] * 100) if stats['total'] > 0 else 0
+                                    role_details.append(f"{role_name}: {stats['passed']}/{stats['total']} ({role_compliance:.1f}%)")
+                                
+                                kpi['measurement'] = (
+                                    f"Kepatuhan SOP keseluruhan: {passed_samplings}/{total_samplings} ({actual:.1f}%)\n\n"
+                                    f"Detail per departemen:\n" + "\n".join([f"• {detail}" for detail in role_details])
+                                )
+                            else:
+                                actual = 0
+                                kpi['measurement'] = "Tidak ada sampling SOP dalam periode ini"
+                        except Exception as e:
+                            _logger.error(f"Error calculating SOP compliance: {str(e)}")
+                            _logger.error(f"Error traceback: {traceback.format_exc()}")
                             actual = 0
-                            kpi['measurement'] = "Tidak ada sampling SOP dalam periode ini"
+                            kpi['measurement'] = f"Terjadi kesalahan: {str(e)}"
                     
                     elif kpi['type'] == 'parts_availability':
                         # Calculate parts availability using stock.mandatory.stockout model

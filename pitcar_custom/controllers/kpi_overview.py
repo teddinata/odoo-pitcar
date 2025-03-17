@@ -2006,15 +2006,25 @@ class KPIOverview(http.Controller):
             start_date_utc = start_date.astimezone(pytz.UTC)
             end_date_utc = end_date.astimezone(pytz.UTC)
             
-            # Get job position
-            mechanic = request.env['pitcar.mechanic.new'].sudo().search([
-                ('employee_id', '=', employee.id)
-            ], limit=1)
+            # Get job position directly from the employee record first
+            job_title = employee.job_id.name if employee.job_id else "Unknown"
             
-            if not mechanic:
-                return {'status': 'error', 'message': 'Mechanic record not found'}
+            # Check for special Head Store role
+            is_head_store = False
+            if "Head Store" in job_title or "Kepala Bengkel" in job_title:
+                is_head_store = True
+            
+            # Try to get mechanic record if not Head Store
+            mechanic = None
+            if not is_head_store:
+                mechanic = request.env['pitcar.mechanic.new'].sudo().search([
+                    ('employee_id', '=', employee.id)
+                ], limit=1)
                 
-            job_title = mechanic.position_id.name
+                if not mechanic:
+                    return {'status': 'error', 'message': 'Mechanic record not found'}
+                    
+                job_title = mechanic.position_id.name
 
             # Get stored KPI details
             kpi_details = request.env['cs.kpi.detail'].sudo().search([
@@ -2209,6 +2219,7 @@ class KPIOverview(http.Controller):
             ]
 
              # Add new KPI template for Head Store position
+            # Add KPI template for Head Store position
             head_store_kpi_template = [
                 {
                     'no': 1,
@@ -3271,7 +3282,7 @@ class KPIOverview(http.Controller):
 
 
             
-            elif 'Head Store' in job_title or 'Kepala Bengkel' in job_title:
+            elif is_head_store or 'Head Store' in job_title or 'Kepala Bengkel' in job_title:
                 # Get all mechanics in the store
                 all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
                 
@@ -3339,6 +3350,7 @@ class KPIOverview(http.Controller):
                             actual = 0
                             kpi['measurement'] = "Tidak ada data waktu servis dan penerimaan yang tersedia"
                     
+                    # Add implementations for other KPI types...
                     elif kpi['type'] == 'mechanic_efficiency':
                         # Calculate mechanic efficiency - similar to team leader calculation but for all mechanics
                         all_mechanics_data = {}
@@ -3521,8 +3533,10 @@ class KPIOverview(http.Controller):
                         'measurement': kpi['measurement'],
                         'actual': actual,
                         'achievement': achievement,
-                        'weighted_score': weighted_score
+                        'weighted_score': weighted_score,
+                        'editable': kpi.get('editable', ['weight', 'target'])
                     })
+
             # Calculate total score
             # total_weight = sum(kpi['weight'] for kpi in kpi_scores)
             # total_score = sum(kpi['weighted_score'] for kpi in kpi_scores)

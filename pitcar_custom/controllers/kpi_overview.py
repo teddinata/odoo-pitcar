@@ -6739,41 +6739,15 @@ class KPIOverview(http.Controller):
                         ('car_mechanic_id_new', 'in', team_members.ids + [mechanic.id])  # Include leader
                     ])
 
-                    # Unit handling efficiency
-                    total_units = len(team_orders)
-                    
-                    # Service quality
-                    satisfied_customers = len(team_orders.filtered(lambda o: o.customer_rating not in ['1', '2']))
-                    
-                    # Customer complaints
-                    complaints = len(team_orders.filtered(lambda o: o.customer_rating in ['1', '2']))
-                    resolved_complaints = len(team_orders.filtered(lambda o: 
-                        o.customer_rating in ['1', '2'] and o.complaint_status == 'solved'
-                    ))
+                    # Initialize KPI scores array for team leader
+                    kpi_scores = []
 
-                    # Team productivity
-                    team_revenue = sum(team_orders.mapped('amount_total'))
-                    team_target = (len(team_members)) * 64000000  # +1 untuk leader
-                    
-                    # SOP compliance
-                    sop_violations = len(team_orders.filtered(lambda o: 
-                        o.sop_sampling_ids.filtered(lambda s: s.result == 'fail')
-                    ))
-                    
-                    # Attendance metrics for team
-                    attendance_domain = [
-                        ('check_in', '>=', start_date.strftime('%Y-%m-%d %H:%M:%S')),
-                        ('check_in', '<=', end_date.strftime('%Y-%m-%d %H:%M:%S')),
-                        ('employee_id', 'in', team_members.mapped('employee_id').ids + [employee.id])
-                    ]
-                    team_attendances = request.env['hr.attendance'].sudo().search(attendance_domain)
-                    late_count = sum(1 for att in team_attendances if att.is_late)
-
+                    # Get KPI template for team leader
                     kpi_template = self._get_leader_kpi_template()
                     
                     for kpi in kpi_template:
                         actual = 0
-                        measurement = kpi['measurement']
+                        measurement = kpi.get('measurement', '')
                         
                         # Calculate KPI values based on type
                         if kpi['type'] == 'flat_rate':
@@ -7054,27 +7028,31 @@ class KPIOverview(http.Controller):
                             
                             actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
                             measurement = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
-                    # Calculate weighted score
-                    weighted_score = actual * (kpi['weight'] / 100)
-                    
-                    # Add to KPI scores
-                    kpi_scores.append({
-                        'no': kpi['no'],
-                        'name': kpi['name'],
-                        'type': kpi['type'],
-                        'weight': kpi['weight'],
-                        'target': kpi['target'],
-                        'measurement': measurement,
-                        'actual': actual,
-                        'achievement': weighted_score,
-                        'weighted_score': weighted_score
-                    })
+                        
+                        # Add KPI score to the array - THIS WAS MISSING
+                        weighted_score = actual * (kpi['weight'] / 100)
+                        achievement = weighted_score
+                        
+                        kpi_scores.append({
+                            'no': kpi.get('no', 0),
+                            'name': kpi['name'],
+                            'type': kpi['type'],
+                            'weight': kpi['weight'],
+                            'target': kpi['target'],
+                            'measurement': measurement,
+                            'actual': actual,
+                            'achievement': achievement,
+                            'weighted_score': weighted_score
+                        })
                 
                 # Regular mechanic logic (existing code remains)
                 else:
                     # Regular Mechanic KPI calculations
-                    # [existing implementation for Regular Mechanic]
+                    # Get KPI template for mechanic
                     kpi_template = self._get_mechanic_kpi_template()
+                    
+                    # Initialize KPI scores array for mechanic
+                    kpi_scores = []
                     
                     # Get orders for the mechanic
                     orders = request.env['sale.order'].sudo().search([
@@ -7084,7 +7062,7 @@ class KPIOverview(http.Controller):
                     
                     for kpi in kpi_template:
                         actual = 0
-                        measurement = kpi['measurement']
+                        measurement = kpi.get('measurement', '')
                         
                         # Calculate KPI values based on type
                         if kpi['type'] == 'flat_rate':
@@ -7233,22 +7211,23 @@ class KPIOverview(http.Controller):
                             late_count = sum(1 for att in attendances if att.is_late)
                             actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
                             measurement = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
-                    
-                    # Calculate weighted score
-                    weighted_score = actual * (kpi['weight'] / 100)
-                    
-                    # Add to KPI scores
-                    kpi_scores.append({
-                        'no': kpi['no'],
-                        'name': kpi['name'],
-                        'type': kpi['type'],
-                        'weight': kpi['weight'],
-                        'target': kpi['target'],
-                        'measurement': measurement,
-                        'actual': actual,
-                        'achievement': weighted_score,
-                        'weighted_score': weighted_score
-                    })
+                        
+                        # Add KPI score to the array - THIS WAS MISSING
+                        weighted_score = actual * (kpi['weight'] / 100)
+                        achievement = weighted_score
+                        
+                        kpi_scores.append({
+                            'no': kpi.get('no', 0),
+                            'name': kpi['name'],
+                            'type': kpi['type'],
+                            'weight': kpi['weight'],
+                            'target': kpi['target'],
+                            'measurement': measurement,
+                            'actual': actual,
+                            'achievement': achievement,
+                            'weighted_score': weighted_score
+                        })
+
                 
                 # Calculate summary
                 total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))

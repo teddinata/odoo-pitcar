@@ -1,67 +1,211 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <template id="report_cs_kpi">
         <t t-call="web.html_container">
-            <div class="header">
-                <h3 class="text-center">Customer Support KPI Report</h3>
-                <h4 class="text-center"><t t-esc="period"/></h4>
-                <p class="text-center">Generated on: <t t-esc="current_date"/></p>
-            </div>
-            <div class="article">
-                <t t-foreach="cs_employees" t-as="employee_data">
-                    <div style="page-break-inside: avoid; margin-bottom: 30px;">
-                        <!-- Employee info section -->
-                        <div class="row mt-3 mb-2">
-                            <div class="col-6">
-                                <h4><t t-esc="employee_data['employee']['name']"/></h4>
-                                <p>Position: <t t-esc="employee_data['employee']['position']"/></p>
-                                <p>Department: <t t-esc="employee_data['employee']['department']"/></p>
-                            </div>
-                            <div class="col-6 text-right">
-                                <h5>Total Score: <t t-esc="'%.2f' % employee_data['summary']['total_score']"/></h5>
-                                <p>Status: <t t-esc="employee_data['summary']['achievement_status']"/></p>
-                            </div>
+            <t t-call="web.external_layout">
+                <div class="page">
+                    <!-- Custom CSS untuk styling laporan -->
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            font-size: 12px;
+                        }
+                        .page-header {
+                            text-align: center;
+                            margin-bottom: 20px;
+                        }
+                        .page-title {
+                            font-size: 18px;
+                            font-weight: bold;
+                            margin-bottom: 5px;
+                        }
+                        .page-subtitle {
+                            font-size: 14px;
+                            margin-bottom: 10px;
+                        }
+                        .cs-header {
+                            background-color: #E6F2FF; /* Warna berbeda dari mechanic untuk pembedaan */
+                            padding: 10px;
+                            margin-top: 20px;
+                            margin-bottom: 10px;
+                            border: 1px solid #A1C6EA;
+                            border-radius: 5px;
+                        }
+                        .cs-name {
+                            font-size: 14px;
+                            font-weight: bold;
+                        }
+                        .cs-info {
+                            margin-bottom: 5px;
+                        }
+                        table.kpi-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-bottom: 20px;
+                        }
+                        .kpi-table th, .kpi-table td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: left;
+                        }
+                        .kpi-table th {
+                            background-color: #1E88E5; /* Warna berbeda dari mechanic */
+                            color: white;
+                            font-weight: bold;
+                            text-align: center;
+                        }
+                        .kpi-table tr:nth-child(even) {
+                            background-color: #f9f9f9;
+                        }
+                        .kpi-table tr.summary {
+                            background-color: #90CAF9; /* Warna berbeda dari mechanic */
+                            font-weight: bold;
+                        }
+                        .numeric {
+                            text-align: center;
+                        }
+                        .achievement-good {
+                            background-color: #C6EFCE;
+                            color: #006100;
+                        }
+                        .achievement-medium {
+                            background-color: #FFEB9C;
+                            color: #9C5700;
+                        }
+                        .achievement-poor {
+                            background-color: #FFC7CE;
+                            color: #9C0006;
+                        }
+                        .summary-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 30px;
+                        }
+                        .summary-table th, .summary-table td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: center;
+                        }
+                        .summary-table th {
+                            background-color: #1E88E5; /* Warna berbeda dari mechanic */
+                            color: white;
+                            font-weight: bold;
+                        }
+                        .summary-title {
+                            font-size: 16px;
+                            font-weight: bold;
+                            margin-top: 30px;
+                            margin-bottom: 10px;
+                            text-align: center;
+                        }
+                        .page-footer {
+                            font-size: 10px;
+                            text-align: center;
+                            margin-top: 30px;
+                            font-style: italic;
+                        }
+                    </style>
+                    
+                    <!-- Report Header -->
+                    <div class="page-header">
+                        <div class="page-title">CUSTOMER SUPPORT KPI REPORT</div>
+                        <div class="page-subtitle">Period: <t t-esc="period"/></div>
+                        <div class="page-subtitle">Generated on: <t t-esc="current_date"/></div>
+                    </div>
+                    
+                    <!-- For each CS employee, create a section -->
+                    <t t-foreach="cs_employees" t-as="employee">
+                        <div class="page-break" t-if="not employee_first">
+                            <div style="page-break-before: always;"></div>
                         </div>
                         
-                        <!-- KPI table -->
-                        <table class="table table-sm table-bordered">
+                        <!-- CS Employee Header -->
+                        <div class="cs-header">
+                            <div class="cs-name"><t t-esc="employee['employee']['name']"/> - <t t-esc="employee['employee']['position']"/></div>
+                            <div class="cs-info">Department: <t t-esc="employee['employee']['department']"/></div>
+                        </div>
+                        
+                        <!-- KPI Table -->
+                        <table class="kpi-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 5%">No</th>
-                                    <th style="width: 30%">KPI</th>
-                                    <th style="width: 5%">Bobot</th>
-                                    <th style="width: 5%">Target</th>
-                                    <th style="width: 5%">Actual</th>
-                                    <th style="width: 5%">Score</th>
-                                    <th style="width: 45%">Measurement</th>
+                                    <th style="width: 5%;">No</th>
+                                    <th style="width: 30%;">KPI</th>
+                                    <th style="width: 8%;">Bobot (%)</th>
+                                    <th style="width: 8%;">Target</th>
+                                    <th style="width: 8%;">Actual (%)</th>
+                                    <th style="width: 10%;">Achievement</th>
+                                    <th style="width: 31%;">Formula/Measurement</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <t t-foreach="employee_data['kpi_scores']" t-as="kpi">
+                                <t t-foreach="employee['kpi_scores']" t-as="kpi">
                                     <tr>
-                                        <td><t t-esc="kpi['no']"/></td>
+                                        <td class="numeric"><t t-esc="kpi['no']"/></td>
                                         <td><t t-esc="kpi['name']"/></td>
-                                        <td class="text-center"><t t-esc="'%.1f' % kpi['weight']"/></td>
-                                        <td class="text-center"><t t-esc="'%.1f' % kpi['target']"/></td>
-                                        <td class="text-center"><t t-esc="'%.1f' % kpi['actual']"/></td>
-                                        <td class="text-center"><t t-esc="'%.2f' % kpi['weighted_score']"/></td>
+                                        <td class="numeric"><t t-esc="'%.1f' % kpi['weight']"/></td>
+                                        <td class="numeric"><t t-esc="'%.1f' % kpi['target']"/></td>
+                                        <td class="numeric"><t t-esc="'%.1f' % kpi['actual']"/></td>
+                                        <td t-attf-class="numeric {{ 'achievement-good' if kpi['achievement'] >= (kpi['weight'] * 0.9) else 'achievement-medium' if kpi['achievement'] >= (kpi['weight'] * 0.7) else 'achievement-poor' }}">
+                                            <t t-esc="'%.2f' % kpi['achievement']"/>
+                                        </td>
                                         <td><t t-esc="kpi['measurement']"/></td>
                                     </tr>
                                 </t>
-                                <!-- Summary row -->
-                                <tr class="font-weight-bold">
-                                    <td colspan="2">TOTAL</td>
-                                    <td class="text-center"><t t-esc="'%.1f' % employee_data['summary']['total_weight']"/></td>
-                                    <td colspan="2"></td>
-                                    <td class="text-center"><t t-esc="'%.2f' % employee_data['summary']['total_score']"/></td>
-                                    <td></td>
+                                <!-- Summary Row -->
+                                <tr class="summary">
+                                    <td colspan="2" class="numeric">SUMMARY</td>
+                                    <td class="numeric"><t t-esc="'%.1f' % employee['summary']['total_weight']"/></td>
+                                    <td class="numeric"></td>
+                                    <td class="numeric"></td>
+                                    <td class="numeric"><t t-esc="'%.2f' % employee['summary']['total_score']"/></td>
+                                    <td><t t-esc="employee['summary']['achievement_status']"/></td>
                                 </tr>
                             </tbody>
                         </table>
+                    </t>
+                    
+                    <!-- Summary Page for All CS Employees -->
+                    <div class="page-break">
+                        <div style="page-break-before: always;"></div>
                     </div>
-                    <div style="page-break-after: always;"></div>
-                </t>
-            </div>
+                    
+                    <div class="summary-title">KPI SUMMARY FOR ALL CUSTOMER SUPPORT STAFF</div>
+                    <div class="page-subtitle">Period: <t t-esc="period"/></div>
+                    
+                    <table class="summary-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 5%;">No</th>
+                                <th style="width: 30%;">Employee</th>
+                                <th style="width: 25%;">Position</th>
+                                <th style="width: 15%;">Total Score</th>
+                                <th style="width: 25%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="cs_employees" t-as="employee">
+                                <tr t-attf-class="{{ 'achievement-good' if employee['summary']['total_score'] >= 80 else 'achievement-poor' }}">
+                                    <td><t t-esc="employee_index + 1"/></td>
+                                    <td><t t-esc="employee['employee']['name']"/></td>
+                                    <td><t t-esc="employee['employee']['position']"/></td>
+                                    <td class="numeric">
+                                        <t t-esc="'%.2f' % employee['summary']['total_score']"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="employee['summary']['achievement_status']"/>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+                    
+                    <!-- Page Footer -->
+                    <div class="page-footer">
+                        This report is automatically generated from the Pitcar Workshop Management System
+                    </div>
+                </div>
+            </t>
         </t>
     </template>
 </odoo>

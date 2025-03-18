@@ -2030,15 +2030,7 @@ class KPIOverview(http.Controller):
                 if mechanic.position_id:
                     job_title = mechanic.position_id.name
             
-            # Get orders for the mechanic only if not a Head Store
-            if not is_head_store:
-                orders = request.env['sale.order'].sudo().search([
-                    *base_domain,
-                    ('car_mechanic_id_new', 'in', [mechanic.id])
-                ])
-            else:
-                # For Head Store, we might want all orders or a different query
-                orders = request.env['sale.order'].sudo().search(base_domain)  # Get all orders without mechanic filter
+            
 
             # Get stored KPI details
             kpi_details = request.env['cs.kpi.detail'].sudo().search([
@@ -2071,6 +2063,16 @@ class KPIOverview(http.Controller):
                 *base_domain,
                 ('car_mechanic_id_new', 'in', [mechanic.id])
             ])
+
+            # Get orders for the mechanic only if not a Head Store
+            if not is_head_store:
+                orders = request.env['sale.order'].sudo().search([
+                    *base_domain,
+                    ('car_mechanic_id_new', 'in', [mechanic.id])
+                ])
+            else:
+                # For Head Store, we might want all orders or a different query
+                orders = request.env['sale.order'].sudo().search(base_domain)  # Get all orders without mechanic filter
 
             kpi_scores = []
 

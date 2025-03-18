@@ -3289,7 +3289,7 @@ class KPIOverview(http.Controller):
             # Handle Head Store KPI
             elif is_head_store or 'Head Store' in job_title or 'Kepala Bengkel' in job_title:
                 _logger.info(f"Processing KPI for Head Store: {employee.name} using DUMMY DATA")
-                
+                mechanic = None
                 # Dummy KPI scores for Head Store
                 kpi_scores = []
                 

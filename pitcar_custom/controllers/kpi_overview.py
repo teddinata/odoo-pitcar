@@ -2059,10 +2059,10 @@ class KPIOverview(http.Controller):
             ]
 
             # Get orders for the mechanic
-            orders = request.env['sale.order'].sudo().search([
-                *base_domain,
-                ('car_mechanic_id_new', 'in', [mechanic.id])
-            ])
+            # orders = request.env['sale.order'].sudo().search([
+            #     *base_domain,
+            #     ('car_mechanic_id_new', 'in', [mechanic.id])
+            # ])
 
             # Get orders for the mechanic only if not a Head Store
             if not is_head_store:
@@ -3299,7 +3299,7 @@ class KPIOverview(http.Controller):
 
             
             # Handle Head Store KPI
-            elif is_head_store or 'Head Store' in job_title or 'Kepala Bengkel' in job_title:
+            elif 'Kaizen Man' in job_title:
                 _logger.info(f"Processing KPI for Head Store: {employee.name} using DUMMY DATA")
                 mechanic = None
                 # Dummy KPI scores for Head Store

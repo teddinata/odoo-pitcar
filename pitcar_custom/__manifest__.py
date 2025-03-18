@@ -61,6 +61,7 @@
         'report/booking_quotation_template.xml',  # Tambahkan ini
 
         'report/report_mechanic_kpi.xml',
+        'report/report_cs_kpi.xml',
         'report/mechanic_kpi_reports.xml',
 
         'security/mechanic_security.xml',

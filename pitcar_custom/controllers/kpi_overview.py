@@ -7054,7 +7054,21 @@ class KPIOverview(http.Controller):
                             
                             actual = ((len(team_attendances) - late_count) / len(team_attendances) * 100) if team_attendances else 0
                             measurement = f"Total kehadiran tim: {len(team_attendances)}, Terlambat: {late_count}, Tepat waktu: {len(team_attendances) - late_count}"
-                    pass
+                    # Calculate weighted score
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Add to KPI scores
+                    kpi_scores.append({
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': measurement,
+                        'actual': actual,
+                        'achievement': weighted_score,
+                        'weighted_score': weighted_score
+                    })
                 
                 # Regular mechanic logic (existing code remains)
                 else:
@@ -7220,7 +7234,21 @@ class KPIOverview(http.Controller):
                             actual = ((len(attendances) - late_count) / len(attendances) * 100) if attendances else 0
                             measurement = f"Total kehadiran: {len(attendances)}, Terlambat: {late_count}, Tepat waktu: {len(attendances) - late_count}"
                     
-                    pass
+                    # Calculate weighted score
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    
+                    # Add to KPI scores
+                    kpi_scores.append({
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': measurement,
+                        'actual': actual,
+                        'achievement': weighted_score,
+                        'weighted_score': weighted_score
+                    })
                 
                 # Calculate summary
                 total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))

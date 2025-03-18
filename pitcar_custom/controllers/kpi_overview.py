@@ -4483,24 +4483,28 @@ class KPIOverview(http.Controller):
                 department = head_employee.department_id.name if head_employee.department_id else "Mechanic Department"
                 is_head_store = True
 
-                # Get stored KPI details - add this line
+                # Initialize kpi_values before referencing it
+                kpi_values = {}
+                
+                # Get stored KPI details
                 kpi_details = request.env['cs.kpi.detail'].sudo().search([
                     ('employee_id', '=', head_employee.id),
                     ('period_month', '=', month),
                     ('period_year', '=', year)
                 ])
                 
-                # Create map of stored values - add this line
-                kpi_values = {
-                    detail.kpi_type: {
-                        'weight': detail.weight,
-                        'target': detail.target,
-                        'measurement': detail.measurement,
-                        'actual': detail.actual,
-                        'description': detail.description
+                # Create map of stored values
+                if kpi_details:
+                    kpi_values = {
+                        detail.kpi_type: {
+                            'weight': detail.weight,
+                            'target': detail.target,
+                            'measurement': detail.measurement,
+                            'actual': detail.actual,
+                            'description': detail.description
+                        }
+                        for detail in kpi_details
                     }
-                    for detail in kpi_details
-                }
 
                 head_store_kpi_template = [
                 {
@@ -5483,26 +5487,29 @@ class KPIOverview(http.Controller):
                             
                             job_title = head_employee.job_title or "Head Store"
                             department = head_employee.department_id.name if head_employee.department_id else "Mechanic Department"
-                            is_head_store = True
-
-                            # Get stored KPI details - add this line
+                            
+                            # Initialize kpi_values
+                            kpi_values = {}
+                            
+                            # Get stored KPI details
                             kpi_details = request.env['cs.kpi.detail'].sudo().search([
-                                ('employee_id', '=', head_employee.id),
+                                ('employee_id', '=', employee.id),
                                 ('period_month', '=', month),
                                 ('period_year', '=', year)
                             ])
                             
-                            # Create map of stored values - add this line
-                            kpi_values = {
-                                detail.kpi_type: {
-                                    'weight': detail.weight,
-                                    'target': detail.target,
-                                    'measurement': detail.measurement,
-                                    'actual': detail.actual,
-                                    'description': detail.description
+                            # Create map of stored values
+                            if kpi_details:
+                                kpi_values = {
+                                    detail.kpi_type: {
+                                        'weight': detail.weight,
+                                        'target': detail.target,
+                                        'measurement': detail.measurement,
+                                        'actual': detail.actual,
+                                        'description': detail.description
+                                    }
+                                    for detail in kpi_details
                                 }
-                                for detail in kpi_details
-                            }
 
                             head_store_kpi_template = [
                             {

@@ -2029,6 +2029,16 @@ class KPIOverview(http.Controller):
                 # Only update job_title if mechanic record exists and has position_id
                 if mechanic.position_id:
                     job_title = mechanic.position_id.name
+            
+            # Get orders for the mechanic only if not a Head Store
+            if not is_head_store:
+                orders = request.env['sale.order'].sudo().search([
+                    *base_domain,
+                    ('car_mechanic_id_new', 'in', [mechanic.id])
+                ])
+            else:
+                # For Head Store, we might want all orders or a different query
+                orders = request.env['sale.order'].sudo().search(base_domain)  # Get all orders without mechanic filter
 
             # Get stored KPI details
             kpi_details = request.env['cs.kpi.detail'].sudo().search([

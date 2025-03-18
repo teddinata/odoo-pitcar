@@ -5263,7 +5263,7 @@ class KPIOverview(http.Controller):
                 # Initialize KPI scores
                 kpi_scores = []
                 
-                if is_head_store:
+                if 'Head Store' in job_title:
                     # Head Store KPI calculations - same as in KPI endpoint
                     # Get all orders for the store
                     store_orders = request.env['sale.order'].sudo().search(base_domain)

@@ -4483,6 +4483,81 @@ class KPIOverview(http.Controller):
                 department = head_employee.department_id.name if head_employee.department_id else "Mechanic Department"
                 is_head_store = True
 
+                head_store_kpi_template = [
+                    {
+                        'no': 1,
+                        'name': 'Jumlah omzet pitcar service sesuai target',
+                        'type': 'revenue_target',
+                        'weight': 15,
+                        'target': 100,
+                        'measurement': 'Jumlah omzet / target omzet',
+                        'include_in_calculation': True
+                    },
+                    {
+                        'no': 2,
+                        'name': '% rata-rata waktu servis & penanganan customer yang sesuai target waktu',
+                        'type': 'service_time',
+                        'weight': 10,
+                        'target': 80,
+                        'measurement': '% waktu servis & penanganan yang tepat waktu / total sampel',
+                        'include_in_calculation': True
+                    },
+                    {
+                        'no': 3,
+                        'name': '% waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
+                        'type': 'mechanic_efficiency',
+                        'weight': 15,
+                        'target': 80,
+                        'measurement': '% pengerjaan mekanik waktu sesuai rata-rata / total mekanik',
+                        'include_in_calculation': True
+                    },
+                    {
+                        'no': 4,
+                        'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
+                        'type': 'customer_satisfaction',
+                        'weight': 15,
+                        'target': 95,
+                        'measurement': 'Formula khusus: > 4,8 = 120%, = 4,8 = 100%, 4,6-4,7 = 50%, < 4,6 = 0%',
+                        'include_in_calculation': True
+                    },
+                    {
+                        'no': 5,
+                        'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
+                        'type': 'complaint_handling',
+                        'weight': 10,
+                        'target': 95,
+                        'measurement': 'Jumlah customer puas penanganan komplain / jumlah komplain',
+                        'include_in_calculation': True
+                    },
+                    {
+                        'no': 6,
+                        'name': '% sampel tim operasional bekerja sesuai alur SOP',
+                        'type': 'sop_compliance',
+                        'weight': 15,
+                        'target': 95,
+                        'measurement': '% individu sesuai SOP / sampel',
+                        'include_in_calculation': True
+                    },
+                    {
+                        'no': 7,
+                        'name': 'Jumlah hari stok part tersedia (tidak habis)',
+                        'type': 'parts_availability',
+                        'weight': 10,
+                        'target': 90,
+                        'measurement': 'Jumlah hari stok part tidak habis / jumlah hari',
+                        'include_in_calculation': True
+                    },
+                    {
+                        'no': 8,
+                        'name': '% karyawan mengikuti program pengembangan sesuai target yang ditetapkan',
+                        'type': 'employee_development',
+                        'weight': 10,
+                        'target': 80,
+                        'measurement': '% karyawan mengikuti program / total program karyawan',
+                        'include_in_calculation': True
+                    }
+                ]
+
                 # Initialize kpi_values before referencing it
                 kpi_values = {}
                 
@@ -4506,80 +4581,7 @@ class KPIOverview(http.Controller):
                         for detail in kpi_details
                     }
 
-                head_store_kpi_template = [
-                {
-                    'no': 1,
-                    'name': 'Jumlah omzet pitcar service sesuai target',
-                    'type': 'revenue_target',
-                    'weight': 15,
-                    'target': 100,
-                    'measurement': 'Jumlah omzet / target omzet',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 2,
-                    'name': '% rata-rata waktu servis & penanganan customer yang sesuai target waktu',
-                    'type': 'service_time',
-                    'weight': 10,
-                    'target': 80,
-                    'measurement': '% waktu servis & penanganan yang tepat waktu / total sampel',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 3,
-                    'name': '% waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
-                    'type': 'mechanic_efficiency',
-                    'weight': 15,
-                    'target': 80,
-                    'measurement': '% pengerjaan mekanik waktu sesuai rata-rata / total mekanik',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 4,
-                    'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
-                    'type': 'customer_satisfaction',
-                    'weight': 15,
-                    'target': 95,
-                    'measurement': 'Formula khusus: > 4,8 = 120%, = 4,8 = 100%, 4,6-4,7 = 50%, < 4,6 = 0%',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 5,
-                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
-                    'type': 'complaint_handling',
-                    'weight': 10,
-                    'target': 95,
-                    'measurement': 'Jumlah customer puas penanganan komplain / jumlah komplain',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 6,
-                    'name': '% sampel tim operasional bekerja sesuai alur SOP',
-                    'type': 'sop_compliance',
-                    'weight': 15,
-                    'target': 95,
-                    'measurement': '% individu sesuai SOP / sampel',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 7,
-                    'name': 'Jumlah hari stok part tersedia (tidak habis)',
-                    'type': 'parts_availability',
-                    'weight': 10,
-                    'target': 90,
-                    'measurement': 'Jumlah hari stok part tidak habis / jumlah hari',
-                    'include_in_calculation': True
-                },
-                {
-                    'no': 8,
-                    'name': '% karyawan mengikuti program pengembangan sesuai target yang ditetapkan',
-                    'type': 'employee_development',
-                    'weight': 10,
-                    'target': 80,
-                    'measurement': '% karyawan mengikuti program / total program karyawan',
-                    'include_in_calculation': True
-                }
-            ]
+                
                 
             # Get all orders for the store - no mechanic filtering
             store_orders = request.env['sale.order'].sudo().search([
@@ -5487,6 +5489,81 @@ class KPIOverview(http.Controller):
                             
                             job_title = head_employee.job_title or "Head Store"
                             department = head_employee.department_id.name if head_employee.department_id else "Mechanic Department"
+
+                            head_store_kpi_template = [
+                                {
+                                    'no': 1,
+                                    'name': 'Jumlah omzet pitcar service sesuai target',
+                                    'type': 'revenue_target',
+                                    'weight': 15,
+                                    'target': 100,
+                                    'measurement': 'Jumlah omzet / target omzet',
+                                    'include_in_calculation': True
+                                },
+                                {
+                                    'no': 2,
+                                    'name': '% rata-rata waktu servis & penanganan customer yang sesuai target waktu',
+                                    'type': 'service_time',
+                                    'weight': 10,
+                                    'target': 80,
+                                    'measurement': '% waktu servis & penanganan yang tepat waktu / total sampel',
+                                    'include_in_calculation': True
+                                },
+                                {
+                                    'no': 3,
+                                    'name': '% waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
+                                    'type': 'mechanic_efficiency',
+                                    'weight': 15,
+                                    'target': 80,
+                                    'measurement': '% pengerjaan mekanik waktu sesuai rata-rata / total mekanik',
+                                    'include_in_calculation': True
+                                },
+                                {
+                                    'no': 4,
+                                    'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
+                                    'type': 'customer_satisfaction',
+                                    'weight': 15,
+                                    'target': 95,
+                                    'measurement': 'Formula khusus: > 4,8 = 120%, = 4,8 = 100%, 4,6-4,7 = 50%, < 4,6 = 0%',
+                                    'include_in_calculation': True
+                                },
+                                {
+                                    'no': 5,
+                                    'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
+                                    'type': 'complaint_handling',
+                                    'weight': 10,
+                                    'target': 95,
+                                    'measurement': 'Jumlah customer puas penanganan komplain / jumlah komplain',
+                                    'include_in_calculation': True
+                                },
+                                {
+                                    'no': 6,
+                                    'name': '% sampel tim operasional bekerja sesuai alur SOP',
+                                    'type': 'sop_compliance',
+                                    'weight': 15,
+                                    'target': 95,
+                                    'measurement': '% individu sesuai SOP / sampel',
+                                    'include_in_calculation': True
+                                },
+                                {
+                                    'no': 7,
+                                    'name': 'Jumlah hari stok part tersedia (tidak habis)',
+                                    'type': 'parts_availability',
+                                    'weight': 10,
+                                    'target': 90,
+                                    'measurement': 'Jumlah hari stok part tidak habis / jumlah hari',
+                                    'include_in_calculation': True
+                                },
+                                {
+                                    'no': 8,
+                                    'name': '% karyawan mengikuti program pengembangan sesuai target yang ditetapkan',
+                                    'type': 'employee_development',
+                                    'weight': 10,
+                                    'target': 80,
+                                    'measurement': '% karyawan mengikuti program / total program karyawan',
+                                    'include_in_calculation': True
+                                }
+                            ]
                             
                             # Initialize kpi_values
                             kpi_values = {}
@@ -5511,80 +5588,7 @@ class KPIOverview(http.Controller):
                                     for detail in kpi_details
                                 }
 
-                            head_store_kpi_template = [
-                            {
-                                'no': 1,
-                                'name': 'Jumlah omzet pitcar service sesuai target',
-                                'type': 'revenue_target',
-                                'weight': 15,
-                                'target': 100,
-                                'measurement': 'Jumlah omzet / target omzet',
-                                'include_in_calculation': True
-                            },
-                            {
-                                'no': 2,
-                                'name': '% rata-rata waktu servis & penanganan customer yang sesuai target waktu',
-                                'type': 'service_time',
-                                'weight': 10,
-                                'target': 80,
-                                'measurement': '% waktu servis & penanganan yang tepat waktu / total sampel',
-                                'include_in_calculation': True
-                            },
-                            {
-                                'no': 3,
-                                'name': '% waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
-                                'type': 'mechanic_efficiency',
-                                'weight': 15,
-                                'target': 80,
-                                'measurement': '% pengerjaan mekanik waktu sesuai rata-rata / total mekanik',
-                                'include_in_calculation': True
-                            },
-                            {
-                                'no': 4,
-                                'name': 'Rating survey kepuasan customer memberikan nilai minimal 4,8 dari 5',
-                                'type': 'customer_satisfaction',
-                                'weight': 15,
-                                'target': 95,
-                                'measurement': 'Formula khusus: > 4,8 = 120%, = 4,8 = 100%, 4,6-4,7 = 50%, < 4,6 = 0%',
-                                'include_in_calculation': True
-                            },
-                            {
-                                'no': 5,
-                                'name': 'Jumlah customer merasa puas terhadap pelayanan & solusi diberikan maksimal 3 hari setelah komplain dilayangkan',
-                                'type': 'complaint_handling',
-                                'weight': 10,
-                                'target': 95,
-                                'measurement': 'Jumlah customer puas penanganan komplain / jumlah komplain',
-                                'include_in_calculation': True
-                            },
-                            {
-                                'no': 6,
-                                'name': '% sampel tim operasional bekerja sesuai alur SOP',
-                                'type': 'sop_compliance',
-                                'weight': 15,
-                                'target': 95,
-                                'measurement': '% individu sesuai SOP / sampel',
-                                'include_in_calculation': True
-                            },
-                            {
-                                'no': 7,
-                                'name': 'Jumlah hari stok part tersedia (tidak habis)',
-                                'type': 'parts_availability',
-                                'weight': 10,
-                                'target': 90,
-                                'measurement': 'Jumlah hari stok part tidak habis / jumlah hari',
-                                'include_in_calculation': True
-                            },
-                            {
-                                'no': 8,
-                                'name': '% karyawan mengikuti program pengembangan sesuai target yang ditetapkan',
-                                'type': 'employee_development',
-                                'weight': 10,
-                                'target': 80,
-                                'measurement': '% karyawan mengikuti program / total program karyawan',
-                                'include_in_calculation': True
-                            }
-                        ]
+                            
                         
                         # Get all store orders - no mechanic filtering
                         store_orders = request.env['sale.order'].sudo().search([

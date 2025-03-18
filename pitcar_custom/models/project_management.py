@@ -385,7 +385,7 @@ class TeamProjectTask(models.Model):
                     message=f"You are assigned to task '{task.name}' in project {task.project_id.name}.",
                     user_id=assignee.user_id.id,
                     data={'task_id': task.id, 'action': 'view_task'},
-                    priority='medium'
+                    priority=task.priority
                 )
         return task
 

@@ -153,36 +153,6 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in manage_projects: {str(e)}")
             return {'status': 'error', 'message': str(e)}
-
-    # @http.route('/web/v2/team/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
-    # def get_projects(self, **kw):
-    #     """Mengambil daftar proyek dengan filter."""
-    #     try:
-    #         domain = []
-    #         if kw.get('department_id'):
-    #             domain.append(('department_id', '=', int(kw['department_id'])))
-    #         if kw.get('state'):
-    #             domain.append(('state', '=', kw['state']))
-    #         if kw.get('date_start'):
-    #             domain.append(('date_start', '>=', kw['date_start']))
-    #         if kw.get('date_end'):
-    #             domain.append(('date_end', '<=', kw['date_end']))
-    #         limit = kw.get('limit', 10)
-    #         offset = kw.get('offset', 0)
-
-    #         projects = request.env['team.project'].sudo().search(domain, limit=limit, offset=offset)
-    #         total = request.env['team.project'].sudo().search_count(domain)
-
-    #         return {
-    #             'status': 'success',
-    #             'data': [self._prepare_project_data(project) for project in projects],
-    #             'total': total,
-    #             'limit': limit,
-    #             'offset': offset
-    #         }
-    #     except Exception as e:
-    #         _logger.error(f"Error in get_projects: {str(e)}")
-    #         return {'status': 'error', 'message': str(e)}
     
     @http.route('/web/v2/team/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
     def get_projects(self, **kw):
@@ -361,6 +331,7 @@ class TeamProjectAPI(http.Controller):
                         'project_id': int(kw['project_id']),
                         'description': kw.get('description', ''),
                         'state': kw.get('state', 'draft'),
+                        'priority': kw.get('priority', '1'),
                     }
 
                     # Handle assigned_to conversion
@@ -408,7 +379,7 @@ class TeamProjectAPI(http.Controller):
                     update_values = {}
                     
                     # Handle scalar fields
-                    scalar_fields = ['name', 'description', 'state', 'progress']
+                    scalar_fields = ['name', 'description', 'state', 'progress', 'priority']
                     for field in scalar_fields:
                         if field in kw:
                             # Convert progress to float if needed
@@ -562,6 +533,7 @@ class TeamProjectAPI(http.Controller):
             task_data = {
                 'id': task.id,
                 'name': task.name,
+                'priority': task.priority
             }
             
             # Add project info if available

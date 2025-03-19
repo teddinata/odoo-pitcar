@@ -2415,7 +2415,7 @@ class KPIOverview(http.Controller):
                             ])
                             
                             if not tool_checks:
-                                actual = 0
+                                actual = 100
                                 kpi['measurement'] = f"Belum ada pengecekan tools pada periode {month}/{year}"
                             else:
                                 # Hitung total items dan yang sesuai

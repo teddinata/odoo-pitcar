@@ -3443,10 +3443,11 @@ class KPIOverview(http.Controller):
                     
                     elif kpi['type'] == 'complaint_handling':
                         # Complaint handling
-                        complaints = orders.filtered(lambda o: o.customer_rating in ['1', '2'])
-                        resolved_complaints = complaints.filtered(lambda o: o.complaint_status == 'solved')
-                        actual = (len(resolved_complaints) / len(complaints) * 100) if complaints else 100
-                        measurement = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
+                        complaints = store_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                        total_complaints = len(complaints)
+                        resolved_complaints = len(complaints.filtered(lambda o: o.complaint_status == 'solved'))
+                        actual = (resolved_complaints / total_complaints * 100) if total_complaints else 100
+                        kpi['measurement'] = f"Komplain terselesaikan: {resolved_complaints} dari {total_complaints} komplain"
                     
                     elif kpi['type'] == 'sop_compliance':
                         # Calculate SOP compliance for all operational staff
@@ -4968,10 +4969,11 @@ class KPIOverview(http.Controller):
                     
                     elif kpi['type'] == 'complaint_handling':
                        # Complaint handling
-                        complaints = orders.filtered(lambda o: o.customer_rating in ['1', '2'])
-                        resolved_complaints = complaints.filtered(lambda o: o.complaint_status == 'solved')
-                        actual = (len(resolved_complaints) / len(complaints) * 100) if complaints else 100
-                        measurement = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
+                        complaints = store_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                        total_complaints = len(complaints)
+                        resolved_complaints = len(complaints.filtered(lambda o: o.complaint_status == 'solved'))
+                        actual = (resolved_complaints / total_complaints * 100) if total_complaints else 100
+                        kpi['measurement'] = f"Komplain terselesaikan: {resolved_complaints} dari {total_complaints} komplain"
                     
                     elif kpi['type'] == 'sop_compliance':
                         # Calculate SOP compliance for all operational staff
@@ -6187,12 +6189,12 @@ class KPIOverview(http.Controller):
                             measurement = "Tidak ada order dengan rating customer"
                     
                     elif kpi['type'] == 'complaint_handling':
-                        # Calculate complaint handling effectiveness
                         # Complaint handling
-                        complaints = orders.filtered(lambda o: o.customer_rating in ['1', '2'])
-                        resolved_complaints = complaints.filtered(lambda o: o.complaint_status == 'solved')
-                        actual = (len(resolved_complaints) / len(complaints) * 100) if complaints else 100
-                        measurement = f"Komplain terselesaikan: {len(resolved_complaints)} dari {len(complaints)}"
+                        complaints = store_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                        total_complaints = len(complaints)
+                        resolved_complaints = len(complaints.filtered(lambda o: o.complaint_status == 'solved'))
+                        actual = (resolved_complaints / total_complaints * 100) if total_complaints else 100
+                        kpi['measurement'] = f"Komplain terselesaikan: {resolved_complaints} dari {total_complaints} komplain"
                     
                     elif kpi['type'] == 'sop_compliance':
                         # Calculate SOP compliance for all operational staff
@@ -7373,26 +7375,12 @@ class KPIOverview(http.Controller):
                             measurement = "Tidak ada order dengan rating customer"
                     
                     elif kpi['type'] == 'complaint_handling':
-                        # Calculate complaint handling effectiveness
+                        # Complaint handling
                         complaints = store_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
                         total_complaints = len(complaints)
-                        
-                        if total_complaints > 0:
-                            resolved_on_time = 0
-                            for complaint in complaints:
-                                if complaint.complaint_date and complaint.resolution_date:
-                                    complaint_date = fields.Datetime.from_string(complaint.complaint_date)
-                                    resolution_date = fields.Datetime.from_string(complaint.resolution_date)
-                                    days_to_resolve = (resolution_date - complaint_date).days
-                                    
-                                    if days_to_resolve <= 3:
-                                        resolved_on_time += 1
-                            
-                            actual = (resolved_on_time / total_complaints * 100)
-                            measurement = f"Komplain diselesaikan dalam 3 hari: {resolved_on_time}/{total_complaints} ({actual:.1f}%)"
-                        else:
-                            actual = 100  # No complaints = perfect score
-                            measurement = "Tidak ada komplain dalam periode ini"
+                        resolved_complaints = len(complaints.filtered(lambda o: o.complaint_status == 'solved'))
+                        actual = (resolved_complaints / total_complaints * 100) if total_complaints else 100
+                        kpi['measurement'] = f"Komplain terselesaikan: {resolved_complaints} dari {total_complaints} komplain"
                     
                     elif kpi['type'] == 'sop_compliance':
                         # Calculate SOP compliance for all operational staff
@@ -7708,7 +7696,7 @@ class KPIOverview(http.Controller):
             },
             {
                 'no': 2,
-                'name': '% rata-rata waktu servis & penanganan customer yang sesuai target waktu',
+                'name': 'Persentase (%) rata-rata waktu servis & penanganan customer yang sesuai target waktu',
                 'type': 'service_time',
                 'weight': 10,
                 'target': 80,
@@ -7744,7 +7732,7 @@ class KPIOverview(http.Controller):
             },
             {
                 'no': 6,
-                'name': '% sampel tim operasional bekerja sesuai alur SOP',
+                'name': 'Persentase (%) sampel tim operasional bekerja sesuai alur SOP',
                 'type': 'sop_compliance',
                 'weight': 15,
                 'target': 95,

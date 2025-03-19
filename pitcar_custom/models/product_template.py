@@ -23,8 +23,8 @@ class ProductTemplate(models.Model):
 
     flat_rate_value = fields.Float(
         string='Nilai Flat Rate',
-        default=190000,
-        help='Nilai flat rate per jam (default: 190.000)'
+        default=211000,
+        help='Nilai flat rate per jam (default: 210.671)'
     )
 
     def calculate_flat_rate(self):

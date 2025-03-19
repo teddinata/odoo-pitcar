@@ -523,6 +523,7 @@ class TeamProjectAPI(http.Controller):
             'state': project.state,
             'progress': project.progress,
             'priority': project.priority,
+            'description': project.description,
             'task_count': len(project.task_ids)
         }
 

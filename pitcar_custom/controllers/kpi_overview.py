@@ -2825,7 +2825,7 @@ class KPIOverview(http.Controller):
                             ])
                             
                             if not tool_checks:
-                                actual = 0
+                                actual = 100
                                 kpi['measurement'] = f"Belum ada pengecekan tools pada periode {month}/{year}"
                             else:
                                 # Hitung metrics per mekanik
@@ -3859,7 +3859,7 @@ class KPIOverview(http.Controller):
                                 ])
                                 
                                 if not tool_checks:
-                                    actual = 0
+                                    actual = 100
                                     kpi['measurement'] = f"Belum ada pengecekan tools pada periode {month}/{year}"
                                 else:
                                     # Hitung metrics per mekanik
@@ -4439,7 +4439,7 @@ class KPIOverview(http.Controller):
                                 ])
                                 
                                 if not tool_checks:
-                                    actual = 0
+                                    actual = 100
                                     kpi['measurement'] = f"Belum ada pengecekan tools pada periode {month}/{year}"
                                 else:
                                     # Hitung total items dan yang sesuai
@@ -5693,7 +5693,7 @@ class KPIOverview(http.Controller):
                                 ])
                                 
                                 if not tool_checks:
-                                    actual = 0
+                                    actual = 100
                                     measurement = f"Belum ada pengecekan tools pada periode {month}/{year}"
                                 else:
                                     # Calculate team totals
@@ -5878,7 +5878,7 @@ class KPIOverview(http.Controller):
                                 actual = (satisfied_orders / total_rated_orders * 100) if total_rated_orders else 100
                                 measurement = f"Order dengan rating: {total_rated_orders}, Customer puas: {satisfied_orders}, Komplain: {complaints} ({actual:.1f}%)"
                             else:
-                                actual = 0
+                                actual = 100
                                 measurement = f"Belum ada rating post-service pada periode {month}/{year}"
                         
                         elif kpi['type'] == 'service_recommendation':
@@ -5904,7 +5904,7 @@ class KPIOverview(http.Controller):
                                 ])
                                 
                                 if not tool_checks:
-                                    actual = 0
+                                    actual = 100
                                     measurement = f"Belum ada pengecekan tools pada periode {month}/{year}"
                                 else:
                                     # Calculate totals
@@ -6850,7 +6850,7 @@ class KPIOverview(http.Controller):
                                 ])
                                 
                                 if not tool_checks:
-                                    actual = 0
+                                    actual = 100
                                     measurement = f"Belum ada pengecekan tools pada periode {month}/{year}"
                                 else:
                                     # Calculate team totals
@@ -7040,7 +7040,7 @@ class KPIOverview(http.Controller):
                                 actual = (satisfied_orders / total_rated_orders * 100) if total_rated_orders else 100
                                 measurement = f"Order dengan rating: {total_rated_orders}, Customer puas: {satisfied_orders}, Komplain: {complaints} ({actual:.1f}%)"
                             else:
-                                actual = 0
+                                actual = 100
                                 measurement = f"Belum ada rating post-service pada periode {month}/{year}"
                         
                         elif kpi['type'] == 'service_recommendation':
@@ -7066,7 +7066,7 @@ class KPIOverview(http.Controller):
                                 ])
                                 
                                 if not tool_checks:
-                                    actual = 0
+                                    actual = 100
                                     measurement = f"Belum ada pengecekan tools pada periode {month}/{year}"
                                 else:
                                     # Calculate totals

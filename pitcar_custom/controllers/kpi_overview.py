@@ -2257,7 +2257,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 3,
-                    'name': '% waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
+                    'name': 'Persentase (%) waktu pengerjaan mekanik yang sesuai waktu rata-rata pengerjaan seluruh mekanik',
                     'type': 'mechanic_efficiency',
                     'weight': 15,
                     'target': 80,
@@ -2302,7 +2302,7 @@ class KPIOverview(http.Controller):
                 },
                 {
                     'no': 8,
-                    'name': '% karyawan mengikuti program pengembangan sesuai target yang ditetapkan',
+                    'name': 'Persentase (%) karyawan mengikuti program pengembangan sesuai target yang ditetapkan',
                     'type': 'employee_development',
                     'weight': 10,
                     'target': 80,
@@ -5378,27 +5378,11 @@ class KPIOverview(http.Controller):
                                 measurement = "Tidak ada order dengan rating customer"
                         
                         elif kpi['type'] == 'complaint_handling':
-                            # Calculate complaint handling effectiveness
-                            complaints = store_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                            complaints = team_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
                             total_complaints = len(complaints)
-                            
-                            if total_complaints > 0:
-                                # Check if complaints are resolved within 3 days
-                                resolved_on_time = 0
-                                for complaint in complaints:
-                                    if complaint.complaint_date and complaint.resolution_date:
-                                        complaint_date = fields.Datetime.from_string(complaint.complaint_date)
-                                        resolution_date = fields.Datetime.from_string(complaint.resolution_date)
-                                        days_to_resolve = (resolution_date - complaint_date).days
-                                        
-                                        if days_to_resolve <= 3:
-                                            resolved_on_time += 1
-                                
-                                actual = (resolved_on_time / total_complaints * 100)
-                                measurement = f"Komplain diselesaikan dalam 3 hari: {resolved_on_time}/{total_complaints} ({actual:.1f}%)"
-                            else:
-                                actual = 100  # No complaints = perfect score
-                                measurement = "Tidak ada komplain dalam periode ini"
+                            resolved_complaints = len(complaints.filtered(lambda o: o.complaint_status == 'solved'))
+                            actual = (resolved_complaints / total_complaints * 100) if total_complaints else 100
+                            measurement = f"Komplain terselesaikan: {resolved_complaints} dari {total_complaints} komplain"
                         
                         elif kpi['type'] == 'sop_compliance':
                             # Calculate SOP compliance for all operational staff
@@ -6577,26 +6561,11 @@ class KPIOverview(http.Controller):
                                 measurement = "Tidak ada order dengan rating customer"
                         
                         elif kpi['type'] == 'complaint_handling':
-                            # Calculate complaint handling effectiveness
-                            complaints = store_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
+                            complaints = team_orders.filtered(lambda o: o.customer_rating in ['1', '2'])
                             total_complaints = len(complaints)
-                            
-                            if total_complaints > 0:
-                                resolved_on_time = 0
-                                for complaint in complaints:
-                                    if complaint.complaint_date and complaint.resolution_date:
-                                        complaint_date = fields.Datetime.from_string(complaint.complaint_date)
-                                        resolution_date = fields.Datetime.from_string(complaint.resolution_date)
-                                        days_to_resolve = (resolution_date - complaint_date).days
-                                        
-                                        if days_to_resolve <= 3:
-                                            resolved_on_time += 1
-                                
-                                actual = (resolved_on_time / total_complaints * 100)
-                                measurement = f"Komplain diselesaikan dalam 3 hari: {resolved_on_time}/{total_complaints} ({actual:.1f}%)"
-                            else:
-                                actual = 100  # No complaints = perfect score
-                                measurement = "Tidak ada komplain dalam periode ini"
+                            resolved_complaints = len(complaints.filtered(lambda o: o.complaint_status == 'solved'))
+                            actual = (resolved_complaints / total_complaints * 100) if total_complaints else 100
+                            measurement = f"Komplain terselesaikan: {resolved_complaints} dari {total_complaints} komplain"
                         
                         elif kpi['type'] == 'sop_compliance':
                             # Calculate SOP compliance for all operational staff
@@ -6713,7 +6682,7 @@ class KPIOverview(http.Controller):
                                 all_mechanics_ids = team_members.ids + [mechanic.id]
                                 
                                 # Target flat rate bulanan tim (115 jam per mekanik)
-                                monthly_flat_rate_target_per_mechanic = 115
+                                monthly_flat_rate_target_per_mechanic = 160
                                 team_size = len(all_mechanics_ids)
                                 team_monthly_target = monthly_flat_rate_target_per_mechanic * team_size
                                 
@@ -7025,7 +6994,7 @@ class KPIOverview(http.Controller):
                         if kpi['type'] == 'flat_rate':
                             try:
                                 # Get flat rate target
-                                monthly_flat_rate_target = 115  # Default target
+                                monthly_flat_rate_target = 160  # Default target
                                 
                                 # Use specific target if available
                                 if hasattr(mechanic, 'flat_rate_target') and mechanic.flat_rate_target:

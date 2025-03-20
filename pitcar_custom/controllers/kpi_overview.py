@@ -3461,7 +3461,14 @@ class KPIOverview(http.Controller):
                             total_samplings = len(sop_samplings)
                             passed_samplings = len(sop_samplings.filtered(lambda s: s.result == 'pass'))
                             
-                            actual = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                            # Menghitung persentase kepatuhan keseluruhan
+                            overall_compliance = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                            
+                            # Mengambil data spesifik untuk Kepala Bengkel
+                            head_workshop_samplings = sop_samplings.filtered(lambda s: s.sop_id.role == 'head_workshop')
+                            head_workshop_total = len(head_workshop_samplings)
+                            head_workshop_passed = len(head_workshop_samplings.filtered(lambda s: s.result == 'pass'))
+                            head_workshop_compliance = (head_workshop_passed / head_workshop_total * 100) if head_workshop_total > 0 else 100
                             
                             # Group by role/department for detailed measurement
                             role_stats = {}
@@ -3478,15 +3485,111 @@ class KPIOverview(http.Controller):
                             role_details = []
                             for role, stats in role_stats.items():
                                 role_compliance = (stats['passed'] / stats['total'] * 100) if stats['total'] > 0 else 0
-                                role_details.append(f"{role.capitalize()}: {stats['passed']}/{stats['total']} ({role_compliance:.1f}%)")
+                                role_display = role.capitalize().replace('_', ' ')
+                                role_details.append(f"{role_display}: {stats['passed']}/{stats['total']} ({role_compliance:.1f}%)")
                             
-                            kpi['measurement'] = (
-                                f"Kepatuhan SOP keseluruhan: {passed_samplings}/{total_samplings} ({actual:.1f}%)\n\n"
-                                f"Detail per departemen:\n" + "\n".join([f"• {detail}" for detail in role_details])
-                            )
+                            # Membuat format HTML untuk tampilan yang lebih baik
+                            html_measurement = '''
+                            <div class="kpi-measurement">
+                                <div class="summary-section">
+                                    <h4>Kepatuhan SOP Tim Operasional</h4>
+                                    <div class="summary-stats">
+                                        <div>Total sampel: {}</div>
+                                        <div>Sampel sesuai SOP: {}</div>
+                                        <div>Persentase kepatuhan keseluruhan: {:.1f}%</div>
+                                    </div>
+                                </div>
+                            '''.format(total_samplings, passed_samplings, overall_compliance)
+                            
+                            # Tambahkan bagian khusus untuk Kepala Bengkel jika ada data
+                            if head_workshop_total > 0:
+                                html_measurement += '''
+                                <div class="head-workshop-section">
+                                    <h4>Kepatuhan SOP Kepala Bengkel</h4>
+                                    <div class="head-workshop-stats">
+                                        <div>Total sampel: {}</div>
+                                        <div>Sampel sesuai SOP: {}</div>
+                                        <div>Persentase kepatuhan: {:.1f}%</div>
+                                    </div>
+                                '''.format(head_workshop_total, head_workshop_passed, head_workshop_compliance)
+                                
+                                # Tambahkan detail per sampel untuk Kepala Bengkel
+                                if head_workshop_samplings:
+                                    html_measurement += '''
+                                    <div class="sampling-details">
+                                        <h5>Detail Sampel Kepala Bengkel</h5>
+                                        <table class="sampling-table">
+                                            <tr>
+                                                <th>Tanggal</th>
+                                                <th>PKB</th>
+                                                <th>SOP</th>
+                                                <th>Tipe Sampling</th>
+                                                <th>Hasil</th>
+                                                <th>Catatan</th>
+                                            </tr>
+                                    '''
+                                    
+                                    for sampling in head_workshop_samplings:
+                                        result_class = 'pass' if sampling.result == 'pass' else 'fail'
+                                        result_text = 'Lulus' if sampling.result == 'pass' else 'Tidak Lulus'
+                                        sampling_type = 'Kaizen Team' if sampling.sampling_type == 'kaizen' else 'Leader'
+                                        
+                                        html_measurement += '''
+                                        <tr class="{}">
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                        </tr>
+                                        '''.format(
+                                            result_class,
+                                            sampling.date.strftime('%d-%m-%Y'),
+                                            sampling.sale_order_id.name,
+                                            sampling.sop_id.name,
+                                            sampling_type,
+                                            result_text,
+                                            sampling.notes or '-'
+                                        )
+                                    
+                                    html_measurement += '''
+                                        </table>
+                                    </div>
+                                    '''
+                                
+                                html_measurement += '</div>'  # Close head-workshop-section
+                            
+                            # Tambahkan detail per departemen/role
+                            html_measurement += '''
+                                <div class="role-details">
+                                    <h4>Detail per Departemen</h4>
+                                    <ul class="role-list">
+                            '''
+                            
+                            for detail in role_details:
+                                html_measurement += f'<li>{detail}</li>'
+                            
+                            html_measurement += '''
+                                    </ul>
+                                </div>
+                            </div>
+                            '''
+                            
+                            # Perubahan penting: Jika ada sampel Kepala Bengkel, kita menggabungkan bobot kepatuhan
+                            # keseluruhan dengan kepatuhan Kepala Bengkel untuk menentukan nilai aktual
+                            if head_workshop_total > 0:
+                                # Menggunakan bobot: 70% untuk kepatuhan keseluruhan dan 30% untuk kepatuhan Kepala Bengkel
+                                actual = (overall_compliance * 0.7) + (head_workshop_compliance * 0.3)
+                            else:
+                                # Jika tidak ada sampel Kepala Bengkel, gunakan kepatuhan keseluruhan
+                                actual = overall_compliance
+                            
+                            kpi['measurement'] = html_measurement
                         else:
                             actual = 0
-                            kpi['measurement'] = "Tidak ada sampling SOP dalam periode ini"
+                            kpi['measurement'] = '<div class="kpi-measurement"><div class="no-data">Tidak ada sampling SOP dalam periode ini</div></div>'
+
                     
                     elif kpi['type'] == 'parts_availability':
                         # Calculate parts availability using stock.mandatory.stockout model
@@ -7363,8 +7466,16 @@ class KPIOverview(http.Controller):
                             total_samplings = len(sop_samplings)
                             passed_samplings = len(sop_samplings.filtered(lambda s: s.result == 'pass'))
                             
-                            actual = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
+                            # Menghitung persentase kepatuhan keseluruhan
+                            overall_compliance = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 100
                             
+                            # Mengambil data spesifik untuk Kepala Bengkel
+                            head_workshop_samplings = sop_samplings.filtered(lambda s: s.sop_id.role == 'head_workshop')
+                            head_workshop_total = len(head_workshop_samplings)
+                            head_workshop_passed = len(head_workshop_samplings.filtered(lambda s: s.result == 'pass'))
+                            head_workshop_compliance = (head_workshop_passed / head_workshop_total * 100) if head_workshop_total > 0 else 100
+                            
+                            # Group by role/department for detailed measurement
                             role_stats = {}
                             for sampling in sop_samplings:
                                 role = sampling.sop_id.role or 'Other'
@@ -7375,18 +7486,115 @@ class KPIOverview(http.Controller):
                                 if sampling.result == 'pass':
                                     role_stats[role]['passed'] += 1
                             
+                            # Format role-specific stats
                             role_details = []
                             for role, stats in role_stats.items():
                                 role_compliance = (stats['passed'] / stats['total'] * 100) if stats['total'] > 0 else 0
-                                role_details.append(f"{role.capitalize()}: {stats['passed']}/{stats['total']} ({role_compliance:.1f}%)")
+                                role_display = role.capitalize().replace('_', ' ')
+                                role_details.append(f"{role_display}: {stats['passed']}/{stats['total']} ({role_compliance:.1f}%)")
                             
-                            measurement = (
-                                f"Kepatuhan SOP keseluruhan: {passed_samplings}/{total_samplings} ({actual:.1f}%)\n\n"
-                                f"Detail per departemen:\n" + "\n".join([f"• {detail}" for detail in role_details])
-                            )
+                            # Membuat format HTML untuk tampilan yang lebih baik
+                            html_measurement = '''
+                            <div class="kpi-measurement">
+                                <div class="summary-section">
+                                    <h4>Kepatuhan SOP Tim Operasional</h4>
+                                    <div class="summary-stats">
+                                        <div>Total sampel: {}</div>
+                                        <div>Sampel sesuai SOP: {}</div>
+                                        <div>Persentase kepatuhan keseluruhan: {:.1f}%</div>
+                                    </div>
+                                </div>
+                            '''.format(total_samplings, passed_samplings, overall_compliance)
+                            
+                            # Tambahkan bagian khusus untuk Kepala Bengkel jika ada data
+                            if head_workshop_total > 0:
+                                html_measurement += '''
+                                <div class="head-workshop-section">
+                                    <h4>Kepatuhan SOP Kepala Bengkel</h4>
+                                    <div class="head-workshop-stats">
+                                        <div>Total sampel: {}</div>
+                                        <div>Sampel sesuai SOP: {}</div>
+                                        <div>Persentase kepatuhan: {:.1f}%</div>
+                                    </div>
+                                '''.format(head_workshop_total, head_workshop_passed, head_workshop_compliance)
+                                
+                                # Tambahkan detail per sampel untuk Kepala Bengkel
+                                if head_workshop_samplings:
+                                    html_measurement += '''
+                                    <div class="sampling-details">
+                                        <h5>Detail Sampel Kepala Bengkel</h5>
+                                        <table class="sampling-table">
+                                            <tr>
+                                                <th>Tanggal</th>
+                                                <th>PKB</th>
+                                                <th>SOP</th>
+                                                <th>Tipe Sampling</th>
+                                                <th>Hasil</th>
+                                                <th>Catatan</th>
+                                            </tr>
+                                    '''
+                                    
+                                    for sampling in head_workshop_samplings:
+                                        result_class = 'pass' if sampling.result == 'pass' else 'fail'
+                                        result_text = 'Lulus' if sampling.result == 'pass' else 'Tidak Lulus'
+                                        sampling_type = 'Kaizen Team' if sampling.sampling_type == 'kaizen' else 'Leader'
+                                        
+                                        html_measurement += '''
+                                        <tr class="{}">
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                            <td>{}</td>
+                                        </tr>
+                                        '''.format(
+                                            result_class,
+                                            sampling.date.strftime('%d-%m-%Y'),
+                                            sampling.sale_order_id.name,
+                                            sampling.sop_id.name,
+                                            sampling_type,
+                                            result_text,
+                                            sampling.notes or '-'
+                                        )
+                                    
+                                    html_measurement += '''
+                                        </table>
+                                    </div>
+                                    '''
+                                
+                                html_measurement += '</div>'  # Close head-workshop-section
+                            
+                            # Tambahkan detail per departemen/role
+                            html_measurement += '''
+                                <div class="role-details">
+                                    <h4>Detail per Departemen</h4>
+                                    <ul class="role-list">
+                            '''
+                            
+                            for detail in role_details:
+                                html_measurement += f'<li>{detail}</li>'
+                            
+                            html_measurement += '''
+                                    </ul>
+                                </div>
+                            </div>
+                            '''
+                            
+                            # Perubahan penting: Jika ada sampel Kepala Bengkel, kita menggabungkan bobot kepatuhan
+                            # keseluruhan dengan kepatuhan Kepala Bengkel untuk menentukan nilai aktual
+                            if head_workshop_total > 0:
+                                # Menggunakan bobot: 70% untuk kepatuhan keseluruhan dan 30% untuk kepatuhan Kepala Bengkel
+                                actual = (overall_compliance * 0.7) + (head_workshop_compliance * 0.3)
+                            else:
+                                # Jika tidak ada sampel Kepala Bengkel, gunakan kepatuhan keseluruhan
+                                actual = overall_compliance
+                            
+                            kpi['measurement'] = html_measurement
                         else:
                             actual = 0
-                            measurement = "Tidak ada sampling SOP dalam periode ini"
+                            kpi['measurement'] = '<div class="kpi-measurement"><div class="no-data">Tidak ada sampling SOP dalam periode ini</div></div>'
+
                     
                     elif kpi['type'] == 'parts_availability':
                         # Calculate parts availability using stock.mandatory.stockout model
@@ -7437,7 +7645,7 @@ class KPIOverview(http.Controller):
                 # Calculate summary
                 total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
                 total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
-                achievement_status = 'Achieved' if total_score >= 80 else 'Below Target'
+                achievement_status = 'Achieved' if total_score >= 90 else 'Below Target'
                 
                 # Add to mechanic_data
                 mechanic_data.append({

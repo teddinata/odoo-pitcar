@@ -16,15 +16,7 @@ class MechanicToolsImportController(http.Controller):
     # Tambahkan parameter mapping ke fungsi import_tools_http
     @http.route('/web/mechanic/tools/import', type='http', auth='user', methods=['POST'], csrf=False)
     def import_tools_http(self, **kw):
-        """
-        Handle file upload via HTTP POST for tools import
-        
-        Expected parameters:
-        - import_file: The file to import (binary)
-        - delimiter: CSV delimiter (optional, default ',')
-        - import_type: Type of import ('tools', 'categories', 'checks')
-        - column_mapping: JSON string with mapping of source columns to target columns
-        """
+        """Handle file upload via HTTP POST for tools import"""
         try:
             import_file = kw.get('import_file')
             if not import_file:
@@ -37,25 +29,28 @@ class MechanicToolsImportController(http.Controller):
             delimiter = kw.get('delimiter', ',')
             import_type = kw.get('import_type', 'tools')
             
-            # Get column mapping if provided
-            column_mapping = {}
             try:
+                # Get column mapping if provided
+                column_mapping = {}
                 mapping_str = kw.get('column_mapping', '{}')
                 if mapping_str:
                     column_mapping = json.loads(mapping_str)
             except Exception as e:
                 _logger.warning(f"Failed to parse column mapping: {str(e)}")
+                column_mapping = {}
             
-            # Process file content
+            # Process file content in binary mode (no encoding assumption)
             file_content = import_file.read()
             
-            # Save to temporary file
-            fd, temp_path = tempfile.mkstemp(suffix='.csv')
+            # Simpan ke temporary file
+            file_ext = os.path.splitext(import_file.filename)[1].lower() if hasattr(import_file, 'filename') else '.csv'
+            fd, temp_path = tempfile.mkstemp(suffix=file_ext)
+            
             try:
                 with os.fdopen(fd, 'wb') as temp_file:
                     temp_file.write(file_content)
                 
-                # Process the import with column mapping
+                # Process the import - pass file extension to choose appropriate parser
                 result = self._process_import(temp_path, delimiter, import_type, column_mapping)
                 return json.dumps(result)
                 
@@ -67,7 +62,7 @@ class MechanicToolsImportController(http.Controller):
                     pass
             
         except Exception as e:
-            _logger.error("Error in import_tools_http: %s", str(e))
+            _logger.error(f"Error in import_tools_http: {str(e)}", exc_info=True)
             return json.dumps({
                 'status': 'error',
                 'message': str(e)
@@ -112,11 +107,40 @@ class MechanicToolsImportController(http.Controller):
     def _process_import(self, file_path, delimiter, import_type, column_mapping=None):
         """Process the import based on file type with optional column mapping"""
         try:
-            # Read CSV file
-            with open(file_path, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f, delimiter=delimiter)
-                # Get header row
-                header = next(reader)
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            # Handle Excel files (XLS, XLSX)
+            if file_ext in ['.xls', '.xlsx']:
+                return self._process_excel_import(file_path, import_type, column_mapping)
+            
+            # Handle CSV files dengan berbagai encoding
+            else:
+                # Coba dengan beberapa encoding
+                encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+                data_rows = []
+                header = []
+                
+                for encoding in encodings:
+                    try:
+                        with open(file_path, 'r', encoding=encoding) as f:
+                            reader = csv.reader(f, delimiter=delimiter)
+                            rows = list(reader)
+                            if rows:
+                                header = rows[0]
+                                data_rows = rows[1:]
+                                break  # Berhasil membaca file
+                    except UnicodeDecodeError:
+                        continue  # Coba encoding lain
+                    except Exception as e:
+                        _logger.error(f"Error reading CSV with {encoding}: {str(e)}")
+                        continue
+                
+                if not header:
+                    return {
+                        'status': 'error',
+                        'message': 'Failed to read CSV file with any encoding'
+                    }
+                
                 # Convert headers to lowercase
                 original_headers = [h.strip() for h in header]
                 header_lower = [h.lower().strip() for h in header]
@@ -137,9 +161,6 @@ class MechanicToolsImportController(http.Controller):
                     header_lower = [h.lower().strip() for h in mapped_headers]
                     _logger.info(f"Applied column mapping. Original: {original_headers}, Mapped: {mapped_headers}")
                 
-                # Read data rows
-                data_rows = list(reader)
-                
                 if import_type == 'tools':
                     return self._import_tools_from_csv(header_lower, data_rows)
                 elif import_type == 'categories':
@@ -153,7 +174,7 @@ class MechanicToolsImportController(http.Controller):
                     }
                 
         except Exception as e:
-            _logger.error("Error processing import: %s", str(e))
+            _logger.error(f"Error processing import: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e)
@@ -167,47 +188,79 @@ class MechanicToolsImportController(http.Controller):
             
             file_ext = os.path.splitext(file_path)[1].lower()
             
+            # Data yang akan diproses
+            headers = []
+            data_rows = []
+            
             if file_ext == '.xlsx':
-                # For XLSX files
-                workbook = openpyxl.load_workbook(file_path, read_only=True)
-                sheet = workbook.active
-                
-                # Get headers from first row
-                headers = []
-                data_rows = []
-                
-                # Process rows
-                for i, row in enumerate(sheet.rows):
-                    if i == 0:
-                        # Headers
-                        headers = [cell.value.strip() if cell.value else '' for cell in row]
-                    else:
-                        # Data rows
-                        data_row = [cell.value if cell.value is not None else '' for cell in row]
-                        if any(data_row):  # Skip empty rows
-                            data_rows.append(data_row)
+                try:
+                    # Gunakan openpyxl untuk XLSX files tanpa membaca sebagai text
+                    workbook = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+                    sheet = workbook.active
+                    
+                    # Process rows
+                    for i, row in enumerate(sheet.rows):
+                        if i == 0:
+                            # Headers
+                            headers = [str(cell.value).strip() if cell.value is not None else '' for cell in row]
+                        else:
+                            # Data rows
+                            data_row = []
+                            for cell in row:
+                                # Tangani berbagai tipe data dengan benar
+                                if cell.value is None:
+                                    data_row.append('')
+                                elif isinstance(cell.value, (int, float)):
+                                    data_row.append(cell.value)
+                                else:
+                                    data_row.append(str(cell.value))
+                            
+                            if any(data_row):  # Skip empty rows
+                                data_rows.append(data_row)
+                except Exception as e:
+                    _logger.error(f"Error processing XLSX with openpyxl: {str(e)}")
+                    # Fallback ke pendekatan lain jika openpyxl gagal
+                    raise
                             
             elif file_ext == '.xls':
-                # For XLS files
+                # Untuk file XLS, gunakan xlrd yang lebih stabil
                 workbook = xlrd.open_workbook(file_path)
                 sheet = workbook.sheet_by_index(0)
                 
-                # Get headers from first row
-                headers = [sheet.cell_value(0, col) for col in range(sheet.ncols)]
-                headers = [h.strip() if isinstance(h, str) else str(h) for h in headers]
+                # Get headers
+                headers = []
+                for col in range(sheet.ncols):
+                    cell_value = sheet.cell_value(0, col)
+                    headers.append(str(cell_value).strip())
                 
                 # Get data rows
-                data_rows = []
                 for row_idx in range(1, sheet.nrows):
-                    row = [sheet.cell_value(row_idx, col) for col in range(sheet.ncols)]
+                    row = []
+                    for col_idx in range(sheet.ncols):
+                        cell = sheet.cell(row_idx, col_idx)
+                        if cell.ctype == xlrd.XL_CELL_DATE:
+                            # Tangani format tanggal dengan benar
+                            date_tuple = xlrd.xldate_as_tuple(cell.value, workbook.datemode)
+                            row.append(f"{date_tuple[0]}-{date_tuple[1]:02d}-{date_tuple[2]:02d}")
+                        else:
+                            row.append(str(cell.value) if cell.value != '' else '')
+                    
                     if any(row):  # Skip empty rows
                         data_rows.append(row)
-                        
             else:
                 return {
                     'status': 'error',
                     'message': f'Unsupported file format: {file_ext}'
                 }
+            
+            # Hapus karakter non-UTF8 dari headers jika perlu
+            cleaned_headers = []
+            for header in headers:
+                # Hapus karakter khusus, atur encoding
+                cleaned_header = ''.join(c for c in header if c.isprintable())
+                cleaned_headers.append(cleaned_header)
+            
+            headers = cleaned_headers
             
             # Apply column mapping if provided
             original_headers = headers
@@ -226,7 +279,7 @@ class MechanicToolsImportController(http.Controller):
                 headers = mapped_headers
                 _logger.info(f"Applied column mapping. Original: {original_headers}, Mapped: {headers}")
             
-            # Convert headers to lowercase
+            # Convert headers to lowercase for processing
             header_lower = [h.lower().strip() for h in headers]
             
             # Process the import based on type

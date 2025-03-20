@@ -7645,7 +7645,7 @@ class KPIOverview(http.Controller):
                 # Calculate summary
                 total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
                 total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
-                achievement_status = 'Achieved' if total_score >= 80 else 'Below Target'
+                achievement_status = 'Achieved' if total_score >= 90 else 'Below Target'
                 
                 # Add to mechanic_data
                 mechanic_data.append({

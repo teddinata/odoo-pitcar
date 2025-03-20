@@ -13,6 +13,7 @@ _logger = logging.getLogger(__name__)
 
 class MechanicToolsImportController(http.Controller):
     
+    # Tambahkan parameter mapping ke fungsi import_tools_http
     @http.route('/web/mechanic/tools/import', type='http', auth='user', methods=['POST'], csrf=False)
     def import_tools_http(self, **kw):
         """
@@ -22,6 +23,7 @@ class MechanicToolsImportController(http.Controller):
         - import_file: The file to import (binary)
         - delimiter: CSV delimiter (optional, default ',')
         - import_type: Type of import ('tools', 'categories', 'checks')
+        - column_mapping: JSON string with mapping of source columns to target columns
         """
         try:
             import_file = kw.get('import_file')
@@ -35,6 +37,15 @@ class MechanicToolsImportController(http.Controller):
             delimiter = kw.get('delimiter', ',')
             import_type = kw.get('import_type', 'tools')
             
+            # Get column mapping if provided
+            column_mapping = {}
+            try:
+                mapping_str = kw.get('column_mapping', '{}')
+                if mapping_str:
+                    column_mapping = json.loads(mapping_str)
+            except Exception as e:
+                _logger.warning(f"Failed to parse column mapping: {str(e)}")
+            
             # Process file content
             file_content = import_file.read()
             
@@ -44,8 +55,8 @@ class MechanicToolsImportController(http.Controller):
                 with os.fdopen(fd, 'wb') as temp_file:
                     temp_file.write(file_content)
                 
-                # Process the import
-                result = self._process_import(temp_path, delimiter, import_type)
+                # Process the import with column mapping
+                result = self._process_import(temp_path, delimiter, import_type, column_mapping)
                 return json.dumps(result)
                 
             finally:
@@ -98,8 +109,8 @@ class MechanicToolsImportController(http.Controller):
                 'message': str(e)
             }
     
-    def _process_import(self, file_path, delimiter, import_type):
-        """Process the import based on file type"""
+    def _process_import(self, file_path, delimiter, import_type, column_mapping=None):
+        """Process the import based on file type with optional column mapping"""
         try:
             # Read CSV file
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -107,7 +118,24 @@ class MechanicToolsImportController(http.Controller):
                 # Get header row
                 header = next(reader)
                 # Convert headers to lowercase
+                original_headers = [h.strip() for h in header]
                 header_lower = [h.lower().strip() for h in header]
+                
+                # Apply column mapping if provided
+                if column_mapping:
+                    mapped_headers = []
+                    for h in original_headers:
+                        # Look for exact match first, then case-insensitive
+                        if h in column_mapping:
+                            mapped_headers.append(column_mapping[h])
+                        elif h.lower() in {k.lower(): v for k, v in column_mapping.items()}:
+                            mapped_key = next(k for k in column_mapping.keys() if k.lower() == h.lower())
+                            mapped_headers.append(column_mapping[mapped_key])
+                        else:
+                            mapped_headers.append(h)
+                    
+                    header_lower = [h.lower().strip() for h in mapped_headers]
+                    _logger.info(f"Applied column mapping. Original: {original_headers}, Mapped: {mapped_headers}")
                 
                 # Read data rows
                 data_rows = list(reader)
@@ -129,6 +157,101 @@ class MechanicToolsImportController(http.Controller):
             return {
                 'status': 'error',
                 'message': str(e)
+            }
+        
+    def _process_excel_import(self, file_path, import_type, column_mapping=None):
+        """Process Excel files for import"""
+        try:
+            import xlrd
+            import openpyxl
+            
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            if file_ext == '.xlsx':
+                # For XLSX files
+                workbook = openpyxl.load_workbook(file_path, read_only=True)
+                sheet = workbook.active
+                
+                # Get headers from first row
+                headers = []
+                data_rows = []
+                
+                # Process rows
+                for i, row in enumerate(sheet.rows):
+                    if i == 0:
+                        # Headers
+                        headers = [cell.value.strip() if cell.value else '' for cell in row]
+                    else:
+                        # Data rows
+                        data_row = [cell.value if cell.value is not None else '' for cell in row]
+                        if any(data_row):  # Skip empty rows
+                            data_rows.append(data_row)
+                            
+            elif file_ext == '.xls':
+                # For XLS files
+                workbook = xlrd.open_workbook(file_path)
+                sheet = workbook.sheet_by_index(0)
+                
+                # Get headers from first row
+                headers = [sheet.cell_value(0, col) for col in range(sheet.ncols)]
+                headers = [h.strip() if isinstance(h, str) else str(h) for h in headers]
+                
+                # Get data rows
+                data_rows = []
+                for row_idx in range(1, sheet.nrows):
+                    row = [sheet.cell_value(row_idx, col) for col in range(sheet.ncols)]
+                    if any(row):  # Skip empty rows
+                        data_rows.append(row)
+                        
+            else:
+                return {
+                    'status': 'error',
+                    'message': f'Unsupported file format: {file_ext}'
+                }
+            
+            # Apply column mapping if provided
+            original_headers = headers
+            if column_mapping:
+                mapped_headers = []
+                for h in original_headers:
+                    # Look for exact match first, then case-insensitive
+                    if h in column_mapping:
+                        mapped_headers.append(column_mapping[h])
+                    elif h.lower() in {k.lower(): v for k, v in column_mapping.items()}:
+                        mapped_key = next(k for k in column_mapping.keys() if k.lower() == h.lower())
+                        mapped_headers.append(column_mapping[mapped_key])
+                    else:
+                        mapped_headers.append(h)
+                
+                headers = mapped_headers
+                _logger.info(f"Applied column mapping. Original: {original_headers}, Mapped: {headers}")
+            
+            # Convert headers to lowercase
+            header_lower = [h.lower().strip() for h in headers]
+            
+            # Process the import based on type
+            if import_type == 'tools':
+                return self._import_tools_from_csv(header_lower, data_rows)
+            elif import_type == 'categories':
+                return self._import_categories_from_csv(header_lower, data_rows)
+            elif import_type == 'checks':
+                return self._import_checks_from_csv(header_lower, data_rows)
+            else:
+                return {
+                    'status': 'error',
+                    'message': f'Invalid import type: {import_type}'
+                }
+                
+        except ImportError as e:
+            return {
+                'status': 'error',
+                'message': f'Missing required library for Excel processing: {str(e)}. Please install xlrd and openpyxl.'
+            }
+        except Exception as e:
+            _logger.error("Error processing Excel import: %s", str(e))
+            return {
+                'status': 'error',
+                'message': f'Error processing Excel file: {str(e)}'
             }
     
     def _import_tools_from_csv(self, header, data_rows):

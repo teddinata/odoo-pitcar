@@ -635,6 +635,40 @@ class ContentManagementAPI(http.Controller):
 
     def _prepare_project_data(self, project):
         """Helper method to prepare project data"""
+        tasks_data = []
+        for task in project.task_ids:
+            task_data = {
+                'id': task.id,
+                'name': task.name,
+                'type': task.content_type,  # Tetap gunakan 'type' untuk kompatibilitas
+                'content_type': task.content_type,  # Tambahkan juga 'content_type'
+                'state': task.state,
+                'progress': task.progress,
+                'revision_count': task.revision_count,
+                'dates': {
+                    'planned_start': task.planned_date_start,
+                    'planned_end': task.planned_date_end,
+                    'actual_start': task.actual_date_start,
+                    'actual_end': task.actual_date_end
+                },
+                'hours': {
+                    'planned': task.planned_hours,
+                    'actual': task.actual_hours
+                },
+                'assigned_to': [{
+                    'id': member.id,
+                    'name': member.name,
+                    'position': member.job_id.name if member.job_id else ''
+                } for member in task.assigned_to],
+                'reviewer': {
+                    'id': task.reviewer_id.id,
+                    'name': task.reviewer_id.name,
+                    'position': task.reviewer_id.job_id.name if task.reviewer_id.job_id else ''
+                } if task.reviewer_id else None,
+                'description': task.description
+            }
+            tasks_data.append(task_data)
+        
         return {
             'id': project.id,
             'name': project.name,
@@ -661,14 +695,7 @@ class ContentManagementAPI(http.Controller):
             },
             'progress': project.progress,
             'state': project.state,
-            'tasks': [{
-                'id': task.id,
-                'name': task.name,
-                'type': task.content_type,
-                'state': task.state,
-                'progress': task.progress,
-                'revision_count': task.revision_count
-            } for task in project.task_ids]
+            'tasks': tasks_data
         }
 
     def _prepare_task_data(self, task):

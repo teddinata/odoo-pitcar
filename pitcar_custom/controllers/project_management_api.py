@@ -250,6 +250,71 @@ class TeamProjectAPI(http.Controller):
                         if not isinstance(assigned_to, list):
                             assigned_to = [int(assigned_to)]
                         domain.append(('assigned_to', 'in', assigned_to))
+                    # Filter status
+                    if kw.get('state'):
+                        domain.append(('state', '=', kw['state']))
+                    
+                    # Filter tipe task
+                    if kw.get('type_id'):
+                        domain.append(('type_id', '=', int(kw['type_id'])))
+                    
+                    # Filter prioritas
+                    if kw.get('priority'):
+                        domain.append(('priority', '=', kw['priority']))
+                    
+                    # Filter rentang tanggal due date
+                    if kw.get('due_date_from'):
+                        domain.append(('planned_date_end', '>=', kw['due_date_from']))
+                    if kw.get('due_date_to'):
+                        domain.append(('planned_date_end', '<=', kw['due_date_to']))
+                    
+                    # Filter task overdue
+                    if kw.get('is_overdue') == 'true':
+                        today = fields.Date.today()
+                        domain.append(('planned_date_end', '<', today))
+                        domain.append(('state', 'not in', ['done', 'cancelled']))
+                    
+                    # Filter progress
+                    if kw.get('progress_min'):
+                        domain.append(('progress', '>=', float(kw['progress_min'])))
+                    if kw.get('progress_max'):
+                        domain.append(('progress', '<=', float(kw['progress_max'])))
+                    
+                    # Filter berdasarkan tag/label (jika model memiliki field tag_ids)
+                    if kw.get('tag_ids'):
+                        tag_ids = kw['tag_ids'] if isinstance(kw['tag_ids'], list) else json.loads(kw['tag_ids'])
+                        domain.append(('tag_ids', 'in', tag_ids))
+                    
+                    # Filter "my tasks" - tasks untuk user saat ini
+                    if kw.get('my_tasks') == 'true':
+                        domain.append(('assigned_to', 'in', [request.env.user.employee_id.id]))
+                    
+                    # Filter task baru/diupdate dalam X hari terakhir
+                    if kw.get('recent_days'):
+                        days = int(kw['recent_days'])
+                        date_limit = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+                        domain.append('|')
+                        domain.append(('create_date', '>=', date_limit))
+                        domain.append(('write_date', '>=', date_limit))
+                    
+                    # Filter dependency
+                    if kw.get('has_dependencies') == 'true':
+                        domain.append(('depends_on_ids', '!=', False))
+                    elif kw.get('has_dependencies') == 'false':
+                        domain.append(('depends_on_ids', '=', False))
+                    
+                    # Filter blocked
+                    if kw.get('is_blocked') == 'true':
+                        domain.append(('blocked_by_id', '!=', False))
+                    elif kw.get('is_blocked') == 'false':
+                        domain.append(('blocked_by_id', '=', False))
+                        
+                    # Filter nama task (search)
+                    if kw.get('search'):
+                        domain.append('|')
+                        domain.append(('name', 'ilike', kw['search']))
+                        domain.append(('description', 'ilike', kw['search']))
+
                     
                     # Get tasks based on domain filters
                     tasks = request.env['team.project.task'].sudo().search(domain)
@@ -2003,15 +2068,54 @@ class TeamProjectAPI(http.Controller):
 
     @http.route('/web/session/get_employees', type='json', auth='user', methods=['POST'], csrf=False)
     def get_employees(self, **kw):
-        """Get list of employees for dropdown selection."""
+        """Get list of employees for dropdown selection and Gantt chart."""
         try:
-            employees = request.env['hr.employee'].sudo().search_read(
-                [], ['id', 'name'], order='name asc'
-            )
+            # Get filter parameters
+            project_id = kw.get('project_id')
+            department_id = kw.get('department_id')
+            
+            domain = []
+            
+            # Add filters if provided
+            if project_id:
+                # Get employees from specific project
+                project = request.env['team.project'].sudo().browse(int(project_id))
+                if project.exists():
+                    # Get the employee IDs from this project's team
+                    team_ids = project.team_ids.ids
+                    if project.project_manager_id:
+                        team_ids.append(project.project_manager_id.id)
+                    
+                    if team_ids:
+                        domain.append(('id', 'in', team_ids))
+            
+            if department_id:
+                domain.append(('department_id', '=', int(department_id)))
+            
+            # Search for employees with given domain
+            employees = request.env['hr.employee'].sudo().search(domain)
+            
+            # Prepare response data with employee details
+            employee_data = []
+            for employee in employees:
+                emp_data = {
+                    'id': employee.id,
+                    'name': employee.name,
+                    'job_title': employee.job_id.name if employee.job_id else '',
+                    'department': employee.department_id.name if employee.department_id else '',
+                    'email': employee.work_email or '',
+                    'phone': employee.work_phone or '',
+                }
+                
+                # Add photo if available
+                if employee.image_128:
+                    emp_data['avatar'] = f"data:image/png;base64,{employee.image_128.decode('utf-8')}"
+                
+                employee_data.append(emp_data)
             
             return {
                 'status': 'success',
-                'data': employees
+                'data': employee_data
             }
         except Exception as e:
             _logger.error(f"Error in get_employees: {str(e)}")

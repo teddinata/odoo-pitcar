@@ -965,6 +965,140 @@ class LeadTimeAPIController(http.Controller):
                 'tunggu_part2': 45
             }
 
+            # Calculate flat rate statistics
+            def calculate_flat_rate_statistics(orders):
+                """Calculate flat rate statistics from order items"""
+                if not orders:
+                    return {
+                        'total_flat_rate': 0,
+                        'avg_flat_rate_per_order': 0,
+                        'avg_flat_rate_per_mechanic': 0,
+                        'flat_rate_efficiency': 0,
+                        'top_services': [],
+                        'mechanic_flat_rates': [],
+                        'daily_flat_rates': []
+                    }
+                
+                product_flat_rates = {}  # Product ID -> flat rate value
+                
+                # First load all service products flat rates
+                service_products = request.env['product.product'].search([('type', '=', 'service')])
+                for product in service_products:
+                    product_flat_rates[product.id] = product.flat_rate
+                
+                # Process orders to calculate flat rates
+                order_flat_rates = {}  # Order ID -> total flat rate
+                mechanic_flat_rates = {}  # Mechanic ID -> total flat rate
+                service_flat_rates = {}  # Product ID -> total flat rate sold
+                daily_flat_rates = {}  # Date -> total flat rate
+                
+                for order in orders:
+                    order_total_flat_rate = 0
+                    
+                    # Process order lines to get flat rates
+                    for line in order.order_line:
+                        if line.product_id and line.product_id.type == 'service':
+                            product_flat_rate = product_flat_rates.get(line.product_id.id, 0)
+                            line_flat_rate = product_flat_rate * line.product_uom_qty
+                            order_total_flat_rate += line_flat_rate
+                            
+                            # Update service flat rates
+                            if line.product_id.id in service_flat_rates:
+                                service_flat_rates[line.product_id.id]['flat_rate'] += line_flat_rate
+                                service_flat_rates[line.product_id.id]['count'] += 1
+                            else:
+                                service_flat_rates[line.product_id.id] = {
+                                    'product_id': line.product_id.id,
+                                    'name': line.product_id.name,
+                                    'flat_rate': line_flat_rate,
+                                    'count': 1
+                                }
+                    
+                    # Store order flat rate
+                    order_flat_rates[order.id] = order_total_flat_rate
+                    
+                    # Update mechanic flat rates
+                    mechanic_count = len(order.car_mechanic_id_new)
+                    if mechanic_count > 0:
+                        # Distribute flat rate evenly among mechanics
+                        mechanic_flat_rate = order_total_flat_rate / mechanic_count
+                        for mechanic in order.car_mechanic_id_new:
+                            if mechanic.id in mechanic_flat_rates:
+                                mechanic_flat_rates[mechanic.id]['flat_rate'] += mechanic_flat_rate
+                                mechanic_flat_rates[mechanic.id]['order_count'] += 1
+                            else:
+                                mechanic_flat_rates[mechanic.id] = {
+                                    'mechanic_id': mechanic.id,
+                                    'name': mechanic.name,
+                                    'flat_rate': mechanic_flat_rate,
+                                    'order_count': 1
+                                }
+                    
+                    # Update daily flat rates
+                    if order.sa_jam_masuk:
+                        day = order.sa_jam_masuk.date().strftime('%Y-%m-%d')
+                        if day in daily_flat_rates:
+                            daily_flat_rates[day] += order_total_flat_rate
+                        else:
+                            daily_flat_rates[day] = order_total_flat_rate
+                
+                # Calculate summary metrics
+                total_flat_rate = sum(order_flat_rates.values())
+                avg_flat_rate_per_order = total_flat_rate / len(orders) if orders else 0
+                
+                # Calculate average flat rate per mechanic
+                total_mechanic_instances = sum(m['order_count'] for m in mechanic_flat_rates.values())
+                avg_flat_rate_per_mechanic = total_flat_rate / total_mechanic_instances if total_mechanic_instances else 0
+                
+                # Calculate flat rate efficiency (ratio of flat rate to actual service time)
+                total_service_time = sum(o.lead_time_servis or 0 for o in orders if o.lead_time_servis)
+                flat_rate_efficiency = (total_flat_rate / total_service_time * 100) if total_service_time else 0
+                
+                # Prepare top services by flat rate
+                top_services = sorted(
+                    [service for service in service_flat_rates.values()],
+                    key=lambda x: x['flat_rate'],
+                    reverse=True
+                )[:5]  # Get top 5 services
+                
+                # Prepare mechanic flat rates sorted
+                mechanic_flat_rates_sorted = sorted(
+                    [m for m in mechanic_flat_rates.values()],
+                    key=lambda x: x['flat_rate'],
+                    reverse=True
+                )
+                
+                # Format flat rates with two decimal places
+                for mech in mechanic_flat_rates_sorted:
+                    mech['flat_rate'] = round(mech['flat_rate'], 2)
+                    mech['flat_rate_formatted'] = format_duration(mech['flat_rate'])
+                
+                for svc in top_services:
+                    svc['flat_rate'] = round(svc['flat_rate'], 2)
+                    svc['flat_rate_formatted'] = format_duration(svc['flat_rate'])
+                
+                # Prepare daily flat rates
+                daily_flat_rates_list = [
+                    {'date': day, 'flat_rate': round(flat_rate, 2), 'flat_rate_formatted': format_duration(flat_rate)}
+                    for day, flat_rate in daily_flat_rates.items()
+                ]
+                daily_flat_rates_list.sort(key=lambda x: x['date'])
+                
+                return {
+                    'total_flat_rate': round(total_flat_rate, 2),
+                    'avg_flat_rate_per_order': round(avg_flat_rate_per_order, 2),
+                    'avg_flat_rate_per_mechanic': round(avg_flat_rate_per_mechanic, 2),
+                    'flat_rate_efficiency': round(flat_rate_efficiency, 2),
+                    'formatted': {
+                        'total_flat_rate': format_duration(total_flat_rate),
+                        'avg_flat_rate_per_order': format_duration(avg_flat_rate_per_order),
+                        'avg_flat_rate_per_mechanic': format_duration(avg_flat_rate_per_mechanic)
+                    },
+                    'top_services': top_services,
+                    'mechanic_flat_rates': mechanic_flat_rates_sorted,
+                    'daily_flat_rates': daily_flat_rates_list
+                }
+
             def calculate_daily_stats(start_date, end_date, orders):
                 """Calculate statistics for each day in range"""
                 daily_stats = {}
@@ -1512,6 +1646,8 @@ class LeadTimeAPIController(http.Controller):
                         }
                     }
                 },
+                # Add flat rate statistics
+                'flat_rate': calculate_flat_rate_statistics(orders),
                 'service_category': service_category_counts,
                 'service_subcategory': service_subcategory_counts,
                 'overall': calculate_period_stats(orders),

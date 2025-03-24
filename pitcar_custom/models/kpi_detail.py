@@ -36,7 +36,8 @@ class KPIDetail(models.Model):
         ('work_distribution', 'Work Distribution'),
         ('complaint_handling', 'Complaint Handling'),
         ('team_productivity', 'Team Productivity'),
-        ('team_discipline', 'Team Discipline')
+        ('team_discipline', 'Team Discipline'),
+        ('employee_development', 'Pengembangan Karyawan')
     ], string='KPI Type')
     
     weight = fields.Float('Bobot')

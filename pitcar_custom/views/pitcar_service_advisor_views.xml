@@ -83,7 +83,7 @@
                                           'required': [('position_code', '=', 'advisor')]}"/>
                         </group>
                         <group>
-                            <field name="monthly_target" readonly="1"/>
+                            <field name="monthly_target" />
                             <field name="current_revenue" readonly="1"/>
                             <field name="target_achievement" widget="percentage" readonly="1"/>
                             <field name="color" widget="color_picker"/>

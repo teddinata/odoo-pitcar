@@ -1084,6 +1084,26 @@ class LeadTimeAPIController(http.Controller):
                 exceeded_durations = {key: [] for key in JOB_STOP_STANDARDS.keys()}
                 within_durations = {key: [] for key in JOB_STOP_STANDARDS.keys()}
 
+                 # Initialize overall lead time statistics
+                overall_lead_times = []
+                min_overall_lead_time = float('inf')
+                max_overall_lead_time = 0
+                overall_lead_time_distribution = {
+                    'under_2_hours': 0,
+                    '2_to_4_hours': 0,
+                    '4_to_6_hours': 0,
+                    '6_to_8_hours': 0,
+                    'over_8_hours': 0
+                }
+                
+                # Add specific tracking for each lead time stage
+                stage_durations = {
+                    'arrival_to_reception': [],  # sa_jam_masuk -> sa_mulai_penerimaan
+                    'reception_to_pkb': [],      # sa_mulai_penerimaan -> sa_cetak_pkb
+                    'pkb_to_service_start': [],  # sa_cetak_pkb -> controller_mulai_servis
+                    'service_duration': []       # controller_mulai_servis -> controller_selesai
+                }
+
                 for order in orders:
                     # Count active job stops
                     if order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai:
@@ -1098,6 +1118,29 @@ class LeadTimeAPIController(http.Controller):
                         job_stops['tunggu_sublet'] += 1
                     if order.controller_job_stop_lain_mulai and not order.controller_job_stop_lain_selesai:
                         job_stops['job_stop_lain'] += 1
+
+                    # Process overall lead time (from sa_jam_masuk to controller_selesai)
+                    if order.sa_jam_masuk and order.controller_selesai:
+                        # Calculate overall lead time in hours
+                        overall_lead_time = (order.controller_selesai - order.sa_jam_masuk).total_seconds() / 3600
+                        
+                        # Add to metrics
+                        if overall_lead_time > 0:
+                            overall_lead_times.append(overall_lead_time)
+                            min_overall_lead_time = min(min_overall_lead_time, overall_lead_time)
+                            max_overall_lead_time = max(max_overall_lead_time, overall_lead_time)
+                            
+                            # Update distribution
+                            if overall_lead_time < 2:
+                                overall_lead_time_distribution['under_2_hours'] += 1
+                            elif overall_lead_time < 4:
+                                overall_lead_time_distribution['2_to_4_hours'] += 1
+                            elif overall_lead_time < 6:
+                                overall_lead_time_distribution['4_to_6_hours'] += 1
+                            elif overall_lead_time < 8:
+                                overall_lead_time_distribution['6_to_8_hours'] += 1
+                            else:
+                                overall_lead_time_distribution['over_8_hours'] += 1
 
                     # Process completed job stops
                     def process_job_stop_standards(start, end, key):
@@ -1178,6 +1221,13 @@ class LeadTimeAPIController(http.Controller):
                     }
                 }
 
+                # Calculate overall lead time average
+                avg_overall_lead_time = sum(overall_lead_times) / len(overall_lead_times) if overall_lead_times else 0
+                
+                # Set min_overall_lead_time to 0 if no data
+                if min_overall_lead_time == float('inf'):
+                    min_overall_lead_time = 0
+
                 # Log statistics for verification
                 _logger.info(f"""
                 Period Statistics:
@@ -1208,7 +1258,69 @@ class LeadTimeAPIController(http.Controller):
                         'proses': len(active_orders),
                         'selesai': len(completed_orders)
                     },
-                    'service_metrics': service_metrics
+                    'service_metrics': service_metrics,
+                    # Add overall lead time statistics to the result
+                    'overall_lead_time': {
+                        'average_hours': avg_overall_lead_time,
+                        'min_hours': min_overall_lead_time,
+                        'max_hours': max_overall_lead_time,
+                        'distribution': overall_lead_time_distribution,
+                        'formatted': {
+                            'average': format_duration(avg_overall_lead_time),
+                            'min': format_duration(min_overall_lead_time),
+                            'max': format_duration(max_overall_lead_time)
+                        },
+                        'count': len(overall_lead_times),
+                        'total_hours': sum(overall_lead_times) if overall_lead_times else 0
+                    },
+                    # Add individual lead time breakdown for key service stages
+                    'lead_time_breakdown': {
+                        'arrival_to_reception': {
+                            'average': sum((o.sa_mulai_penerimaan - o.sa_jam_masuk).total_seconds() / 3600 
+                                    for o in orders if o.sa_jam_masuk and o.sa_mulai_penerimaan) / 
+                                    len([o for o in orders if o.sa_jam_masuk and o.sa_mulai_penerimaan]) 
+                                    if any(o.sa_jam_masuk and o.sa_mulai_penerimaan for o in orders) else 0,
+                            'formatted': format_duration(sum((o.sa_mulai_penerimaan - o.sa_jam_masuk).total_seconds() / 3600 
+                                        for o in orders if o.sa_jam_masuk and o.sa_mulai_penerimaan) / 
+                                        len([o for o in orders if o.sa_jam_masuk and o.sa_mulai_penerimaan]) 
+                                        if any(o.sa_jam_masuk and o.sa_mulai_penerimaan for o in orders) else 0)
+                        },
+                        'reception_to_pkb': {
+                            'average': sum((o.sa_cetak_pkb - o.sa_mulai_penerimaan).total_seconds() / 3600 
+                                    for o in orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb) / 
+                                    len([o for o in orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb]) 
+                                    if any(o.sa_mulai_penerimaan and o.sa_cetak_pkb for o in orders) else 0,
+                            'formatted': format_duration(sum((o.sa_cetak_pkb - o.sa_mulai_penerimaan).total_seconds() / 3600 
+                                        for o in orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb) / 
+                                        len([o for o in orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb]) 
+                                        if any(o.sa_mulai_penerimaan and o.sa_cetak_pkb for o in orders) else 0)
+                        },
+                        'pkb_to_service_start': {
+                            'average': sum((o.controller_mulai_servis - o.sa_cetak_pkb).total_seconds() / 3600 
+                                    for o in orders if o.sa_cetak_pkb and o.controller_mulai_servis) / 
+                                    len([o for o in orders if o.sa_cetak_pkb and o.controller_mulai_servis]) 
+                                    if any(o.sa_cetak_pkb and o.controller_mulai_servis for o in orders) else 0,
+                            'formatted': format_duration(sum((o.controller_mulai_servis - o.sa_cetak_pkb).total_seconds() / 3600 
+                                        for o in orders if o.sa_cetak_pkb and o.controller_mulai_servis) / 
+                                        len([o for o in orders if o.sa_cetak_pkb and o.controller_mulai_servis]) 
+                                        if any(o.sa_cetak_pkb and o.controller_mulai_servis for o in orders) else 0)
+                        },
+                        'service_duration': {
+                            'average': sum((o.controller_selesai - o.controller_mulai_servis).total_seconds() / 3600 
+                                    for o in orders if o.controller_mulai_servis and o.controller_selesai) / 
+                                    len([o for o in orders if o.controller_mulai_servis and o.controller_selesai]) 
+                                    if any(o.controller_mulai_servis and o.controller_selesai for o in orders) else 0,
+                            'formatted': format_duration(sum((o.controller_selesai - o.controller_mulai_servis).total_seconds() / 3600 
+                                        for o in orders if o.controller_mulai_servis and o.controller_selesai) / 
+                                        len([o for o in orders if o.controller_mulai_servis and o.controller_selesai]) 
+                                        if any(o.controller_mulai_servis and o.controller_selesai for o in orders) else 0)
+                        },
+                        'total_service_process': {
+                            'average': avg_overall_lead_time,
+                            'formatted': format_duration(avg_overall_lead_time),
+                            'description': 'Waktu total dari kedatangan sampai selesai servis (sa_jam_masuk hingga controller_selesai)'
+                        }
+                    }
                 }
 
             def get_hourly_distribution(orders):
@@ -1229,6 +1341,17 @@ class LeadTimeAPIController(http.Controller):
                             hours[hour]['completions'] += 1
                             
                 return hours
+            
+            # Helper function to format duration
+            def format_duration(hours):
+                """Format hours to readable string (e.g., "2j 30m")"""
+                if not hours:
+                    return "0j 0m"
+                    
+                hours_int = int(hours)
+                minutes = int((hours - hours_int) * 60)
+                
+                return f"{hours_int}j {minutes}m"
 
             # Get staff stats
             mechanics = request.env['pitcar.mechanic.new'].search([])
@@ -1243,6 +1366,77 @@ class LeadTimeAPIController(http.Controller):
                     active_mechanics.update(order.car_mechanic_id_new.ids)
                 if order.service_advisor_id:
                     active_advisors.update(order.service_advisor_id.ids)
+
+            # Calculate overall lead time metrics for the summary on top
+            completed_with_full_times = orders.filtered(lambda o: o.sa_jam_masuk and o.controller_selesai)
+            overall_lead_time_summary = {
+                'count': len(completed_with_full_times),
+                'average_hours': 0,
+                'min_hours': 0,
+                'max_hours': 0,
+                'distribution': {
+                    'under_2_hours': 0,
+                    '2_to_4_hours': 0,
+                    '4_to_6_hours': 0, 
+                    '6_to_8_hours': 0,
+                    'over_8_hours': 0
+                }
+            }
+            
+            if completed_with_full_times:
+                # Calculate lead times
+                lead_times = [(o.controller_selesai - o.sa_jam_masuk).total_seconds() / 3600 
+                            for o in completed_with_full_times]
+                
+                # Calculate averages and ranges
+                overall_lead_time_summary['average_hours'] = sum(lead_times) / len(lead_times)
+                overall_lead_time_summary['min_hours'] = min(lead_times) if lead_times else 0
+                overall_lead_time_summary['max_hours'] = max(lead_times) if lead_times else 0
+                
+                # Calculate distribution
+                for lt in lead_times:
+                    if lt < 2:
+                        overall_lead_time_summary['distribution']['under_2_hours'] += 1
+                    elif lt < 4:
+                        overall_lead_time_summary['distribution']['2_to_4_hours'] += 1
+                    elif lt < 6:
+                        overall_lead_time_summary['distribution']['4_to_6_hours'] += 1
+                    elif lt < 8:
+                        overall_lead_time_summary['distribution']['6_to_8_hours'] += 1
+                    else:
+                        overall_lead_time_summary['distribution']['over_8_hours'] += 1
+                
+            # Add formatted values
+            overall_lead_time_summary['formatted'] = {
+                'average': format_duration(overall_lead_time_summary['average_hours']),
+                'min': format_duration(overall_lead_time_summary['min_hours']),
+                'max': format_duration(overall_lead_time_summary['max_hours'])
+            }
+
+            # Calculate lead time stages distribution
+            lead_time_stages = {
+                'not_started': 0,
+                'check_in': 0, 
+                'reception': 0,
+                'pkb_printed': 0,
+                'waiting_service': 0,
+                'in_service': 0,
+                'service_done': 0
+            }
+            
+            for order in orders:
+                if not order.sa_jam_masuk:
+                    lead_time_stages['not_started'] += 1
+                elif not order.sa_mulai_penerimaan:
+                    lead_time_stages['check_in'] += 1
+                elif not order.sa_cetak_pkb:
+                    lead_time_stages['reception'] += 1
+                elif not order.controller_mulai_servis:
+                    lead_time_stages['waiting_service'] += 1
+                elif not order.controller_selesai:
+                    lead_time_stages['in_service'] += 1
+                else:
+                    lead_time_stages['service_done'] += 1
 
             # Get service category and subcategory counts with uncategorized
             service_category_counts = {
@@ -1268,11 +1462,62 @@ class LeadTimeAPIController(http.Controller):
                     'start': date_range_start,
                     'end': date_range_end
                 },
+                # Add lead time summary at the top level for easy access
+                'lead_time_summary': {
+                    'total_service_process': overall_lead_time_summary,
+                    'process_breakdown': {
+                        'arrival_to_reception': {
+                            'average_hours': sum((o.sa_mulai_penerimaan - o.sa_jam_masuk).total_seconds() / 3600 
+                                        for o in orders if o.sa_jam_masuk and o.sa_mulai_penerimaan) / 
+                                        len([o for o in orders if o.sa_jam_masuk and o.sa_mulai_penerimaan]) 
+                                        if any(o.sa_jam_masuk and o.sa_mulai_penerimaan for o in orders) else 0,
+                            'formatted': format_duration(sum((o.sa_mulai_penerimaan - o.sa_jam_masuk).total_seconds() / 3600 
+                                        for o in orders if o.sa_jam_masuk and o.sa_mulai_penerimaan) / 
+                                        len([o for o in orders if o.sa_jam_masuk and o.sa_mulai_penerimaan]) 
+                                        if any(o.sa_jam_masuk and o.sa_mulai_penerimaan for o in orders) else 0),
+                            'name': 'Kedatangan ke Penerimaan'
+                        },
+                        'reception_to_pkb': {
+                            'average_hours': sum((o.sa_cetak_pkb - o.sa_mulai_penerimaan).total_seconds() / 3600 
+                                        for o in orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb) / 
+                                        len([o for o in orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb]) 
+                                        if any(o.sa_mulai_penerimaan and o.sa_cetak_pkb for o in orders) else 0,
+                            'formatted': format_duration(sum((o.sa_cetak_pkb - o.sa_mulai_penerimaan).total_seconds() / 3600 
+                                        for o in orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb) / 
+                                        len([o for o in orders if o.sa_mulai_penerimaan and o.sa_cetak_pkb]) 
+                                        if any(o.sa_mulai_penerimaan and o.sa_cetak_pkb for o in orders) else 0),
+                            'name': 'Penerimaan ke Cetak PKB'
+                        },
+                        'pkb_to_service_start': {
+                            'average_hours': sum((o.controller_mulai_servis - o.sa_cetak_pkb).total_seconds() / 3600 
+                                        for o in orders if o.sa_cetak_pkb and o.controller_mulai_servis) / 
+                                        len([o for o in orders if o.sa_cetak_pkb and o.controller_mulai_servis]) 
+                                        if any(o.sa_cetak_pkb and o.controller_mulai_servis for o in orders) else 0,
+                            'formatted': format_duration(sum((o.controller_mulai_servis - o.sa_cetak_pkb).total_seconds() / 3600 
+                                        for o in orders if o.sa_cetak_pkb and o.controller_mulai_servis) / 
+                                        len([o for o in orders if o.sa_cetak_pkb and o.controller_mulai_servis]) 
+                                        if any(o.sa_cetak_pkb and o.controller_mulai_servis for o in orders) else 0),
+                            'name': 'Cetak PKB ke Mulai Servis'
+                        },
+                        'service_duration': {
+                            'average_hours': sum((o.controller_selesai - o.controller_mulai_servis).total_seconds() / 3600 
+                                        for o in orders if o.controller_mulai_servis and o.controller_selesai) / 
+                                        len([o for o in orders if o.controller_mulai_servis and o.controller_selesai]) 
+                                        if any(o.controller_mulai_servis and o.controller_selesai for o in orders) else 0,
+                            'formatted': format_duration(sum((o.controller_selesai - o.controller_mulai_servis).total_seconds() / 3600 
+                                        for o in orders if o.controller_mulai_servis and o.controller_selesai) / 
+                                        len([o for o in orders if o.controller_mulai_servis and o.controller_selesai]) 
+                                        if any(o.controller_mulai_servis and o.controller_selesai for o in orders) else 0),
+                            'name': 'Durasi Servis Aktif'
+                        }
+                    }
+                },
                 'service_category': service_category_counts,
                 'service_subcategory': service_subcategory_counts,
                 'overall': calculate_period_stats(orders),
                 'daily_breakdown': calculate_daily_stats(start_utc, end_utc, orders),
                 'hourly_distribution': get_hourly_distribution(orders),
+                'lead_time_stages': lead_time_stages,
                 'staff': {
                     'mechanics': {
                         'total': len(mechanics),

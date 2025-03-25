@@ -98,15 +98,15 @@ class TeamProjectAPI(http.Controller):
                 if not project.exists():
                     return {'status': 'error', 'message': 'Project not found'}
                 
-                # Parse parameter include_task_attachments jika ada
-                include_task_attachments = kw.get('include_task_attachments', False)
-                if isinstance(include_task_attachments, str):
-                    include_task_attachments = include_task_attachments.lower() in ('true', '1', 'yes')
+                # Parse parameter include_attachments jika ada
+                include_attachments = kw.get('include_attachments', False)
+                if isinstance(include_attachments, str):
+                    include_attachments = include_attachments.lower() in ('true', '1', 'yes')
                 
                 # Get related tasks
                 tasks = []
                 for task in project.task_ids:
-                    tasks.append(self._prepare_task_data(task, include_task_attachments))
+                    tasks.append(self._prepare_task_data(task))
                 
                 # Get related meetings
                 meetings = []
@@ -120,6 +120,25 @@ class TeamProjectAPI(http.Controller):
                 
                 # Prepare project data with additional related data
                 project_data = self._prepare_project_data(project)
+                
+                # Add attachment information if requested
+                if include_attachments and project.attachment_ids:
+                    project_data['attachments'] = []
+                    for attachment in project.attachment_ids:
+                        project_data['attachments'].append({
+                            'id': attachment.id,
+                            'name': attachment.name,
+                            'mimetype': attachment.mimetype,
+                            'size': attachment.file_size,
+                            'url': f'/web/content/{attachment.id}?download=true',
+                            'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
+                            'create_date': fields.Datetime.to_string(attachment.create_date),
+                            'create_uid': {
+                                'id': attachment.create_uid.id,
+                                'name': attachment.create_uid.name
+                            }
+                        })
+                
                 project_data.update({
                     'tasks': tasks,
                     'meetings': meetings,
@@ -163,6 +182,152 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in manage_projects: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/team/project/attachments', type='json', auth='user', methods=['POST'], csrf=False)
+    def manage_project_attachments(self, **kw):
+        """Mengelola attachment untuk project."""
+        try:
+            operation = kw.get('operation', 'list')
+            project_id = kw.get('project_id')
+            
+            if not project_id:
+                return {'status': 'error', 'message': 'Missing project_id parameter'}
+            
+            project = request.env['team.project'].sudo().browse(int(project_id))
+            if not project.exists():
+                return {'status': 'error', 'message': 'Project not found'}
+            
+            if operation == 'list':
+                # Get attachments for the project
+                attachments = project.attachment_ids
+                attachment_data = []
+                
+                for attachment in attachments:
+                    attachment_data.append({
+                        'id': attachment.id,
+                        'name': attachment.name,
+                        'mimetype': attachment.mimetype,
+                        'create_date': fields.Datetime.to_string(attachment.create_date),
+                        'create_uid': {
+                            'id': attachment.create_uid.id,
+                            'name': attachment.create_uid.name
+                        },
+                        'size': attachment.file_size,
+                        'url': f'/web/content/{attachment.id}?download=true',
+                        'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
+                    })
+                
+                return {
+                    'status': 'success',
+                    'data': attachment_data
+                }
+            
+            elif operation == 'add':
+                # Check if attachment data is provided
+                if not kw.get('attachment_id'):
+                    return {'status': 'error', 'message': 'Missing attachment_id parameter'}
+                
+                attachment_id = int(kw.get('attachment_id'))
+                attachment = request.env['ir.attachment'].sudo().browse(attachment_id)
+                
+                if not attachment.exists():
+                    return {'status': 'error', 'message': 'Attachment not found'}
+                
+                # Link attachment to project
+                project.attachment_ids = [(4, attachment_id)]
+                
+                return {
+                    'status': 'success',
+                    'message': f'Attachment "{attachment.name}" added to project successfully'
+                }
+            
+            elif operation == 'remove':
+                # Check if attachment data is provided
+                if not kw.get('attachment_id'):
+                    return {'status': 'error', 'message': 'Missing attachment_id parameter'}
+                
+                attachment_id = int(kw.get('attachment_id'))
+                
+                # Remove attachment from project
+                project.attachment_ids = [(3, attachment_id)]
+                
+                return {
+                    'status': 'success',
+                    'message': 'Attachment removed from project successfully'
+                }
+            
+            else:
+                return {'status': 'error', 'message': f'Unknown operation: {operation}'}
+                
+        except Exception as e:
+            _logger.error(f"Error in manage_project_attachments: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/team/project/upload_attachment', type='http', auth='user', methods=['POST'], csrf=False)
+    def upload_project_attachment(self, **kw):
+        """Upload attachment langsung ke project."""
+        try:
+            # Validasi parameter
+            if not kw.get('project_id'):
+                return json.dumps({'status': 'error', 'message': 'Missing project_id parameter'})
+            
+            project_id = int(kw.get('project_id'))
+            project = request.env['team.project'].sudo().browse(project_id)
+            
+            if not project.exists():
+                return json.dumps({'status': 'error', 'message': 'Project not found'})
+            
+            # Cek file yang diupload
+            if 'file' not in http.request.httprequest.files:
+                return json.dumps({'status': 'error', 'message': 'No file uploaded'})
+            
+            # Ambil file
+            file = http.request.httprequest.files['file']
+            filename = file.filename
+            file_content = file.read()
+            mimetype = file.content_type
+            
+            # Validasi ukuran file (maksimal 20 MB)
+            max_size = 20 * 1024 * 1024  # 20 MB
+            if len(file_content) > max_size:
+                return json.dumps({'status': 'error', 'message': 'File size exceeds the limit (20 MB)'})
+            
+            # Validasi tipe file
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.zip', '.rar']
+            file_extension = os.path.splitext(filename)[1].lower()
+            if file_extension not in allowed_extensions:
+                return json.dumps({'status': 'error', 'message': 'File type not allowed'})
+            
+            # Encode file sebagai base64
+            file_base64 = base64.b64encode(file_content).decode('utf-8')
+            
+            # Buat attachment
+            attachment = request.env['ir.attachment'].sudo().create({
+                'name': filename,
+                'datas': file_base64,
+                'res_model': 'team.project',
+                'res_id': project_id,
+                'type': 'binary',
+                'mimetype': mimetype,
+            })
+            
+            # Tambahkan ke project
+            project.attachment_ids = [(4, attachment.id)]
+            
+            return json.dumps({
+                'status': 'success',
+                'data': {
+                    'id': attachment.id,
+                    'name': attachment.name,
+                    'mimetype': attachment.mimetype,
+                    'size': attachment.file_size,
+                    'url': f'/web/content/{attachment.id}?download=true'
+                }
+            })
+        
+        except Exception as e:
+            _logger.error(f"Error during file upload: {str(e)}")
+            return json.dumps({'status': 'error', 'message': str(e)})
     
     @http.route('/web/v2/team/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
     def get_projects(self, **kw):
@@ -645,12 +810,12 @@ class TeamProjectAPI(http.Controller):
     # Helper Methods
     def _prepare_project_data(self, project):
         """Menyiapkan data proyek untuk respons API."""
-        return {
+        project_data = {
             'id': project.id,
             'name': project.name,
             'code': project.code,
             'department': {'id': project.department_id.id, 'name': project.department_id.name},
-            'project_type': project.project_type,  # Menambahkan tipe proyek
+            'project_type': project.project_type,
             'dates': {
                 'start': fields.Date.to_string(project.date_start),
                 'end': fields.Date.to_string(project.date_end)
@@ -664,8 +829,11 @@ class TeamProjectAPI(http.Controller):
             'progress': project.progress,
             'priority': project.priority,
             'description': project.description,
-            'task_count': len(project.task_ids)
+            'task_count': len(project.task_ids),
+            'attachment_count': project.attachment_count
         }
+        
+        return project_data
 
     def _prepare_task_data(self, task, include_attachments=False):
         """Menyiapkan data tugas untuk respons API dengan error handling."""

@@ -21,6 +21,18 @@ class TeamProject(models.Model):
     date_start = fields.Date(string='Start Date', required=True, tracking=True)
     date_end = fields.Date(string='End Date', required=True, tracking=True)
     description = fields.Html(string='Description', tracking=True)
+
+    # Tambahkan field ini di model TeamProject
+    project_type = fields.Selection([
+        ('creation', 'Creation/Pembuatan'), 
+        ('development', 'Development/Pengembangan'),
+        ('training', 'Training/Pelatihan'),
+        ('documentation', 'Documentation/Dokumentasi'),
+        ('general', 'General/Umum'),
+        ('weekly', 'Weekly/Mingguan'),
+        ('monthly', 'Monthly/Bulanan')
+    ], string='Tipe Proyek', default='general', required=True, tracking=True,
+        help="Tipe proyek menentukan kategori dan proses bisnis yang berlaku")
     
     # Team and Management
     project_manager_id = fields.Many2one('hr.employee', string='Project Manager', required=True, tracking=True)
@@ -264,6 +276,39 @@ class TeamProjectTask(models.Model):
     description = fields.Html(string='Description', tracking=True)
     checklist_ids = fields.One2many('team.project.task.checklist', 'task_id', string='Checklist Items')
     checklist_progress = fields.Float(string='Checklist Progress', compute='_compute_checklist_progress', store=True)
+
+    # Pastikan attachment_ids didefinisikan dengan benar dan domain yang tepat
+    attachment_ids = fields.One2many(
+        'ir.attachment', 
+        'res_id', 
+        string='Attachments',
+        domain=[('res_model', '=', 'team.project.task')]
+    )
+    attachment_count = fields.Integer(compute='_compute_attachment_count', string='Attachment Count')
+    
+    @api.depends('attachment_ids')
+    def _compute_attachment_count(self):
+        for task in self:
+            task.attachment_count = len(task.attachment_ids)
+    
+    # Method untuk menambahkan attachment baru
+    def add_attachment(self, attachment_data):
+        """
+        Menambahkan attachment ke task
+        :param attachment_data: dictionary berisi name, datas (base64), dan type
+        :return: attachment yang dibuat
+        """
+        self.ensure_one()
+        vals = {
+            'name': attachment_data.get('name', 'Untitled'),
+            'datas': attachment_data.get('datas'),
+            'res_model': 'team.project.task',
+            'res_id': self.id,
+            'type': attachment_data.get('type', 'binary'),
+            'mimetype': attachment_data.get('mimetype', 'application/octet-stream'),
+        }
+        attachment = self.env['ir.attachment'].sudo().create(vals)
+        return attachment
     
     # Status and Progress
     state = fields.Selection([
@@ -535,7 +580,19 @@ class TeamProjectMessage(models.Model):
                               default=lambda self: self.env.user.employee_id.id)
     date = fields.Datetime(string='Date', default=fields.Datetime.now)
     content = fields.Html(string='Message', required=True)
-    attachment_ids = fields.Many2many('ir.attachment', string='Attachments')
+
+    # Perbaikan field attachment
+    attachment_ids = fields.Many2many(
+        'ir.attachment', 
+        'team_message_attachment_rel', 
+        'message_id', 
+        'attachment_id',
+        string='Attachments'
+    )
+    
+    # Hitung jumlah attachment untuk tampilan
+    attachment_count = fields.Integer(compute='_compute_attachment_count', string='Attachment Count')
+    
     parent_id = fields.Many2one('team.project.message', string='Parent Message')
     is_pinned = fields.Boolean(string='Pinned', default=False)
 
@@ -558,6 +615,31 @@ class TeamProjectMessage(models.Model):
     
     def action_unpin(self):
         self.write({'is_pinned': False})
+
+    @api.depends('attachment_ids')
+    def _compute_attachment_count(self):
+        for message in self:
+            message.attachment_count = len(message.attachment_ids)
+            
+    # Method untuk menambahkan attachment baru
+    def add_attachment(self, attachment_data):
+        """
+        Menambahkan attachment ke pesan
+        :param attachment_data: dictionary berisi name, datas (base64), dan type
+        :return: attachment yang dibuat
+        """
+        self.ensure_one()
+        vals = {
+            'name': attachment_data.get('name', 'Untitled'),
+            'datas': attachment_data.get('datas'),
+            'res_model': 'team.project.message',
+            'res_id': self.id,
+            'type': attachment_data.get('type', 'binary'),
+            'mimetype': attachment_data.get('mimetype', 'application/octet-stream'),
+        }
+        attachment = self.env['ir.attachment'].sudo().create(vals)
+        self.attachment_ids = [(4, attachment.id)]
+        return attachment
 
 
 class TeamProjectBAU(models.Model):

@@ -6,6 +6,10 @@ import logging
 import pytz
 import datetime  
 from datetime import datetime, timedelta
+import base64
+import os
+import werkzeug
+from werkzeug.utils import secure_filename
 
 _logger = logging.getLogger(__name__)
 
@@ -75,6 +79,7 @@ class TeamProjectAPI(http.Controller):
                     'description': kw.get('description'),
                     'state': kw.get('state', 'draft'),
                     'priority': kw.get('priority', '1'),
+                    'project_type': kw.get('project_type', 'general'),  # Default ke general jika tidak disebutkan
                 }
                 if kw.get('team_ids'):
                     team_ids = kw['team_ids'] if isinstance(kw['team_ids'], list) else json.loads(kw['team_ids'])
@@ -128,7 +133,7 @@ class TeamProjectAPI(http.Controller):
                     return {'status': 'error', 'message': 'Project not found'}
 
                 update_values = {}
-                for field in ['name', 'date_start', 'date_end', 'description', 'state', 'priority']:
+                for field in ['name', 'date_start', 'date_end', 'description', 'state', 'priority', 'project_type']:
                     if field in kw:
                         update_values[field] = kw[field]
                 if kw.get('project_manager_id'):
@@ -156,13 +161,17 @@ class TeamProjectAPI(http.Controller):
     
     @http.route('/web/v2/team/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
     def get_projects(self, **kw):
-        """Mengambil daftar proyek dengan filter."""
+        """Mengambil daftar proyek dengan filter dan pagination yang lebih baik."""
         try:
             domain = []
             
             # Filter departemen
             if kw.get('department_id'):
                 domain.append(('department_id', '=', int(kw['department_id'])))
+            
+            # Filter project_type yang baru ditambahkan
+            if kw.get('project_type'):
+                domain.append(('project_type', '=', kw['project_type']))
             
             # Filter status
             if kw.get('state'):
@@ -194,16 +203,35 @@ class TeamProjectAPI(http.Controller):
             if kw.get('project_manager_id'):
                 domain.append(('project_manager_id', '=', int(kw['project_manager_id'])))
             
-            # Pagination
+            # Filter prioritas jika ada
+            if kw.get('priority'):
+                domain.append(('priority', '=', kw['priority']))
+            
+            # Filter pencarian (search)
+            if kw.get('search'):
+                domain.append('|')
+                domain.append(('name', 'ilike', kw['search']))
+                domain.append(('code', 'ilike', kw['search']))
+            
+            # Pagination yang lebih baik
+            page = int(kw.get('page', 1))
             limit = int(kw.get('limit', 10))
-            offset = int(kw.get('offset', 0))
+            offset = (page - 1) * limit
+            
+            # Sorting
+            sort_field = kw.get('sort_field', 'date_start')
+            sort_order = kw.get('sort_order', 'desc')
+            order = f"{sort_field} {sort_order}"
             
             # Tambahkan logging untuk debugging
             _logger.info(f"Project filter domain: {domain}")
             
             # Cari proyek dengan domain filter
-            projects = request.env['team.project'].sudo().search(domain, limit=limit, offset=offset)
+            projects = request.env['team.project'].sudo().search(domain, limit=limit, offset=offset, order=order)
             total = request.env['team.project'].sudo().search_count(domain)
+            
+            # Hitung total pages untuk membantu frontend
+            total_pages = (total + limit - 1) // limit if limit > 0 else 1
             
             # Log jumlah hasil
             _logger.info(f"Found {len(projects)} projects matching the filter criteria")
@@ -211,9 +239,12 @@ class TeamProjectAPI(http.Controller):
             return {
                 'status': 'success',
                 'data': [self._prepare_project_data(project) for project in projects],
-                'total': total,
-                'limit': limit,
-                'offset': offset
+                'pagination': {
+                    'page': page,
+                    'limit': limit,
+                    'total': total,
+                    'total_pages': total_pages
+                }
             }
         except Exception as e:
             _logger.error(f"Error in get_projects: {str(e)}")
@@ -545,6 +576,24 @@ class TeamProjectAPI(http.Controller):
             
             message = request.env['team.project.message'].sudo().create(values)
             
+            # Proses attachment yang mungkin telah diupload sebelumnya
+            if kw.get('attachment_ids'):
+                attachment_ids = kw['attachment_ids'] if isinstance(kw['attachment_ids'], list) else json.loads(kw['attachment_ids'])
+                
+                # Validasi bahwa setiap attachment ada dan belum terkait dengan model lain
+                for attachment_id in attachment_ids:
+                    attachment = request.env['ir.attachment'].sudo().browse(int(attachment_id))
+                    if attachment.exists() and (not attachment.res_id or not attachment.res_model):
+                        # Update attachment untuk mengaitkannya dengan pesan
+                        attachment.write({
+                            'res_model': 'team.project.message',
+                            'res_id': message.id
+                        })
+                        # Tambahkan ke pesan
+                        message.write({
+                            'attachment_ids': [(4, attachment.id)]
+                        })
+            
             # Proses mentions jika ada
             if kw.get('mentions'):
                 for user_id in kw['mentions']:
@@ -563,7 +612,22 @@ class TeamProjectAPI(http.Controller):
                         }
                     )
             
-            return {'status': 'success', 'data': self._prepare_message_data(message)}
+            message_data = self._prepare_message_data(message)
+            
+            # Tambahkan data attachment ke respons
+            if message.attachment_ids:
+                message_data['attachments'] = []
+                for attachment in message.attachment_ids:
+                    message_data['attachments'].append({
+                        'id': attachment.id,
+                        'name': attachment.name,
+                        'mimetype': attachment.mimetype,
+                        'size': attachment.file_size,
+                        'url': f'/web/content/{attachment.id}?download=true',
+                        'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
+                    })
+            
+            return {'status': 'success', 'data': message_data}
         except Exception as e:
             _logger.error(f"Error in send_chat_message: {str(e)}")
             return {'status': 'error', 'message': str(e)}
@@ -576,6 +640,7 @@ class TeamProjectAPI(http.Controller):
             'name': project.name,
             'code': project.code,
             'department': {'id': project.department_id.id, 'name': project.department_id.name},
+            'project_type': project.project_type,  # Menambahkan tipe proyek
             'dates': {
                 'start': fields.Date.to_string(project.date_start),
                 'end': fields.Date.to_string(project.date_end)
@@ -657,6 +722,22 @@ class TeamProjectAPI(http.Controller):
             task_data['description'] = task.description if hasattr(task, 'description') else ''
             task_data['checklist_progress'] = task.checklist_progress if hasattr(task, 'checklist_progress') else 0
             
+            # Tambahkan data attachment
+            task_data['attachment_count'] = task.attachment_count
+            
+            # Jika diminta detail attachment
+            if kw.get('include_attachments', False):
+                task_data['attachments'] = []
+                for attachment in task.attachment_ids:
+                    task_data['attachments'].append({
+                        'id': attachment.id,
+                        'name': attachment.name,
+                        'mimetype': attachment.mimetype,
+                        'size': attachment.file_size,
+                        'url': f'/web/content/{attachment.id}?download=true',
+                        'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
+                    })
+            
             return task_data
         
         except Exception as e:
@@ -671,17 +752,185 @@ class TeamProjectAPI(http.Controller):
 
     def _prepare_message_data(self, message):
         """Menyiapkan data pesan untuk respons API."""
-        return {
+        message_data = {
             'id': message.id,
             'group_id': message.group_id.id,
             'author': {'id': message.author_id.id, 'name': message.author_id.name},
             'content': message.content,
             'date': self._format_datetime_jakarta(message.date),
             'project_id': message.project_id.id if message.project_id else None,
-            'is_pinned': message.is_pinned
+            'is_pinned': message.is_pinned,
+            'attachment_count': message.attachment_count if hasattr(message, 'attachment_count') else len(message.attachment_ids)
         }
+        
+        return message_data
     
     # controllers/team_project_api.py (Lanjutan)
+
+    @http.route('/web/v2/team/upload_attachment', type='http', auth='user', methods=['POST'], csrf=False)
+    def upload_attachment(self, **kw):
+        """Upload attachment untuk task atau pesan."""
+        try:
+            # Validasi parameter
+            if not kw.get('model') or not kw.get('res_id'):
+                return json.dumps({'status': 'error', 'message': 'Missing required parameters'})
+            
+            model_name = kw.get('model')
+            res_id = int(kw.get('res_id'))
+            
+            # Validasi model yang diizinkan
+            allowed_models = ['team.project.task', 'team.project.message']
+            if model_name not in allowed_models:
+                return json.dumps({'status': 'error', 'message': 'Invalid model'})
+            
+            # Cek file yang diupload
+            if 'file' not in http.request.httprequest.files:
+                return json.dumps({'status': 'error', 'message': 'No file uploaded'})
+            
+            # Ambil file
+            file = http.request.httprequest.files['file']
+            filename = file.filename
+            file_content = file.read()
+            mimetype = file.content_type
+            
+            # Validasi ukuran file (maksimal 20 MB)
+            max_size = 20 * 1024 * 1024  # 20 MB
+            if len(file_content) > max_size:
+                return json.dumps({'status': 'error', 'message': 'File size exceeds the limit (20 MB)'})
+            
+            # Validasi tipe file
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.zip', '.rar']
+            file_extension = os.path.splitext(filename)[1].lower()
+            if file_extension not in allowed_extensions:
+                return json.dumps({'status': 'error', 'message': 'File type not allowed'})
+            
+            # Encode file sebagai base64
+            file_base64 = base64.b64encode(file_content).decode('utf-8')
+            
+            # Buat attachment
+            attachment_data = {
+                'name': filename,
+                'datas': file_base64,
+                'type': 'binary',
+                'mimetype': mimetype,
+            }
+            
+            record = request.env[model_name].sudo().browse(res_id)
+            if not record.exists():
+                return json.dumps({'status': 'error', 'message': f'{model_name} not found'})
+            
+            # Simpan attachment
+            attachment = self.env['ir.attachment'].sudo().create({
+                'name': filename,
+                'datas': file_base64,
+                'res_model': model_name,
+                'res_id': res_id,
+                'type': 'binary',
+                'mimetype': mimetype,
+            })
+            
+            # Tambahkan attachment ke record
+            if model_name == 'team.project.message':
+                record.write({
+                    'attachment_ids': [(4, attachment.id)]
+                })
+            # Untuk task, attachment akan otomatis ditambahkan via ir.attachment res_model dan res_id
+            
+            return json.dumps({
+                'status': 'success',
+                'data': {
+                    'id': attachment.id,
+                    'name': attachment.name,
+                    'mimetype': attachment.mimetype,
+                    'size': attachment.file_size,
+                    'url': f'/web/content/{attachment.id}?download=true'
+                }
+            })
+        
+        except Exception as e:
+            _logger.error(f"Error during file upload: {str(e)}")
+            return json.dumps({'status': 'error', 'message': str(e)})
+
+    @http.route('/web/v2/team/get_attachments', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_attachments(self, **kw):
+        """Mengambil daftar attachment untuk task atau pesan."""
+        try:
+            # Validasi parameter
+            if not kw.get('model') or not kw.get('res_id'):
+                return {'status': 'error', 'message': 'Missing required parameters'}
+            
+            model_name = kw.get('model')
+            res_id = int(kw.get('res_id'))
+            
+            # Validasi model yang diizinkan
+            allowed_models = ['team.project.task', 'team.project.message']
+            if model_name not in allowed_models:
+                return {'status': 'error', 'message': 'Invalid model'}
+            
+            # Cari attachment
+            attachments = request.env['ir.attachment'].sudo().search([
+                ('res_model', '=', model_name),
+                ('res_id', '=', res_id)
+            ])
+            
+            # Format data attachment
+            attachment_data = []
+            for attachment in attachments:
+                attachment_data.append({
+                    'id': attachment.id,
+                    'name': attachment.name,
+                    'mimetype': attachment.mimetype,
+                    'create_date': fields.Datetime.to_string(attachment.create_date),
+                    'create_uid': {
+                        'id': attachment.create_uid.id,
+                        'name': attachment.create_uid.name
+                    },
+                    'size': attachment.file_size,
+                    'url': f'/web/content/{attachment.id}?download=true',
+                    'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
+                })
+            
+            return {
+                'status': 'success',
+                'data': attachment_data
+            }
+        
+        except Exception as e:
+            _logger.error(f"Error in get_attachments: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/delete_attachment', type='json', auth='user', methods=['POST'], csrf=False)
+    def delete_attachment(self, **kw):
+        """Menghapus attachment."""
+        try:
+            # Validasi parameter
+            if not kw.get('attachment_id'):
+                return {'status': 'error', 'message': 'Missing attachment_id parameter'}
+            
+            attachment_id = int(kw.get('attachment_id'))
+            
+            # Cari attachment
+            attachment = request.env['ir.attachment'].sudo().browse(attachment_id)
+            if not attachment.exists():
+                return {'status': 'error', 'message': 'Attachment not found'}
+            
+            # Validasi model
+            allowed_models = ['team.project.task', 'team.project.message']
+            if attachment.res_model not in allowed_models:
+                return {'status': 'error', 'message': 'Cannot delete attachment from this model'}
+            
+            # Hapus attachment
+            attachment_name = attachment.name  # Simpan nama untuk respons
+            attachment.unlink()
+            
+            return {
+                'status': 'success',
+                'message': f'Attachment "{attachment_name}" deleted successfully'
+            }
+        
+        except Exception as e:
+            _logger.error(f"Error in delete_attachment: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/v2/team/meetings', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_meetings(self, **kw):
@@ -1744,7 +1993,7 @@ class TeamProjectAPI(http.Controller):
             group_id = kw.get('group_id')
             if not group_id:
                 return {'status': 'error', 'message': 'Missing group_id'}
-                
+                    
             # Limit dan offset opsional untuk pagination
             limit = int(kw.get('limit', 50))
             offset = int(kw.get('offset', 0))
@@ -1755,9 +2004,29 @@ class TeamProjectAPI(http.Controller):
                 domain, limit=limit, offset=offset, order='date desc'
             )
             
+            # Siapkan data pesan dengan attachment
+            message_data = []
+            for message in messages:
+                msg_data = self._prepare_message_data(message)
+                
+                # Tambahkan data attachment
+                if message.attachment_ids:
+                    msg_data['attachments'] = []
+                    for attachment in message.attachment_ids:
+                        msg_data['attachments'].append({
+                            'id': attachment.id,
+                            'name': attachment.name,
+                            'mimetype': attachment.mimetype,
+                            'size': attachment.file_size,
+                            'url': f'/web/content/{attachment.id}?download=true',
+                            'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
+                        })
+                
+                message_data.append(msg_data)
+            
             return {
                 'status': 'success',
-                'data': [self._prepare_message_data(message) for message in messages],
+                'data': message_data,
                 'total': request.env['team.project.message'].sudo().search_count(domain)
             }
         except Exception as e:

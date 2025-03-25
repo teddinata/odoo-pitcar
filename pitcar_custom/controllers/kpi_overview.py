@@ -3314,7 +3314,7 @@ class KPIOverview(http.Controller):
                     if kpi['type'] == 'revenue_target':
                         # Calculate total revenue vs target
                         total_revenue = sum(store_orders.mapped('amount_total'))
-                        monthly_target = 550000000  # Fixed target: 550 million
+                        monthly_target = 408000000  # Fixed target: 550 million
                         
                         actual = (total_revenue / monthly_target * 100) if monthly_target > 0 else 0
                         formatted_revenue = "{:,.0f}".format(total_revenue)
@@ -4943,7 +4943,7 @@ class KPIOverview(http.Controller):
                     if kpi['type'] == 'revenue_target':
                         # Calculate total revenue vs target
                         total_revenue = sum(store_orders.mapped('amount_total'))
-                        monthly_target = 550000000  # Fixed target: 550 million
+                        monthly_target = 408000000  # Fixed target: 550 million
                         
                         actual = (total_revenue / monthly_target * 100) if monthly_target > 0 else 0
                         formatted_revenue = "{:,.0f}".format(total_revenue)
@@ -5358,7 +5358,7 @@ class KPIOverview(http.Controller):
                         if kpi['type'] == 'revenue_target':
                             # Calculate total revenue vs target
                             total_revenue = sum(store_orders.mapped('amount_total'))
-                            monthly_target = 550000000  # Fixed target: 550 million
+                            monthly_target = 408000000  # Fixed target: 550 million
                             
                             actual = (total_revenue / monthly_target * 100) if monthly_target > 0 else 0
                             formatted_revenue = "{:,.0f}".format(total_revenue)
@@ -6141,7 +6141,7 @@ class KPIOverview(http.Controller):
                     if kpi['type'] == 'revenue_target':
                         # Calculate total revenue vs target
                         total_revenue = sum(store_orders.mapped('amount_total'))
-                        monthly_target = 550000000  # Fixed target: 550 million
+                        monthly_target = 408000000  # Fixed target: 550 million
                         
                         actual = (total_revenue / monthly_target * 100) if monthly_target > 0 else 0
                         formatted_revenue = "{:,.0f}".format(total_revenue)

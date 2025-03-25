@@ -28,7 +28,6 @@ class ServiceAdvisor(models.Model):
     )
     monthly_target = fields.Float(
         string='Monthly Target',
-        compute='_compute_monthly_target',
         store=True
     )
     current_revenue = fields.Float(

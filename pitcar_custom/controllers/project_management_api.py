@@ -733,6 +733,60 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in manage_tasks: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/team/upload_temporary_attachment', type='http', auth='user', methods=['POST'], csrf=False)
+    def upload_temporary_attachment(self, **kw):
+        """Upload attachment sementara yang bisa dikaitkan dengan pesan."""
+        try:
+            # Cek file yang diupload
+            if 'file' not in http.request.httprequest.files:
+                return json.dumps({'status': 'error', 'message': 'No file uploaded'})
+            
+            # Ambil file
+            file = http.request.httprequest.files['file']
+            filename = file.filename
+            file_content = file.read()
+            mimetype = file.content_type
+            
+            # Validasi ukuran file (maksimal 20 MB)
+            max_size = 20 * 1024 * 1024  # 20 MB
+            if len(file_content) > max_size:
+                return json.dumps({'status': 'error', 'message': 'File size exceeds the limit (20 MB)'})
+            
+            # Validasi tipe file
+            allowed_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.zip', '.rar']
+            file_extension = os.path.splitext(filename)[1].lower()
+            if file_extension not in allowed_extensions:
+                return json.dumps({'status': 'error', 'message': 'File type not allowed'})
+            
+            # Encode file sebagai base64
+            file_base64 = base64.b64encode(file_content).decode('utf-8')
+            
+            # Buat attachment sementara (belum terkait dengan model spesifik)
+            attachment = request.env['ir.attachment'].sudo().create({
+                'name': filename,
+                'datas': file_base64,
+                'type': 'binary',
+                'mimetype': mimetype,
+            })
+            
+            # Return hasil
+            return json.dumps({
+                'status': 'success',
+                'data': {
+                    'id': attachment.id,
+                    'name': attachment.name,
+                    'mimetype': attachment.mimetype,
+                    'size': attachment.file_size,
+                    'url': f'/web/content/{attachment.id}?download=true',
+                    'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
+                },
+                'message': 'File uploaded successfully'
+            })
+        
+        except Exception as e:
+            _logger.error(f"Error during temporary file upload: {str(e)}")
+            return json.dumps({'status': 'error', 'message': str(e)})
 
     @http.route('/web/v2/team/chat/send', type='json', auth='user', methods=['POST'], csrf=False)
     def send_chat_message(self, **kw):
@@ -746,7 +800,7 @@ class TeamProjectAPI(http.Controller):
                 'author_id': request.env.user.employee_id.id,
                 'content': kw['content'],
                 'project_id': int(kw['project_id']) if kw.get('project_id') else False,
-                'message_type': 'regular'
+                'message_type': kw.get('message_type', 'regular')
             }
             
             message = request.env['team.project.message'].sudo().create(values)
@@ -799,7 +853,12 @@ class TeamProjectAPI(http.Controller):
                         'mimetype': attachment.mimetype,
                         'size': attachment.file_size,
                         'url': f'/web/content/{attachment.id}?download=true',
-                        'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
+                        'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
+                        'create_date': fields.Datetime.to_string(attachment.create_date),
+                        'create_uid': {
+                            'id': attachment.create_uid.id,
+                            'name': attachment.create_uid.name
+                        }
                     })
             
             return {'status': 'success', 'data': message_data}
@@ -2181,6 +2240,9 @@ class TeamProjectAPI(http.Controller):
             limit = int(kw.get('limit', 50))
             offset = int(kw.get('offset', 0))
             
+            # Flag untuk menyertakan attachment
+            include_attachments = kw.get('include_attachments', True)
+            
             # Ambil pesan-pesan dari grup
             domain = [('group_id', '=', int(group_id))]
             messages = request.env['team.project.message'].sudo().search(
@@ -2192,8 +2254,8 @@ class TeamProjectAPI(http.Controller):
             for message in messages:
                 msg_data = self._prepare_message_data(message)
                 
-                # Tambahkan data attachment
-                if message.attachment_ids:
+                # Tambahkan data attachment jika diminta
+                if include_attachments and message.attachment_ids:
                     msg_data['attachments'] = []
                     for attachment in message.attachment_ids:
                         msg_data['attachments'].append({
@@ -2202,7 +2264,12 @@ class TeamProjectAPI(http.Controller):
                             'mimetype': attachment.mimetype,
                             'size': attachment.file_size,
                             'url': f'/web/content/{attachment.id}?download=true',
-                            'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
+                            'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
+                            'create_date': fields.Datetime.to_string(attachment.create_date),
+                            'create_uid': {
+                                'id': attachment.create_uid.id,
+                                'name': attachment.create_uid.name
+                            }
                         })
                 
                 message_data.append(msg_data)

@@ -98,10 +98,15 @@ class TeamProjectAPI(http.Controller):
                 if not project.exists():
                     return {'status': 'error', 'message': 'Project not found'}
                 
+                # Parse parameter include_task_attachments jika ada
+                include_task_attachments = kw.get('include_task_attachments', False)
+                if isinstance(include_task_attachments, str):
+                    include_task_attachments = include_task_attachments.lower() in ('true', '1', 'yes')
+                
                 # Get related tasks
                 tasks = []
                 for task in project.task_ids:
-                    tasks.append(self._prepare_task_data(task))
+                    tasks.append(self._prepare_task_data(task, include_task_attachments))
                 
                 # Get related meetings
                 meetings = []
@@ -379,8 +384,13 @@ class TeamProjectAPI(http.Controller):
                     if not task.exists():
                         return {'status': 'error', 'message': 'Task not found'}
                     
-                    # Prepare task data
-                    task_data = self._prepare_task_data(task)
+                    # Parse parameter include_attachments jika ada
+                    include_attachments = kw.get('include_attachments', False)
+                    if isinstance(include_attachments, str):
+                        include_attachments = include_attachments.lower() in ('true', '1', 'yes')
+                    
+                    # Prepare task data dengan parameter include_attachments
+                    task_data = self._prepare_task_data(task, include_attachments)
                     
                     # Get checklist items if available
                     if hasattr(task, 'checklist_ids'):
@@ -657,7 +667,7 @@ class TeamProjectAPI(http.Controller):
             'task_count': len(project.task_ids)
         }
 
-    def _prepare_task_data(self, task):
+    def _prepare_task_data(self, task, include_attachments=False):
         """Menyiapkan data tugas untuk respons API dengan error handling."""
         try:
             # Initialize an empty dictionary for task data
@@ -722,21 +732,22 @@ class TeamProjectAPI(http.Controller):
             task_data['description'] = task.description if hasattr(task, 'description') else ''
             task_data['checklist_progress'] = task.checklist_progress if hasattr(task, 'checklist_progress') else 0
             
-            # Tambahkan data attachment
-            task_data['attachment_count'] = task.attachment_count
-            
-            # Jika diminta detail attachment
-            if kw.get('include_attachments', False):
-                task_data['attachments'] = []
-                for attachment in task.attachment_ids:
-                    task_data['attachments'].append({
-                        'id': attachment.id,
-                        'name': attachment.name,
-                        'mimetype': attachment.mimetype,
-                        'size': attachment.file_size,
-                        'url': f'/web/content/{attachment.id}?download=true',
-                        'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
-                    })
+            # Tambahkan data attachment jika diminta
+            if hasattr(task, 'attachment_ids'):
+                task_data['attachment_count'] = len(task.attachment_ids)
+                
+                # Jika diminta detail attachment
+                if include_attachments:
+                    task_data['attachments'] = []
+                    for attachment in task.attachment_ids:
+                        task_data['attachments'].append({
+                            'id': attachment.id,
+                            'name': attachment.name,
+                            'mimetype': attachment.mimetype if hasattr(attachment, 'mimetype') else 'application/octet-stream',
+                            'size': attachment.file_size if hasattr(attachment, 'file_size') else 0,
+                            'url': f'/web/content/{attachment.id}?download=true',
+                            'is_image': attachment.mimetype.startswith('image/') if hasattr(attachment, 'mimetype') and attachment.mimetype else False
+                        })
             
             return task_data
         

@@ -901,28 +901,33 @@ class TeamProjectAPI(http.Controller):
             task_data['checklist_progress'] = task.checklist_progress if hasattr(task, 'checklist_progress') else 0
             
             # Tambahkan data attachment jika diminta
-            if hasattr(task, 'attachment_ids'):
+            if include_attachments and hasattr(task, 'attachment_ids'):
                 task_data['attachment_count'] = len(task.attachment_ids)
                 
                 # Jika diminta detail attachment
-                if include_attachments:
-                    task_data['attachments'] = []
-                    for attachment in task.attachment_ids:
-                        task_data['attachments'].append({
-                            'id': attachment.id,
-                            'name': attachment.name,
-                            'mimetype': attachment.mimetype if hasattr(attachment, 'mimetype') else 'application/octet-stream',
-                            'size': attachment.file_size if hasattr(attachment, 'file_size') else 0,
-                            'url': f'/web/content/{attachment.id}?download=true',
-                            'is_image': attachment.mimetype.startswith('image/') if hasattr(attachment, 'mimetype') and attachment.mimetype else False
-                        })
+                task_data['attachments'] = []
+                for attachment in task.attachment_ids:
+                    task_data['attachments'].append({
+                        'id': attachment.id,
+                        'name': attachment.name,
+                        'mimetype': attachment.mimetype if hasattr(attachment, 'mimetype') else 'application/octet-stream',
+                        'size': attachment.file_size if hasattr(attachment, 'file_size') else 0,
+                        'url': f'/web/content/{attachment.id}?download=true',
+                        'is_image': attachment.mimetype.startswith('image/') if hasattr(attachment, 'mimetype') and attachment.mimetype else False,
+                        'create_date': fields.Datetime.to_string(attachment.create_date),
+                        'create_uid': {
+                            'id': attachment.create_uid.id,
+                            'name': attachment.create_uid.name
+                        }
+                    })
             
+            # Kembali seluruh data tugas
             return task_data
         
         except Exception as e:
             import traceback
             _logger.error(f"Error in _prepare_task_data: {str(e)}\n{traceback.format_exc()}")
-            # Return minimal data to avoid complete failure
+            # Return minimal data untuk menghindari kegagalan total
             return {
                 'id': task.id,
                 'name': task.name or "Unknown",
@@ -952,15 +957,15 @@ class TeamProjectAPI(http.Controller):
         try:
             # Validasi parameter
             if not kw.get('model') or not kw.get('res_id'):
-                return json.dumps({'status': 'error', 'message': 'Missing required parameters'})
+                return json.dumps({'status': 'error', 'message': 'Missing required parameters (model, res_id)'})
             
             model_name = kw.get('model')
             res_id = int(kw.get('res_id'))
             
             # Validasi model yang diizinkan
-            allowed_models = ['team.project.task', 'team.project.message']
+            allowed_models = ['team.project.task', 'team.project.message', 'team.project']
             if model_name not in allowed_models:
-                return json.dumps({'status': 'error', 'message': 'Invalid model'})
+                return json.dumps({'status': 'error', 'message': 'Invalid model. Allowed models: team.project.task, team.project.message, team.project'})
             
             # Cek file yang diupload
             if 'file' not in http.request.httprequest.files:
@@ -983,23 +988,16 @@ class TeamProjectAPI(http.Controller):
             if file_extension not in allowed_extensions:
                 return json.dumps({'status': 'error', 'message': 'File type not allowed'})
             
+            # Validasi record ada
+            record = request.env[model_name].sudo().browse(res_id)
+            if not record.exists():
+                return json.dumps({'status': 'error', 'message': f'{model_name} with ID {res_id} not found'})
+            
             # Encode file sebagai base64
             file_base64 = base64.b64encode(file_content).decode('utf-8')
             
             # Buat attachment
-            attachment_data = {
-                'name': filename,
-                'datas': file_base64,
-                'type': 'binary',
-                'mimetype': mimetype,
-            }
-            
-            record = request.env[model_name].sudo().browse(res_id)
-            if not record.exists():
-                return json.dumps({'status': 'error', 'message': f'{model_name} not found'})
-            
-            # Simpan attachment
-            attachment = self.env['ir.attachment'].sudo().create({
+            attachment = request.env['ir.attachment'].sudo().create({
                 'name': filename,
                 'datas': file_base64,
                 'res_model': model_name,
@@ -1008,13 +1006,7 @@ class TeamProjectAPI(http.Controller):
                 'mimetype': mimetype,
             })
             
-            # Tambahkan attachment ke record
-            if model_name == 'team.project.message':
-                record.write({
-                    'attachment_ids': [(4, attachment.id)]
-                })
-            # Untuk task, attachment akan otomatis ditambahkan via ir.attachment res_model dan res_id
-            
+            # Return hasil
             return json.dumps({
                 'status': 'success',
                 'data': {
@@ -1022,8 +1014,15 @@ class TeamProjectAPI(http.Controller):
                     'name': attachment.name,
                     'mimetype': attachment.mimetype,
                     'size': attachment.file_size,
-                    'url': f'/web/content/{attachment.id}?download=true'
-                }
+                    'url': f'/web/content/{attachment.id}?download=true',
+                    'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
+                    'create_date': fields.Datetime.to_string(attachment.create_date),
+                    'create_uid': {
+                        'id': attachment.create_uid.id,
+                        'name': attachment.create_uid.name
+                    }
+                },
+                'message': 'File uploaded successfully'
             })
         
         except Exception as e:
@@ -1036,21 +1035,26 @@ class TeamProjectAPI(http.Controller):
         try:
             # Validasi parameter
             if not kw.get('model') or not kw.get('res_id'):
-                return {'status': 'error', 'message': 'Missing required parameters'}
+                return {'status': 'error', 'message': 'Missing required parameters (model, res_id)'}
             
             model_name = kw.get('model')
             res_id = int(kw.get('res_id'))
             
             # Validasi model yang diizinkan
-            allowed_models = ['team.project.task', 'team.project.message']
+            allowed_models = ['team.project.task', 'team.project.message', 'team.project']
             if model_name not in allowed_models:
-                return {'status': 'error', 'message': 'Invalid model'}
+                return {'status': 'error', 'message': 'Invalid model. Allowed models: team.project.task, team.project.message, team.project'}
+            
+            # Validasi record ada
+            record = request.env[model_name].sudo().browse(res_id)
+            if not record.exists():
+                return {'status': 'error', 'message': f'{model_name} with ID {res_id} not found'}
             
             # Cari attachment
             attachments = request.env['ir.attachment'].sudo().search([
                 ('res_model', '=', model_name),
                 ('res_id', '=', res_id)
-            ])
+            ], order='create_date DESC')
             
             # Format data attachment
             attachment_data = []
@@ -1094,7 +1098,7 @@ class TeamProjectAPI(http.Controller):
                 return {'status': 'error', 'message': 'Attachment not found'}
             
             # Validasi model
-            allowed_models = ['team.project.task', 'team.project.message']
+            allowed_models = ['team.project.task', 'team.project.message', 'team.project']
             if attachment.res_model not in allowed_models:
                 return {'status': 'error', 'message': 'Cannot delete attachment from this model'}
             

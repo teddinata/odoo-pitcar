@@ -34,6 +34,40 @@ class TeamProject(models.Model):
     ], string='Tipe Proyek', default='general', required=True, tracking=True,
         help="Tipe proyek menentukan kategori dan proses bisnis yang berlaku")
     
+    attachment_ids = fields.Many2many(
+        'ir.attachment', 
+        'team_project_attachment_rel', 
+        'project_id', 
+        'attachment_id',
+        string='Attachments'
+    )
+    attachment_count = fields.Integer(compute='_compute_attachment_count', string='Attachment Count')
+    
+    @api.depends('attachment_ids')
+    def _compute_attachment_count(self):
+        for project in self:
+            project.attachment_count = len(project.attachment_ids)
+            
+    # Method untuk menambahkan attachment baru
+    def add_attachment(self, attachment_data):
+        """
+        Menambahkan attachment ke project
+        :param attachment_data: dictionary berisi name, datas (base64), dan type
+        :return: attachment yang dibuat
+        """
+        self.ensure_one()
+        vals = {
+            'name': attachment_data.get('name', 'Untitled'),
+            'datas': attachment_data.get('datas'),
+            'res_model': 'team.project',
+            'res_id': self.id,
+            'type': attachment_data.get('type', 'binary'),
+            'mimetype': attachment_data.get('mimetype', 'application/octet-stream'),
+        }
+        attachment = self.env['ir.attachment'].sudo().create(vals)
+        self.attachment_ids = [(4, attachment.id)]
+        return attachment
+    
     # Team and Management
     project_manager_id = fields.Many2one('hr.employee', string='Project Manager', required=True, tracking=True)
     team_ids = fields.Many2many('hr.employee', string='Team Members', tracking=True)

@@ -51,3 +51,56 @@ class KPIDetail(models.Model):
          'unique(employee_id, period_month, period_year, kpi_type)',
          'KPI detail must be unique per employee, period and type!')
     ]
+
+class MarketingKPIDetail(models.Model):
+    _name = 'marketing.kpi.detail'
+    _description = 'Marketing KPI Detail'
+    _inherit = ['mail.thread']
+    
+    employee_id = fields.Many2one('hr.employee', 'Employee', required=True, tracking=True)
+    period_month = fields.Integer('Period Month', required=True, tracking=True)
+    period_year = fields.Integer('Period Year', required=True, tracking=True)
+    
+    kpi_type = fields.Selection([
+        # Design KPIs
+        ('design_production', 'Design Production'),
+        ('design_time_accuracy', 'Design Time Accuracy'),
+        ('design_revision', 'Design Revision Count'),
+        ('design_bau', 'Design BAU Days'),
+        
+        # Video KPIs
+        ('video_production', 'Video Production'),
+        ('video_time_accuracy', 'Video Time Accuracy'),
+        ('video_revision', 'Video Revision Count'),
+        ('video_bau', 'Video BAU Days'),
+        
+        # Social Media KPIs
+        ('content_publishing', 'Content Publishing'),
+        ('engagement_rate', 'Engagement Rate'),
+        ('followers_growth', 'Followers Growth'),
+        ('response_rate', 'Response Rate'),
+        
+        # Digital Marketing KPIs
+        ('leads_generation', 'Leads Generation'),
+        ('conversion_rate', 'Conversion Rate'),
+        ('cost_per_lead', 'Cost Per Lead'),
+        ('campaign_engagement', 'Campaign Engagement'),
+        
+        # Marketing Lead KPIs
+        ('team_leads', 'Team Leads'),
+        ('team_cpl', 'Team Cost Per Lead'),
+        ('leads_conversion', 'Leads Conversion'),
+        ('brand_awareness', 'Brand Awareness'),
+        ('team_achievement', 'Team Achievement')
+    ], string='KPI Type', required=True, tracking=True)
+    
+    weight = fields.Float('Weight (%)', required=True, tracking=True)
+    target = fields.Float('Target', required=True, tracking=True)
+    measurement = fields.Text('Measurement', tracking=True)
+    actual = fields.Float('Actual Value', tracking=True)
+    description = fields.Text('Additional Notes', tracking=True)
+    
+    _sql_constraints = [
+        ('unique_kpi_period', 'unique(employee_id, period_month, period_year, kpi_type)', 
+         'KPI must be unique per employee, period, and KPI type!')
+    ]

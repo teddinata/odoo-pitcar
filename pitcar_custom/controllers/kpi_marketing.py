@@ -464,9 +464,11 @@ class MarketingKPIOverview(http.Controller):
             marketing_data = []
             processed_employee_ids = []  # Track which employees we've already processed
 
-            # Get all marketing employees
+            # Fixed domain syntax - proper OR operator usage
+            # Get all marketing employees with corrected domain
             marketing_employees = request.env['hr.employee'].sudo().search([
-                '|', '|', '|', '|',
+                '|', 
+                '|',
                 ('job_title', 'ilike', 'Graphic Design'),
                 ('job_title', 'ilike', 'Videographer'),
                 ('job_title', 'ilike', 'Marketing')

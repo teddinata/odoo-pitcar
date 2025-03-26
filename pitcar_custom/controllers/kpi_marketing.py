@@ -170,7 +170,7 @@ class MarketingKPIOverview(http.Controller):
             ]
 
             # Select appropriate KPI template based on job title
-            if 'Desain Grafis' in job_title:
+            if 'Graphic Design' in job_title:
                 kpi_template = design_kpi_template
                 
                 # Get content tasks for this employee in the period
@@ -266,11 +266,110 @@ class MarketingKPIOverview(http.Controller):
                         'achievement': achievement,
                         'weighted_score': weighted_score
                     })
+
+            elif 'Videografer' in job_title:
+                kpi_template = video_kpi_template
+                
+                # Get content tasks for this employee in the period
+                video_tasks = request.env['content.task'].sudo().search([
+                    ('assigned_to', 'in', [employee.id]),
+                    ('content_type', '=', 'video'),
+                    ('planned_date_start', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                    ('planned_date_end', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S'))
+                ])
+                
+                # Get BAU activities
+                bau_activities = request.env['content.bau'].sudo().search([
+                    ('creator_id', '=', employee.id),
+                    ('activity_type', '=', 'video'),
+                    ('date', '>=', start_date_utc.strftime('%Y-%m-%d')),
+                    ('date', '<=', end_date_utc.strftime('%Y-%m-%d'))
+                ])
+                
+                # Target values
+                monthly_video_target = 15  # Target number of videos per month (typically lower than design)
+                max_revision_threshold = 2  # Maximum number of revisions before considered excessive
+                bau_days_target = 20        # Target BAU days per month
+                
+                # Calculate KPIs based on data
+                for kpi in kpi_template:
+                    actual = 0
+                    
+                    if kpi['type'] == 'video_production':
+                        # If stored value exists, use it; otherwise calculate from data
+                        if 'video_production' in kpi_values:
+                            actual = kpi_values['video_production'].get('actual', 0)
+                            kpi['measurement'] = kpi_values['video_production'].get('measurement', kpi['measurement'])
+                        else:
+                            total_videos = len(video_tasks)
+                            actual = (total_videos / monthly_video_target * 100) if monthly_video_target > 0 else 0
+                            kpi['measurement'] = f"Video diproduksi: {total_videos} dari target {monthly_video_target} ({actual:.1f}%)"
+                    
+                    elif kpi['type'] == 'video_time_accuracy':
+                        if 'video_time_accuracy' in kpi_values:
+                            actual = kpi_values['video_time_accuracy'].get('actual', 0)
+                            kpi['measurement'] = kpi_values['video_time_accuracy'].get('measurement', kpi['measurement'])
+                        else:
+                            completed_tasks = video_tasks.filtered(lambda t: t.state == 'done')
+                            on_time_tasks = completed_tasks.filtered(
+                                lambda t: t.actual_date_end and t.planned_date_end and 
+                                          t.actual_date_end <= fields.Datetime.from_string(t.planned_date_end)
+                            )
+                            
+                            total_completed = len(completed_tasks)
+                            total_on_time = len(on_time_tasks)
+                            
+                            actual = (total_on_time / total_completed * 100) if total_completed > 0 else 0
+                            kpi['measurement'] = f"Video tepat waktu: {total_on_time} dari {total_completed} ({actual:.1f}%)"
+                    
+                    elif kpi['type'] == 'video_revision':
+                        if 'video_revision' in kpi_values:
+                            actual = kpi_values['video_revision'].get('actual', 0)
+                            kpi['measurement'] = kpi_values['video_revision'].get('measurement', kpi['measurement'])
+                        else:
+                            completed_tasks = video_tasks.filtered(lambda t: t.state == 'done')
+                            low_revision_tasks = completed_tasks.filtered(lambda t: t.revision_count <= max_revision_threshold)
+                            
+                            total_completed = len(completed_tasks)
+                            total_low_revision = len(low_revision_tasks)
+                            
+                            actual = (total_low_revision / total_completed * 100) if total_completed > 0 else 0
+                            kpi['measurement'] = f"Video dengan revisi ≤{max_revision_threshold}x: {total_low_revision} dari {total_completed} ({actual:.1f}%)"
+                    
+                    elif kpi['type'] == 'video_bau':
+                        if 'video_bau' in kpi_values:
+                            actual = kpi_values['video_bau'].get('actual', 0)
+                            kpi['measurement'] = kpi_values['video_bau'].get('measurement', kpi['measurement'])
+                        else:
+                            # Count unique days with BAU activities
+                            bau_days = len(set(bau_activities.mapped('date')))
+                            
+                            actual = (bau_days / bau_days_target * 100) if bau_days_target > 0 else 0
+                            kpi['measurement'] = f"Hari BAU: {bau_days} dari target {bau_days_target} hari ({actual:.1f}%)"
+                    
+                    # Calculate weighted score
+                    weighted_score = actual * (kpi['weight'] / 100)
+                    achievement = weighted_score
+                    
+                    # Add to KPI scores
+                    kpi_scores.append({
+                        'no': kpi['no'],
+                        'name': kpi['name'],
+                        'type': kpi['type'],
+                        'weight': kpi['weight'],
+                        'target': kpi['target'],
+                        'measurement': kpi['measurement'],
+                        'actual': actual,
+                        'achievement': achievement,
+                        'weighted_score': weighted_score
+                    })
             
             # Calculate summary data
             total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
             total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
             avg_target = sum(kpi['target'] * kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True)) / total_weight if total_weight else 0
+            
+            
             
             # Validate total weight
             if total_weight != 100:
@@ -351,7 +450,7 @@ class MarketingKPIOverview(http.Controller):
             # Get all marketing employees
             marketing_employees = request.env['hr.employee'].sudo().search([
                 '|', '|', '|', '|',
-                ('job_title', 'ilike', 'Desain Grafis'),
+                ('job_title', 'ilike', 'Graphic Design'),
                 ('job_title', 'ilike', 'Videografer'),
                 ('job_title', 'ilike', 'Social Media'),
                 ('job_title', 'ilike', 'Digital Marketing'),
@@ -362,7 +461,7 @@ class MarketingKPIOverview(http.Controller):
             for employee in marketing_employees:
                 # Get job title
                 job_title = employee.job_title or "Marketing"
-                department = employee.department_id.name if employee.department_id else "Marketing Department"
+                department = employee.department_id.name if employee.department_id else "Marketing"
                 
                 # Get KPI data by calling the KPI endpoint directly
                 kpi_response = self.get_marketing_kpi(employee_id=employee.id, month=month, year=year)
@@ -497,7 +596,7 @@ class MarketingKPIOverview(http.Controller):
             # Get all marketing employees
             marketing_employees = request.env['hr.employee'].sudo().search([
                 '|', '|', '|', '|',
-                ('job_title', 'ilike', 'Desain Grafis'),
+                ('job_title', 'ilike', 'Graphic Design'),
                 ('job_title', 'ilike', 'Videografer'),
                 ('job_title', 'ilike', 'Social Media'),
                 ('job_title', 'ilike', 'Digital Marketing'),

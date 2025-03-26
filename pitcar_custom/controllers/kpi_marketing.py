@@ -192,8 +192,8 @@ class MarketingKPIOverview(http.Controller):
                 ])
                 
                 # Target values (could be moved to configuration or employee record)
-                monthly_design_target = 30  # Target number of designs per month
-                max_revision_threshold = 2   # Maximum number of revisions before considered excessive
+                monthly_design_target = 12  # Target number of designs per month
+                max_revision_threshold = 5   # Maximum number of revisions before considered excessive
                 bau_days_target = 20         # Target BAU days per month
                 
                 # Calculate KPIs based on data
@@ -289,8 +289,8 @@ class MarketingKPIOverview(http.Controller):
                 ])
                 
                 # Target values
-                monthly_video_target = 15  # Target number of videos per month (typically lower than design)
-                max_revision_threshold = 2  # Maximum number of revisions before considered excessive
+                monthly_video_target = 12  # Target number of videos per month (typically lower than design)
+                max_revision_threshold = 5  # Maximum number of revisions before considered excessive
                 bau_days_target = 20        # Target BAU days per month
                 
                 # Calculate KPIs based on data
@@ -422,7 +422,7 @@ class MarketingKPIOverview(http.Controller):
     
     @http.route('/web/v2/kpi/marketing/export_pdf', type='http', auth='user', methods=['POST'], csrf=False)
     def export_marketing_kpi_pdf(self, **kw):
-        """Export KPI data for Marketing to PDF format"""
+        """Export KPI data for Marketing Department to PDF format"""
         try:
             # Get and validate month/year
             current_date = datetime.now()
@@ -474,6 +474,9 @@ class MarketingKPIOverview(http.Controller):
                 ('job_title', 'ilike', 'Marketing')
             ])
             
+            # Debug logging
+            _logger.info(f"Found {len(marketing_employees)} marketing employees for KPI PDF report")
+            
             # Process each marketing employee
             for employee in marketing_employees:
                 # Get job title
@@ -486,6 +489,9 @@ class MarketingKPIOverview(http.Controller):
                 if kpi_response.get('status') == 'success' and 'data' in kpi_response:
                     employee_data = kpi_response['data']
                     marketing_data.append(employee_data)
+                    _logger.info(f"Added employee to report: {employee.name}, Position: {job_title}")
+                else:
+                    _logger.warning(f"Could not get KPI data for {employee.name}: {kpi_response.get('message', 'Unknown error')}")
             
             # Debug logging
             _logger.info(f"Total employees in PDF report: {len(marketing_data)}")
@@ -497,33 +503,47 @@ class MarketingKPIOverview(http.Controller):
                 'current_date': fields.Date.today().strftime('%d-%m-%Y')
             }
             
-            # Render PDF using QWeb report
-            html = request.env['ir.qweb']._render('pitcar_custom.report_marketing_kpi', report_data)
-            pdf_content = request.env['ir.actions.report']._run_wkhtmltopdf(
-                [html],
-                header=b'', footer=b'',
-                landscape=True,
-                specific_paperformat_args={
-                    'data-report-margin-top': 10,
-                    'data-report-margin-bottom': 10,
-                    'data-report-margin-left': 5,
-                    'data-report-margin-right': 5,
-                }
-            )
+            # Try to render PDF using QWeb report
+            try:
+                # First check if the template exists
+                template_id = request.env['ir.ui.view'].sudo().search([
+                    ('key', '=', 'pitcar_custom.report_marketing_kpi')
+                ], limit=1)
+                
+                if not template_id:
+                    _logger.error("QWeb template 'pitcar_custom.report_marketing_kpi' not found")
+                    return Response("Error: QWeb template 'pitcar_custom.report_marketing_kpi' not found", status=404)
+                
+                # Render PDF using QWeb report
+                html = request.env['ir.qweb']._render('pitcar_custom.report_marketing_kpi', report_data)
+                pdf_content = request.env['ir.actions.report']._run_wkhtmltopdf(
+                    [html],
+                    header=b'', footer=b'',
+                    landscape=True,
+                    specific_paperformat_args={
+                        'data-report-margin-top': 10,
+                        'data-report-margin-bottom': 10,
+                        'data-report-margin-left': 5,
+                        'data-report-margin-right': 5,
+                    }
+                )
 
-            # Prepare filename
-            filename = f"Marketing_KPI_{month}_{year}.pdf"
-            
-            # Return PDF response
-            return Response(
-                pdf_content,
-                headers={
-                    'Content-Type': 'application/pdf',
-                    'Content-Disposition': f'attachment; filename="{filename}"',
-                    'Content-Length': len(pdf_content),
-                },
-                status=200
-            )
+                # Prepare filename
+                filename = f"Marketing_KPI_{month}_{year}.pdf"
+                
+                # Return PDF response
+                return Response(
+                    pdf_content,
+                    headers={
+                        'Content-Type': 'application/pdf',
+                        'Content-Disposition': f'attachment; filename="{filename}"',
+                        'Content-Length': len(pdf_content),
+                    },
+                    status=200
+                )
+            except Exception as template_error:
+                _logger.error(f"Error rendering QWeb template: {str(template_error)}", exc_info=True)
+                return Response(f"Error rendering report template: {str(template_error)}", status=500)
         
         except Exception as e:
             _logger.error(f"Error exporting marketing KPI to PDF: {str(e)}", exc_info=True)

@@ -269,7 +269,7 @@ class MarketingKPIOverview(http.Controller):
                         'weighted_score': weighted_score
                     })
 
-            elif 'Videografer' in job_title:
+            elif 'Videographer' in job_title:
                 kpi_template = video_kpi_template
                 
                 # Get content tasks for this employee in the period

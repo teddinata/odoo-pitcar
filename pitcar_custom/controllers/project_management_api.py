@@ -648,6 +648,13 @@ class TeamProjectAPI(http.Controller):
 
                     # Initialize update values dictionary
                     update_values = {}
+
+                    # Properti auto_timesheet untuk perubahan status 
+                    auto_timesheet = kw.get('auto_timesheet', True)
+                    
+                    # Tambahkan ke values task
+                    if auto_timesheet is not None:
+                        update_values['auto_timesheet'] = auto_timesheet
                     
                     # Handle scalar fields
                     scalar_fields = ['name', 'description', 'state', 'progress', 'priority']
@@ -705,6 +712,22 @@ class TeamProjectAPI(http.Controller):
                     # Apply updates
                     _logger.info(f"Updating task {task_id} with values: {update_values}")
                     task.write(update_values)
+
+                    # Return the updated task data with timesheet info
+                    response_data = self._prepare_task_data(task)
+                    
+                    # Tambahkan informasi timesheet terbaru jika ada
+                    if 'state' in update_values and auto_timesheet:
+                        recent_timesheet = request.env['team.project.timesheet'].sudo().search([
+                            ('task_id', '=', task.id)
+                        ], limit=1, order='create_date desc')
+                        
+                        if recent_timesheet:
+                            response_data['recent_timesheet'] = {
+                                'id': recent_timesheet.id,
+                                'hours': recent_timesheet.hours,
+                                'date': fields.Date.to_string(recent_timesheet.date)
+                            }
                     
                     # Return the updated task data
                     return {'status': 'success', 'data': self._prepare_task_data(task), 'message': 'Task updated'}

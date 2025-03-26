@@ -395,7 +395,14 @@ class TeamProjectTask(models.Model):
     timesheet_ids = fields.One2many('team.project.timesheet', 'task_id', string='Timesheets')
     
     # Task Type
-    type_id = fields.Many2one('team.project.task.type', string='Task Type') 
+    type_id = fields.Many2one('team.project.task.type', string='Task Type')
+
+     # Tambahkan field untuk tracking status sebelumnya dan timestamp
+    previous_state = fields.Char(string='Previous State', readonly=True, copy=False)
+    state_change_time = fields.Datetime(string='Last State Change', readonly=True, copy=False)
+    time_in_progress = fields.Float(string='Time in Progress', readonly=True, copy=False, default=0.0)
+    auto_timesheet = fields.Boolean(string='Auto Timesheet', default=True, 
+                                  help="Automatically create timesheet entries on state change") 
     
     # Constraints
     @api.constrains('planned_date_start', 'planned_date_end')
@@ -469,20 +476,44 @@ class TeamProjectTask(models.Model):
         return task
 
     def write(self, vals):
-        # Handle state changes
-        if 'state' in vals:
-            if vals['state'] == 'in_progress' and not self.actual_date_start:
-                vals['actual_date_start'] = fields.Datetime.now()
-            elif vals['state'] == 'done' and not self.actual_date_end:
-                vals['actual_date_end'] = fields.Datetime.now()
+        # Untuk setiap task yang diupdate
+        for task in self:
+            # Jika terjadi perubahan status
+            if 'state' in vals and task.state != vals['state']:
+                now = fields.Datetime.now()
                 
-                # When task is done, also update checklist if not already done
-                if self.checklist_ids:
-                    open_items = self.checklist_ids.filtered(lambda c: not c.is_done)
-                    if open_items:
-                        open_items.write({'is_done': True})
+                # Jika fitur auto timesheet diaktifkan
+                if task.auto_timesheet:
+                    # Jika status sebelumnya adalah in_progress, catat timesheet
+                    if task.state == 'in_progress' and task.state_change_time:
+                        # Hitung durasi dalam status in_progress
+                        duration_hours = (now - task.state_change_time).total_seconds() / 3600
+                        
+                        # Batasi minimum durasi (misal 0.1 jam = 6 menit)
+                        if duration_hours >= 0.1:
+                            # Ciptakan timesheet entry
+                            self.env['team.project.timesheet'].sudo().create({
+                                'task_id': task.id,
+                                'employee_id': self.env.user.employee_id.id,
+                                'date': fields.Date.today(),
+                                'hours': round(duration_hours, 2),
+                                'description': f"Time spent while task was in '{task.state}' state"
+                            })
+                
+                # Catat status sebelumnya dan waktu perubahan
+                vals.update({
+                    'previous_state': task.state,
+                    'state_change_time': fields.Datetime.now()
+                })
+                
+                # Jika status berubah ke in_progress
+                if vals['state'] == 'in_progress' and not task.actual_date_start:
+                    vals['actual_date_start'] = fields.Datetime.now()
+                # Jika status berubah ke done
+                elif vals['state'] == 'done' and not task.actual_date_end:
+                    vals['actual_date_end'] = fields.Datetime.now()
         
-        res = super(TeamProjectTask, self).write(vals)
+        return super(TeamProjectTask, self).write(vals)
         
         # Handle notifications
         if 'state' in vals:
@@ -761,6 +792,41 @@ class TeamProjectTimesheet(models.Model):
     date = fields.Date(string='Date', required=True, default=fields.Date.context_today)
     hours = fields.Float(string='Hours Spent', required=True)
     description = fields.Text(string='Description')
+    session_id = fields.Char(string='Session ID', copy=False, 
+                       help="Identifies timesheet entries from the same work session")
+    
+    @api.model
+    def get_auto_timesheet_summary(self, employee_id, date_from, date_to):
+        """Get summary of automatically generated timesheets"""
+        domain = [
+            ('employee_id', '=', employee_id),
+            ('date', '>=', date_from),
+            ('date', '<=', date_to),
+            # Tambahkan filter untuk membedakan timesheet otomatis vs manual
+        ]
+        
+        timesheets = self.env['team.project.timesheet'].search(domain)
+        
+        # Kelompokkan berdasarkan task dan project
+        result = {}
+        for ts in timesheets:
+            task_key = ts.task_id.id
+            if task_key not in result:
+                result[task_key] = {
+                    'task': ts.task_id.name,
+                    'project': ts.project_id.name,
+                    'total_hours': 0,
+                    'entries': []
+                }
+            
+            result[task_key]['total_hours'] += ts.hours
+            result[task_key]['entries'].append({
+                'date': ts.date,
+                'hours': ts.hours,
+                'description': ts.description
+            })
+        
+        return list(result.values())
     
     @api.constrains('hours')
     def _check_hours(self):

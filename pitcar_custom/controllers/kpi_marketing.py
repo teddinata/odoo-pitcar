@@ -111,11 +111,11 @@ class MarketingKPIOverview(http.Controller):
                 },
                 {
                     'no': 3,
-                    'name': 'Jumlah dari konten melakukan revisi maksimal 2x',
+                    'name': 'Jumlah dari konten melakukan revisi maksimal 5x',
                     'type': 'design_revision',
                     'weight': 25,
                     'target': 90,
-                    'measurement': 'Persentase konten dengan revisi maksimal 2x',
+                    'measurement': 'Persentase konten dengan revisi maksimal 5x',
                     'include_in_calculation': True
                 },
                 {

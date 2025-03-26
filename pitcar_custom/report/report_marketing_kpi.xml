@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <template id="report_cs_kpi">
+    <template id="report_marketing_kpi">
         <t t-call="web.html_container">
             <t t-call="web.external_layout">
                 <div class="page">
-                    <!-- Custom CSS untuk styling laporan -->
+                    <!-- Custom CSS for styling the report -->
                     <style>
                         body {
                             font-family: Arial, sans-serif;
@@ -23,19 +23,19 @@
                             font-size: 14px;
                             margin-bottom: 10px;
                         }
-                        .cs-header {
-                            background-color: #E6F2FF; /* Warna berbeda dari mechanic untuk pembedaan */
+                        .employee-header {
+                            background-color: #f2f2f2;
                             padding: 10px;
                             margin-top: 20px;
                             margin-bottom: 10px;
-                            border: 1px solid #A1C6EA;
+                            border: 1px solid #ddd;
                             border-radius: 5px;
                         }
-                        .cs-name {
+                        .employee-name {
                             font-size: 14px;
                             font-weight: bold;
                         }
-                        .cs-info {
+                        .employee-info {
                             margin-bottom: 5px;
                         }
                         table.kpi-table {
@@ -49,7 +49,7 @@
                             text-align: left;
                         }
                         .kpi-table th {
-                            background-color: #1E88E5; /* Warna berbeda dari mechanic */
+                            background-color: #4472C4;
                             color: white;
                             font-weight: bold;
                             text-align: center;
@@ -58,7 +58,7 @@
                             background-color: #f9f9f9;
                         }
                         .kpi-table tr.summary {
-                            background-color: #90CAF9; /* Warna berbeda dari mechanic */
+                            background-color: #FFD966;
                             font-weight: bold;
                         }
                         .numeric {
@@ -87,7 +87,7 @@
                             text-align: center;
                         }
                         .summary-table th {
-                            background-color: #1E88E5; /* Warna berbeda dari mechanic */
+                            background-color: #4472C4;
                             color: white;
                             font-weight: bold;
                         }
@@ -108,21 +108,21 @@
                     
                     <!-- Report Header -->
                     <div class="page-header">
-                        <div class="page-title">CUSTOMER SUPPORT KPI REPORT</div>
+                        <div class="page-title">MARKETING KPI REPORT</div>
                         <div class="page-subtitle">Period: <t t-esc="period"/></div>
                         <div class="page-subtitle">Generated on: <t t-esc="current_date"/></div>
                     </div>
                     
-                    <!-- For each CS employee, create a section -->
-                    <t t-foreach="cs_employees" t-as="employee">
-                        <div class="page-break" t-if="not employee_first">
+                    <!-- For each marketing employee, create a section -->
+                    <t t-foreach="marketers" t-as="marketer">
+                        <div class="page-break" t-if="not marketer_first">
                             <div style="page-break-before: always;"></div>
                         </div>
                         
-                        <!-- CS Employee Header -->
-                        <div class="cs-header">
-                            <div class="cs-name"><t t-esc="employee['employee']['name']"/> - <t t-esc="employee['employee']['position']"/></div>
-                            <div class="cs-info">Department: <t t-esc="employee['employee']['department']"/></div>
+                        <!-- Employee Header -->
+                        <div class="employee-header">
+                            <div class="employee-name"><t t-esc="marketer['employee']['name']"/> - <t t-esc="marketer['employee']['position']"/></div>
+                            <div class="employee-info">Department: <t t-esc="marketer['employee']['department']"/></div>
                         </div>
                         
                         <!-- KPI Table -->
@@ -139,38 +139,21 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <t t-foreach="employee['kpi_scores']" t-as="kpi">
+                                <t t-foreach="marketer['kpi_scores']" t-as="kpi">
                                     <tr>
-                                        <td class="numeric"><t t-esc="kpi['no']"/></td>
-                                        <td><t t-esc="kpi['name']"/></td>
-                                        <td class="numeric"><t t-esc="'%.1f' % kpi['weight']"/></td>
-                                        <td class="numeric"><t t-esc="'%.1f' % kpi['target']"/></td>
-                                        <td class="numeric"><t t-esc="'%.1f' % kpi['actual']"/></td>
-                                        <td t-attf-class="numeric {{ 'achievement-good' if kpi['achievement'] >= (kpi['weight'] * 0.9) else 'achievement-medium' if kpi['achievement'] >= (kpi['weight'] * 0.7) else 'achievement-poor' }}">
-                                            <t t-esc="'%.2f' % kpi['achievement']"/>
-                                        </td>
-                                        <td><t t-esc="kpi['measurement']"/></td>
-                                    </tr>
-                                </t>
-                                <!-- Summary Row -->
-                                <tr class="summary">
-                                    <td colspan="2" class="numeric">SUMMARY</td>
-                                    <td class="numeric"><t t-esc="'%.1f' % employee['summary']['total_weight']"/></td>
-                                    <td class="numeric"><t t-esc="'%.1f' % employee['summary']['target']"/></td>
-                                    <td class="numeric"></td>
-                                    <td class="numeric"><t t-esc="'%.2f' % employee['summary']['total_score']"/></td>
-                                    <td><t t-esc="employee['summary']['achievement_status']"/></td>
+                                        <td class="numeric"><t t-esc="'%.2f' % marketer['summary']['total_score']"/></td>
+                                    <td><t t-esc="marketer['summary']['achievement_status']"/></td>
                                 </tr>
                             </tbody>
                         </table>
                     </t>
                     
-                    <!-- Summary Page for All CS Employees -->
+                    <!-- Summary Page for All Marketing Employees -->
                     <div class="page-break">
                         <div style="page-break-before: always;"></div>
                     </div>
                     
-                    <div class="summary-title">KPI SUMMARY FOR ALL CUSTOMER SUPPORT STAFF</div>
+                    <div class="summary-title">KPI SUMMARY FOR ALL MARKETING PERSONNEL</div>
                     <div class="page-subtitle">Period: <t t-esc="period"/></div>
                     
                     <table class="summary-table">
@@ -184,16 +167,16 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <t t-foreach="cs_employees" t-as="employee">
-                                <tr t-attf-class="{{ 'achievement-good' if employee['summary']['total_score'] >= employee['summary']['target'] else 'achievement-poor' }}">
-                                    <td><t t-esc="employee_index + 1"/></td>
-                                    <td><t t-esc="employee['employee']['name']"/></td>
-                                    <td><t t-esc="employee['employee']['position']"/></td>
+                            <t t-foreach="marketers" t-as="marketer">
+                                <tr t-attf-class="{{ 'achievement-good' if marketer['summary']['total_score'] >= marketer['summary']['target'] else 'achievement-poor' }}">
+                                    <td><t t-esc="marketer_index + 1"/></td>
+                                    <td><t t-esc="marketer['employee']['name']"/></td>
+                                    <td><t t-esc="marketer['employee']['position']"/></td>
                                     <td class="numeric">
-                                        <t t-esc="'%.2f' % employee['summary']['total_score']"/>
+                                        <t t-esc="'%.2f' % marketer['summary']['total_score']"/>
                                     </td>
                                     <td>
-                                        <t t-esc="employee['summary']['achievement_status']"/>
+                                        <t t-esc="marketer['summary']['achievement_status']"/>
                                     </td>
                                 </tr>
                             </t>

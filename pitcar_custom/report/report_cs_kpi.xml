@@ -156,7 +156,7 @@
                                 <tr class="summary">
                                     <td colspan="2" class="numeric">SUMMARY</td>
                                     <td class="numeric"><t t-esc="'%.1f' % employee['summary']['total_weight']"/></td>
-                                    <td class="numeric"><t t-esc="'%.1f' % mechanic['summary']['avg_target']"/></td>
+                                    <td class="numeric"><t t-esc="'%.1f' % mechanic['summary']['target']"/></td>
                                     <td class="numeric"></td>
                                     <td class="numeric"><t t-esc="'%.2f' % employee['summary']['total_score']"/></td>
                                     <td><t t-esc="employee['summary']['achievement_status']"/></td>
@@ -185,7 +185,7 @@
                         </thead>
                         <tbody>
                             <t t-foreach="cs_employees" t-as="employee">
-                                <tr t-attf-class="{{ 'achievement-good' if employee['summary']['total_score'] >= employee['summary']['avg_target'] else 'achievement-poor' }}">
+                                <tr t-attf-class="{{ 'achievement-good' if employee['summary']['total_score'] >= employee['summary']['target'] else 'achievement-poor' }}">
                                     <td><t t-esc="employee_index + 1"/></td>
                                     <td><t t-esc="employee['employee']['name']"/></td>
                                     <td><t t-esc="employee['employee']['position']"/></td>

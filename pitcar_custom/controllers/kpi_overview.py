@@ -1944,7 +1944,7 @@ class KPIOverview(http.Controller):
                     'kpi_scores': kpi_scores,
                     'summary': {
                         'total_weight': total_weight,
-                        'average_target': avg_target,
+                        'target': avg_target,
                         'total_score': total_score,
                         'achievement_status': 'Achieved' if total_score >= avg_target else 'Below Target'
                     }
@@ -3669,7 +3669,7 @@ class KPIOverview(http.Controller):
                     'kpi_scores': kpi_scores,
                     'summary': {
                         'total_weight': total_weight,
-                        'average_target': avg_target,
+                        'target': avg_target,
                         'total_score': total_score,
                         'achievement_status': 'Achieved' if total_score >= avg_target else 'Below Target'
                     }
@@ -6073,7 +6073,8 @@ class KPIOverview(http.Controller):
                 # Calculate summary
                 total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
                 total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
-                achievement_status = 'Achieved' if total_score >= 80 else 'Below Target'
+                avg_target = sum(kpi['target'] * kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True)) / total_weight if total_weight else 0
+                achievement_status = 'Achieved' if total_score >= avg_target else 'Below Target'
                 
                 # Add to mechanic_data
                 mechanic_data.append({
@@ -6087,6 +6088,7 @@ class KPIOverview(http.Controller):
                     'summary': {
                         'total_weight': total_weight,
                         'total_score': total_score,
+                        'target': avg_target,
                         'achievement_status': achievement_status
                     }
                 })
@@ -6457,8 +6459,8 @@ class KPIOverview(http.Controller):
                 # Calculate summary
                 total_weight = sum(kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
                 total_score = sum(kpi['weighted_score'] for kpi in kpi_scores if kpi.get('include_in_calculation', True))
-                target = sum(kpi['target'] * kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True)) / total_weight if total_weight else 0
-                achievement_status = 'Achieved' if total_score >= 90 else 'Below Target'
+                avg_target = sum(kpi['target'] * kpi['weight'] for kpi in kpi_scores if kpi.get('include_in_calculation', True)) / total_weight if total_weight else 0
+                achievement_status = 'Achieved' if total_score >= avg_target else 'Below Target'
                 
                 # Add to mechanic_data
                 mechanic_data.append({
@@ -6471,7 +6473,7 @@ class KPIOverview(http.Controller):
                     'kpi_scores': kpi_scores,
                     'summary': {
                         'total_weight': total_weight,
-                        'target': target,
+                        'target': avg_target,
                         'total_score': total_score,
                         'achievement_status': achievement_status
                     }
@@ -7671,7 +7673,7 @@ class KPIOverview(http.Controller):
                     'kpi_scores': kpi_scores,
                     'summary': {
                         'total_weight': total_weight,
-                        'average_target': avg_target,
+                        'target': avg_target,
                         'total_score': total_score,
                         'achievement_status': achievement_status
                     }

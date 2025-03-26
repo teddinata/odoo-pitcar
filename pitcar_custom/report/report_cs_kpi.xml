@@ -156,7 +156,7 @@
                                 <tr class="summary">
                                     <td colspan="2" class="numeric">SUMMARY</td>
                                     <td class="numeric"><t t-esc="'%.1f' % employee['summary']['total_weight']"/></td>
-                                    <td class="numeric"><t t-esc="'%.1f' % mechanic['summary']['target']"/></td>
+                                    <td class="numeric"><t t-esc="'%.1f' % employee['summary']['target']"/></td>
                                     <td class="numeric"></td>
                                     <td class="numeric"><t t-esc="'%.2f' % employee['summary']['total_score']"/></td>
                                     <td><t t-esc="employee['summary']['achievement_status']"/></td>

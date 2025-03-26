@@ -450,7 +450,7 @@ class MarketingKPIOverview(http.Controller):
             # Get all marketing employees
             marketing_employees = request.env['hr.employee'].sudo().search([
                 '|', '|', '|', '|',
-                ('job_title', 'ilike', 'Desain Grafis'),
+                ('job_title', 'ilike', 'Graphic Design'),
                 ('job_title', 'ilike', 'Videografer'),
                 ('job_title', 'ilike', 'Social Media'),
                 ('job_title', 'ilike', 'Digital Marketing'),
@@ -596,7 +596,7 @@ class MarketingKPIOverview(http.Controller):
             # Get all marketing employees
             marketing_employees = request.env['hr.employee'].sudo().search([
                 '|', '|', '|', '|',
-                ('job_title', 'ilike', 'Desain Grafis'),
+                ('job_title', 'ilike', 'Graphic Design'),
                 ('job_title', 'ilike', 'Videografer'),
                 ('job_title', 'ilike', 'Social Media'),
                 ('job_title', 'ilike', 'Digital Marketing'),

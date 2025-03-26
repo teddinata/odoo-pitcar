@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <template id="report_marketing_kpi">
+        <t t-call="web.html_container">
+            <t t-call="web.external_layout">
+                <div class="page">
+                    <!-- Custom CSS for styling the report -->
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            font-size: 12px;
+                        }
+                        .page-header {
+                            text-align: center;
+                            margin-bottom: 20px;
+                        }
+                        .page-title {
+                            font-size: 18px;
+                            font-weight: bold;
+                            margin-bottom: 5px;
+                        }
+                        .page-subtitle {
+                            font-size: 14px;
+                            margin-bottom: 10px;
+                        }
+                        .employee-header {
+                            background-color: #f2f2f2;
+                            padding: 10px;
+                            margin-top: 20px;
+                            margin-bottom: 10px;
+                            border: 1px solid #ddd;
+                            border-radius: 5px;
+                        }
+                        .employee-name {
+                            font-size: 14px;
+                            font-weight: bold;
+                        }
+                        .employee-info {
+                            margin-bottom: 5px;
+                        }
+                        table.kpi-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-bottom: 20px;
+                        }
+                        .kpi-table th, .kpi-table td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: left;
+                        }
+                        .kpi-table th {
+                            background-color: #4472C4;
+                            color: white;
+                            font-weight: bold;
+                            text-align: center;
+                        }
+                        .kpi-table tr:nth-child(even) {
+                            background-color: #f9f9f9;
+                        }
+                        .kpi-table tr.summary {
+                            background-color: #FFD966;
+                            font-weight: bold;
+                        }
+                        .numeric {
+                            text-align: center;
+                        }
+                        .achievement-good {
+                            background-color: #C6EFCE;
+                            color: #006100;
+                        }
+                        .achievement-medium {
+                            background-color: #FFEB9C;
+                            color: #9C5700;
+                        }
+                        .achievement-poor {
+                            background-color: #FFC7CE;
+                            color: #9C0006;
+                        }
+                        .summary-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 30px;
+                        }
+                        .summary-table th, .summary-table td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: center;
+                        }
+                        .summary-table th {
+                            background-color: #4472C4;
+                            color: white;
+                            font-weight: bold;
+                        }
+                        .summary-title {
+                            font-size: 16px;
+                            font-weight: bold;
+                            margin-top: 30px;
+                            margin-bottom: 10px;
+                            text-align: center;
+                        }
+                        .page-footer {
+                            font-size: 10px;
+                            text-align: center;
+                            margin-top: 30px;
+                            font-style: italic;
+                        }
+                    </style>
+                    
+                    <!-- Report Header -->
+                    <div class="page-header">
+                        <div class="page-title">MARKETING KPI REPORT</div>
+                        <div class="page-subtitle">Period: <t t-esc="period"/></div>
+                        <div class="page-subtitle">Generated on: <t t-esc="current_date"/></div>
+                    </div>
+                    
+                    <!-- For each marketing employee, create a section -->
+                    <t t-foreach="marketers" t-as="marketer">
+                        <div class="page-break" t-if="not marketer_first">
+                            <div style="page-break-before: always;"></div>
+                        </div>
+                        
+                        <!-- Employee Header -->
+                        <div class="employee-header">
+                            <div class="employee-name"><t t-esc="marketer['employee']['name']"/> - <t t-esc="marketer['employee']['position']"/></div>
+                            <div class="employee-info">Department: <t t-esc="marketer['employee']['department']"/></div>
+                        </div>
+                        
+                        <!-- KPI Table -->
+                        <table class="kpi-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%;">No</th>
+                                    <th style="width: 30%;">KPI</th>
+                                    <th style="width: 8%;">Bobot (%)</th>
+                                    <th style="width: 8%;">Target</th>
+                                    <th style="width: 8%;">Actual (%)</th>
+                                    <th style="width: 10%;">Achievement</th>
+                                    <th style="width: 31%;">Formula/Measurement</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="marketer['kpi_scores']" t-as="kpi">
+                                    <tr>
+                                        <td class="numeric"><t t-esc="'%.2f' % marketer['summary']['total_score']"/></td>
+                                    <td><t t-esc="marketer['summary']['achievement_status']"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+                    
+                    <!-- Summary Page for All Marketing Employees -->
+                    <div class="page-break">
+                        <div style="page-break-before: always;"></div>
+                    </div>
+                    
+                    <div class="summary-title">KPI SUMMARY FOR ALL MARKETING PERSONNEL</div>
+                    <div class="page-subtitle">Period: <t t-esc="period"/></div>
+                    
+                    <table class="summary-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 5%;">No</th>
+                                <th style="width: 30%;">Employee</th>
+                                <th style="width: 25%;">Position</th>
+                                <th style="width: 15%;">Total Score</th>
+                                <th style="width: 25%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="marketers" t-as="marketer">
+                                <tr t-attf-class="{{ 'achievement-good' if marketer['summary']['total_score'] >= marketer['summary']['target'] else 'achievement-poor' }}">
+                                    <td><t t-esc="marketer_index + 1"/></td>
+                                    <td><t t-esc="marketer['employee']['name']"/></td>
+                                    <td><t t-esc="marketer['employee']['position']"/></td>
+                                    <td class="numeric">
+                                        <t t-esc="'%.2f' % marketer['summary']['total_score']"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="marketer['summary']['achievement_status']"/>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+                    
+                    <!-- Page Footer -->
+                    <div class="page-footer">
+                        This report is automatically generated from the Pitcar Workshop Management System
+                    </div>
+                </div>
+            </t>
+        </t>
+    </template>
+</odoo>

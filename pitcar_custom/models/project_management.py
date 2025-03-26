@@ -827,6 +827,8 @@ class TeamProjectTimesheet(models.Model):
             })
         
         return list(result.values())
+
+        
     
     @api.constrains('hours')
     def _check_hours(self):

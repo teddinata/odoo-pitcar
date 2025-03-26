@@ -141,7 +141,22 @@
                             <tbody>
                                 <t t-foreach="marketer['kpi_scores']" t-as="kpi">
                                     <tr>
-                                        <td class="numeric"><t t-esc="'%.2f' % marketer['summary']['total_score']"/></td>
+                                        <td class="numeric"><t t-esc="kpi['no']"/></td>
+                                        <td><t t-esc="kpi['name']"/></td>
+                                        <td class="numeric"><t t-esc="kpi['weight']"/></td>
+                                        <td class="numeric"><t t-esc="kpi['target']"/></td>
+                                        <td class="numeric"><t t-esc="'%.2f' % kpi['actual']"/></td>
+                                        <td class="numeric"><t t-esc="'%.2f' % kpi['achievement']"/></td>
+                                        <td><t t-esc="kpi['measurement']"/></td>
+                                    </tr>
+                                </t>
+                                <!-- Summary row -->
+                                <tr class="summary">
+                                    <td colspan="2" style="text-align: right;">Total</td>
+                                    <td class="numeric"><t t-esc="marketer['summary']['total_weight']"/></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td class="numeric"><t t-esc="'%.2f' % marketer['summary']['total_score']"/></td>
                                     <td><t t-esc="marketer['summary']['achievement_status']"/></td>
                                 </tr>
                             </tbody>

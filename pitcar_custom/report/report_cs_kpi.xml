@@ -24,7 +24,7 @@
                             margin-bottom: 10px;
                         }
                         .cs-header {
-                            background-color: #E6F2FF; /* Warna berbeda dari mechanic untuk pembedaan */
+                            background-color: #E6F2FF; 
                             padding: 10px;
                             margin-top: 20px;
                             margin-bottom: 10px;
@@ -49,7 +49,7 @@
                             text-align: left;
                         }
                         .kpi-table th {
-                            background-color: #1E88E5; /* Warna berbeda dari mechanic */
+                            background-color: #1E88E5;
                             color: white;
                             font-weight: bold;
                             text-align: center;
@@ -58,7 +58,7 @@
                             background-color: #f9f9f9;
                         }
                         .kpi-table tr.summary {
-                            background-color: #90CAF9; /* Warna berbeda dari mechanic */
+                            background-color: #90CAF9;
                             font-weight: bold;
                         }
                         .numeric {
@@ -87,7 +87,7 @@
                             text-align: center;
                         }
                         .summary-table th {
-                            background-color: #1E88E5; /* Warna berbeda dari mechanic */
+                            background-color: #1E88E5;
                             color: white;
                             font-weight: bold;
                         }

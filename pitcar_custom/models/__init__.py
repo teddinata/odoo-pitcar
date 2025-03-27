@@ -46,3 +46,4 @@ from . import notification
 from . import pitcar_tools
 from . import mechanic_hand_tools
 from . import project_management
+from . import kaizen_training_program

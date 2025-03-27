@@ -897,9 +897,9 @@ class KaizenTrainingAPI(http.Controller):
             kpi_template = [
                 {
                     'no': 1,
-                    'name': 'Jumlah dokumen SOP yang terbentuk sesuai target',
+                    'name': 'Jumlah dokumen SOP yang terbentuk dan tersosialisasi sesuai target',
                     'type': 'sop_completion',
-                    'weight': 10,
+                    'weight': 20,
                     'target': 90,
                     'measurement': 'SOP terbentuk / target SOP',
                     'include_in_calculation': True
@@ -926,7 +926,7 @@ class KaizenTrainingAPI(http.Controller):
                     'no': 4,
                     'name': 'Rating kepuasan training memberikan nilai 4 dari 5',
                     'type': 'training_satisfaction',
-                    'weight': 20,
+                    'weight': 10,
                     'target': 80,
                     'measurement': 'Formula khusus: > 4.5 = 120%, 4 s.d 4.5 = 100%, 3 s.d 3.9 = 50%, < 3 = 0%',
                     'include_in_calculation': True
@@ -935,7 +935,7 @@ class KaizenTrainingAPI(http.Controller):
                     'no': 5,
                     'name': '% permasalahan teknis yang tidak dapat diselesaikan kepala mekanik dibawah kaizen man',
                     'type': 'technical_issues',
-                    'weight': 20,
+                    'weight': 15,
                     'target': 90,
                     'measurement': '% masalah teknis yang dibantu / total masalah teknis',
                     'include_in_calculation': True
@@ -944,7 +944,7 @@ class KaizenTrainingAPI(http.Controller):
                     'no': 6,
                     'name': '% keberhasilan project development yang di-assign kepada kaizen-man tepat pada waktunya',
                     'type': 'project_timeliness',
-                    'weight': 10,
+                    'weight': 15,
                     'target': 100,
                     'measurement': '% project tepat waktu / total project',
                     'include_in_calculation': True

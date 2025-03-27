@@ -999,29 +999,60 @@ class KaizenTrainingAPI(http.Controller):
                 
                 # KPI #2: Sampling SOP
                 elif kpi['type'] == 'sop_sampling':
-                    # Cari sampling SOP oleh tim Kaizen dalam periode ini
-                    sampling_domain = [
+                    # Cari semua sampling SOP oleh tim Kaizen dalam periode ini
+                    # Perhatikan: Kita hanya filter berdasarkan tanggal dan tipe sampling (kaizen)
+                    # tanpa melakukan filter berdasarkan controller_id untuk menghitung total samplings
+                    
+                    # Log untuk debugging
+                    _logger.info(f"Mencari sampling untuk periode: {start_date.strftime('%Y-%m-%d')} s/d {end_date.strftime('%Y-%m-%d')}")
+                    
+                    # Query untuk mendapatkan semua sampling oleh tim Kaizen dalam periode ini
+                    all_sampling_domain = [
                         ('date', '>=', start_date.strftime('%Y-%m-%d')),
                         ('date', '<=', end_date.strftime('%Y-%m-%d')),
-                        ('sampling_type', '=', 'kaizen'),  # Filter untuk sampling oleh tim Kaizen
-                        ('controller_id', '=', int(employee_id))  # Filter untuk sampling yang dilakukan oleh karyawan ini
+                        ('sampling_type', '=', 'kaizen')  # Filter untuk sampling oleh tim Kaizen
                     ]
                     
-                    sop_samplings = request.env['pitcar.sop.sampling'].sudo().search(sampling_domain)
-                    total_samplings = len(sop_samplings)
+                    all_sop_samplings = request.env['pitcar.sop.sampling'].sudo().search(all_sampling_domain)
+                    total_samplings = len(all_sop_samplings)
                     
-                    # Hitung berapa SOP yang lulus sampling
-                    passed_samplings = len(sop_samplings.filtered(lambda s: s.result == 'pass'))
+                    # Log jumlah sampling yang ditemukan
+                    _logger.info(f"Total sampling oleh tim Kaizen: {total_samplings}")
                     
-                    # Hitung persentase pencapaian
+                    # Hitung berapa SOP yang lulus sampling (dari semua sampling tim Kaizen)
+                    passed_samplings = len(all_sop_samplings.filtered(lambda s: s.result == 'pass'))
+                    
+                    # Jika karyawan ini adalah seorang controller, kita juga ingin mengetahui 
+                    # berapa sampling yang dilakukan oleh karyawan ini
+                    employee_sampling_domain = [
+                        ('date', '>=', start_date.strftime('%Y-%m-%d')),
+                        ('date', '<=', end_date.strftime('%Y-%m-%d')),
+                        ('sampling_type', '=', 'kaizen'),
+                        ('controller_id', '=', int(employee_id))
+                    ]
+                    
+                    employee_samplings = request.env['pitcar.sop.sampling'].sudo().search(employee_sampling_domain)
+                    employee_sampling_count = len(employee_samplings)
+                    
+                    # Log jumlah sampling oleh karyawan ini
+                    _logger.info(f"Sampling oleh karyawan ini: {employee_sampling_count}")
+                    
+                    # Hitung persentase pencapaian tim Kaizen terhadap target
                     sampling_completion = (total_samplings / monthly_sop_sampling_target * 100) if monthly_sop_sampling_target > 0 else 0
                     sampling_quality = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 0
                     
                     # Combined score: 50% based on sampling count, 50% based on quality
                     actual = min(100, (sampling_completion * 0.5) + (sampling_quality * 0.5))
                     
-                    kpi['measurement'] = f"Sampling: {total_samplings} dari target {monthly_sop_sampling_target}, " \
-                                        f"lulus: {passed_samplings} ({actual:.1f}%)"
+                    # Tampilkan informasi jumlah sampling yang dilakukan oleh karyawan ini
+                    # jika karyawan ini adalah controller
+                    if employee_sampling_count > 0:
+                        kpi['measurement'] = f"Sampling Tim Kaizen: {total_samplings} dari target {monthly_sop_sampling_target} " \
+                                            f"(kontribusi: {employee_sampling_count}), " \
+                                            f"lulus: {passed_samplings} ({actual:.1f}%)"
+                    else:
+                        kpi['measurement'] = f"Sampling Tim Kaizen: {total_samplings} dari target {monthly_sop_sampling_target}, " \
+                                            f"lulus: {passed_samplings} ({actual:.1f}%)"
                 
                 # KPI #3: Penyelesaian program pelatihan (existing code)
                 elif kpi['type'] == 'training_completion':

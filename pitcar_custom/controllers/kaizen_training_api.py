@@ -1176,7 +1176,7 @@ class KaizenTrainingAPI(http.Controller):
             _logger.error(f"Error di get_kaizen_kpi: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
-    @http.route('/web/v2/kaizen/kpi/export_pdf', type='http', auth='user', methods=['POST'], csrf=False)
+    @http.route('/web/v2/kpi/kaizen/export_pdf', type='http', auth='user', methods=['POST'], csrf=False)
     def export_kaizen_kpi_pdf(self, **kw):
         """Export KPI data untuk Tim Kaizen ke format PDF"""
         try:

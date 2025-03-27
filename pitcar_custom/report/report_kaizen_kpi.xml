@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<template id="report_kaizen_kpi" name="Kaizen KPI Report">
+    <t t-name="pitcar_custom.report_kaizen_kpi">
+        <div class="container-fluid">
+            <div class="header text-center pb-2 pt-2 mb-4" style="border-bottom: 2px solid #333;">
+                <h2>Laporan Kinerja Tim Kaizen</h2>
+                <h3>Periode: <t t-esc="period"/></h3>
+                <p>Tanggal Cetak: <t t-esc="current_date"/></p>
+            </div>
+
+            <!-- Untuk setiap anggota tim Kaizen -->
+            <t t-foreach="kaizen_members" t-as="member">
+                <div class="employee-section mb-5">
+                    <div class="row">
+                        <div class="col-12 mb-3" style="border-bottom: 1px solid #ccc; background-color: #f5f5f5;">
+                            <h4 style="margin: 10px 0;">
+                                <t t-esc="member['employee']['name']"/> - 
+                                <t t-esc="member['employee']['position']"/>
+                            </h4>
+                        </div>
+                    </div>
+
+                    <!-- Tabel KPI -->
+                    <div class="row">
+                        <div class="col-12">
+                            <table class="table table-bordered">
+                                <thead style="background-color: #ddd;">
+                                    <tr>
+                                        <th style="width: 5%;">No</th>
+                                        <th style="width: 35%;">Key Performance Indicator</th>
+                                        <th style="width: 10%;">Bobot</th>
+                                        <th style="width: 10%;">Target</th>
+                                        <th style="width: 25%;">Pengukuran</th>
+                                        <th style="width: 15%;">Pencapaian</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="member['kpi_scores']" t-as="kpi">
+                                        <tr>
+                                            <td><t t-esc="kpi['no']"/></td>
+                                            <td><t t-esc="kpi['name']"/></td>
+                                            <td class="text-center"><t t-esc="kpi['weight']"/>%</td>
+                                            <td class="text-center"><t t-esc="kpi['target']"/>%</td>
+                                            <td><t t-esc="kpi['measurement']"/></td>
+                                            <td class="text-center">
+                                                <span t-att-class="kpi['actual'] >= kpi['target'] ? 'text-success' : 'text-danger'">
+                                                    <t t-esc="kpi['actual']"/>%
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                                <tfoot style="background-color: #eee; font-weight: bold;">
+                                    <tr>
+                                        <td colspan="2">Total</td>
+                                        <td class="text-center"><t t-esc="member['summary']['total_weight']"/>%</td>
+                                        <td class="text-center"><t t-esc="member['summary']['target']"/>%</td>
+                                        <td></td>
+                                        <td class="text-center">
+                                            <span t-att-class="member['summary']['total_score'] >= member['summary']['target'] ? 'text-success' : 'text-danger'">
+                                                <t t-esc="member['summary']['total_score']"/>%
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Status Pencapaian -->
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="alert" t-att-class="member['summary']['achievement_status'] == 'Tercapai' ? 'alert-success' : 'alert-danger'">
+                                <strong>Status Pencapaian: <t t-esc="member['summary']['achievement_status']"/></strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Page break setelah setiap karyawan kecuali yang terakhir -->
+                <t t-if="!member_last">
+                    <div style="page-break-after: always;"></div>
+                </t>
+            </t>
+
+            <!-- Jika tidak ada data -->
+            <t t-if="not kaizen_members">
+                <div class="alert alert-warning">
+                    <strong>Tidak ada data KPI Kaizen untuk periode ini.</strong>
+                </div>
+            </t>
+        </div>
+    </t>
+</template>

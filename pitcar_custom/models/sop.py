@@ -13,7 +13,8 @@ class PitcarSOP(models.Model):
     description = fields.Text('Deskripsi', tracking=True)
     sequence = fields.Integer('Sequence', default=10)
     active = fields.Boolean('Active', default=True)
-
+    notes = fields.Text('Catatan', tracking=True)
+    
     # New fields for tracking dates and statuses
     activity_type = fields.Selection([
         ('pembuatan', 'Pembuatan'),

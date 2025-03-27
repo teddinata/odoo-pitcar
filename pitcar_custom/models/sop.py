@@ -14,6 +14,54 @@ class PitcarSOP(models.Model):
     sequence = fields.Integer('Sequence', default=10)
     active = fields.Boolean('Active', default=True)
 
+    # New fields for tracking dates and statuses
+    activity_type = fields.Selection([
+        ('pembuatan', 'Pembuatan'),
+        ('revisi', 'Revisi'),
+        ('update', 'Update')
+    ], string='Aktivitas', default='pembuatan', tracking=True)
+    
+    date_start = fields.Date('Tanggal Mulai', tracking=True)
+    date_end = fields.Date('Tanggal Selesai', tracking=True)
+    
+    state = fields.Selection([
+        ('draft', 'Draft'),
+        ('in_progress', 'In Progress'),
+        ('done', 'Done'),
+        ('cancelled', 'Cancelled')
+    ], string='Status', default='draft', tracking=True)
+    
+    review_state = fields.Selection([
+        ('waiting', 'Waiting for Review'),
+        ('in_review', 'In Review'),
+        ('done', 'Done'),
+        ('rejected', 'Rejected')
+    ], string='Status Review', default='waiting', tracking=True)
+    
+    revision_state = fields.Selection([
+        ('no_revision', 'No Revision'),
+        ('revising', 'In Revision'),
+        ('done', 'Done')
+    ], string='Status Revisi', default='no_revision', tracking=True)
+    
+    # Document and socialization fields
+    document_url = fields.Char('Dokumen URL', tracking=True, 
+                               help="Link to Google Drive or other storage with SOP document")
+    
+    socialization_state = fields.Selection([
+        ('not_started', 'Belum Dimulai'),
+        ('scheduled', 'Dijadwalkan'),
+        ('in_progress', 'Sedang Berlangsung'),
+        ('done', 'Selesai')
+    ], string='Status Sosialisasi', default='not_started', tracking=True)
+    
+    socialization_date = fields.Date('Tanggal Sosialisasi', tracking=True)
+
+     # Target waktu sosialisasi - field baru yang diminta
+    socialization_target_date = fields.Date('Target Waktu Sosialisasi', tracking=True, 
+                                           help="Tanggal target kapan SOP harus sudah disosialisasikan")
+
+
     # Classification fields
     department = fields.Selection([
         ('service', 'Service'),
@@ -101,6 +149,109 @@ class PitcarSOP(models.Model):
             ])
             if existing:
                 raise ValidationError('Kode SOP harus unik!')
+    
+    # Computed fields for statistics (optional enhancement)
+    days_to_complete = fields.Integer('Hari Penyelesaian', compute='_compute_days_to_complete', store=True)
+    socialization_status = fields.Selection([
+        ('on_time', 'Tepat Waktu'),
+        ('delayed', 'Terlambat'),
+        ('not_due', 'Belum Jatuh Tempo')
+    ], string='Status Target Sosialisasi', compute='_compute_socialization_status', store=True)
+    
+    @api.depends('date_start', 'date_end', 'state')
+    def _compute_days_to_complete(self):
+        """Compute days taken to complete the SOP"""
+        for record in self:
+            if record.date_start and record.date_end and record.state == 'done':
+                delta = record.date_end - record.date_start
+                record.days_to_complete = delta.days
+            else:
+                record.days_to_complete = 0
+    
+    @api.depends('socialization_target_date', 'socialization_date', 'socialization_state')
+    def _compute_socialization_status(self):
+        """Compute socialization status based on target date and actual date"""
+        today = fields.Date.today()
+        for record in self:
+            if record.socialization_state == 'done' and record.socialization_date and record.socialization_target_date:
+                if record.socialization_date <= record.socialization_target_date:
+                    record.socialization_status = 'on_time'
+                else:
+                    record.socialization_status = 'delayed'
+            elif record.socialization_target_date:
+                if today > record.socialization_target_date and record.socialization_state != 'done':
+                    record.socialization_status = 'delayed'
+                else:
+                    record.socialization_status = 'not_due'
+            else:
+                record.socialization_status = 'not_due'
+    
+    @api.depends('date_start', 'date_end', 'state')
+    def _compute_days_to_complete(self):
+        """Compute days taken to complete the SOP"""
+        for record in self:
+            if record.date_start and record.date_end and record.state == 'done':
+                delta = record.date_end - record.date_start
+                record.days_to_complete = delta.days
+            else:
+                record.days_to_complete = 0
+
+    # New methods for state changes
+    def action_start_sop(self):
+        """Start SOP development process"""
+        self.write({
+            'state': 'in_progress',
+            'date_start': fields.Date.today() if not self.date_start else self.date_start
+        })
+    
+    def action_complete_sop(self):
+        """Mark SOP as completed"""
+        self.write({
+            'state': 'done',
+            'date_end': fields.Date.today() if not self.date_end else self.date_end
+        })
+    
+    def action_start_review(self):
+        """Start the review process"""
+        self.write({
+            'review_state': 'in_review'
+        })
+    
+    def action_approve_review(self):
+        """Approve the SOP after review"""
+        self.write({
+            'review_state': 'done'
+        })
+    
+    def action_reject_review(self):
+        """Reject the SOP, require revisions"""
+        self.write({
+            'review_state': 'rejected',
+            'revision_state': 'revising'
+        })
+    
+    def action_complete_revision(self):
+        """Mark revisions as completed"""
+        self.write({
+            'revision_state': 'done'
+        })
+    
+    def action_schedule_socialization(self):
+        """Schedule socialization for the SOP"""
+        return {
+            'name': 'Schedule Socialization',
+            'type': 'ir.actions.act_window',
+            'res_model': 'sop.socialization.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_sop_id': self.id}
+        }
+    
+    def action_complete_socialization(self):
+        """Mark socialization as completed"""
+        self.write({
+            'socialization_state': 'done'
+        })
 
 class PitcarSOPSampling(models.Model):
     _name = 'pitcar.sop.sampling'

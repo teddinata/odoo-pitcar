@@ -298,64 +298,6 @@ class SOPController(http.Controller):
             _logger.error(f"Error dalam get_sop_list: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
-    @http.route('/web/sop/master/detail', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
-    def get_sop_detail(self, **kw):
-        """Mendapatkan detail SOP berdasarkan ID"""
-        try:
-            sop_id = kw.get('id')
-            if not sop_id:
-                return {'status': 'error', 'message': 'ID SOP diperlukan'}
-            
-            sop = request.env['pitcar.sop'].sudo().browse(int(sop_id))
-            if not sop.exists():
-                return {'status': 'error', 'message': 'SOP tidak ditemukan'}
-            
-            # Format hasil untuk respons
-            result = {
-                'id': sop.id,
-                'code': sop.code,
-                'name': sop.name,
-                'description': sop.description or '',
-                'department': sop.department,
-                'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
-                'role': sop.role,
-                'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
-                'sampling_type': sop.sampling_type,
-                'sampling_type_label': dict(sop._fields['sampling_type'].selection).get(sop.sampling_type, ''),
-                'activity_type': sop.activity_type,
-                'activity_type_label': dict(sop._fields['activity_type'].selection).get(sop.activity_type, ''),
-                'date_start': sop.date_start.strftime('%Y-%m-%d') if sop.date_start else '',
-                'date_end': sop.date_end.strftime('%Y-%m-%d') if sop.date_end else '',
-                'state': sop.state,
-                'state_label': dict(sop._fields['state'].selection).get(sop.state, ''),
-                'review_state': sop.review_state,
-                'review_state_label': dict(sop._fields['review_state'].selection).get(sop.review_state, ''),
-                'revision_state': sop.revision_state,
-                'revision_state_label': dict(sop._fields['revision_state'].selection).get(sop.revision_state, ''),
-                'document_url': sop.document_url or '',
-                'socialization_state': sop.socialization_state,
-                'socialization_state_label': dict(sop._fields['socialization_state'].selection).get(sop.socialization_state, ''),
-                'socialization_date': sop.socialization_date.strftime('%Y-%m-%d') if sop.socialization_date else '',
-                'socialization_target_date': sop.socialization_target_date.strftime('%Y-%m-%d') if sop.socialization_target_date else '',
-                'socialization_status': sop.socialization_status,
-                'socialization_status_label': dict(sop._fields['socialization_status'].selection).get(sop.socialization_status, ''),
-                'notes': sop.notes or '',
-                'days_to_complete': sop.days_to_complete or 0,
-                'is_sa': sop.is_sa,
-                'is_lead_role': sop.is_lead_role,
-                'sequence': sop.sequence,
-                'active': sop.active
-            }
-            
-            return {'status': 'success', 'data': result}
-        
-        except Exception as e:
-            _logger.error(f"Error di get_sop_detail: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-
-
-
-
 
     @http.route('/web/sop/sampling/available-orders', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_available_orders(self, **kw):
@@ -1820,6 +1762,61 @@ class SOPController(http.Controller):
         
         except Exception as e:
             _logger.error(f"Error dalam get_employees_by_role: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/sop/master/detail', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_sop_detail(self, **kw):
+        """Mendapatkan detail SOP berdasarkan ID"""
+        try:
+            sop_id = kw.get('id')
+            if not sop_id:
+                return {'status': 'error', 'message': 'ID SOP diperlukan'}
+            
+            sop = request.env['pitcar.sop'].sudo().browse(int(sop_id))
+            if not sop.exists():
+                return {'status': 'error', 'message': 'SOP tidak ditemukan'}
+            
+            # Format hasil untuk respons
+            result = {
+                'id': sop.id,
+                'code': sop.code,
+                'name': sop.name,
+                'description': sop.description or '',
+                'department': sop.department,
+                'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
+                'role': sop.role,
+                'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
+                'sampling_type': sop.sampling_type,
+                'sampling_type_label': dict(sop._fields['sampling_type'].selection).get(sop.sampling_type, ''),
+                'activity_type': sop.activity_type,
+                'activity_type_label': dict(sop._fields['activity_type'].selection).get(sop.activity_type, ''),
+                'date_start': sop.date_start.strftime('%Y-%m-%d') if sop.date_start else '',
+                'date_end': sop.date_end.strftime('%Y-%m-%d') if sop.date_end else '',
+                'state': sop.state,
+                'state_label': dict(sop._fields['state'].selection).get(sop.state, ''),
+                'review_state': sop.review_state,
+                'review_state_label': dict(sop._fields['review_state'].selection).get(sop.review_state, ''),
+                'revision_state': sop.revision_state,
+                'revision_state_label': dict(sop._fields['revision_state'].selection).get(sop.revision_state, ''),
+                'document_url': sop.document_url or '',
+                'socialization_state': sop.socialization_state,
+                'socialization_state_label': dict(sop._fields['socialization_state'].selection).get(sop.socialization_state, ''),
+                'socialization_date': sop.socialization_date.strftime('%Y-%m-%d') if sop.socialization_date else '',
+                'socialization_target_date': sop.socialization_target_date.strftime('%Y-%m-%d') if sop.socialization_target_date else '',
+                'socialization_status': sop.socialization_status,
+                'socialization_status_label': dict(sop._fields['socialization_status'].selection).get(sop.socialization_status, ''),
+                'notes': sop.notes or '',
+                'days_to_complete': sop.days_to_complete or 0,
+                'is_sa': sop.is_sa,
+                'is_lead_role': sop.is_lead_role,
+                'sequence': sop.sequence,
+                'active': sop.active
+            }
+            
+            return {'status': 'success', 'data': result}
+        
+        except Exception as e:
+            _logger.error(f"Error di get_sop_detail: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
     # def get_sop_list(self, **kw):

@@ -1,94 +1,209 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<template id="report_kaizen_kpi" name="Kaizen KPI Report">
-    <t t-name="pitcar_custom.report_kaizen_kpi">
-        <div class="container-fluid">
-            <div class="header text-center pb-2 pt-2 mb-4" style="border-bottom: 2px solid #333;">
-                <h2>Laporan Kinerja Tim Kaizen</h2>
-                <h3>Periode: <t t-esc="period"/></h3>
-                <p>Tanggal Cetak: <t t-esc="current_date"/></p>
-            </div>
-
-            <!-- Untuk setiap anggota tim Kaizen -->
-            <t t-foreach="kaizen_members" t-as="member">
-                <div class="employee-section mb-5">
-                    <div class="row">
-                        <div class="col-12 mb-3" style="border-bottom: 1px solid #ccc; background-color: #f5f5f5;">
-                            <h4 style="margin: 10px 0;">
-                                <t t-esc="member['employee']['name']"/> - 
-                                <t t-esc="member['employee']['position']"/>
-                            </h4>
-                        </div>
+<odoo>
+    <template id="report_kaizen_kpi">
+        <t t-call="web.html_container">
+            <t t-call="web.external_layout">
+                <div class="page">
+                    <!-- Custom CSS for styling the report -->
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            font-size: 12px;
+                        }
+                        .page-header {
+                            text-align: center;
+                            margin-bottom: 20px;
+                        }
+                        .page-title {
+                            font-size: 18px;
+                            font-weight: bold;
+                            margin-bottom: 5px;
+                        }
+                        .page-subtitle {
+                            font-size: 14px;
+                            margin-bottom: 10px;
+                        }
+                        .employee-header {
+                            background-color: #f2f2f2;
+                            padding: 10px;
+                            margin-top: 20px;
+                            margin-bottom: 10px;
+                            border: 1px solid #ddd;
+                            border-radius: 5px;
+                        }
+                        .employee-name {
+                            font-size: 14px;
+                            font-weight: bold;
+                        }
+                        .employee-info {
+                            margin-bottom: 5px;
+                        }
+                        table.kpi-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-bottom: 20px;
+                        }
+                        .kpi-table th, .kpi-table td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: left;
+                        }
+                        .kpi-table th {
+                            background-color: #4472C4;
+                            color: white;
+                            font-weight: bold;
+                            text-align: center;
+                        }
+                        .kpi-table tr:nth-child(even) {
+                            background-color: #f9f9f9;
+                        }
+                        .kpi-table tr.summary {
+                            background-color: #FFD966;
+                            font-weight: bold;
+                        }
+                        .numeric {
+                            text-align: center;
+                        }
+                        .achievement-good {
+                            background-color: #C6EFCE;
+                            color: #006100;
+                        }
+                        .achievement-medium {
+                            background-color: #FFEB9C;
+                            color: #9C5700;
+                        }
+                        .achievement-poor {
+                            background-color: #FFC7CE;
+                            color: #9C0006;
+                        }
+                        .summary-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 30px;
+                        }
+                        .summary-table th, .summary-table td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: center;
+                        }
+                        .summary-table th {
+                            background-color: #4472C4;
+                            color: white;
+                            font-weight: bold;
+                        }
+                        .summary-title {
+                            font-size: 16px;
+                            font-weight: bold;
+                            margin-top: 30px;
+                            margin-bottom: 10px;
+                            text-align: center;
+                        }
+                        .page-footer {
+                            font-size: 10px;
+                            text-align: center;
+                            margin-top: 30px;
+                            font-style: italic;
+                        }
+                    </style>
+                    
+                    <!-- Report Header -->
+                    <div class="page-header">
+                        <div class="page-title">LAPORAN KPI TIM KAIZEN</div>
+                        <div class="page-subtitle">Periode: <t t-esc="period"/></div>
+                        <div class="page-subtitle">Tanggal Cetak: <t t-esc="current_date"/></div>
                     </div>
-
-                    <!-- Tabel KPI -->
-                    <div class="row">
-                        <div class="col-12">
-                            <table class="table table-bordered">
-                                <thead style="background-color: #ddd;">
-                                    <tr>
-                                        <th style="width: 5%;">No</th>
-                                        <th style="width: 35%;">Key Performance Indicator</th>
-                                        <th style="width: 10%;">Bobot</th>
-                                        <th style="width: 10%;">Target</th>
-                                        <th style="width: 25%;">Pengukuran</th>
-                                        <th style="width: 15%;">Pencapaian</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <t t-foreach="member['kpi_scores']" t-as="kpi">
-                                        <tr>
-                                            <td><t t-esc="kpi['no']"/></td>
-                                            <td><t t-esc="kpi['name']"/></td>
-                                            <td class="text-center"><t t-esc="kpi['weight']"/>%</td>
-                                            <td class="text-center"><t t-esc="kpi['target']"/>%</td>
-                                            <td><t t-esc="kpi['measurement']"/></td>
-                                            <td class="text-center">
-                                                <span t-att-class="kpi['actual'] >= kpi['target'] ? 'text-success' : 'text-danger'">
-                                                    <t t-esc="kpi['actual']"/>%
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    </t>
-                                </tbody>
-                                <tfoot style="background-color: #eee; font-weight: bold;">
-                                    <tr>
-                                        <td colspan="2">Total</td>
-                                        <td class="text-center"><t t-esc="member['summary']['total_weight']"/>%</td>
-                                        <td class="text-center"><t t-esc="member['summary']['target']"/>%</td>
-                                        <td></td>
-                                        <td class="text-center">
-                                            <span t-att-class="member['summary']['total_score'] >= member['summary']['target'] ? 'text-success' : 'text-danger'">
-                                                <t t-esc="member['summary']['total_score']"/>%
-                                            </span>
-                                        </td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                    
+                    <!-- For each Kaizen team member, create a section -->
+                    <t t-foreach="kaizen_members" t-as="member">
+                        <div class="page-break" t-if="not member_first">
+                            <div style="page-break-before: always;"></div>
                         </div>
+                        
+                        <!-- Employee Header -->
+                        <div class="employee-header">
+                            <div class="employee-name"><t t-esc="member['employee']['name']"/> - <t t-esc="member['employee']['position']"/></div>
+                            <div class="employee-info">Departemen: <t t-esc="member['employee']['department']"/></div>
+                        </div>
+                        
+                        <!-- KPI Table -->
+                        <table class="kpi-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%;">No</th>
+                                    <th style="width: 30%;">KPI</th>
+                                    <th style="width: 8%;">Bobot (%)</th>
+                                    <th style="width: 8%;">Target</th>
+                                    <th style="width: 8%;">Aktual (%)</th>
+                                    <th style="width: 10%;">Pencapaian</th>
+                                    <th style="width: 31%;">Formula/Pengukuran</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="member['kpi_scores']" t-as="kpi">
+                                    <tr>
+                                        <td class="numeric"><t t-esc="kpi['no']"/></td>
+                                        <td><t t-esc="kpi['name']"/></td>
+                                        <td class="numeric"><t t-esc="kpi['weight']"/></td>
+                                        <td class="numeric"><t t-esc="kpi['target']"/></td>
+                                        <td class="numeric"><t t-esc="'%.2f' % kpi['actual']"/></td>
+                                        <td class="numeric"><t t-esc="'%.2f' % kpi['achievement']"/></td>
+                                        <td><t t-esc="kpi['measurement']"/></td>
+                                    </tr>
+                                </t>
+                                <!-- Summary row -->
+                                <tr class="summary">
+                                    <td colspan="2" style="text-align: right;">Total</td>
+                                    <td class="numeric"><t t-esc="member['summary']['total_weight']"/></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td class="numeric"><t t-esc="'%.2f' % member['summary']['total_score']"/></td>
+                                    <td><t t-esc="member['summary']['achievement_status']"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+                    
+                    <!-- Summary Page for All Kaizen Team Members -->
+                    <div class="page-break">
+                        <div style="page-break-before: always;"></div>
                     </div>
-
-                    <!-- Status Pencapaian -->
-                    <div class="row">
-                        <div class="col-12">
-                            <div class="alert" t-att-class="member['summary']['achievement_status'] == 'Tercapai' ? 'alert-success' : 'alert-danger'">
-                                <strong>Status Pencapaian: <t t-esc="member['summary']['achievement_status']"/></strong>
-                            </div>
-                        </div>
+                    
+                    <div class="summary-title">RINGKASAN KPI SEMUA ANGGOTA TIM KAIZEN</div>
+                    <div class="page-subtitle">Periode: <t t-esc="period"/></div>
+                    
+                    <table class="summary-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 5%;">No</th>
+                                <th style="width: 30%;">Karyawan</th>
+                                <th style="width: 25%;">Posisi</th>
+                                <th style="width: 15%;">Skor Total</th>
+                                <th style="width: 25%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="kaizen_members" t-as="member">
+                                <tr t-attf-class="{{ 'achievement-good' if member['summary']['total_score'] >= member['summary']['target'] else 'achievement-poor' }}">
+                                    <td><t t-esc="member_index + 1"/></td>
+                                    <td><t t-esc="member['employee']['name']"/></td>
+                                    <td><t t-esc="member['employee']['position']"/></td>
+                                    <td class="numeric">
+                                        <t t-esc="'%.2f' % member['summary']['total_score']"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="member['summary']['achievement_status']"/>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+                    
+                    <!-- Page Footer -->
+                    <div class="page-footer">
+                        Laporan ini dibuat secara otomatis dari Sistem Manajemen Bengkel Pitcar
                     </div>
                 </div>
-
-                <!-- Page break setelah setiap karyawan kecuali yang terakhir -->
-                <t t-if="!member_last">
-                    <div style="page-break-after: always;"></div>
-                </t>
             </t>
-
-            <!-- Jika tidak ada data -->
-            <t t-if="not kaizen_members">
-                <div class="alert alert-warning">
-                    <strong>Tidak ada data KPI Kaizen untuk periode ini.</strong>
-                </div>
-            </t>
-        </div>
-    </t>
-</template>
+        </t>
+    </template>
+</odoo>

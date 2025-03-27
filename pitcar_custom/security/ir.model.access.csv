@@ -136,3 +136,6 @@ pitcar_custom.access_team_project_meeting_action_user,access.team.project.meetin
 pitcar_custom.access_team_project_meeting_action_manager,access.team.project.meeting.action.manager,pitcar_custom.model_team_project_meeting_action,base.group_system,1,1,1,1
 pitcar_custom.access_marketing_kpi_detail_manager,marketing.kpi.detail.manager,model_marketing_kpi_detail,hr.group_hr_manager,1,1,1,1
 pitcar_custom.access_marketing_kpi_detail_user,marketing.kpi.detail.user,model_marketing_kpi_detail,base.group_user,1,1,1,1
+pitcar_custom.access_kaizen_training_program,access_kaizen_training_program,model_kaizen_training_program,base.group_user,1,1,1,1
+pitcar_custom.access_kaizen_training_rating,access_kaizen_training_rating,model_kaizen_training_rating,base.group_user,1,1,1,1
+pitcar_custom.access_kaizen_training_material,access_kaizen_training_material,model_kaizen_training_material,base.group_user,1,1,1,1

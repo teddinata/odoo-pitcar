@@ -22,3 +22,4 @@ from . import mechanic_hand_tools_controller
 from . import mechanic_tools_import_controller
 from . import project_management_api
 from . import kpi_marketing
+from . import kaizen_training_api

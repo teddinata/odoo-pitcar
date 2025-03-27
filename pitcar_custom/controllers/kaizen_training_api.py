@@ -1064,3 +1064,320 @@ class KaizenTrainingAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error di get_kaizen_kpi: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    # controllers/kaizen_training_api.py - Tambahkan endpoint berikut
+
+    @http.route('/web/v2/kaizen/trainings/public-feedback', type='json', auth='public', methods=['POST'], csrf=False)
+    def get_public_training_feedback(self, **kw):
+        """API publik untuk mendapatkan data pelatihan bagi peserta yang memberikan feedback."""
+        try:
+            # Ambil parameter dari request
+            params = kw
+            if 'params' in kw and isinstance(kw['params'], dict):
+                params = kw['params']
+            
+            operation = params.get('operation', 'get_training')
+            training_id = params.get('training_id')
+            token = params.get('token', '')
+            
+            if not training_id or not token:
+                return {'status': 'error', 'message': 'Missing required parameters'}
+            
+            # Validasi token (dalam implementasi nyata, gunakan metode yang lebih aman)
+            # Contoh sederhana: token adalah base64 dari "training-{id}-feedback"
+            expected_token = base64.b64encode(f"training-{training_id}-feedback".encode()).decode()
+            
+            if token != expected_token:
+                return {'status': 'error', 'message': 'Invalid token'}
+            
+            if operation == 'get_training':
+                # Ambil data pelatihan untuk ditampilkan di form feedback publik
+                training = request.env['kaizen.training.program'].sudo().browse(int(training_id))
+                
+                if not training.exists():
+                    return {'status': 'error', 'message': 'Training not found'}
+                
+                # Hanya kirim data yang diperlukan untuk form feedback
+                training_data = {
+                    'id': training.id,
+                    'name': training.name,
+                    'state': training.state,
+                    'date_start': self._format_datetime_jakarta(training.date_start),
+                    'date_end': self._format_datetime_jakarta(training.date_end),
+                    'instructor': {
+                        'id': training.instructor_id.id,
+                        'name': training.instructor_id.name
+                    },
+                    'attendees': [
+                        {
+                            'id': attendee.id,
+                            'name': attendee.name,
+                            'department': attendee.department_id.name if attendee.department_id else None
+                        }
+                        for attendee in training.attendee_ids
+                    ],
+                    'ratings': [
+                        {
+                            'id': rating.id,
+                            'attendee_id': rating.attendee_id.id
+                        }
+                        for rating in training.rating_ids
+                    ]
+                }
+                
+                return {'status': 'success', 'data': training_data}
+            
+            elif operation == 'get_training_summary':
+                # Ambil data ringkasan pelatihan untuk halaman summary publik
+                training = request.env['kaizen.training.program'].sudo().browse(int(training_id))
+                
+                if not training.exists():
+                    return {'status': 'error', 'message': 'Training not found'}
+                
+                # Siapkan data detail rating
+                ratings_data = []
+                for rating in training.rating_ids:
+                    rating_data = {
+                        'id': rating.id,
+                        'rating_value': rating.rating_value,
+                        'content_quality_rating': rating.content_quality_rating,
+                        'instructor_rating': rating.instructor_rating,
+                        'material_rating': rating.material_rating,
+                        'organization_rating': rating.organization_rating
+                    }
+                    ratings_data.append(rating_data)
+                
+                # Kirim data yang diperlukan untuk halaman summary
+                summary_data = {
+                    'id': training.id,
+                    'name': training.name,
+                    'date_end': self._format_datetime_jakarta(training.date_end),
+                    'ratings': ratings_data
+                }
+                
+                return {'status': 'success', 'data': summary_data}
+            
+            else:
+                return {'status': 'error', 'message': f'Unknown operation: {operation}'}
+        
+        except Exception as e:
+            _logger.error(f"Error in get_public_training_feedback: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    # Tambahan untuk rating API - validasi token saat mengirim rating dari form publik
+    @http.route('/web/v2/kaizen/training/ratings', type='json', auth='public', methods=['POST'], csrf=False)
+    def manage_ratings(self, **kw):
+        """Mengelola operasi CRUD untuk rating pelatihan."""
+        # Ambil parameter dari request
+        params = kw
+        if 'params' in kw and isinstance(kw['params'], dict):
+            params = kw['params']
+        
+        # Ambil operation dengan nilai default 'create'
+        operation = params.get('operation', 'create')
+        
+        # Cek apakah request berasal dari form publik (ditandai dengan token)
+        token = params.get('token', '')
+        is_public_request = bool(token)
+        
+        # Jika ini request publik, validasi token
+        if is_public_request:
+            training_id = params.get('training_id')
+            if not training_id or not token:
+                return {'status': 'error', 'message': 'Missing required parameters'}
+            
+            # Validasi token
+            expected_token = base64.b64encode(f"training-{training_id}-feedback".encode()).decode()
+            if token != expected_token:
+                return {'status': 'error', 'message': 'Invalid token'}
+        
+        # Untuk request publik yang valid atau request internal, lanjutkan dengan logika yang sudah ada
+        try:
+            # Lanjutkan dengan kode yang sudah ada...
+            if operation == 'create':
+                # Validasi field yang diperlukan
+                required_fields = ['training_id', 'attendee_id', 'rater_id', 'rating_value']
+                if not all(kw.get(field) for field in required_fields):
+                    return {'status': 'error', 'message': 'Missing required fields'}
+                
+                # Jika ini adalah request publik, pastikan attendee_id dan rater_id sama
+                if is_public_request and kw.get('attendee_id') != kw.get('rater_id'):
+                    return {'status': 'error', 'message': 'Invalid rater_id for public feedback'}
+                
+                # Buat rating
+                values = {
+                    'training_id': int(kw['training_id']),
+                    'attendee_id': int(kw['attendee_id']),
+                    'rater_id': int(kw['rater_id']),
+                    'rating_value': float(kw['rating_value']),
+                    'content_quality_rating': kw.get('content_quality_rating'),
+                    'instructor_rating': kw.get('instructor_rating'),
+                    'material_rating': kw.get('material_rating'),
+                    'organization_rating': kw.get('organization_rating'),
+                    'notes': kw.get('notes')
+                }
+                
+                # Cek apakah peserta ini sudah memberikan rating
+                existing_rating = request.env['kaizen.training.rating'].sudo().search([
+                    ('training_id', '=', int(kw['training_id'])),
+                    ('attendee_id', '=', int(kw['attendee_id']))
+                ])
+                
+                if existing_rating:
+                    return {'status': 'error', 'message': 'Feedback sudah diberikan sebelumnya'}
+                
+                rating = request.env['kaizen.training.rating'].sudo().create(values)
+                return {'status': 'success', 'data': self._prepare_rating_data(rating)}
+            
+            # Jika request publik, hanya izinkan operasi create
+            if is_public_request and operation != 'create':
+                return {'status': 'error', 'message': 'Operation not allowed'}
+            
+            # Berikut adalah operasi yang hanya diizinkan untuk pengguna internal
+            elif operation == 'read':
+                if not kw.get('rating_id'):
+                    return {'status': 'error', 'message': 'Missing rating_id parameter'}
+                
+                rating = request.env['kaizen.training.rating'].sudo().browse(int(kw['rating_id']))
+                if not rating.exists():
+                    return {'status': 'error', 'message': 'Rating not found'}
+                
+                return {'status': 'success', 'data': self._prepare_rating_data(rating)}
+            
+            elif operation == 'update':
+                if not kw.get('rating_id'):
+                    return {'status': 'error', 'message': 'Missing rating_id parameter'}
+                
+                rating = request.env['kaizen.training.rating'].sudo().browse(int(kw['rating_id']))
+                if not rating.exists():
+                    return {'status': 'error', 'message': 'Rating not found'}
+                
+                # Update nilai
+                update_values = {}
+                updatable_fields = [
+                    'rating_value', 'content_quality_rating', 'instructor_rating', 
+                    'material_rating', 'organization_rating', 'notes'
+                ]
+                
+                for field in updatable_fields:
+                    if field in kw:
+                        if field == 'rating_value':
+                            update_values[field] = float(kw[field])
+                        else:
+                            update_values[field] = kw[field]
+                
+                rating.write(update_values)
+                return {'status': 'success', 'data': self._prepare_rating_data(rating)}
+            
+            elif operation == 'delete':
+                if not kw.get('rating_id'):
+                    return {'status': 'error', 'message': 'Missing rating_id parameter'}
+                
+                rating = request.env['kaizen.training.rating'].sudo().browse(int(kw['rating_id']))
+                if not rating.exists():
+                    return {'status': 'error', 'message': 'Rating not found'}
+                
+                rating.unlink()
+                return {'status': 'success', 'message': 'Rating berhasil dihapus'}
+            
+            elif operation == 'list_by_training':
+                if not kw.get('training_id'):
+                    return {'status': 'error', 'message': 'Missing training_id parameter'}
+                
+                ratings = request.env['kaizen.training.rating'].sudo().search([
+                    ('training_id', '=', int(kw['training_id']))
+                ])
+                
+                return {
+                    'status': 'success',
+                    'data': [self._prepare_rating_data(rating) for rating in ratings]
+                }
+            
+            elif operation == 'list_by_attendee':
+                if not kw.get('attendee_id'):
+                    return {'status': 'error', 'message': 'Missing attendee_id parameter'}
+                
+                ratings = request.env['kaizen.training.rating'].sudo().search([
+                    ('attendee_id', '=', int(kw['attendee_id']))
+                ])
+                
+                return {
+                    'status': 'success',
+                    'data': [self._prepare_rating_data(rating) for rating in ratings]
+                }
+            
+            else:
+                return {'status': 'error', 'message': f'Unknown operation: {operation}'}
+                
+        except Exception as e:
+            _logger.error(f"Error in manage_ratings: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    # Tambahkan endpoint untuk mengirim email pengingat feedback ke peserta
+    @http.route('/web/v2/kaizen/training/send-feedback-reminders', type='json', auth='user', methods=['POST'], csrf=False)
+    def send_feedback_reminders(self, **kw):
+        """Kirim email pengingat feedback ke semua peserta yang belum memberikan feedback."""
+        try:
+            training_id = kw.get('training_id')
+            if not training_id:
+                return {'status': 'error', 'message': 'Missing training_id parameter'}
+            
+            training = request.env['kaizen.training.program'].sudo().browse(int(training_id))
+            if not training.exists():
+                return {'status': 'error', 'message': 'Training not found'}
+            
+            # Get attendees who haven't provided feedback yet
+            attendees_with_rating = training.rating_ids.mapped('attendee_id')
+            attendees_without_rating = training.attendee_ids.filtered(lambda a: a not in attendees_with_rating)
+            
+            if not attendees_without_rating:
+                return {'status': 'success', 'message': 'Semua peserta sudah memberikan feedback'}
+            
+            # Generate feedback token
+            feedback_token = base64.b64encode(f"training-{training_id}-feedback".encode()).decode()
+            
+            # Get base URL from config parameter or use default
+            base_url = request.env['ir.config_parameter'].sudo().get_param('web.base.url', 'http://localhost:8069')
+            feedback_url = f"{base_url}/feedback/{training_id}?token={feedback_token}"
+            
+            # Prepare email template
+            mail_template = request.env.ref('module_name.email_template_feedback_reminder', raise_if_not_found=False)
+            if not mail_template:
+                return {'status': 'error', 'message': 'Email template not found'}
+            
+            # Send emails
+            sent_count = 0
+            for attendee in attendees_without_rating:
+                if not attendee.work_email:
+                    continue
+                    
+                # Send email
+                try:
+                    mail_template.with_context(
+                        attendee_name=attendee.name,
+                        training_name=training.name,
+                        feedback_url=feedback_url
+                    ).send_mail(
+                        attendee.id,
+                        force_send=True
+                    )
+                    sent_count += 1
+                except Exception as mail_error:
+                    _logger.error(f"Error sending email to {attendee.name}: {str(mail_error)}")
+            
+            return {
+                'status': 'success', 
+                'message': f'Email pengingat berhasil dikirim ke {sent_count} peserta',
+                'data': {
+                    'total_attendees': len(training.attendee_ids),
+                    'attendees_with_rating': len(attendees_with_rating),
+                    'attendees_without_rating': len(attendees_without_rating),
+                    'emails_sent': sent_count
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in send_feedback_reminders: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+            
+            # Lanjutkan dengan kode yang sudah ada...

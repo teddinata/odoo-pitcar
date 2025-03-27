@@ -1,6 +1,6 @@
 # controllers/kaizen_training_api.py
 from odoo import http, fields
-from odoo.http import request
+from odoo.http import request, Response
 import json
 import logging
 import pytz
@@ -835,7 +835,7 @@ class KaizenTrainingAPI(http.Controller):
             _logger.error(f"Error di get_training_statistics: {str(e)}")
             return {'status': 'error', 'message': str(e)}
     
-    @http.route('/web/v2/kaizen/kpi', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/web/v2/kpi/kaizen', type='json', auth='user', methods=['POST'], csrf=False)
     def get_kaizen_kpi(self, **kw):
         """Mendapatkan data KPI untuk Tim Kaizen berdasarkan aktivitas pelatihan."""
         try:
@@ -956,18 +956,80 @@ class KaizenTrainingAPI(http.Controller):
             
             # Nilai target 
             monthly_training_target = 5  # Target jumlah pelatihan per bulan
+            monthly_sop_creation_target = 10  # Target pembuatan SOP per bulan
+            monthly_sop_sampling_target = 180  # Target sampling SOP per bulan
             
             # Loop melalui template KPI dan isi dengan data aktual
             for kpi in kpi_template:
                 actual = 0
                 
-                # KPI #3: Penyelesaian program pelatihan
-                if kpi['type'] == 'training_completion':
+                # KPI #1: Penyelesaian pembuatan SOP
+                if kpi['type'] == 'sop_completion':
+                    # Cari project dengan tipe 'creation' (pembuatan)
+                    sop_creation_domain = [
+                        ('project_type', '=', 'creation'),
+                        ('date_start', '>=', start_date.strftime('%Y-%m-%d')),
+                        ('date_end', '<=', end_date.strftime('%Y-%m-%d')),
+                        # Filter untuk project yang dimiliki/diassign ke karyawan Kaizen
+                        '|',
+                        ('project_manager_id', '=', int(employee_id)),
+                        ('team_ids', 'in', [int(employee_id)])
+                    ]
+                    
+                    sop_projects = request.env['team.project'].sudo().search(sop_creation_domain)
+                    total_sop_projects = len(sop_projects)
+                    
+                    # Jika tidak ada project pembuatan SOP, otomatis nilai 100%
+                    if total_sop_projects == 0:
+                        actual = 100
+                        kpi['measurement'] = "Tidak ada proyek pembuatan SOP pada periode ini (nilai 100%)"
+                    else:
+                        # Hitung berapa yang selesai tepat waktu (tidak overdue)
+                        completed_on_time = 0
+                        for project in sop_projects:
+                            if project.state == 'completed' and (not project.date_end or (
+                                    project.actual_date_end and project.date_end and 
+                                    project.actual_date_end <= fields.Datetime.from_string(project.date_end))):
+                                completed_on_time += 1
+                        
+                        # Hitung persentase penyelesaian tepat waktu
+                        actual = (completed_on_time / total_sop_projects) * 100 if total_sop_projects > 0 else 100
+                        
+                        kpi['measurement'] = f"SOP terbentuk: {total_sop_projects}, selesai tepat waktu: {completed_on_time} ({actual:.1f}%)"
+                
+                # KPI #2: Sampling SOP
+                elif kpi['type'] == 'sop_sampling':
+                    # Cari sampling SOP oleh tim Kaizen dalam periode ini
+                    sampling_domain = [
+                        ('date', '>=', start_date.strftime('%Y-%m-%d')),
+                        ('date', '<=', end_date.strftime('%Y-%m-%d')),
+                        ('sampling_type', '=', 'kaizen'),  # Filter untuk sampling oleh tim Kaizen
+                        ('controller_id', '=', int(employee_id))  # Filter untuk sampling yang dilakukan oleh karyawan ini
+                    ]
+                    
+                    sop_samplings = request.env['pitcar.sop.sampling'].sudo().search(sampling_domain)
+                    total_samplings = len(sop_samplings)
+                    
+                    # Hitung berapa SOP yang lulus sampling
+                    passed_samplings = len(sop_samplings.filtered(lambda s: s.result == 'pass'))
+                    
+                    # Hitung persentase pencapaian
+                    sampling_completion = (total_samplings / monthly_sop_sampling_target * 100) if monthly_sop_sampling_target > 0 else 0
+                    sampling_quality = (passed_samplings / total_samplings * 100) if total_samplings > 0 else 0
+                    
+                    # Combined score: 50% based on sampling count, 50% based on quality
+                    actual = min(100, (sampling_completion * 0.5) + (sampling_quality * 0.5))
+                    
+                    kpi['measurement'] = f"Sampling: {total_samplings} dari target {monthly_sop_sampling_target}, " \
+                                        f"lulus: {passed_samplings} ({actual:.1f}%)"
+                
+                # KPI #3: Penyelesaian program pelatihan (existing code)
+                elif kpi['type'] == 'training_completion':
                     total_trainings = len(trainings)
                     actual = (total_trainings / monthly_training_target * 100) if monthly_training_target > 0 else 0
                     kpi['measurement'] = f"Program training: {total_trainings} dari target {monthly_training_target} ({actual:.1f}%)"
                 
-                # KPI #4: Rating kepuasan pelatihan
+                # KPI #4: Rating kepuasan pelatihan (existing code)
                 elif kpi['type'] == 'training_satisfaction':
                     # Dapatkan semua rating di semua pelatihan
                     all_ratings = []
@@ -988,17 +1050,66 @@ class KaizenTrainingAPI(http.Controller):
                     
                     kpi['measurement'] = f"Rating rata-rata: {avg_rating:.1f} dari 5.0 (Pencapaian: {actual:.1f}%)"
                 
-                # Untuk KPI lainnya (nilai placeholder contoh untuk demonstrasi)
-                else:
-                    # Ini perlu diimplementasikan berdasarkan logika bisnis aktual
-                    if kpi['type'] == 'sop_completion':
-                        actual = 85  # Contoh placeholder
-                    elif kpi['type'] == 'sop_sampling':
-                        actual = 90  # Contoh placeholder
-                    elif kpi['type'] == 'technical_issues':
-                        actual = 95  # Contoh placeholder
-                    elif kpi['type'] == 'project_timeliness':
-                        actual = 100  # Contoh placeholder
+                # KPI #5: Penyelesaian masalah teknis (dari mentor request)
+                elif kpi['type'] == 'technical_issues':
+                    # Cari mentor request dalam periode ini
+                    mentor_request_domain = [
+                        ('request_datetime', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                        ('request_datetime', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                        ('mentor_id', '=', int(employee_id)),  # Request yang mentor-nya adalah karyawan ini
+                    ]
+                    
+                    mentor_requests = request.env['pitcar.mentor.request'].sudo().search(mentor_request_domain)
+                    total_requests = len(mentor_requests)
+                    
+                    # Hitung berapa request yang terselesaikan (solved)
+                    solved_requests = len(mentor_requests.filtered(lambda r: r.state == 'solved'))
+                    
+                    # Hitung persentase penyelesaian
+                    if total_requests > 0:
+                        actual = (solved_requests / total_requests) * 100
+                    else:
+                        actual = 100  # Jika tidak ada request, dianggap 100% selesai
+                    
+                    kpi['measurement'] = f"Masalah terselesaikan: {solved_requests} dari {total_requests} ({actual:.1f}%)"
+                
+                # KPI #6: Ketepatan waktu project development
+                elif kpi['type'] == 'project_timeliness':
+                    # Cari project development yang dimiliki/diassign ke karyawan Kaizen
+                    project_domain = [
+                        ('project_type', '=', 'development'),  # Filter untuk project pengembangan
+                        ('date_start', '>=', start_date.strftime('%Y-%m-%d')),
+                        ('date_end', '<=', end_date.strftime('%Y-%m-%d')),
+                        '|',
+                        ('project_manager_id', '=', int(employee_id)),
+                        ('team_ids', 'in', [int(employee_id)]),
+                        ('state', 'in', ['completed', 'cancelled'])  # Hanya project yang sudah selesai atau dibatalkan
+                    ]
+                    
+                    projects = request.env['team.project'].sudo().search(project_domain)
+                    total_projects = len(projects)
+                    
+                    # Hitung project yang selesai tepat waktu
+                    on_time_projects = 0
+                    for project in projects:
+                        if project.state == 'completed':
+                            # Periksa jika ada tanggal akhir aktual dan jika itu tidak melewati deadline
+                            if hasattr(project, 'actual_date_end') and project.actual_date_end:
+                                if project.actual_date_end <= fields.Datetime.from_string(project.date_end):
+                                    on_time_projects += 1
+                            # Jika tidak ada actual_date_end, gunakan state dan date_end sebagai patokan
+                            elif project.date_end:
+                                current_date = fields.Datetime.now()
+                                if current_date <= fields.Datetime.from_string(project.date_end):
+                                    on_time_projects += 1
+                    
+                    # Hitung persentase ketepatan waktu
+                    if total_projects > 0:
+                        actual = (on_time_projects / total_projects) * 100
+                    else:
+                        actual = 100  # Jika tidak ada project, dianggap 100% tepat waktu
+                    
+                    kpi['measurement'] = f"Project tepat waktu: {on_time_projects} dari {total_projects} ({actual:.1f}%)"
                 
                 # Hitung skor tertimbang
                 weighted_score = actual * (kpi['weight'] / 100)
@@ -1064,6 +1175,134 @@ class KaizenTrainingAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error di get_kaizen_kpi: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/kaizen/kpi/export_pdf', type='http', auth='user', methods=['POST'], csrf=False)
+    def export_kaizen_kpi_pdf(self, **kw):
+        """Export KPI data untuk Tim Kaizen ke format PDF"""
+        try:
+            # Dapatkan dan validasi bulan/tahun
+            current_date = datetime.now()
+            month = int(kw.get('month', current_date.month))
+            year = int(kw.get('year', current_date.year))
+
+            # Validasi rentang
+            if not (1 <= month <= 12):
+                return Response('Bulan harus antara 1 dan 12', status=400)
+            if year < 2000 or year > 2100:
+                return Response('Tahun tidak valid', status=400)
+                
+            # Definisikan timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            
+            # Hitung rentang tanggal dalam timezone lokal
+            local_start = datetime(year, month, 1)
+            if month == 12:
+                local_end = datetime(year + 1, 1, 1) - timedelta(days=1)
+            else:
+                local_end = datetime(year, month + 1, 1) - timedelta(days=1)
+            
+            local_start = local_start.replace(hour=0, minute=0, second=0)
+            local_end = local_end.replace(hour=23, minute=59, second=59)
+            
+            start_date = tz.localize(local_start)
+            end_date = tz.localize(local_end)
+            
+            start_date_utc = start_date.astimezone(pytz.UTC)
+            end_date_utc = end_date.astimezone(pytz.UTC)
+
+            # Format periode untuk tampilan
+            month_names = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+                        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+            month_display = month_names[month-1]
+            period = f"{month_display} {year}"
+
+            # Persiapkan data untuk laporan PDF
+            kaizen_data = []
+            processed_employee_ids = []  # Lacak karyawan yang sudah diproses
+
+            # Dapatkan semua karyawan Tim Kaizen
+            kaizen_employees = request.env['hr.employee'].sudo().search([
+                '|',
+                '|',
+                ('job_title', 'ilike', 'Kaizen'),
+                ('job_title', 'ilike', 'Trainer'),
+                ('department_id.name', 'ilike', 'Kaizen')
+            ])
+            
+            # Debug logging
+            _logger.info(f"Ditemukan {len(kaizen_employees)} karyawan Tim Kaizen untuk laporan KPI PDF")
+            
+            # Proses setiap karyawan Kaizen
+            for employee in kaizen_employees:
+                # Dapatkan jabatan
+                job_title = employee.job_title or "Kaizen Team"
+                department = employee.department_id.name if employee.department_id else "Kaizen Department"
+                
+                # Dapatkan data KPI dengan memanggil endpoint KPI langsung
+                kpi_response = self.get_kaizen_kpi(employee_id=employee.id, month=month, year=year)
+                
+                if kpi_response.get('status') == 'success' and 'data' in kpi_response:
+                    employee_data = kpi_response['data']
+                    kaizen_data.append(employee_data)
+                    _logger.info(f"Menambahkan karyawan ke laporan: {employee.name}, Posisi: {job_title}")
+                else:
+                    _logger.warning(f"Tidak dapat mendapatkan data KPI untuk {employee.name}: {kpi_response.get('message', 'Kesalahan tidak diketahui')}")
+            
+            # Debug logging
+            _logger.info(f"Total karyawan dalam laporan PDF: {len(kaizen_data)}")
+            
+            # Persiapkan data untuk laporan QWeb
+            report_data = {
+                'period': period,
+                'kaizen_members': kaizen_data,
+                'current_date': fields.Date.today().strftime('%d-%m-%Y')
+            }
+            
+            # Coba render PDF menggunakan laporan QWeb
+            try:
+                # Pertama periksa apakah template ada
+                template_id = request.env['ir.ui.view'].sudo().search([
+                    ('key', '=', 'pitcar_custom.report_kaizen_kpi')
+                ], limit=1)
+                
+                if not template_id:
+                    _logger.error("Template QWeb 'pitcar_custom.report_kaizen_kpi' tidak ditemukan")
+                    return Response("Error: Template QWeb 'pitcar_custom.report_kaizen_kpi' tidak ditemukan", status=404)
+                
+                # Render PDF menggunakan laporan QWeb
+                html = request.env['ir.qweb']._render('pitcar_custom.report_kaizen_kpi', report_data)
+                pdf_content = request.env['ir.actions.report']._run_wkhtmltopdf(
+                    [html],
+                    header=b'', footer=b'',
+                    landscape=True,
+                    specific_paperformat_args={
+                        'data-report-margin-top': 10,
+                        'data-report-margin-bottom': 10,
+                        'data-report-margin-left': 5,
+                        'data-report-margin-right': 5,
+                    }
+                )
+
+                # Persiapkan nama file
+                filename = f"Kaizen_KPI_{month}_{year}.pdf"
+                
+                # Kembalikan respon PDF
+                return Response(
+                    pdf_content,
+                    headers={
+                        'Content-Type': 'application/pdf',
+                        'Content-Disposition': f'attachment; filename="{filename}"',
+                        'Content-Length': len(pdf_content),
+                    },
+                    status=200
+                )
+            except Exception as template_error:
+                _logger.error(f"Error rendering template QWeb: {str(template_error)}", exc_info=True)
+                return Response(f"Error rendering template laporan: {str(template_error)}", status=500)
+        
+        except Exception as e:
+            _logger.error(f"Error mengekspor KPI Kaizen ke PDF: {str(e)}", exc_info=True)
+            return Response(f"Error: {str(e)}", status=500)
 
     # controllers/kaizen_training_api.py - Tambahkan endpoint berikut
 

@@ -87,11 +87,11 @@
                     </div>
                     <group>
                         <group string="Basic Information">
-                            <field name="position_id"/>
+                            <field name="position_id" required="0"/>
                             <field name="position_code" invisible="1"/>
                             <field name="leader_id" 
                                 attrs="{'invisible': [('position_code', '=', 'leader')],
-                                        'required': [('position_code', '=', 'mechanic')]}"/>
+                                        'required': [('position_code', '=', 'mechanic'), ('active', '=', True)]}"/>
                             <field name="employee_id" required="False"/>
                             <field name="work_hours_target"/>
                             <field name="color" required="True" widget="color_picker"/>

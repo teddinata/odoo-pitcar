@@ -891,7 +891,7 @@ class TeamProjectAPI(http.Controller):
 
     # Helper Methods
     def _prepare_project_data(self, project):
-        """Menyiapkan data proyek untuk respons API."""
+        """Menyiapkan data proyek untuk respons API dengan informasi pelacakan waktu penyelesaian."""
         project_data = {
             'id': project.id,
             'name': project.name,
@@ -900,7 +900,8 @@ class TeamProjectAPI(http.Controller):
             'project_type': project.project_type,
             'dates': {
                 'start': fields.Date.to_string(project.date_start),
-                'end': fields.Date.to_string(project.date_end)
+                'end': fields.Date.to_string(project.date_end),
+                'actual_end': fields.Date.to_string(project.actual_date_end) if project.actual_date_end else False
             },
             'team': {
                 'manager': {'id': project.project_manager_id.id, 'name': project.project_manager_id.name},
@@ -912,7 +913,11 @@ class TeamProjectAPI(http.Controller):
             'priority': project.priority,
             'description': project.description,
             'task_count': len(project.task_ids),
-            'attachment_count': project.attachment_count
+            'attachment_count': project.attachment_count,
+            'completion': {
+                'is_on_time': project.is_on_time,
+                'days_delayed': project.days_delayed
+            }
         }
         
         return project_data
@@ -2906,7 +2911,7 @@ class TeamProjectAPI(http.Controller):
     # Add these endpoints to your TeamProjectAPI class in controllers/team_project_api.py
     @http.route('/web/v2/team/dashboard/summary', type='json', auth='user', methods=['POST'], csrf=False)
     def get_dashboard_summary(self, **kw):
-        """Get project dashboard summary statistics."""
+        """Get project dashboard summary statistics with completion tracking information."""
         try:
             # Get optional department filter
             department_id = kw.get('department_id') and int(kw['department_id'])
@@ -2923,6 +2928,17 @@ class TeamProjectAPI(http.Controller):
             total_projects = len(projects)
             active_projects = len(projects.filtered(lambda p: p.state == 'in_progress'))
             completed_projects = len(projects.filtered(lambda p: p.state == 'completed'))
+            
+            # Get completion statistics
+            on_time_completed = len(projects.filtered(lambda p: p.state == 'completed' and p.is_on_time))
+            delayed_completed = len(projects.filtered(lambda p: p.state == 'completed' and not p.is_on_time))
+            
+            # Calculate on-time completion rate
+            on_time_completion_rate = (on_time_completed / completed_projects * 100) if completed_projects else 0
+            
+            # Calculate average delay for delayed projects
+            delayed_projects = projects.filtered(lambda p: p.state == 'completed' and not p.is_on_time)
+            avg_delay_days = sum(delayed_projects.mapped('days_delayed')) / len(delayed_projects) if delayed_projects else 0
             
             # Get total planned hours vs actual hours
             total_planned_hours = sum(projects.mapped('planned_hours'))
@@ -2959,11 +2975,29 @@ class TeamProjectAPI(http.Controller):
                         'progress': project.progress,
                         'state': project.state,
                         'tasks_count': len(project.task_ids),
-                        'tasks_completed': len(project.task_ids.filtered(lambda t: t.state == 'done'))
+                        'tasks_completed': len(project.task_ids.filtered(lambda t: t.state == 'done')),
+                        'is_on_time': project.is_on_time if project.state == 'completed' else None,
+                        'days_delayed': project.days_delayed if project.state == 'completed' and not project.is_on_time else 0,
+                        'actual_end_date': fields.Date.to_string(project.actual_date_end) if project.actual_date_end else None
                     })
                     
             # Sort by progress for visualization
             project_progress_data.sort(key=lambda p: p['progress'])
+            
+            # Get delayed projects for detailed reporting
+            delayed_projects_data = []
+            for project in delayed_projects:
+                delayed_projects_data.append({
+                    'id': project.id,
+                    'name': project.name,
+                    'planned_end_date': fields.Date.to_string(project.date_end),
+                    'actual_end_date': fields.Date.to_string(project.actual_date_end),
+                    'days_delayed': project.days_delayed,
+                    'progress': project.progress
+                })
+                
+            # Sort by delay days (highest first)
+            delayed_projects_data.sort(key=lambda p: p['days_delayed'], reverse=True)
             
             return {
                 'status': 'success',
@@ -2972,6 +3006,10 @@ class TeamProjectAPI(http.Controller):
                         'total_projects': total_projects,
                         'active_projects': active_projects,
                         'completed_projects': completed_projects,
+                        'on_time_completed': on_time_completed,
+                        'delayed_completed': delayed_completed,
+                        'on_time_completion_rate': round(on_time_completion_rate, 1),
+                        'avg_delay_days': round(avg_delay_days, 1),
                         'total_tasks': total_tasks,
                         'completed_tasks': completed_tasks,
                         'task_completion_rate': round(task_completion_rate, 1),
@@ -2980,7 +3018,8 @@ class TeamProjectAPI(http.Controller):
                         'hours_efficiency': round(hours_efficiency, 1)
                     },
                     'upcoming_tasks': upcoming_tasks_data,
-                    'project_progress': project_progress_data[:10]  # Limit to top 10 projects
+                    'project_progress': project_progress_data[:10],  # Limit to top 10 projects
+                    'delayed_projects': delayed_projects_data
                 }
             }
         except Exception as e:
@@ -4116,4 +4155,172 @@ class TeamProjectAPI(http.Controller):
             
         except Exception as e:
             _logger.error(f"Error in get_resource_allocation: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/team/reports/on-time-completion', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_on_time_completion_report(self, **kw):
+        """Generate a report on project on-time completion performance."""
+        try:
+            # Get optional filters
+            department_id = kw.get('department_id') and int(kw['department_id'])
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            
+            # Build domain for projects
+            project_domain = [('state', '=', 'completed')]
+            
+            if department_id:
+                project_domain.append(('department_id', '=', department_id))
+                
+            if date_from:
+                project_domain.append(('actual_date_end', '>=', date_from))
+            if date_to:
+                project_domain.append(('actual_date_end', '<=', date_to))
+                
+            # Get completed projects
+            completed_projects = request.env['team.project'].sudo().search(project_domain)
+            
+            if not completed_projects:
+                return {
+                    'status': 'success',
+                    'data': {
+                        'summary': {
+                            'total_projects': 0,
+                            'on_time_projects': 0,
+                            'delayed_projects': 0,
+                            'on_time_rate': 0,
+                            'avg_delay_days': 0
+                        },
+                        'by_department': [],
+                        'by_project_type': [],
+                        'by_project_manager': [],
+                        'detailed_projects': []
+                    }
+                }
+                
+            # Calculate summary statistics
+            total_projects = len(completed_projects)
+            on_time_projects = len(completed_projects.filtered(lambda p: p.is_on_time))
+            delayed_projects = len(completed_projects.filtered(lambda p: not p.is_on_time))
+            
+            on_time_rate = (on_time_projects / total_projects * 100) if total_projects else 0
+            
+            # Calculate average delay for delayed projects
+            delayed_project_records = completed_projects.filtered(lambda p: not p.is_on_time)
+            avg_delay_days = sum(delayed_project_records.mapped('days_delayed')) / len(delayed_project_records) if delayed_project_records else 0
+            
+            # Group by department
+            department_stats = {}
+            for project in completed_projects:
+                dept_id = project.department_id.id
+                dept_name = project.department_id.name
+                
+                if dept_id not in department_stats:
+                    department_stats[dept_id] = {
+                        'id': dept_id,
+                        'name': dept_name,
+                        'total': 0,
+                        'on_time': 0,
+                        'delayed': 0,
+                        'rate': 0
+                    }
+                    
+                department_stats[dept_id]['total'] += 1
+                if project.is_on_time:
+                    department_stats[dept_id]['on_time'] += 1
+                else:
+                    department_stats[dept_id]['delayed'] += 1
+                    
+            # Calculate on-time rate for each department
+            for dept_id, stats in department_stats.items():
+                stats['rate'] = (stats['on_time'] / stats['total'] * 100) if stats['total'] else 0
+                
+            # Group by project type
+            type_stats = {}
+            for project in completed_projects:
+                project_type = project.project_type
+                
+                if project_type not in type_stats:
+                    type_stats[project_type] = {
+                        'type': project_type,
+                        'total': 0,
+                        'on_time': 0,
+                        'delayed': 0,
+                        'rate': 0
+                    }
+                    
+                type_stats[project_type]['total'] += 1
+                if project.is_on_time:
+                    type_stats[project_type]['on_time'] += 1
+                else:
+                    type_stats[project_type]['delayed'] += 1
+                    
+            # Calculate on-time rate for each project type
+            for project_type, stats in type_stats.items():
+                stats['rate'] = (stats['on_time'] / stats['total'] * 100) if stats['total'] else 0
+                
+            # Group by project manager
+            manager_stats = {}
+            for project in completed_projects:
+                manager_id = project.project_manager_id.id
+                manager_name = project.project_manager_id.name
+                
+                if manager_id not in manager_stats:
+                    manager_stats[manager_id] = {
+                        'id': manager_id,
+                        'name': manager_name,
+                        'total': 0,
+                        'on_time': 0,
+                        'delayed': 0,
+                        'rate': 0
+                    }
+                    
+                manager_stats[manager_id]['total'] += 1
+                if project.is_on_time:
+                    manager_stats[manager_id]['on_time'] += 1
+                else:
+                    manager_stats[manager_id]['delayed'] += 1
+                    
+            # Calculate on-time rate for each project manager
+            for manager_id, stats in manager_stats.items():
+                stats['rate'] = (stats['on_time'] / stats['total'] * 100) if stats['total'] else 0
+                
+            # Prepare detailed project data
+            detailed_projects = []
+            for project in completed_projects:
+                detailed_projects.append({
+                    'id': project.id,
+                    'name': project.name,
+                    'project_type': project.project_type,
+                    'department': project.department_id.name,
+                    'manager': project.project_manager_id.name,
+                    'planned_end_date': fields.Date.to_string(project.date_end),
+                    'actual_end_date': fields.Date.to_string(project.actual_date_end),
+                    'is_on_time': project.is_on_time,
+                    'days_delayed': project.days_delayed if not project.is_on_time else 0,
+                    'progress': project.progress
+                })
+                
+            # Sort by completion date (most recent first)
+            detailed_projects.sort(key=lambda p: p['actual_end_date'], reverse=True)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'summary': {
+                        'total_projects': total_projects,
+                        'on_time_projects': on_time_projects,
+                        'delayed_projects': delayed_projects,
+                        'on_time_rate': round(on_time_rate, 1),
+                        'avg_delay_days': round(avg_delay_days, 1)
+                    },
+                    'by_department': list(department_stats.values()),
+                    'by_project_type': list(type_stats.values()),
+                    'by_project_manager': list(manager_stats.values()),
+                    'detailed_projects': detailed_projects
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in get_on_time_completion_report: {str(e)}")
             return {'status': 'error', 'message': str(e)}

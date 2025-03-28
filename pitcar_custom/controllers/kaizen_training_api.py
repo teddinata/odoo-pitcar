@@ -964,38 +964,73 @@ class KaizenTrainingAPI(http.Controller):
                 actual = 0
                 
                 # KPI #1: Penyelesaian pembuatan SOP
+                # if kpi['type'] == 'sop_completion':
+                #     # Cari project dengan tipe 'creation' (pembuatan)
+                #     sop_creation_domain = [
+                #         ('project_type', '=', 'creation'),
+                #         ('date_start', '>=', start_date.strftime('%Y-%m-%d')),
+                #         ('date_end', '<=', end_date.strftime('%Y-%m-%d')),
+                #         # Filter untuk project yang dimiliki/diassign ke karyawan Kaizen
+                #         '|',
+                #         ('project_manager_id', '=', int(employee_id)),
+                #         ('team_ids', 'in', [int(employee_id)])
+                #     ]
+                    
+                #     sop_projects = request.env['team.project'].sudo().search(sop_creation_domain)
+                #     total_sop_projects = len(sop_projects)
+                    
+                #     # Jika tidak ada project pembuatan SOP, otomatis nilai 100%
+                #     if total_sop_projects == 0:
+                #         actual = 100
+                #         kpi['measurement'] = "Tidak ada proyek pembuatan SOP pada periode ini (nilai 100%)"
+                #     else:
+                #         # Hitung berapa yang selesai tepat waktu (tidak overdue)
+                #         completed_on_time = 0
+                #         for project in sop_projects:
+                #             if project.state == 'completed' and (not project.date_end or (
+                #                     project.actual_date_end and project.date_end and 
+                #                     project.actual_date_end <= fields.Datetime.from_string(project.date_end))):
+                #                 completed_on_time += 1
+                        
+                #         # Hitung persentase penyelesaian tepat waktu
+                #         actual = (completed_on_time / total_sop_projects) * 100 if total_sop_projects > 0 else 100
+                        
+                #         kpi['measurement'] = f"SOP terbentuk: {total_sop_projects}, selesai tepat waktu: {completed_on_time} ({actual:.1f}%)"
+
+                # KPI #1: Penyelesaian pembuatan SOP berdasarkan target sosialisasi
                 if kpi['type'] == 'sop_completion':
-                    # Cari project dengan tipe 'creation' (pembuatan)
-                    sop_creation_domain = [
-                        ('project_type', '=', 'creation'),
-                        ('date_start', '>=', start_date.strftime('%Y-%m-%d')),
-                        ('date_end', '<=', end_date.strftime('%Y-%m-%d')),
-                        # Filter untuk project yang dimiliki/diassign ke karyawan Kaizen
-                        '|',
-                        ('project_manager_id', '=', int(employee_id)),
-                        ('team_ids', 'in', [int(employee_id)])
+                    # Dapatkan semua SOP yang memiliki target sosialisasi dalam periode ini
+                    sop_domain = [
+                        ('active', '=', True),
+                        ('socialization_target_date', '>=', start_date.strftime('%Y-%m-%d')),
+                        ('socialization_target_date', '<=', end_date.strftime('%Y-%m-%d'))
                     ]
                     
-                    sop_projects = request.env['team.project'].sudo().search(sop_creation_domain)
-                    total_sop_projects = len(sop_projects)
+                    sops = request.env['pitcar.sop'].sudo().search(sop_domain)
+                    total_sops = len(sops)
                     
-                    # Jika tidak ada project pembuatan SOP, otomatis nilai 100%
-                    if total_sop_projects == 0:
+                    # Jika tidak ada SOP dengan target sosialisasi pada periode ini, otomatis nilai 100%
+                    if total_sops == 0:
                         actual = 100
-                        kpi['measurement'] = "Tidak ada proyek pembuatan SOP pada periode ini (nilai 100%)"
+                        kpi['measurement'] = "Tidak ada SOP dengan target sosialisasi pada periode ini (nilai 100%)"
                     else:
-                        # Hitung berapa yang selesai tepat waktu (tidak overdue)
-                        completed_on_time = 0
-                        for project in sop_projects:
-                            if project.state == 'completed' and (not project.date_end or (
-                                    project.actual_date_end and project.date_end and 
-                                    project.actual_date_end <= fields.Datetime.from_string(project.date_end))):
-                                completed_on_time += 1
+                        # Hitung berapa SOP yang berhasil disosialisasikan tepat waktu
+                        on_time_socialization = 0
+                        for sop in sops:
+                            # SOP dianggap tepat waktu jika:
+                            # 1. Status sosialisasi adalah 'done' (selesai)
+                            # 2. Tanggal sosialisasi tidak melebihi tanggal target sosialisasi
+                            if (sop.socialization_state == 'done' and 
+                                sop.socialization_date and 
+                                sop.socialization_target_date and 
+                                sop.socialization_date <= sop.socialization_target_date):
+                                on_time_socialization += 1
                         
-                        # Hitung persentase penyelesaian tepat waktu
-                        actual = (completed_on_time / total_sop_projects) * 100 if total_sop_projects > 0 else 100
+                        # Hitung persentase ketepatan waktu sosialisasi
+                        actual = (on_time_socialization / total_sops) * 100 if total_sops > 0 else 100
                         
-                        kpi['measurement'] = f"SOP terbentuk: {total_sop_projects}, selesai tepat waktu: {completed_on_time} ({actual:.1f}%)"
+                        kpi['measurement'] = f"SOP dengan target sosialisasi: {total_sops}, " \
+                                            f"sosialisasi tepat waktu: {on_time_socialization} ({actual:.1f}%)"
                 
                 # KPI #2: Sampling SOP
                 elif kpi['type'] == 'sop_sampling':
@@ -1144,7 +1179,7 @@ class KaizenTrainingAPI(http.Controller):
                 
                 # Hitung skor tertimbang
                 weighted_score = actual * (kpi['weight'] / 100)
-                achievement = actual
+                achievement = weighted_score
                 
                 # Tambahkan ke skor KPI
                 kpi_scores.append({

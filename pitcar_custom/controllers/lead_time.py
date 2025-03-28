@@ -669,45 +669,9 @@ class LeadTimeAPIController(http.Controller):
             }
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-
-    @http.route('/web/mechanics/available', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
-    def get_available_mechanics(self, **kw):
-        """Mendapatkan daftar mekanik yang tersedia"""
-        try:
-            # Parameters
-            search = kw.get('search', '')
-            
-            # Get mechanics from mechanic model
-            Mechanic = request.env['pitcar.mechanic.new'].sudo()
-            domain = [('active', '=', True)]
-            
-            # Add search filter if provided
-            if search:
-                domain.append(('name', 'ilike', search))
-            
-            # Get mechanics
-            mechanics = Mechanic.search(domain)
-            
-            # Format response
-            result = []
-            for mechanic in mechanics:
-                result.append({
-                    'id': mechanic.id,
-                    'name': mechanic.name,
-                    'position_code': mechanic.position_code,
-                    'team': mechanic.team_id.name if mechanic.team_id else ''
-                })
-            
-            return {
-                'status': 'success',
-                'data': result
-            }
         
-        except Exception as e:
-            _logger.error(f"Error fetching available mechanics: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-
-    @http.route('/web/lead-time/<int:sale_order_id>/mechanics', type='json', auth='user', methods=['GET', 'PUT', 'OPTIONS'], csrf=False, cors='*')
+    # Perbaikan pada Controller untuk mendukung metode POST dengan parameter _method untuk emulasi PUT
+    @http.route('/web/lead-time/<int:sale_order_id>/mechanics', type='json', auth='user', methods=['GET', 'POST', 'PUT', 'OPTIONS'], csrf=False, cors='*')
     def manage_mechanics(self, sale_order_id, **kw):
         """Get or update mechanics for a specific sale order"""
         try:
@@ -715,15 +679,20 @@ class LeadTimeAPIController(http.Controller):
             if request.httprequest.method == 'OPTIONS':
                 headers = {
                     'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+                    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
                     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
                     'Access-Control-Allow-Credentials': 'true'
                 }
                 return Response(status=200, headers=headers)
             
+            # Log incoming request untuk debugging
+            _logger.info(f"Received mechanic request for sale_order_id {sale_order_id}, method: {request.httprequest.method}")
+            _logger.info(f"Request params: {kw}")
+            
             # Validate access
             sale_order = self._validate_access(sale_order_id)
             if not sale_order:
+                _logger.error(f"Sale order {sale_order_id} not found")
                 return {'status': 'error', 'message': 'Sale order not found'}
             
             # Handle GET request to retrieve current mechanics
@@ -743,39 +712,85 @@ class LeadTimeAPIController(http.Controller):
                     }
                 }
             
-            # Handle PUT request to update mechanics
-            if request.httprequest.method == 'PUT':
-                mechanic_ids = kw.get('mechanic_ids', [])
+            # Handle PUT request to update mechanics 
+            # Termasuk juga POST dengan _method: PUT untuk mendukung emulasi PUT
+            if request.httprequest.method == 'PUT' or (request.httprequest.method == 'POST' and kw.get('_method') == 'PUT'):
+                # Extract mechanic_ids from params if nested
+                params = kw.get('params', kw)
+                mechanic_ids = params.get('mechanic_ids', [])
+                
+                _logger.info(f"Processing mechanic update with IDs: {mechanic_ids}")
                 
                 # Validate mechanic IDs
                 if not isinstance(mechanic_ids, list):
+                    _logger.error(f"Invalid mechanic_ids format: {type(mechanic_ids)}")
                     return {'status': 'error', 'message': 'mechanic_ids must be a list'}
                 
                 # Validate that only non-leader mechanics are selected
                 if mechanic_ids:
-                    selected_mechanics = request.env['pitcar.mechanic.new'].browse(mechanic_ids)
-                    leader_mechanics = selected_mechanics.filtered(lambda m: m.position_code == 'leader')
-                    
-                    if leader_mechanics:
+                    try:
+                        # Load mechanics and check their positions
+                        selected_mechanics = request.env['pitcar.mechanic.new'].browse(mechanic_ids)
+                        leader_mechanics = selected_mechanics.filtered(lambda m: m.position_code == 'leader')
+                        
+                        if leader_mechanics:
+                            _logger.warning(f"Attempt to assign leader mechanics: {leader_mechanics.mapped('name')}")
+                            return {
+                                'status': 'error', 
+                                'message': 'Team leaders cannot be assigned to sales orders. Please select only regular mechanics.'
+                            }
+                            
+                        # Update sale order with new mechanics
+                        sale_order.write({
+                            'car_mechanic_id_new': [(6, 0, mechanic_ids)]
+                        })
+                        
+                        # Trigger compute of generated_mechanic_team
+                        sale_order._compute_generated_mechanic_team()
+                        
+                        # Return updated data
                         return {
-                            'status': 'error', 
-                            'message': 'Team leaders cannot be assigned to sales orders. Please select only regular mechanics.'
+                            'status': 'success',
+                            'message': 'Mechanics updated successfully',
+                            'data': {
+                                'mechanics': [{'id': m.id, 'name': m.name} for m in sale_order.car_mechanic_id_new],
+                                'mechanic_team': sale_order.generated_mechanic_team
+                            }
                         }
+                    except Exception as e:
+                        _logger.error(f"Error processing mechanics: {str(e)}", exc_info=True)
+                        return {'status': 'error', 'message': f"Error processing mechanics: {str(e)}"}
+                else:
+                    # Clear all mechanics
+                    sale_order.write({
+                        'car_mechanic_id_new': [(5, 0, 0)]  # Clear the entire mechanic list
+                    })
+                    
+                    # Trigger compute of generated_mechanic_team
+                    sale_order._compute_generated_mechanic_team()
+                    
+                    return {
+                        'status': 'success',
+                        'message': 'Mechanics cleared successfully',
+                        'data': {
+                            'mechanics': [],
+                            'mechanic_team': ''
+                        }
+                    }
+            
+            # Handle POST request for getting mechanics (alternative to GET)
+            if request.httprequest.method == 'POST' and kw.get('_method') != 'PUT':
+                current_mechanics = []
+                for mechanic in sale_order.car_mechanic_id_new:
+                    current_mechanics.append({
+                        'id': mechanic.id,
+                        'name': mechanic.name
+                    })
                 
-                # Update sale order with new mechanics
-                sale_order.write({
-                    'car_mechanic_id_new': [(6, 0, mechanic_ids)]
-                })
-                
-                # Trigger compute of generated_mechanic_team
-                sale_order._compute_generated_mechanic_team()
-                
-                # Return updated data
                 return {
                     'status': 'success',
-                    'message': 'Mechanics updated successfully',
                     'data': {
-                        'mechanics': [{'id': m.id, 'name': m.name} for m in sale_order.car_mechanic_id_new],
+                        'mechanics': current_mechanics,
                         'mechanic_team': sale_order.generated_mechanic_team
                     }
                 }
@@ -786,6 +801,54 @@ class LeadTimeAPIController(http.Controller):
                 'status': 'error',
                 'message': str(e)
             }
+
+    # Perbaikan pada endpoint mechanics available untuk menangani parameter search dengan benar
+    @http.route('/web/mechanics/available', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_available_mechanics(self, **kw):
+        """Mendapatkan daftar mekanik yang tersedia"""
+        try:
+            # Log incoming request
+            _logger.info(f"Received available mechanics request with params: {kw}")
+            
+            # Extract params jika nested
+            params = kw.get('params', kw)
+            
+            # Parameters
+            search = params.get('search', '')
+            
+            # Get mechanics from mechanic model
+            Mechanic = request.env['pitcar.mechanic.new'].sudo()
+            domain = [('active', '=', True)]
+            
+            # Add search filter if provided
+            if search:
+                domain.append(('name', 'ilike', search))
+            
+            # Log domain being used
+            _logger.info(f"Using domain for mechanic search: {domain}")
+            
+            # Get mechanics
+            mechanics = Mechanic.search(domain)
+            
+            # Format response
+            result = []
+            for mechanic in mechanics:
+                result.append({
+                    'id': mechanic.id,
+                    'name': mechanic.name,
+                    'position_code': mechanic.position_code,
+                    'team': mechanic.team_id.name if hasattr(mechanic, 'team_id') and mechanic.team_id else ''
+                })
+            
+            _logger.info(f"Returning {len(result)} mechanics")
+            return {
+                'status': 'success',
+                'data': result
+            }
+        
+        except Exception as e:
+            _logger.error(f"Error fetching available mechanics: {str(e)}", exc_info=True)
+            return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/lead-time/<int:sale_order_id>/notes', type='json', auth='user', methods=['PUT'])
     def update_notes(self, sale_order_id, notes):

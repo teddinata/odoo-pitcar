@@ -2090,8 +2090,8 @@ class KPIOverview(http.Controller):
                     'no': 2,
                     'name': 'Jumlah PKB yang diberikan rekomendasi tambahan servis',
                     'type': 'service_recommendation',
-                    'weight': 20,
-                    'target': 80,
+                    'weight': 10,
+                    'target': 60,
                     'measurement': 'Diukur dari persentase rekomendasi yang diberikan',
                     'include_in_calculation': True
                 },
@@ -2116,7 +2116,7 @@ class KPIOverview(http.Controller):
                     'no': 4,
                     'name': 'Persentase sampel dari Lead: tim mekanik bekerja sesuai alur SOP',
                     'type': 'sop_compliance_lead',
-                    'weight': 5,
+                    'weight': 15,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan sesuai SOP',
                     'include_in_calculation': True
@@ -2187,15 +2187,15 @@ class KPIOverview(http.Controller):
                     'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
                     'include_in_calculation': True
                 },
-                {
-                    'no': 6,
-                    'name': 'Jumlah hand-tools sesuai antara dara sistem dengan kondisi aktual',
-                    'type': 'tools_check',
-                    'weight': 5,
-                    'target': 90,
-                    'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
-                    'include_in_calculation': True
-                },
+                # {
+                #     'no': 6,
+                #     'name': 'Jumlah hand-tools sesuai antara dara sistem dengan kondisi aktual',
+                #     'type': 'tools_check',
+                #     'weight': 5,
+                #     'target': 90,
+                #     'measurement': 'Diukur dari jumlah customer yang puas dari hasil pengerjaan (tidak komplain)',
+                #     'include_in_calculation': True
+                # },
                 # {
                 #     'no': 6,
                 #     'name': 'Analisis dan penyelesaian komplain dari customer',
@@ -2206,16 +2206,16 @@ class KPIOverview(http.Controller):
                 #     'include_in_calculation': True
                 # },
                 {
-                    'no': 7,
+                    'no': 6,
                     'name': 'Persentase % sampel tim mekanik bekerja sesuai alur SOP',
                     'type': 'sop_compliance_lead',
-                    'weight': 5,
+                    'weight': 10,
                     'target': 95,
                     'measurement': 'Diukur dari jumlah temuan pekerjaan tim mekanik yang dilakukan tidak sesuai dengan alur / SOP yang ditetapkan',
                     'include_in_calculation': True
                 },
                 {
-                    'no': 8,
+                    'no': 7,
                     'name': 'Persentase % sampel dari Kaizen: tim mekanik bekerja sesuai alur SOP',
                     'type': 'sop_compliance_kaizen',
                     'weight': 15,
@@ -2224,7 +2224,7 @@ class KPIOverview(http.Controller):
                     'include_in_calculation': True
                 },
                 {
-                    'no': 9,
+                    'no': 8,
                     'name': 'Menjalankan kegiatan operasional secara disiplin',
                     'type': 'team_discipline',
                     'weight': 0,
@@ -2979,95 +2979,123 @@ class KPIOverview(http.Controller):
                     #         kpi['measurement'] = f"Error: {str(e)}"
 
                     # Perbaikan perhitungan mechanic efficiency
+                    # Penggantian kode mechanic_efficiency untuk API KPI
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # Ambil data tim termasuk leader
-                        team_members = mechanic.team_member_ids + mechanic  # Include leader
-                        
-                        _logger.info(f"Found {len(team_members)} mechanics including leader")
-
-                        # Get orders untuk seluruh tim
-                        team_orders = request.env['sale.order'].sudo().search([
-                            *base_domain,
-                            ('car_mechanic_id_new', 'in', team_members.ids)
-                        ])
-                        
-                        if not team_orders:
-                            actual = 0
-                            kpi['measurement'] = f"Tidak ada orders untuk tim pada periode {month}/{year}"
-                        else:
-                            # Hitung rata-rata pengerjaan per mekanik dalam tim
-                            member_averages = {}
-                            for member in team_members:
-                                member_orders = team_orders.filtered(lambda o: member in o.car_mechanic_id_new)
-                                if member_orders:
-                                    member_times = [
-                                        o.lead_time_servis / len(o.car_mechanic_id_new) 
-                                        for o in member_orders 
-                                        if o.lead_time_servis
-                                    ]
-                                    if member_times:
-                                        member_averages[member.id] = {
-                                            'name': member.name,
-                                            'avg_time': sum(member_times) / len(member_times),
-                                            'orders': len(member_times),
-                                            'is_leader': member.id == mechanic.id
-                                        }
+                        try:
+                            # Get team members excluding leader
+                            team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                ('leader_id', '=', mechanic.id)
+                            ])
                             
-                            if member_averages:
-                                # Hitung rata-rata tim
-                                team_avg = sum(data['avg_time'] for data in member_averages.values()) / len(member_averages)
-                                
-                                # Hitung batas toleransi (±5%)
-                                upper_limit = team_avg * 1.05
-                                lower_limit = team_avg * 0.95
-                                
-                                # Hitung mekanik dalam dan luar rentang
-                                in_range_mechanics = []
-                                out_range_mechanics = []
-                                
-                                for mech_data in member_averages.values():
-                                    is_in_range = lower_limit <= mech_data['avg_time'] <= upper_limit
-                                    role = "(Leader)" if mech_data['is_leader'] else ""
-                                    mechanic_info = f"{mech_data['name']} {role}: {mech_data['avg_time']:.1f} jam {'✓' if is_in_range else '✗'}"
-                                    
-                                    if is_in_range:
-                                        in_range_mechanics.append(mechanic_info)
-                                    else:
-                                        out_range_mechanics.append(mechanic_info)
-
-                                mechanics_in_range = len(in_range_mechanics)
-                                total_mechanics = len(member_averages)
-                                actual = (mechanics_in_range / total_mechanics * 100)
-                                
-                                # Update kpi['measurement'] dengan format HTML yang sama dengan lead CS
-                                kpi['measurement'] = '<div class="kpi-measurement">'
-                                kpi['measurement'] += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
-                                
-                                kpi['measurement'] += '<div class="summary-stats">'
-                                kpi['measurement'] += f'<div>Mekanik dalam rentang target: {mechanics_in_range}/{total_mechanics}</div>'
-                                kpi['measurement'] += f'<div>Rata-rata tim: {team_avg:.1f} jam</div>'
-                                kpi['measurement'] += f'<div>Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
-                                kpi['measurement'] += '</div>'
-                                
-                                kpi['measurement'] += '<div class="mechanics-section">'
-                                kpi['measurement'] += f'<div class="in-range"><h4>Dalam rentang ({mechanics_in_range}/{total_mechanics}):</h4>'
-                                kpi['measurement'] += f'<div class="mechanic-list">{", ".join(in_range_mechanics)}</div></div>'
-                                
-                                kpi['measurement'] += f'<div class="out-range"><h4>Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):</h4>'
-                                kpi['measurement'] += f'<div class="mechanic-list">{", ".join(out_range_mechanics)}</div></div>'
-                                kpi['measurement'] += '</div>'
-                                
-                                kpi['measurement'] += '</div>'
-                            else:
+                            # Hanya ambil data mekanik tim (tidak termasuk leader)
+                            team_member_ids = team_members.ids
+                            
+                            # Jika tidak ada anggota tim, tidak bisa menghitung
+                            if not team_member_ids:
                                 actual = 0
-                                kpi['measurement'] = f'<div class="kpi-measurement"><div class="no-data">Tidak cukup data untuk analisis pada periode {month}/{year}</div></div>'
+                                kpi['measurement'] = f"Tidak ada anggota tim mekanik pada periode {month}/{year}"
+                            else:
+                                # Hitung flat rate untuk setiap anggota tim
+                                mechanic_flat_rates = {}
+                                
+                                # Dapatkan semua order yang selesai dalam periode
+                                completed_orders = request.env['sale.order'].sudo().search([
+                                    ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('state', '=', 'sale'),
+                                    ('car_mechanic_id_new', 'in', team_member_ids)
+                                ])
+                                
+                                # Perhitungan flat rate per mekanik
+                                for member_id in team_member_ids:
+                                    member = request.env['pitcar.mechanic.new'].sudo().browse(member_id)
+                                    mechanic_flat_rates[member_id] = {
+                                        'name': member.name,
+                                        'total_flat_rate': 0,
+                                    }
+                                
+                                # Hitung total jam flat rate untuk setiap mekanik
+                                for order in completed_orders:
+                                    # Ambil mekanik yang mengerjakan order ini
+                                    order_mechanics = order.car_mechanic_id_new
+                                    mechanics_count = len(order_mechanics) or 1
+                                    
+                                    # Hanya proses jika di antara mekanik ada yang anggota tim
+                                    team_mechanics_in_order = [mech.id for mech in order_mechanics if mech.id in team_member_ids]
+                                    
+                                    if team_mechanics_in_order:
+                                        # Hitung flat rate untuk setiap order line yang merupakan jasa
+                                        for line in order.order_line:
+                                            if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                                # Total flat rate jam untuk item ini
+                                                line_flat_rate = line.product_id.flat_rate * line.product_uom_qty
+                                                
+                                                # Distribusikan ke mekanik yang mengerjakan
+                                                flat_rate_per_mechanic = line_flat_rate / mechanics_count
+                                                
+                                                # Tambahkan ke masing-masing mekanik tim di order ini
+                                                for mech_id in team_mechanics_in_order:
+                                                    if mech_id in mechanic_flat_rates:
+                                                        mechanic_flat_rates[mech_id]['total_flat_rate'] += flat_rate_per_mechanic
+                                
+                                # Filter mekanik yang punya data flat rate
+                                active_mechanics = {id: data for id, data in mechanic_flat_rates.items() if data['total_flat_rate'] > 0}
+                                
+                                if not active_mechanics:
+                                    actual = 0
+                                    kpi['measurement'] = f"Tidak ada data flat rate untuk tim pada periode {month}/{year}"
+                                else:
+                                    # Hitung rata-rata flat rate tim
+                                    total_flat_rate = sum(data['total_flat_rate'] for data in active_mechanics.values())
+                                    avg_flat_rate = total_flat_rate / len(active_mechanics)
+                                    
+                                    # Tetapkan rentang toleransi (±10%)
+                                    upper_limit = avg_flat_rate * 1.10
+                                    lower_limit = avg_flat_rate * 0.90
+                                    
+                                    # Hitung mekanik dalam dan luar rentang
+                                    mechanics_in_range = []
+                                    mechanics_out_range = []
+                                    
+                                    for mech_id, mech_data in active_mechanics.items():
+                                        is_in_range = lower_limit <= mech_data['total_flat_rate'] <= upper_limit
+                                        mechanic_info = f"{mech_data['name']}: {mech_data['total_flat_rate']:.1f} jam flat rate"
+                                        
+                                        if is_in_range:
+                                            mechanics_in_range.append(mechanic_info)
+                                        else:
+                                            mechanics_out_range.append(mechanic_info)
+                                    
+                                    # Hitung persentase mekanik dalam rentang
+                                    mechanics_in_range_count = len(mechanics_in_range)
+                                    total_active_mechanics = len(active_mechanics)
+                                    actual = (mechanics_in_range_count / total_active_mechanics * 100)
+                                    
+                                    # Format measurement dengan HTML yang bagus
+                                    kpi['measurement'] = '<div class="kpi-measurement">'
+                                    kpi['measurement'] += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
+                                    
+                                    kpi['measurement'] += '<div class="summary-stats">'
+                                    kpi['measurement'] += f'<div>Mekanik dalam rentang target: {mechanics_in_range_count}/{total_active_mechanics}</div>'
+                                    kpi['measurement'] += f'<div>Rata-rata flat rate tim: {avg_flat_rate:.1f} jam</div>'
+                                    kpi['measurement'] += f'<div>Rentang target (±10%): {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
+                                    kpi['measurement'] += '</div>'
+                                    
+                                    kpi['measurement'] += '<div class="mechanics-section">'
+                                    kpi['measurement'] += f'<div class="in-range"><h4>Dalam rentang ({mechanics_in_range_count}/{total_active_mechanics}):</h4>'
+                                    kpi['measurement'] += f'<div class="mechanic-list">{", ".join(mechanics_in_range)}</div></div>'
+                                    
+                                    kpi['measurement'] += f'<div class="out-range"><h4>Luar rentang ({total_active_mechanics - mechanics_in_range_count}/{total_active_mechanics}):</h4>'
+                                    kpi['measurement'] += f'<div class="mechanic-list">{", ".join(mechanics_out_range)}</div></div>'
+                                    kpi['measurement'] += '</div>'
+                                    
+                                    kpi['measurement'] += '</div>'
+                        
+                        except Exception as e:
+                            _logger.error(f"Error calculating mechanic efficiency: {str(e)}")
+                            actual = 0
+                            kpi['measurement'] = f"Error: {str(e)}"
 
-                        _logger.info(f"""
-                            KPI Calculation Results:
-                            - Total team members: {len(team_members)}
-                            - Orders analyzed: {len(team_orders) if team_orders else 0}
-                            - Achievement: {actual:.1f}%
-                        """)
 
                         # kpi_scores.append({
                         #     'no': kpi['no'],
@@ -3367,44 +3395,117 @@ class KPIOverview(http.Controller):
                             actual = 0
                             kpi['measurement'] = "Tidak ada data waktu servis dan penerimaan yang tersedia"
                     
+                    # Penggantian kode mechanic_efficiency untuk API KPI Head Store
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # Calculate mechanic efficiency - similar to team leader calculation but for all mechanics
-                        all_mechanics_data = {}
-                        
-                        for order in store_orders:
-                            for mech in order.car_mechanic_id_new:
-                                if mech.id not in all_mechanics_data:
-                                    all_mechanics_data[mech.id] = []
+                        try:
+                            # Dapatkan semua mekanik di store
+                            all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+                            all_mechanic_ids = all_mechanics.ids
+                            
+                            # Jika tidak ada mekanik, tidak bisa menghitung
+                            if not all_mechanic_ids:
+                                actual = 0
+                                kpi['measurement'] = "Tidak ada mekanik terdaftar di sistem"
+                            else:
+                                # Hitung flat rate untuk setiap mekanik
+                                mechanic_flat_rates = {}
                                 
-                                if order.lead_time_servis:
-                                    all_mechanics_data[mech.id].append(order.lead_time_servis / len(order.car_mechanic_id_new))
+                                # Dapatkan semua order yang selesai dalam periode
+                                completed_orders = request.env['sale.order'].sudo().search([
+                                    ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('state', '=', 'sale')
+                                ])
+                                
+                                # Inisialisasi data flat rate mekanik
+                                for mechanic in all_mechanics:
+                                    mechanic_flat_rates[mechanic.id] = {
+                                        'name': mechanic.name,
+                                        'total_flat_rate': 0,
+                                        'position': mechanic.position_id.name if mechanic.position_id else "Mechanic"
+                                    }
+                                
+                                # Hitung total jam flat rate untuk setiap mekanik
+                                for order in completed_orders:
+                                    # Ambil mekanik yang mengerjakan order ini
+                                    order_mechanics = order.car_mechanic_id_new
+                                    mechanics_count = len(order_mechanics) or 1
+                                    
+                                    # Hanya proses jika ada mekanik yang mengerjakan
+                                    if order_mechanics:
+                                        # Hitung flat rate untuk setiap order line yang merupakan jasa
+                                        for line in order.order_line:
+                                            if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                                # Total flat rate jam untuk item ini
+                                                line_flat_rate = line.product_id.flat_rate * line.product_uom_qty
+                                                
+                                                # Distribusikan ke mekanik yang mengerjakan
+                                                flat_rate_per_mechanic = line_flat_rate / mechanics_count
+                                                
+                                                # Tambahkan ke masing-masing mekanik di order ini
+                                                for mech in order_mechanics:
+                                                    if mech.id in mechanic_flat_rates:
+                                                        mechanic_flat_rates[mech.id]['total_flat_rate'] += flat_rate_per_mechanic
+                                
+                                # Filter mekanik yang punya data flat rate
+                                active_mechanics = {id: data for id, data in mechanic_flat_rates.items() if data['total_flat_rate'] > 0}
+                                
+                                if not active_mechanics:
+                                    actual = 0
+                                    kpi['measurement'] = f"Tidak ada data flat rate untuk mekanik pada periode {month}/{year}"
+                                else:
+                                    # Hitung rata-rata flat rate
+                                    total_flat_rate = sum(data['total_flat_rate'] for data in active_mechanics.values())
+                                    avg_flat_rate = total_flat_rate / len(active_mechanics)
+                                    
+                                    # Tetapkan rentang toleransi (±10%)
+                                    upper_limit = avg_flat_rate * 1.10
+                                    lower_limit = avg_flat_rate * 0.90
+                                    
+                                    # Hitung mekanik dalam dan luar rentang
+                                    mechanics_in_range = []
+                                    mechanics_out_range = []
+                                    
+                                    for mech_id, mech_data in active_mechanics.items():
+                                        is_in_range = lower_limit <= mech_data['total_flat_rate'] <= upper_limit
+                                        position_info = f"({mech_data['position']})" if mech_data.get('position') else ""
+                                        mechanic_info = f"{mech_data['name']} {position_info}: {mech_data['total_flat_rate']:.1f} jam flat rate"
+                                        
+                                        if is_in_range:
+                                            mechanics_in_range.append(mechanic_info)
+                                        else:
+                                            mechanics_out_range.append(mechanic_info)
+                                    
+                                    # Hitung persentase mekanik dalam rentang
+                                    mechanics_in_range_count = len(mechanics_in_range)
+                                    total_active_mechanics = len(active_mechanics)
+                                    actual = (mechanics_in_range_count / total_active_mechanics * 100)
+                                    
+                                    # Format measurement dengan HTML yang bagus
+                                    kpi['measurement'] = '<div class="kpi-measurement">'
+                                    kpi['measurement'] += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
+                                    
+                                    kpi['measurement'] += '<div class="summary-stats">'
+                                    kpi['measurement'] += f'<div>Mekanik dalam rentang target: {mechanics_in_range_count}/{total_active_mechanics}</div>'
+                                    kpi['measurement'] += f'<div>Rata-rata flat rate bengkel: {avg_flat_rate:.1f} jam</div>'
+                                    kpi['measurement'] += f'<div>Rentang target (±10%): {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
+                                    kpi['measurement'] += '</div>'
+                                    
+                                    kpi['measurement'] += '<div class="mechanics-section">'
+                                    kpi['measurement'] += f'<div class="in-range"><h4>Dalam rentang ({mechanics_in_range_count}/{total_active_mechanics}):</h4>'
+                                    kpi['measurement'] += f'<div class="mechanic-list">{", ".join(mechanics_in_range)}</div></div>'
+                                    
+                                    kpi['measurement'] += f'<div class="out-range"><h4>Luar rentang ({total_active_mechanics - mechanics_in_range_count}/{total_active_mechanics}):</h4>'
+                                    kpi['measurement'] += f'<div class="mechanic-list">{", ".join(mechanics_out_range)}</div></div>'
+                                    kpi['measurement'] += '</div>'
+                                    
+                                    kpi['measurement'] += '</div>'
                         
-                        # Calculate average times
-                        mechanics_with_data = {mech_id: avg_times for mech_id, avg_times in all_mechanics_data.items() if avg_times}
-                        
-                        if mechanics_with_data:
-                            mechanic_averages = {mech_id: sum(times)/len(times) for mech_id, times in mechanics_with_data.items()}
-                            
-                            # Calculate overall average
-                            overall_avg = sum(mechanic_averages.values()) / len(mechanic_averages)
-                            
-                            # Calculate how many mechanics are within 5% of average
-                            upper_limit = overall_avg * 1.05
-                            lower_limit = overall_avg * 0.95
-                            
-                            mechanics_in_range = sum(1 for avg in mechanic_averages.values() 
-                                                    if lower_limit <= avg <= upper_limit)
-                            
-                            actual = (mechanics_in_range / len(mechanic_averages) * 100)
-                            
-                            kpi['measurement'] = (
-                                f"Mekanik dalam rentang waktu rata-rata (±5%): {mechanics_in_range}/{len(mechanic_averages)}\n"
-                                f"Rata-rata waktu pengerjaan: {overall_avg:.1f} jam\n"
-                                f"Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam"
-                            )
-                        else:
+                        except Exception as e:
+                            _logger.error(f"Error calculating mechanic efficiency for Head Store: {str(e)}")
                             actual = 0
-                            kpi['measurement'] = "Tidak ada data pengerjaan mekanik yang tersedia"
+                            kpi['measurement'] = f"Error: {str(e)}"
+
                     
                     elif kpi['type'] == 'customer_satisfaction':
                         # Calculate customer satisfaction rating
@@ -4116,95 +4217,117 @@ class KPIOverview(http.Controller):
                         #         kpi['measurement'] = f"Error: {str(e)}"
 
                         # Perbaikan perhitungan mechanic efficiency
+                        # Penggantian kode mechanic_efficiency untuk API KPI Head Store
                         elif kpi['type'] == 'mechanic_efficiency':
-                            # Ambil data tim termasuk leader
-                            team_members = mechanic.team_member_ids + mechanic  # Include leader
-                            
-                            _logger.info(f"Found {len(team_members)} mechanics including leader")
-
-                            # Get orders untuk seluruh tim
-                            team_orders = request.env['sale.order'].sudo().search([
-                                *base_domain,
-                                ('car_mechanic_id_new', 'in', team_members.ids)
-                            ])
-                            
-                            if not team_orders:
-                                actual = 0
-                                kpi['measurement'] = f"Tidak ada orders untuk tim pada periode {month}/{year}"
-                            else:
-                                # Hitung rata-rata pengerjaan per mekanik dalam tim
-                                member_averages = {}
-                                for member in team_members:
-                                    member_orders = team_orders.filtered(lambda o: member in o.car_mechanic_id_new)
-                                    if member_orders:
-                                        member_times = [
-                                            o.lead_time_servis / len(o.car_mechanic_id_new) 
-                                            for o in member_orders 
-                                            if o.lead_time_servis
-                                        ]
-                                        if member_times:
-                                            member_averages[member.id] = {
-                                                'name': member.name,
-                                                'avg_time': sum(member_times) / len(member_times),
-                                                'orders': len(member_times),
-                                                'is_leader': member.id == mechanic.id
-                                            }
+                            try:
+                                # Dapatkan semua mekanik di store
+                                all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+                                all_mechanic_ids = all_mechanics.ids
                                 
-                                if member_averages:
-                                    # Hitung rata-rata tim
-                                    team_avg = sum(data['avg_time'] for data in member_averages.values()) / len(member_averages)
-                                    
-                                    # Hitung batas toleransi (±5%)
-                                    upper_limit = team_avg * 1.05
-                                    lower_limit = team_avg * 0.95
-                                    
-                                    # Hitung mekanik dalam dan luar rentang
-                                    in_range_mechanics = []
-                                    out_range_mechanics = []
-                                    
-                                    for mech_data in member_averages.values():
-                                        is_in_range = lower_limit <= mech_data['avg_time'] <= upper_limit
-                                        role = "(Leader)" if mech_data['is_leader'] else ""
-                                        mechanic_info = f"{mech_data['name']} {role}: {mech_data['avg_time']:.1f} jam {'✓' if is_in_range else '✗'}"
-                                        
-                                        if is_in_range:
-                                            in_range_mechanics.append(mechanic_info)
-                                        else:
-                                            out_range_mechanics.append(mechanic_info)
-
-                                    mechanics_in_range = len(in_range_mechanics)
-                                    total_mechanics = len(member_averages)
-                                    actual = (mechanics_in_range / total_mechanics * 100)
-                                    
-                                    # Update kpi['measurement'] dengan format HTML yang sama dengan lead CS
-                                    kpi['measurement'] = '<div class="kpi-measurement">'
-                                    kpi['measurement'] += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
-                                    
-                                    kpi['measurement'] += '<div class="summary-stats">'
-                                    kpi['measurement'] += f'<div>Mekanik dalam rentang target: {mechanics_in_range}/{total_mechanics}</div>'
-                                    kpi['measurement'] += f'<div>Rata-rata tim: {team_avg:.1f} jam</div>'
-                                    kpi['measurement'] += f'<div>Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
-                                    kpi['measurement'] += '</div>'
-                                    
-                                    kpi['measurement'] += '<div class="mechanics-section">'
-                                    kpi['measurement'] += f'<div class="in-range"><h4>Dalam rentang ({mechanics_in_range}/{total_mechanics}):</h4>'
-                                    kpi['measurement'] += f'<div class="mechanic-list">{", ".join(in_range_mechanics)}</div></div>'
-                                    
-                                    kpi['measurement'] += f'<div class="out-range"><h4>Luar rentang ({total_mechanics - mechanics_in_range}/{total_mechanics}):</h4>'
-                                    kpi['measurement'] += f'<div class="mechanic-list">{", ".join(out_range_mechanics)}</div></div>'
-                                    kpi['measurement'] += '</div>'
-                                    
-                                    kpi['measurement'] += '</div>'
-                                else:
+                                # Jika tidak ada mekanik, tidak bisa menghitung
+                                if not all_mechanic_ids:
                                     actual = 0
-                                    kpi['measurement'] = f'<div class="kpi-measurement"><div class="no-data">Tidak cukup data untuk analisis pada periode {month}/{year}</div></div>'
+                                    kpi['measurement'] = "Tidak ada mekanik terdaftar di sistem"
+                                else:
+                                    # Hitung flat rate untuk setiap mekanik
+                                    mechanic_flat_rates = {}
+                                    
+                                    # Dapatkan semua order yang selesai dalam periode
+                                    completed_orders = request.env['sale.order'].sudo().search([
+                                        ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                        ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                        ('state', '=', 'sale')
+                                    ])
+                                    
+                                    # Inisialisasi data flat rate mekanik
+                                    for mechanic in all_mechanics:
+                                        mechanic_flat_rates[mechanic.id] = {
+                                            'name': mechanic.name,
+                                            'total_flat_rate': 0,
+                                            'position': mechanic.position_id.name if mechanic.position_id else "Mechanic"
+                                        }
+                                    
+                                    # Hitung total jam flat rate untuk setiap mekanik
+                                    for order in completed_orders:
+                                        # Ambil mekanik yang mengerjakan order ini
+                                        order_mechanics = order.car_mechanic_id_new
+                                        mechanics_count = len(order_mechanics) or 1
+                                        
+                                        # Hanya proses jika ada mekanik yang mengerjakan
+                                        if order_mechanics:
+                                            # Hitung flat rate untuk setiap order line yang merupakan jasa
+                                            for line in order.order_line:
+                                                if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                                    # Total flat rate jam untuk item ini
+                                                    line_flat_rate = line.product_id.flat_rate * line.product_uom_qty
+                                                    
+                                                    # Distribusikan ke mekanik yang mengerjakan
+                                                    flat_rate_per_mechanic = line_flat_rate / mechanics_count
+                                                    
+                                                    # Tambahkan ke masing-masing mekanik di order ini
+                                                    for mech in order_mechanics:
+                                                        if mech.id in mechanic_flat_rates:
+                                                            mechanic_flat_rates[mech.id]['total_flat_rate'] += flat_rate_per_mechanic
+                                    
+                                    # Filter mekanik yang punya data flat rate
+                                    active_mechanics = {id: data for id, data in mechanic_flat_rates.items() if data['total_flat_rate'] > 0}
+                                    
+                                    if not active_mechanics:
+                                        actual = 0
+                                        kpi['measurement'] = f"Tidak ada data flat rate untuk mekanik pada periode {month}/{year}"
+                                    else:
+                                        # Hitung rata-rata flat rate
+                                        total_flat_rate = sum(data['total_flat_rate'] for data in active_mechanics.values())
+                                        avg_flat_rate = total_flat_rate / len(active_mechanics)
+                                        
+                                        # Tetapkan rentang toleransi (±10%)
+                                        upper_limit = avg_flat_rate * 1.10
+                                        lower_limit = avg_flat_rate * 0.90
+                                        
+                                        # Hitung mekanik dalam dan luar rentang
+                                        mechanics_in_range = []
+                                        mechanics_out_range = []
+                                        
+                                        for mech_id, mech_data in active_mechanics.items():
+                                            is_in_range = lower_limit <= mech_data['total_flat_rate'] <= upper_limit
+                                            position_info = f"({mech_data['position']})" if mech_data.get('position') else ""
+                                            mechanic_info = f"{mech_data['name']} {position_info}: {mech_data['total_flat_rate']:.1f} jam flat rate"
+                                            
+                                            if is_in_range:
+                                                mechanics_in_range.append(mechanic_info)
+                                            else:
+                                                mechanics_out_range.append(mechanic_info)
+                                        
+                                        # Hitung persentase mekanik dalam rentang
+                                        mechanics_in_range_count = len(mechanics_in_range)
+                                        total_active_mechanics = len(active_mechanics)
+                                        actual = (mechanics_in_range_count / total_active_mechanics * 100)
+                                        
+                                        # Format measurement dengan HTML yang bagus
+                                        kpi['measurement'] = '<div class="kpi-measurement">'
+                                        kpi['measurement'] += f'<div class="period-info"><strong>Periode:</strong> {month}/{year}</div>'
+                                        
+                                        kpi['measurement'] += '<div class="summary-stats">'
+                                        kpi['measurement'] += f'<div>Mekanik dalam rentang target: {mechanics_in_range_count}/{total_active_mechanics}</div>'
+                                        kpi['measurement'] += f'<div>Rata-rata flat rate bengkel: {avg_flat_rate:.1f} jam</div>'
+                                        kpi['measurement'] += f'<div>Rentang target (±10%): {lower_limit:.1f} - {upper_limit:.1f} jam</div>'
+                                        kpi['measurement'] += '</div>'
+                                        
+                                        kpi['measurement'] += '<div class="mechanics-section">'
+                                        kpi['measurement'] += f'<div class="in-range"><h4>Dalam rentang ({mechanics_in_range_count}/{total_active_mechanics}):</h4>'
+                                        kpi['measurement'] += f'<div class="mechanic-list">{", ".join(mechanics_in_range)}</div></div>'
+                                        
+                                        kpi['measurement'] += f'<div class="out-range"><h4>Luar rentang ({total_active_mechanics - mechanics_in_range_count}/{total_active_mechanics}):</h4>'
+                                        kpi['measurement'] += f'<div class="mechanic-list">{", ".join(mechanics_out_range)}</div></div>'
+                                        kpi['measurement'] += '</div>'
+                                        
+                                        kpi['measurement'] += '</div>'
+                            
+                            except Exception as e:
+                                _logger.error(f"Error calculating mechanic efficiency for Head Store: {str(e)}")
+                                actual = 0
+                                kpi['measurement'] = f"Error: {str(e)}"
 
-                            _logger.info(f"""
-                                KPI Calculation Results:
-                                - Total team members: {len(team_members)}
-                                - Orders analyzed: {len(team_orders) if team_orders else 0}
-                                - Achievement: {actual:.1f}%
-                            """)
 
                             # kpi_scores.append({
                             #     'no': kpi['no'],
@@ -5406,41 +5529,109 @@ class KPIOverview(http.Controller):
                                 actual = 0
                                 measurement = "Tidak ada data waktu servis dan penerimaan yang tersedia"
                         
+                        # Versi untuk export PDF di Head Store
                         elif kpi['type'] == 'mechanic_efficiency':
-                            # Calculate mechanic efficiency
-                            all_mechanics_data = {}
-                            
-                            for order in store_orders:
-                                for mech in order.car_mechanic_id_new:
-                                    if mech.id not in all_mechanics_data:
-                                        all_mechanics_data[mech.id] = []
+                            try:
+                                # Dapatkan semua mekanik di store
+                                all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+                                all_mechanic_ids = all_mechanics.ids
+                                
+                                # Jika tidak ada mekanik, tidak bisa menghitung
+                                if not all_mechanic_ids:
+                                    actual = 0
+                                    measurement = "Tidak ada mekanik terdaftar di sistem"
+                                else:
+                                    # Hitung flat rate untuk setiap mekanik
+                                    mechanic_flat_rates = {}
                                     
-                                    if order.lead_time_servis:
-                                        all_mechanics_data[mech.id].append(order.lead_time_servis / len(order.car_mechanic_id_new))
+                                    # Dapatkan semua order yang selesai dalam periode
+                                    completed_orders = request.env['sale.order'].sudo().search([
+                                        ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                        ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                        ('state', '=', 'sale')
+                                    ])
+                                    
+                                    # Inisialisasi data flat rate mekanik
+                                    for mechanic in all_mechanics:
+                                        mechanic_flat_rates[mechanic.id] = {
+                                            'name': mechanic.name,
+                                            'total_flat_rate': 0,
+                                            'position': mechanic.position_id.name if mechanic.position_id else "Mechanic"
+                                        }
+                                    
+                                    # Hitung total jam flat rate untuk setiap mekanik
+                                    for order in completed_orders:
+                                        # Ambil mekanik yang mengerjakan order ini
+                                        order_mechanics = order.car_mechanic_id_new
+                                        mechanics_count = len(order_mechanics) or 1
+                                        
+                                        # Hanya proses jika ada mekanik yang mengerjakan
+                                        if order_mechanics:
+                                            # Hitung flat rate untuk setiap order line yang merupakan jasa
+                                            for line in order.order_line:
+                                                if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                                    # Total flat rate jam untuk item ini
+                                                    line_flat_rate = line.product_id.flat_rate * line.product_uom_qty
+                                                    
+                                                    # Distribusikan ke mekanik yang mengerjakan
+                                                    flat_rate_per_mechanic = line_flat_rate / mechanics_count
+                                                    
+                                                    # Tambahkan ke masing-masing mekanik di order ini
+                                                    for mech in order_mechanics:
+                                                        if mech.id in mechanic_flat_rates:
+                                                            mechanic_flat_rates[mech.id]['total_flat_rate'] += flat_rate_per_mechanic
+                                    
+                                    # Filter mekanik yang punya data flat rate
+                                    active_mechanics = {id: data for id, data in mechanic_flat_rates.items() if data['total_flat_rate'] > 0}
+                                    
+                                    if not active_mechanics:
+                                        actual = 0
+                                        measurement = f"Tidak ada data flat rate untuk mekanik pada periode {month}/{year}"
+                                    else:
+                                        # Hitung rata-rata flat rate
+                                        total_flat_rate = sum(data['total_flat_rate'] for data in active_mechanics.values())
+                                        avg_flat_rate = total_flat_rate / len(active_mechanics)
+                                        
+                                        # Tetapkan rentang toleransi (±10%)
+                                        upper_limit = avg_flat_rate * 1.10
+                                        lower_limit = avg_flat_rate * 0.90
+                                        
+                                        # Hitung mekanik dalam dan luar rentang
+                                        mechanics_in_range = []
+                                        mechanics_out_range = []
+                                        
+                                        for mech_id, mech_data in active_mechanics.items():
+                                            is_in_range = lower_limit <= mech_data['total_flat_rate'] <= upper_limit
+                                            position_info = f"({mech_data['position']})" if mech_data.get('position') else ""
+                                            mechanic_info = f"{mech_data['name']} {position_info}: {mech_data['total_flat_rate']:.1f} jam flat rate"
+                                            
+                                            if is_in_range:
+                                                mechanics_in_range.append(mechanic_info)
+                                            else:
+                                                mechanics_out_range.append(mechanic_info)
+                                        
+                                        # Hitung persentase mekanik dalam rentang
+                                        mechanics_in_range_count = len(mechanics_in_range)
+                                        total_active_mechanics = len(active_mechanics)
+                                        actual = (mechanics_in_range_count / total_active_mechanics * 100)
+                                        
+                                        # Format measurement untuk PDF (tanpa HTML)
+                                        mechanics_in_range_str = ", ".join(mechanics_in_range)
+                                        mechanics_out_range_str = ", ".join(mechanics_out_range)
+                                        
+                                        measurement = (
+                                            f"Mekanik dalam rentang target: {mechanics_in_range_count}/{total_active_mechanics}\n"
+                                            f"Rata-rata flat rate bengkel: {avg_flat_rate:.1f} jam\n"
+                                            f"Rentang target (±10%): {lower_limit:.1f} - {upper_limit:.1f} jam\n\n"
+                                            f"Dalam rentang: {mechanics_in_range_str}\n"
+                                            f"Luar rentang: {mechanics_out_range_str}"
+                                        )
                             
-                            mechanics_with_data = {mech_id: avg_times for mech_id, avg_times in all_mechanics_data.items() if avg_times}
-                            
-                            if mechanics_with_data:
-                                mechanic_averages = {mech_id: sum(times)/len(times) for mech_id, times in mechanics_with_data.items()}
-                                
-                                overall_avg = sum(mechanic_averages.values()) / len(mechanic_averages)
-                                
-                                upper_limit = overall_avg * 1.05
-                                lower_limit = overall_avg * 0.95
-                                
-                                mechanics_in_range = sum(1 for avg in mechanic_averages.values() 
-                                                        if lower_limit <= avg <= upper_limit)
-                                
-                                actual = (mechanics_in_range / len(mechanic_averages) * 100)
-                                
-                                measurement = (
-                                    f"Mekanik dalam rentang waktu rata-rata (±5%): {mechanics_in_range}/{len(mechanic_averages)}\n"
-                                    f"Rata-rata waktu pengerjaan: {overall_avg:.1f} jam\n"
-                                    f"Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam"
-                                )
-                            else:
+                            except Exception as e:
+                                _logger.error(f"Error calculating mechanic efficiency for Head Store: {str(e)}")
                                 actual = 0
-                                measurement = "Tidak ada data pengerjaan mekanik yang tersedia"
+                                measurement = f"Error: {str(e)}"
+
                         
                         elif kpi['type'] == 'customer_satisfaction':
                             # Calculate customer satisfaction rating
@@ -5628,58 +5819,110 @@ class KPIOverview(http.Controller):
                                 actual = 0
                                 measurement = f"Error: {str(e)}"
                                 
+                        # Versi yang sama untuk mechanic_efficiency di export_mechanic_kpi_pdf function
                         elif kpi['type'] == 'mechanic_efficiency':
                             try:
-                                # Get team members including leader
-                                all_mechanics = team_members.ids + [mechanic.id]
-                                
-                                # Get orders for the team
-                                team_orders = request.env['sale.order'].sudo().search([
-                                    *base_domain,
-                                    ('car_mechanic_id_new', 'in', all_mechanics)
+                                # Get team members excluding leader
+                                team_members = request.env['pitcar.mechanic.new'].sudo().search([
+                                    ('leader_id', '=', mechanic.id)
                                 ])
                                 
-                                if not team_orders:
+                                # Hanya ambil data mekanik tim (tidak termasuk leader)
+                                team_member_ids = team_members.ids
+                                
+                                # Jika tidak ada anggota tim, tidak bisa menghitung
+                                if not team_member_ids:
                                     actual = 0
-                                    measurement = f"Tidak ada orders untuk tim pada periode {month}/{year}"
+                                    measurement = f"Tidak ada anggota tim mekanik pada periode {month}/{year}"
                                 else:
-                                    # Calculate average processing time per mechanic
-                                    member_averages = {}
-                                    for member_id in all_mechanics:
-                                        member = request.env['pitcar.mechanic.new'].sudo().browse(member_id)
-                                        member_orders = team_orders.filtered(lambda o: member.id in o.car_mechanic_id_new.ids)
-                                        if member_orders:
-                                            member_times = [
-                                                o.lead_time_servis / len(o.car_mechanic_id_new) 
-                                                for o in member_orders 
-                                                if o.lead_time_servis
-                                            ]
-                                            if member_times:
-                                                member_averages[member.id] = {
-                                                    'name': member.name,
-                                                    'avg_time': sum(member_times) / len(member_times),
-                                                    'orders': len(member_times),
-                                                    'is_leader': member.id == mechanic.id
-                                                }
+                                    # Hitung flat rate untuk setiap anggota tim
+                                    mechanic_flat_rates = {}
                                     
-                                    if member_averages:
-                                        # Calculate team average
-                                        team_avg = sum(data['avg_time'] for data in member_averages.values()) / len(member_averages)
+                                    # Dapatkan semua order yang selesai dalam periode
+                                    completed_orders = request.env['sale.order'].sudo().search([
+                                        ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                        ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                        ('state', '=', 'sale'),
+                                        ('car_mechanic_id_new', 'in', team_member_ids)
+                                    ])
+                                    
+                                    # Perhitungan flat rate per mekanik
+                                    for member_id in team_member_ids:
+                                        member = request.env['pitcar.mechanic.new'].sudo().browse(member_id)
+                                        mechanic_flat_rates[member_id] = {
+                                            'name': member.name,
+                                            'total_flat_rate': 0,
+                                        }
+                                    
+                                    # Hitung total jam flat rate untuk setiap mekanik
+                                    for order in completed_orders:
+                                        # Ambil mekanik yang mengerjakan order ini
+                                        order_mechanics = order.car_mechanic_id_new
+                                        mechanics_count = len(order_mechanics) or 1
                                         
-                                        # Calculate tolerance limits (±5%)
-                                        upper_limit = team_avg * 1.05
-                                        lower_limit = team_avg * 0.95
+                                        # Hanya proses jika di antara mekanik ada yang anggota tim
+                                        team_mechanics_in_order = [mech.id for mech in order_mechanics if mech.id in team_member_ids]
                                         
-                                        # Count mechanics within range
-                                        mechanics_in_range = sum(1 for data in member_averages.values() 
-                                                                if lower_limit <= data['avg_time'] <= upper_limit)
-                                        total_mechanics = len(member_averages)
-                                        actual = (mechanics_in_range / total_mechanics * 100) if total_mechanics > 0 else 0
-                                        
-                                        measurement = f"Mekanik dalam rentang target: {mechanics_in_range}/{total_mechanics}, Rata-rata tim: {team_avg:.1f} jam"
-                                    else:
+                                        if team_mechanics_in_order:
+                                            # Hitung flat rate untuk setiap order line yang merupakan jasa
+                                            for line in order.order_line:
+                                                if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                                    # Total flat rate jam untuk item ini
+                                                    line_flat_rate = line.product_id.flat_rate * line.product_uom_qty
+                                                    
+                                                    # Distribusikan ke mekanik yang mengerjakan
+                                                    flat_rate_per_mechanic = line_flat_rate / mechanics_count
+                                                    
+                                                    # Tambahkan ke masing-masing mekanik tim di order ini
+                                                    for mech_id in team_mechanics_in_order:
+                                                        if mech_id in mechanic_flat_rates:
+                                                            mechanic_flat_rates[mech_id]['total_flat_rate'] += flat_rate_per_mechanic
+                                    
+                                    # Filter mekanik yang punya data flat rate
+                                    active_mechanics = {id: data for id, data in mechanic_flat_rates.items() if data['total_flat_rate'] > 0}
+                                    
+                                    if not active_mechanics:
                                         actual = 0
-                                        measurement = f"Tidak cukup data untuk analisis pada periode {month}/{year}"
+                                        measurement = f"Tidak ada data flat rate untuk tim pada periode {month}/{year}"
+                                    else:
+                                        # Hitung rata-rata flat rate tim
+                                        total_flat_rate = sum(data['total_flat_rate'] for data in active_mechanics.values())
+                                        avg_flat_rate = total_flat_rate / len(active_mechanics)
+                                        
+                                        # Tetapkan rentang toleransi (±10%)
+                                        upper_limit = avg_flat_rate * 1.10
+                                        lower_limit = avg_flat_rate * 0.90
+                                        
+                                        # Hitung mekanik dalam dan luar rentang
+                                        mechanics_in_range = []
+                                        mechanics_out_range = []
+                                        
+                                        for mech_id, mech_data in active_mechanics.items():
+                                            is_in_range = lower_limit <= mech_data['total_flat_rate'] <= upper_limit
+                                            mechanic_info = f"{mech_data['name']}: {mech_data['total_flat_rate']:.1f} jam flat rate"
+                                            
+                                            if is_in_range:
+                                                mechanics_in_range.append(mechanic_info)
+                                            else:
+                                                mechanics_out_range.append(mechanic_info)
+                                        
+                                        # Hitung persentase mekanik dalam rentang
+                                        mechanics_in_range_count = len(mechanics_in_range)
+                                        total_active_mechanics = len(active_mechanics)
+                                        actual = (mechanics_in_range_count / total_active_mechanics * 100)
+                                        
+                                        # Format measurement untuk PDF (tanpa HTML)
+                                        mechanics_in_range_str = ", ".join(mechanics_in_range)
+                                        mechanics_out_range_str = ", ".join(mechanics_out_range)
+                                        
+                                        measurement = (
+                                            f"Mekanik dalam rentang target: {mechanics_in_range_count}/{total_active_mechanics}\n"
+                                            f"Rata-rata flat rate tim: {avg_flat_rate:.1f} jam\n"
+                                            f"Rentang target (±10%): {lower_limit:.1f} - {upper_limit:.1f} jam\n\n"
+                                            f"Dalam rentang: {mechanics_in_range_str}\n"
+                                            f"Luar rentang: {mechanics_out_range_str}"
+                                        )
+                            
                             except Exception as e:
                                 _logger.error(f"Error calculating mechanic efficiency: {str(e)}")
                                 actual = 0
@@ -6191,41 +6434,109 @@ class KPIOverview(http.Controller):
                             actual = 0
                             measurement = "Tidak ada data waktu servis dan penerimaan yang tersedia"
                     
+                    # Versi untuk export PDF di Head Store
                     elif kpi['type'] == 'mechanic_efficiency':
-                        # Calculate mechanic efficiency
-                        all_mechanics_data = {}
-                        
-                        for order in store_orders:
-                            for mech in order.car_mechanic_id_new:
-                                if mech.id not in all_mechanics_data:
-                                    all_mechanics_data[mech.id] = []
+                        try:
+                            # Dapatkan semua mekanik di store
+                            all_mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+                            all_mechanic_ids = all_mechanics.ids
+                            
+                            # Jika tidak ada mekanik, tidak bisa menghitung
+                            if not all_mechanic_ids:
+                                actual = 0
+                                measurement = "Tidak ada mekanik terdaftar di sistem"
+                            else:
+                                # Hitung flat rate untuk setiap mekanik
+                                mechanic_flat_rates = {}
                                 
-                                if order.lead_time_servis:
-                                    all_mechanics_data[mech.id].append(order.lead_time_servis / len(order.car_mechanic_id_new))
+                                # Dapatkan semua order yang selesai dalam periode
+                                completed_orders = request.env['sale.order'].sudo().search([
+                                    ('date_completed', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('date_completed', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                                    ('state', '=', 'sale')
+                                ])
+                                
+                                # Inisialisasi data flat rate mekanik
+                                for mechanic in all_mechanics:
+                                    mechanic_flat_rates[mechanic.id] = {
+                                        'name': mechanic.name,
+                                        'total_flat_rate': 0,
+                                        'position': mechanic.position_id.name if mechanic.position_id else "Mechanic"
+                                    }
+                                
+                                # Hitung total jam flat rate untuk setiap mekanik
+                                for order in completed_orders:
+                                    # Ambil mekanik yang mengerjakan order ini
+                                    order_mechanics = order.car_mechanic_id_new
+                                    mechanics_count = len(order_mechanics) or 1
+                                    
+                                    # Hanya proses jika ada mekanik yang mengerjakan
+                                    if order_mechanics:
+                                        # Hitung flat rate untuk setiap order line yang merupakan jasa
+                                        for line in order.order_line:
+                                            if line.product_id and line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                                                # Total flat rate jam untuk item ini
+                                                line_flat_rate = line.product_id.flat_rate * line.product_uom_qty
+                                                
+                                                # Distribusikan ke mekanik yang mengerjakan
+                                                flat_rate_per_mechanic = line_flat_rate / mechanics_count
+                                                
+                                                # Tambahkan ke masing-masing mekanik di order ini
+                                                for mech in order_mechanics:
+                                                    if mech.id in mechanic_flat_rates:
+                                                        mechanic_flat_rates[mech.id]['total_flat_rate'] += flat_rate_per_mechanic
+                                
+                                # Filter mekanik yang punya data flat rate
+                                active_mechanics = {id: data for id, data in mechanic_flat_rates.items() if data['total_flat_rate'] > 0}
+                                
+                                if not active_mechanics:
+                                    actual = 0
+                                    measurement = f"Tidak ada data flat rate untuk mekanik pada periode {month}/{year}"
+                                else:
+                                    # Hitung rata-rata flat rate
+                                    total_flat_rate = sum(data['total_flat_rate'] for data in active_mechanics.values())
+                                    avg_flat_rate = total_flat_rate / len(active_mechanics)
+                                    
+                                    # Tetapkan rentang toleransi (±10%)
+                                    upper_limit = avg_flat_rate * 1.10
+                                    lower_limit = avg_flat_rate * 0.90
+                                    
+                                    # Hitung mekanik dalam dan luar rentang
+                                    mechanics_in_range = []
+                                    mechanics_out_range = []
+                                    
+                                    for mech_id, mech_data in active_mechanics.items():
+                                        is_in_range = lower_limit <= mech_data['total_flat_rate'] <= upper_limit
+                                        position_info = f"({mech_data['position']})" if mech_data.get('position') else ""
+                                        mechanic_info = f"{mech_data['name']} {position_info}: {mech_data['total_flat_rate']:.1f} jam flat rate"
+                                        
+                                        if is_in_range:
+                                            mechanics_in_range.append(mechanic_info)
+                                        else:
+                                            mechanics_out_range.append(mechanic_info)
+                                    
+                                    # Hitung persentase mekanik dalam rentang
+                                    mechanics_in_range_count = len(mechanics_in_range)
+                                    total_active_mechanics = len(active_mechanics)
+                                    actual = (mechanics_in_range_count / total_active_mechanics * 100)
+                                    
+                                    # Format measurement untuk PDF (tanpa HTML)
+                                    mechanics_in_range_str = ", ".join(mechanics_in_range)
+                                    mechanics_out_range_str = ", ".join(mechanics_out_range)
+                                    
+                                    measurement = (
+                                        f"Mekanik dalam rentang target: {mechanics_in_range_count}/{total_active_mechanics}\n"
+                                        f"Rata-rata flat rate bengkel: {avg_flat_rate:.1f} jam\n"
+                                        f"Rentang target (±10%): {lower_limit:.1f} - {upper_limit:.1f} jam\n\n"
+                                        f"Dalam rentang: {mechanics_in_range_str}\n"
+                                        f"Luar rentang: {mechanics_out_range_str}"
+                                    )
                         
-                        mechanics_with_data = {mech_id: avg_times for mech_id, avg_times in all_mechanics_data.items() if avg_times}
-                        
-                        if mechanics_with_data:
-                            mechanic_averages = {mech_id: sum(times)/len(times) for mech_id, times in mechanics_with_data.items()}
-                            
-                            overall_avg = sum(mechanic_averages.values()) / len(mechanic_averages)
-                            
-                            upper_limit = overall_avg * 1.05
-                            lower_limit = overall_avg * 0.95
-                            
-                            mechanics_in_range = sum(1 for avg in mechanic_averages.values() 
-                                                    if lower_limit <= avg <= upper_limit)
-                            
-                            actual = (mechanics_in_range / len(mechanic_averages) * 100)
-                            
-                            measurement = (
-                                f"Mekanik dalam rentang waktu rata-rata (±5%): {mechanics_in_range}/{len(mechanic_averages)}\n"
-                                f"Rata-rata waktu pengerjaan: {overall_avg:.1f} jam\n"
-                                f"Rentang target: {lower_limit:.1f} - {upper_limit:.1f} jam"
-                            )
-                        else:
+                        except Exception as e:
+                            _logger.error(f"Error calculating mechanic efficiency for Head Store: {str(e)}")
                             actual = 0
-                            measurement = "Tidak ada data pengerjaan mekanik yang tersedia"
+                            measurement = f"Error: {str(e)}"
+
                     
                     elif kpi['type'] == 'customer_satisfaction':
                         # Calculate customer satisfaction rating

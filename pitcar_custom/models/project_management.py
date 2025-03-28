@@ -113,6 +113,37 @@ class TeamProject(models.Model):
     
     # Display in Calendar
     calendar_visible = fields.Boolean('Show in Calendar', default=True)
+
+    # Field baru untuk tracking waktu penyelesaian
+    actual_date_end = fields.Date(string='Actual End Date', readonly=True, tracking=True)
+    is_on_time = fields.Boolean(string='Completed On Time', compute='_compute_is_on_time', store=True)
+    days_delayed = fields.Integer(string='Days Delayed', compute='_compute_days_delayed', store=True)
+
+    @api.depends('date_end', 'actual_date_end', 'state')
+    def _compute_is_on_time(self):
+        for project in self:
+            if project.state == 'completed' and project.actual_date_end and project.date_end:
+                project.is_on_time = project.actual_date_end <= project.date_end
+            else:
+                project.is_on_time = False
+
+    @api.depends('date_end', 'actual_date_end', 'is_on_time')
+    def _compute_days_delayed(self):
+        for project in self:
+            if not project.is_on_time and project.actual_date_end and project.date_end:
+                delta = project.actual_date_end - project.date_end
+                project.days_delayed = delta.days if delta.days > 0 else 0
+            else:
+                project.days_delayed = 0
+
+    # Tambahkan ke metode write
+    def write(self, vals):
+        if 'state' in vals and vals['state'] == 'completed':
+            for project in self:
+                if not project.actual_date_end:
+                    vals['actual_date_end'] = fields.Date.today()
+        return super(TeamProject, self).write(vals)
+
     
     # Constraints
     @api.constrains('date_start', 'date_end')

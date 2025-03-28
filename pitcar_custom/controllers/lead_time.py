@@ -670,6 +670,123 @@ class LeadTimeAPIController(http.Controller):
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
 
+    @http.route('/web/mechanics/available', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_available_mechanics(self, **kw):
+        """Mendapatkan daftar mekanik yang tersedia"""
+        try:
+            # Parameters
+            search = kw.get('search', '')
+            
+            # Get mechanics from mechanic model
+            Mechanic = request.env['pitcar.mechanic.new'].sudo()
+            domain = [('active', '=', True)]
+            
+            # Add search filter if provided
+            if search:
+                domain.append(('name', 'ilike', search))
+            
+            # Get mechanics
+            mechanics = Mechanic.search(domain)
+            
+            # Format response
+            result = []
+            for mechanic in mechanics:
+                result.append({
+                    'id': mechanic.id,
+                    'name': mechanic.name,
+                    'position_code': mechanic.position_code,
+                    'team': mechanic.team_id.name if mechanic.team_id else ''
+                })
+            
+            return {
+                'status': 'success',
+                'data': result
+            }
+        
+        except Exception as e:
+            _logger.error(f"Error fetching available mechanics: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/lead-time/<int:sale_order_id>/mechanics', type='json', auth='user', methods=['GET', 'PUT', 'OPTIONS'], csrf=False, cors='*')
+    def manage_mechanics(self, sale_order_id, **kw):
+        """Get or update mechanics for a specific sale order"""
+        try:
+            # Handle OPTIONS request for CORS
+            if request.httprequest.method == 'OPTIONS':
+                headers = {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                    'Access-Control-Allow-Credentials': 'true'
+                }
+                return Response(status=200, headers=headers)
+            
+            # Validate access
+            sale_order = self._validate_access(sale_order_id)
+            if not sale_order:
+                return {'status': 'error', 'message': 'Sale order not found'}
+            
+            # Handle GET request to retrieve current mechanics
+            if request.httprequest.method == 'GET':
+                current_mechanics = []
+                for mechanic in sale_order.car_mechanic_id_new:
+                    current_mechanics.append({
+                        'id': mechanic.id,
+                        'name': mechanic.name
+                    })
+                
+                return {
+                    'status': 'success',
+                    'data': {
+                        'mechanics': current_mechanics,
+                        'mechanic_team': sale_order.generated_mechanic_team
+                    }
+                }
+            
+            # Handle PUT request to update mechanics
+            if request.httprequest.method == 'PUT':
+                mechanic_ids = kw.get('mechanic_ids', [])
+                
+                # Validate mechanic IDs
+                if not isinstance(mechanic_ids, list):
+                    return {'status': 'error', 'message': 'mechanic_ids must be a list'}
+                
+                # Validate that only non-leader mechanics are selected
+                if mechanic_ids:
+                    selected_mechanics = request.env['pitcar.mechanic.new'].browse(mechanic_ids)
+                    leader_mechanics = selected_mechanics.filtered(lambda m: m.position_code == 'leader')
+                    
+                    if leader_mechanics:
+                        return {
+                            'status': 'error', 
+                            'message': 'Team leaders cannot be assigned to sales orders. Please select only regular mechanics.'
+                        }
+                
+                # Update sale order with new mechanics
+                sale_order.write({
+                    'car_mechanic_id_new': [(6, 0, mechanic_ids)]
+                })
+                
+                # Trigger compute of generated_mechanic_team
+                sale_order._compute_generated_mechanic_team()
+                
+                # Return updated data
+                return {
+                    'status': 'success',
+                    'message': 'Mechanics updated successfully',
+                    'data': {
+                        'mechanics': [{'id': m.id, 'name': m.name} for m in sale_order.car_mechanic_id_new],
+                        'mechanic_team': sale_order.generated_mechanic_team
+                    }
+                }
+            
+        except Exception as e:
+            _logger.error(f"Error in manage_mechanics: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
     @http.route('/web/lead-time/<int:sale_order_id>/notes', type='json', auth='user', methods=['PUT'])
     def update_notes(self, sale_order_id, notes):
         """Update lead time notes"""

@@ -1287,31 +1287,36 @@ class SaleOrder(models.Model):
             # Gunakan context untuk bypass pengecekan yang tidak perlu
             self = self.with_context(skip_queue_check=True)
             
-            # Gunakan Odoo datetime tools dan batch operation
-            current_time = fields.Datetime.now()
-            values = {
-                'sa_cetak_pkb': current_time,
-                'reception_state': 'completed'  # Update state jika perlu
-            }
-            self.write(values)
+            # Hanya catat waktu jika sa_cetak_pkb masih kosong (klik pertama)
+            if not self.sa_cetak_pkb:
+                # Gunakan Odoo datetime tools dan batch operation
+                current_time = fields.Datetime.now()
+                values = {
+                    'sa_cetak_pkb': current_time,
+                    'reception_state': 'completed'  # Update state jika perlu
+                }
+                self.write(values)
 
-            # Tambahkan notifikasi untuk part purchasing
-            self.env['pitcar.notification'].create_or_update_notification(
-                model='sale.order',
-                res_id=self.id,
-                type='pkb_printed',  # Tipe baru untuk Cetak PKB
-                title='PKB Dicetak',
-                message=f"PKB untuk Order #{self.name} telah dicetak",
-                request_time=current_time,
-                data={'total_items': len(self.part_request_items_ids) or 0}
-            )
-            _logger.info(f"Notification created for PKB printed: Order #{self.name}")
+                # Tambahkan notifikasi untuk part purchasing
+                self.env['pitcar.notification'].create_or_update_notification(
+                    model='sale.order',
+                    res_id=self.id,
+                    type='pkb_printed',  # Tipe baru untuk Cetak PKB
+                    title='PKB Dicetak',
+                    message=f"PKB untuk Order #{self.name} telah dicetak",
+                    request_time=current_time,
+                    data={'total_items': len(self.part_request_items_ids) or 0}
+                )
+                _logger.info(f"Notification created for PKB printed: Order #{self.name}")
 
-            # Complete queue in background
-            self._complete_queue_async()
+                # Complete queue in background
+                self._complete_queue_async()
 
-            # Post message in batch
-            self._post_pkb_message()
+                # Post message in batch
+                self._post_pkb_message()
+            else:
+                # Jika sudah pernah diklik sebelumnya, hanya log info tanpa mencatat waktu
+                _logger.info(f"Printing PKB again for order #{self.name} without updating timestamp")
 
             # Return report action
             return self.env.ref('pitcar_custom.action_report_work_order').report_action(self)

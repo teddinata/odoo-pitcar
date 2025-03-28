@@ -476,40 +476,62 @@ class TeamProjectTask(models.Model):
         return task
 
     def write(self, vals):
-        # Untuk setiap task yang diupdate
+        # For each task being updated
         for task in self:
-            # Jika terjadi perubahan status
+            # If there's a status change
             if 'state' in vals and task.state != vals['state']:
                 now = fields.Datetime.now()
                 
-                # Jika fitur auto timesheet diaktifkan
+                # If auto timesheet is enabled
                 if task.auto_timesheet:
-                    # Jika status sebelumnya adalah in_progress, catat timesheet
+                    # If previous status was in_progress, create timesheet entry
                     if task.state == 'in_progress' and task.state_change_time:
-                        # Hitung durasi dalam status in_progress
+                        # Calculate duration in hours
                         duration_hours = (now - task.state_change_time).total_seconds() / 3600
                         
-                        # Batasi minimum durasi (misal 0.1 jam = 6 menit)
+                        # Only create timesheet if duration is significant (>= 6 minutes)
                         if duration_hours >= 0.1:
-                            # Ciptakan timesheet entry
-                            self.env['team.project.timesheet'].sudo().create({
-                                'task_id': task.id,
-                                'employee_id': self.env.user.employee_id.id,
-                                'date': fields.Date.today(),
-                                'hours': round(duration_hours, 2),
-                                'description': f"Time spent while task was in '{task.state}' state"
-                            })
+                            # Handle durations longer than 24 hours by splitting into daily entries
+                            if duration_hours > 24:
+                                # Create multiple timesheet entries, one per day
+                                remaining_hours = duration_hours
+                                current_date = task.state_change_time.date()
+                                end_date = now.date()
+                                
+                                while current_date <= end_date:
+                                    hours_for_day = min(remaining_hours, 24.0 if current_date < end_date else remaining_hours)
+                                    
+                                    if hours_for_day >= 0.1:  # Only create entries with significant time
+                                        self.env['team.project.timesheet'].sudo().create({
+                                            'task_id': task.id,
+                                            'employee_id': self.env.user.employee_id.id,
+                                            'date': current_date,
+                                            'hours': round(hours_for_day, 2),
+                                            'description': f"Time spent while task was in '{task.state}' state"
+                                        })
+                                    
+                                    remaining_hours -= hours_for_day
+                                    current_date = current_date + timedelta(days=1)
+                            else:
+                                # For durations under 24 hours, create a single timesheet entry as before
+                                self.env['team.project.timesheet'].sudo().create({
+                                    'task_id': task.id,
+                                    'employee_id': self.env.user.employee_id.id,
+                                    'date': fields.Date.today(),
+                                    'hours': round(duration_hours, 2),
+                                    'description': f"Time spent while task was in '{task.state}' state"
+                                })
                 
-                # Catat status sebelumnya dan waktu perubahan
+                # Record previous state and change time
                 vals.update({
                     'previous_state': task.state,
                     'state_change_time': fields.Datetime.now()
                 })
                 
-                # Jika status berubah ke in_progress
+                # If status changes to in_progress
                 if vals['state'] == 'in_progress' and not task.actual_date_start:
                     vals['actual_date_start'] = fields.Datetime.now()
-                # Jika status berubah ke done
+                # If status changes to done
                 elif vals['state'] == 'done' and not task.actual_date_end:
                     vals['actual_date_end'] = fields.Datetime.now()
         

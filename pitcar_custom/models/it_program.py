@@ -53,6 +53,10 @@ class ITSystem(models.Model):
     # Ratings
     rating_ids = fields.One2many('it.system.rating', 'system_id', string='Ratings')
     average_rating = fields.Float('Rating Rata-rata', compute='_compute_average_rating', store=True, digits=(2,1))
+
+    # Ganti single attachment dengan many2many
+    document_attachment_ids = fields.Many2many('ir.attachment', 'it_system_attachment_rel', 
+                                            'system_id', 'attachment_id', string='Dokumen Sistem')
     
     # Compute methods
     @api.depends('name')
@@ -126,7 +130,10 @@ class ITSystemFeature(models.Model):
     # Dokumentasi
     has_documentation = fields.Boolean('Memiliki Dokumentasi', default=False)
     documentation_url = fields.Char('URL Dokumentasi Fitur')
-    doc_attachment_id = fields.Many2one('ir.attachment', string='Dokumen Fitur')
+    # Ganti single attachment dengan many2many
+    document_attachment_ids = fields.Many2many('ir.attachment', 'it_system_feature_attachment_rel', 
+                                            'feature_id', 'attachment_id', string='Dokumen Fitur')
+
     
     # Sub-fitur
     parent_id = fields.Many2one('it.system.feature', string='Fitur Induk')

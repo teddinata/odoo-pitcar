@@ -1750,3 +1750,307 @@ class ITSystemAPI(http.Controller):
                 'status': 'error',
                 'message': str(e)
             }), mimetype='application/json', status=500)
+        
+    @http.route('/web/v2/it/maintenance', type='json', auth='user', methods=['POST'], csrf=False)
+    def manage_maintenance(self, **kw):
+        """Mengelola operasi CRUD untuk maintenance log sistem IT."""
+        try:
+            operation = kw.get('operation', 'create')
+
+            if operation == 'create':
+                # Validasi field yang diperlukan
+                required_fields = ['name', 'system_id', 'maintenance_type', 'scheduled_date', 
+                                'scheduled_time_start', 'scheduled_time_end', 'responsible_id', 'description']
+                if not all(kw.get(field) for field in required_fields):
+                    return {'status': 'error', 'message': 'Field yang diperlukan tidak lengkap'}
+                
+                # Konversi nilai
+                values = {
+                    'name': kw['name'],
+                    'system_id': int(kw['system_id']),
+                    'maintenance_type': kw['maintenance_type'],
+                    'scheduled_date': kw['scheduled_date'],
+                    'scheduled_time_start': float(kw['scheduled_time_start']),
+                    'scheduled_time_end': float(kw['scheduled_time_end']),
+                    'responsible_id': int(kw['responsible_id']),
+                    'description': kw['description'],
+                    'status': kw.get('status', 'scheduled')
+                }
+                
+                # Optional fields
+                if kw.get('version_after'):
+                    values['version_after'] = kw['version_after']
+                    
+                if kw.get('team_ids'):
+                    if isinstance(kw['team_ids'], list):
+                        values['team_ids'] = [(6, 0, [int(id) for id in kw['team_ids']])]
+                        
+                if kw.get('affected_features'):
+                    if isinstance(kw['affected_features'], list):
+                        values['affected_features'] = [(6, 0, [int(id) for id in kw['affected_features']])]
+                        
+                if kw.get('tag_ids'):
+                    if isinstance(kw['tag_ids'], list):
+                        values['tag_ids'] = [(6, 0, [int(id) for id in kw['tag_ids']])]
+                
+                # Create record
+                maintenance = request.env['it.system.maintenance'].sudo().create(values)
+                return {'status': 'success', 'data': self._prepare_maintenance_data(maintenance)}
+            
+            elif operation == 'read':
+                maintenance_id = kw.get('maintenance_id')
+                if not maintenance_id:
+                    return {'status': 'error', 'message': 'Parameter maintenance_id tidak ada'}
+                
+                maintenance = request.env['it.system.maintenance'].sudo().browse(int(maintenance_id))
+                if not maintenance.exists():
+                    return {'status': 'error', 'message': 'Maintenance log tidak ditemukan'}
+                
+                return {'status': 'success', 'data': self._prepare_maintenance_data(maintenance)}
+            
+            elif operation == 'update':
+                maintenance_id = kw.get('maintenance_id')
+                if not maintenance_id:
+                    return {'status': 'error', 'message': 'Parameter maintenance_id tidak ada'}
+                
+                maintenance = request.env['it.system.maintenance'].sudo().browse(int(maintenance_id))
+                if not maintenance.exists():
+                    return {'status': 'error', 'message': 'Maintenance log tidak ditemukan'}
+                
+                # Update values
+                update_values = {}
+                updatable_fields = [
+                    'name', 'maintenance_type', 'scheduled_date', 'scheduled_time_start', 
+                    'scheduled_time_end', 'responsible_id', 'description', 'status',
+                    'version_after', 'notes', 'changelog', 'is_successful'
+                ]
+                
+                for field in updatable_fields:
+                    if field in kw:
+                        if field in ['responsible_id']:
+                            update_values[field] = int(kw[field])
+                        elif field in ['scheduled_time_start', 'scheduled_time_end']:
+                            update_values[field] = float(kw[field])
+                        elif field in ['is_successful']:
+                            update_values[field] = bool(kw[field])
+                        else:
+                            update_values[field] = kw[field]
+                
+                # Many2many fields
+                if kw.get('team_ids'):
+                    if isinstance(kw['team_ids'], list):
+                        update_values['team_ids'] = [(6, 0, [int(id) for id in kw['team_ids']])]
+                        
+                if kw.get('affected_features'):
+                    if isinstance(kw['affected_features'], list):
+                        update_values['affected_features'] = [(6, 0, [int(id) for id in kw['affected_features']])]
+                        
+                if kw.get('tag_ids'):
+                    if isinstance(kw['tag_ids'], list):
+                        update_values['tag_ids'] = [(6, 0, [int(id) for id in kw['tag_ids']])]
+                
+                # Update record
+                maintenance.write(update_values)
+                return {'status': 'success', 'data': self._prepare_maintenance_data(maintenance)}
+            
+            elif operation == 'delete':
+                maintenance_id = kw.get('maintenance_id')
+                if not maintenance_id:
+                    return {'status': 'error', 'message': 'Parameter maintenance_id tidak ada'}
+                
+                maintenance = request.env['it.system.maintenance'].sudo().browse(int(maintenance_id))
+                if not maintenance.exists():
+                    return {'status': 'error', 'message': 'Maintenance log tidak ditemukan'}
+                
+                maintenance.unlink()
+                return {'status': 'success', 'message': 'Maintenance log berhasil dihapus'}
+            
+            elif operation == 'list':
+                domain = []
+                
+                # Terapkan filter
+                if kw.get('system_id'):
+                    domain.append(('system_id', '=', int(kw['system_id'])))
+                    
+                if kw.get('status'):
+                    statuses = kw['status'].split(',')
+                    domain.append(('status', 'in', statuses))
+                    
+                if kw.get('maintenance_type'):
+                    types = kw['maintenance_type'].split(',')
+                    domain.append(('maintenance_type', 'in', types))
+                    
+                if kw.get('date_start'):
+                    domain.append(('scheduled_date', '>=', kw['date_start']))
+                    
+                if kw.get('date_end'):
+                    domain.append(('scheduled_date', '<=', kw['date_end']))
+                    
+                if kw.get('responsible_id'):
+                    domain.append(('responsible_id', '=', int(kw['responsible_id'])))
+                
+                # Pagination
+                page = int(kw.get('page', 1))
+                limit = int(kw.get('limit', 10))
+                offset = (page - 1) * limit
+                
+                # Sorting
+                order = kw.get('order', 'scheduled_date desc, id desc')
+                
+                # Ambil data
+                maintenance_logs = request.env['it.system.maintenance'].sudo().search(
+                    domain, limit=limit, offset=offset, order=order
+                )
+                total = request.env['it.system.maintenance'].sudo().search_count(domain)
+                
+                # Siapkan response
+                result = {
+                    'status': 'success',
+                    'data': [self._prepare_maintenance_data(log) for log in maintenance_logs],
+                    'pagination': {
+                        'page': page,
+                        'limit': limit,
+                        'total': total,
+                        'total_pages': (total + limit - 1) // limit if limit else 1
+                    }
+                }
+                
+                return result
+                
+            elif operation == 'change_status':
+                maintenance_id = kw.get('maintenance_id')
+                new_status = kw.get('status')
+                
+                if not maintenance_id or not new_status:
+                    return {'status': 'error', 'message': 'Parameter maintenance_id dan status diperlukan'}
+                
+                maintenance = request.env['it.system.maintenance'].sudo().browse(int(maintenance_id))
+                if not maintenance.exists():
+                    return {'status': 'error', 'message': 'Maintenance log tidak ditemukan'}
+                
+                # Validasi status
+                valid_statuses = ['scheduled', 'in_progress', 'completed', 'cancelled']
+                if new_status not in valid_statuses:
+                    return {'status': 'error', 'message': f'Status tidak valid. Harus salah satu dari: {", ".join(valid_statuses)}'}
+                
+                # Update status
+                if new_status == 'in_progress':
+                    maintenance.action_start()
+                elif new_status == 'completed':
+                    maintenance.action_complete()
+                elif new_status == 'cancelled':
+                    maintenance.action_cancel()
+                else:
+                    maintenance.write({'status': new_status})
+                
+                return {'status': 'success', 'data': self._prepare_maintenance_data(maintenance)}
+                
+            elif operation == 'get_tags':
+                # Ambil semua tags
+                tags = request.env['it.maintenance.tag'].sudo().search([])
+                tags_data = [{'id': tag.id, 'name': tag.name, 'color': tag.color} for tag in tags]
+                return {'status': 'success', 'data': tags_data}
+            
+            else:
+                return {'status': 'error', 'message': f'Operasi tidak dikenal: {operation}'}
+                
+        except Exception as e:
+            _logger.error(f"Error di manage_maintenance: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+            
+    def _prepare_maintenance_data(self, maintenance):
+        """Siapkan data maintenance untuk respon API."""
+        # Convert float time to string format (HH:MM)
+        def float_to_time(float_time):
+            hours = int(float_time)
+            minutes = int((float_time - hours) * 60)
+            return f"{hours:02d}:{minutes:02d}"
+        
+        # Base data
+        data = {
+            'id': maintenance.id,
+            'name': maintenance.name,
+            'system_id': maintenance.system_id.id,
+            'system_name': maintenance.system_id.name,
+            'maintenance_type': maintenance.maintenance_type,
+            'scheduled_date': self._format_datetime(maintenance.scheduled_date),
+            'scheduled_time_start': float_to_time(maintenance.scheduled_time_start),
+            'scheduled_time_end': float_to_time(maintenance.scheduled_time_end),
+            'status': maintenance.status,
+            'description': maintenance.description,
+            'responsible_id': maintenance.responsible_id.id,
+            'responsible_name': maintenance.responsible_id.name,
+            'version_before': maintenance.version_before,
+            'version_after': maintenance.version_after or '',
+            'notes': maintenance.notes or '',
+            'changelog': maintenance.changelog or '',
+            'is_successful': maintenance.is_successful,
+            'actual_downtime': maintenance.actual_downtime,
+            'downtime_exceeded': maintenance.downtime_exceeded
+        }
+        
+        # Add team members
+        data['team_members'] = []
+        for employee in maintenance.team_ids:
+            data['team_members'].append({
+                'id': employee.id,
+                'name': employee.name
+            })
+        
+        # Add affected features
+        data['affected_features'] = []
+        for feature in maintenance.affected_features:
+            data['affected_features'].append({
+                'id': feature.id,
+                'name': feature.name
+            })
+        
+        # Add tags
+        data['tags'] = []
+        for tag in maintenance.tag_ids:
+            data['tags'].append({
+                'id': tag.id,
+                'name': tag.name,
+                'color': tag.color
+            })
+        
+        # Add actual times if present
+        if maintenance.actual_start_time:
+            data['actual_start_time'] = self._format_datetime(maintenance.actual_start_time)
+        if maintenance.actual_end_time:
+            data['actual_end_time'] = self._format_datetime(maintenance.actual_end_time)
+        
+        return data
+    
+    @http.route('/web/v2/it/version_history', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_version_history(self, **kw):
+        """Mendapatkan riwayat versi sistem IT."""
+        try:
+            system_id = kw.get('system_id')
+            if not system_id:
+                return {'status': 'error', 'message': 'Parameter system_id diperlukan'}
+            
+            # Get version history
+            history = request.env['it.system.version.history'].sudo().search([
+                ('system_id', '=', int(system_id))
+            ], order='change_date desc')
+            
+            # Prepare response
+            history_data = []
+            for record in history:
+                history_data.append({
+                    'id': record.id,
+                    'previous_version': record.previous_version,
+                    'new_version': record.new_version,
+                    'change_date': self._format_datetime(record.change_date),
+                    'changed_by': record.changed_by_id.name,
+                    'maintenance_id': record.maintenance_id.id if record.maintenance_id else None,
+                    'maintenance_name': record.maintenance_id.name if record.maintenance_id else None,
+                    'changelog': record.changelog or ''
+                })
+            
+            return {'status': 'success', 'data': history_data}
+            
+        except Exception as e:
+            _logger.error(f"Error di get_version_history: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

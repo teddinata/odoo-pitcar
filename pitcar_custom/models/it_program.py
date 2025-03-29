@@ -265,9 +265,21 @@ class ITSystemMaintenanceLog(models.Model):
             'actual_end_time': fields.Datetime.now()
         })
         
-        # Update versi sistem jika ada perubahan
+        # Update versi sistem dan buat entri riwayat versi jika ada perubahan versi
         if self.version_after and self.version_after != self.version_before:
+            # Update versi sistem
             self.system_id.write({'version': self.version_after})
+            
+            # Buat entri riwayat versi
+            self.env['it.system.version.history'].create({
+                'system_id': self.system_id.id,
+                'previous_version': self.version_before,
+                'new_version': self.version_after,
+                'maintenance_id': self.id,
+                'change_date': fields.Datetime.now(),
+                'changed_by_id': self.env.user.id,
+                'changelog': self.changelog
+            })
     
     def action_cancel(self):
         self.write({
@@ -310,24 +322,6 @@ class ITMaintenanceTag(models.Model):
     
     name = fields.Char('Nama', required=True)
     color = fields.Integer('Warna')
-
-class ITSystemVersionHistory(models.Model):
-    _name = 'it.system.version.history'
-    _description = 'Riwayat Versi Sistem IT'
-    _order = 'change_date desc, id desc'
-    
-    system_id = fields.Many2one('it.system', string='Sistem', required=True, ondelete='cascade')
-    previous_version = fields.Char('Versi Sebelumnya', required=True)
-    new_version = fields.Char('Versi Baru', required=True)
-    maintenance_id = fields.Many2one('it.system.maintenance', string='Maintenance Terkait')
-    
-    change_date = fields.Datetime('Tanggal Perubahan', required=True)
-    changed_by_id = fields.Many2one('res.users', string='Diubah Oleh', required=True)
-    changelog = fields.Text('Changelog')
-    
-    # Attachments for version notes, documentation updates, etc.
-    attachment_ids = fields.Many2many('ir.attachment', 'it_version_attachment_rel', 
-                                    'version_id', 'attachment_id', string='Dokumen')
 
 class ITSystemRating(models.Model):
     _name = 'it.system.rating'
@@ -427,4 +421,74 @@ class ITErrorReport(models.Model):
             else:
                 error.resolution_time = 0.0
 
+class ITSystemVersionHistory(models.Model):
+    _name = 'it.system.version.history'
+    _description = 'Riwayat Versi Sistem IT'
+    _order = 'change_date desc, id desc'
+    
+    system_id = fields.Many2one('it.system', string='Sistem', required=True, ondelete='cascade')
+    previous_version = fields.Char('Versi Sebelumnya', required=True)
+    new_version = fields.Char('Versi Baru', required=True)
+    maintenance_id = fields.Many2one('it.system.maintenance', string='Maintenance Terkait')
+    
+    change_date = fields.Datetime('Tanggal Perubahan', required=True)
+    changed_by_id = fields.Many2one('res.users', string='Diubah Oleh', required=True)
+    changelog = fields.Text('Changelog')
+    
+    # Attachments for version notes, documentation updates, etc.
+    attachment_ids = fields.Many2many('ir.attachment', 'it_version_attachment_rel', 
+                                    'version_id', 'attachment_id', string='Dokumen')
+    
+    # models/it_system.py - Tambahkan method di model it.system.version.history
+
+    @api.model
+    def sync_from_maintenance(self, system_id=None):
+        """
+        Sinkronisasi riwayat versi dari maintenance log.
+        
+        Args:
+            system_id: Opsional, ID sistem tertentu untuk disinkronkan
+        
+        Returns:
+            Dictionary dengan jumlah record yang dibuat
+        """
+        domain = [
+            ('status', '=', 'completed'),
+            ('version_after', '!=', False),
+            ('version_before', '!=', False),
+            ('version_after', '!=', 'version_before'),
+        ]
+        
+        # Jika system_id disediakan, filter berdasarkan sistem
+        if system_id:
+            domain.append(('system_id', '=', int(system_id)))
+        
+        # Ambil semua maintenance log yang memiliki perubahan versi dan status completed
+        maintenance_logs = self.env['it.system.maintenance'].search(domain)
+        
+        created_count = 0
+        
+        for log in maintenance_logs:
+            # Periksa apakah entri riwayat versi sudah ada
+            existing_history = self.search([
+                ('maintenance_id', '=', log.id)
+            ], limit=1)
+            
+            # Jika belum ada, buat entri baru
+            if not existing_history:
+                self.create({
+                    'system_id': log.system_id.id,
+                    'previous_version': log.version_before,
+                    'new_version': log.version_after,
+                    'maintenance_id': log.id,
+                    'change_date': log.actual_end_time or log.create_date,
+                    'changed_by_id': log.responsible_id.user_id.id if log.responsible_id and log.responsible_id.user_id else self.env.user.id,
+                    'changelog': log.changelog or f"Perubahan dari versi {log.version_before} ke {log.version_after} melalui maintenance: {log.name}"
+                })
+                created_count += 1
+        
+        return {
+            'created_count': created_count,
+            'processed_count': len(maintenance_logs)
+        }
   

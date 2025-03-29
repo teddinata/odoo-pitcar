@@ -2054,3 +2054,21 @@ class ITSystemAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error di get_version_history: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    # controllers/it_kpi_api.py - Tambahkan endpoint baru
+
+    @http.route('/web/v2/it/sync_version_history', type='json', auth='user', methods=['POST'], csrf=False)
+    def sync_version_history(self, **kw):
+        """Sinkronisasi riwayat versi dari maintenance log."""
+        try:
+            # Parameter opsional: system_id untuk menyinkronkan hanya sistem tertentu
+            system_id = kw.get('system_id')
+            
+            # Panggil fungsi sinkronisasi di model history
+            result = request.env['it.system.version.history'].sudo().sync_from_maintenance(system_id)
+            
+            return {'status': 'success', 'data': result}
+                
+        except Exception as e:
+            _logger.error(f"Error di sync_version_history: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

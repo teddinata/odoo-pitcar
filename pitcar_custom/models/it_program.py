@@ -58,6 +58,37 @@ class ITSystem(models.Model):
     document_attachment_ids = fields.Many2many('ir.attachment', 'it_system_attachment_rel', 
                                             'system_id', 'attachment_id', string='Dokumen Sistem')
     
+    # Tambahkan relasi ke maintenance logs
+    maintenance_ids = fields.One2many('it.system.maintenance', 'system_id', string='Log Pemeliharaan')
+    maintenance_count = fields.Integer('Jumlah Maintenance', compute='_compute_maintenance_count')
+    last_maintenance_date = fields.Date('Maintenance Terakhir', compute='_compute_last_maintenance')
+    next_maintenance_date = fields.Date('Maintenance Selanjutnya', compute='_compute_next_maintenance')
+    
+    # Compute methods
+    def _compute_maintenance_count(self):
+        for system in self:
+            system.maintenance_count = len(system.maintenance_ids)
+    
+    def _compute_last_maintenance(self):
+        for system in self:
+            completed_maintenance = system.maintenance_ids.filtered(lambda m: m.status == 'completed')
+            if completed_maintenance:
+                system.last_maintenance_date = max(completed_maintenance.mapped('scheduled_date'))
+            else:
+                system.last_maintenance_date = False
+    
+    def _compute_next_maintenance(self):
+        today = fields.Date.today()
+        for system in self:
+            upcoming_maintenance = system.maintenance_ids.filtered(
+                lambda m: m.status == 'scheduled' and m.scheduled_date >= today
+            )
+            if upcoming_maintenance:
+                system.next_maintenance_date = min(upcoming_maintenance.mapped('scheduled_date'))
+            else:
+                system.next_maintenance_date = False
+
+    
     # Compute methods
     @api.depends('name')
     def _compute_related_project(self):
@@ -141,6 +172,162 @@ class ITSystemFeature(models.Model):
     
     # Pengguna yang bertanggung jawab
     responsible_id = fields.Many2one('hr.employee', string='Penanggung Jawab')
+    
+# models/it_system.py - Tambahkan model baru untuk maintenance log
+
+class ITSystemMaintenanceLog(models.Model):
+    _name = 'it.system.maintenance'
+    _description = 'IT System Maintenance Log'
+    _order = 'scheduled_date desc, id desc'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
+    
+    name = fields.Char('Judul', required=True, tracking=True)
+    system_id = fields.Many2one('it.system', string='Sistem', required=True, ondelete='cascade', tracking=True)
+    maintenance_type = fields.Selection([
+        ('scheduled', 'Terjadwal'),
+        ('emergency', 'Darurat'),
+        ('upgrade', 'Upgrade'),
+        ('patch', 'Patch'),
+        ('other', 'Lainnya')
+    ], string='Tipe Maintenance', required=True, default='scheduled', tracking=True)
+    
+    # Detail jadwal
+    scheduled_date = fields.Date('Tanggal Maintenance', required=True, tracking=True)
+    scheduled_time_start = fields.Float('Waktu Mulai', required=True, tracking=True)
+    scheduled_time_end = fields.Float('Waktu Selesai', required=True, tracking=True)
+    
+    # Status pelaksanaan
+    status = fields.Selection([
+        ('scheduled', 'Terjadwal'),
+        ('in_progress', 'Sedang Berlangsung'),
+        ('completed', 'Selesai'),
+        ('cancelled', 'Dibatalkan')
+    ], string='Status', default='scheduled', tracking=True)
+    
+    # Penanggung jawab
+    responsible_id = fields.Many2one('hr.employee', string='Penanggung Jawab', required=True, tracking=True)
+    team_ids = fields.Many2many('hr.employee', 'it_maintenance_team_rel', 'maintenance_id', 'employee_id', 
+                               string='Tim Pelaksana')
+    
+    # Deskripsi aktivitas
+    description = fields.Text('Deskripsi Aktivitas', required=True)
+    affected_features = fields.Many2many('it.system.feature', string='Fitur yang Terpengaruh')
+    
+    # Dokumentasi perubahan versi
+    version_before = fields.Char('Versi Sebelum', related='system_id.version', readonly=True, store=True)
+    version_after = fields.Char('Versi Setelah', help='Kosongkan jika tidak ada perubahan versi')
+    
+    # Informasi pelaksanaan
+    actual_start_time = fields.Datetime('Waktu Mulai Aktual')
+    actual_end_time = fields.Datetime('Waktu Selesai Aktual')
+    actual_downtime = fields.Integer('Downtime Aktual (menit)', compute='_compute_actual_downtime', store=True)
+    downtime_exceeded = fields.Boolean('Melebihi Estimasi', compute='_compute_downtime_exceeded', store=True)
+    
+    # Catatan pelaksanaan
+    notes = fields.Text('Catatan Pelaksanaan')
+    is_successful = fields.Boolean('Berhasil', default=True, help='Tandai jika maintenance berhasil')
+    changelog = fields.Text('Changelog', help='Perubahan yang dilakukan')
+    
+    # Terkait attachment
+    document_attachment_ids = fields.Many2many('ir.attachment', 'it_maintenance_attachment_rel', 
+                                            'maintenance_id', 'attachment_id', string='Dokumen')
+    
+    # Tags untuk kategorisasi
+    tag_ids = fields.Many2many('it.maintenance.tag', string='Tags')
+    
+    # Compute fields
+    @api.depends('actual_start_time', 'actual_end_time')
+    def _compute_actual_downtime(self):
+        for record in self:
+            if record.actual_start_time and record.actual_end_time:
+                delta = record.actual_end_time - record.actual_start_time
+                record.actual_downtime = int(delta.total_seconds() / 60)
+            else:
+                record.actual_downtime = 0
+    
+    @api.depends('actual_downtime', 'scheduled_time_start', 'scheduled_time_end')
+    def _compute_downtime_exceeded(self):
+        for record in self:
+            # Konversi scheduled time (float) ke menit
+            scheduled_duration = (record.scheduled_time_end - record.scheduled_time_start) * 60
+            record.downtime_exceeded = record.actual_downtime > scheduled_duration
+    
+    # Methods untuk perubahan status
+    def action_start(self):
+        self.write({
+            'status': 'in_progress',
+            'actual_start_time': fields.Datetime.now()
+        })
+    
+    def action_complete(self):
+        self.write({
+            'status': 'completed',
+            'actual_end_time': fields.Datetime.now()
+        })
+        
+        # Update versi sistem jika ada perubahan
+        if self.version_after and self.version_after != self.version_before:
+            self.system_id.write({'version': self.version_after})
+    
+    def action_cancel(self):
+        self.write({
+            'status': 'cancelled'
+        })
+
+    # Tambahkan metode di model ITSystemMaintenance
+    def action_apply_version_change(self):
+        """Menerapkan perubahan versi ke sistem."""
+        if not self.version_after or self.version_after == self.version_before:
+            raise ValidationError(_("Tidak ada perubahan versi yang perlu diterapkan."))
+            
+        if self.status != 'completed':
+            raise ValidationError(_("Perubahan versi hanya dapat diterapkan pada maintenance yang sudah selesai."))
+            
+        # Perbarui versi sistem
+        self.system_id.write({
+            'version': self.version_after
+        })
+        
+        # Buat log perubahan versi
+        self.env['it.system.version.history'].create({
+            'system_id': self.system_id.id,
+            'previous_version': self.version_before,
+            'new_version': self.version_after,
+            'maintenance_id': self.id,
+            'change_date': fields.Datetime.now(),
+            'changed_by_id': self.env.user.id,
+            'changelog': self.changelog
+        })
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
+
+class ITMaintenanceTag(models.Model):
+    _name = 'it.maintenance.tag'
+    _description = 'Maintenance Tags'
+    
+    name = fields.Char('Nama', required=True)
+    color = fields.Integer('Warna')
+
+class ITSystemVersionHistory(models.Model):
+    _name = 'it.system.version.history'
+    _description = 'Riwayat Versi Sistem IT'
+    _order = 'change_date desc, id desc'
+    
+    system_id = fields.Many2one('it.system', string='Sistem', required=True, ondelete='cascade')
+    previous_version = fields.Char('Versi Sebelumnya', required=True)
+    new_version = fields.Char('Versi Baru', required=True)
+    maintenance_id = fields.Many2one('it.system.maintenance', string='Maintenance Terkait')
+    
+    change_date = fields.Datetime('Tanggal Perubahan', required=True)
+    changed_by_id = fields.Many2one('res.users', string='Diubah Oleh', required=True)
+    changelog = fields.Text('Changelog')
+    
+    # Attachments for version notes, documentation updates, etc.
+    attachment_ids = fields.Many2many('ir.attachment', 'it_version_attachment_rel', 
+                                    'version_id', 'attachment_id', string='Dokumen')
 
 class ITSystemRating(models.Model):
     _name = 'it.system.rating'

@@ -5,6 +5,7 @@ import json
 import logging
 import pytz
 from datetime import datetime, timedelta
+import base64
 
 _logger = logging.getLogger(__name__)
 
@@ -1602,3 +1603,150 @@ class ITSystemAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error di list_it_projects: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/it/attachments', type='json', auth='user', methods=['POST'], csrf=False)
+    def manage_attachments(self, **kw):
+        """Mengelola attachment untuk sistem atau fitur."""
+        try:
+            operation = kw.get('operation', 'list')
+            model = kw.get('model')  # 'it.system' atau 'it.system.feature'
+            record_id = kw.get('record_id')
+            
+            if not model or not record_id:
+                return {'status': 'error', 'message': 'Parameter model dan record_id diperlukan'}
+            
+            record = request.env[model].sudo().browse(int(record_id))
+            if not record.exists():
+                return {'status': 'error', 'message': f'Record {model} dengan ID {record_id} tidak ditemukan'}
+            
+            if operation == 'list':
+                # Buat query untuk mendapatkan semua attachment untuk record tersebut
+                if model == 'it.system':
+                    attachments = record.document_attachment_ids
+                elif model == 'it.system.feature':
+                    attachments = record.document_attachment_ids
+                else:
+                    return {'status': 'error', 'message': f'Model {model} tidak didukung'}
+                
+                attachment_data = []
+                for attachment in attachments:
+                    attachment_data.append({
+                        'id': attachment.id,
+                        'name': attachment.name,
+                        'mimetype': attachment.mimetype,
+                        'file_size': attachment.file_size,
+                        'url': f'/web/content/{attachment.id}?download=true',
+                        'create_date': self._format_datetime(attachment.create_date)
+                    })
+                
+                return {'status': 'success', 'data': attachment_data}
+            
+            elif operation == 'add':
+                attachment_id = kw.get('attachment_id')
+                if not attachment_id:
+                    return {'status': 'error', 'message': 'Parameter attachment_id diperlukan'}
+                    
+                attachment = request.env['ir.attachment'].sudo().browse(int(attachment_id))
+                if not attachment.exists():
+                    return {'status': 'error', 'message': 'Attachment tidak ditemukan'}
+                
+                if model == 'it.system':
+                    record.write({'document_attachment_ids': [(4, attachment.id)]})
+                elif model == 'it.system.feature':
+                    record.write({'document_attachment_ids': [(4, attachment.id)]})
+                
+                return {'status': 'success', 'message': 'Attachment berhasil ditambahkan'}
+                
+            elif operation == 'remove':
+                attachment_id = kw.get('attachment_id')
+                if not attachment_id:
+                    return {'status': 'error', 'message': 'Parameter attachment_id diperlukan'}
+                    
+                attachment = request.env['ir.attachment'].sudo().browse(int(attachment_id))
+                if not attachment.exists():
+                    return {'status': 'error', 'message': 'Attachment tidak ditemukan'}
+                
+                if model == 'it.system':
+                    record.write({'document_attachment_ids': [(3, attachment.id)]})
+                elif model == 'it.system.feature':
+                    record.write({'document_attachment_ids': [(3, attachment.id)]})
+                
+                return {'status': 'success', 'message': 'Attachment berhasil dihapus dari record'}
+                
+            else:
+                return {'status': 'error', 'message': f'Operasi tidak dikenal: {operation}'}
+                
+        except Exception as e:
+            _logger.error(f"Error di manage_attachments: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/it/upload_attachment', type='http', auth='user', methods=['POST'], csrf=False)
+    def upload_attachment(self, **kw):
+        """Upload attachment untuk sistem atau fitur."""
+        try:
+            model = kw.get('model')  # 'it.system' atau 'it.system.feature'
+            record_id = kw.get('record_id')
+            description = kw.get('description', '')
+            
+            if not model or not record_id:
+                return Response(json.dumps({
+                    'status': 'error', 
+                    'message': 'Parameter model dan record_id diperlukan'
+                }), mimetype='application/json', status=400)
+            
+            # Validasi record
+            record = request.env[model].sudo().browse(int(record_id))
+            if not record.exists():
+                return Response(json.dumps({
+                    'status': 'error', 
+                    'message': f'Record {model} dengan ID {record_id} tidak ditemukan'
+                }), mimetype='application/json', status=404)
+            
+            # Dapatkan file
+            if 'file' not in request.httprequest.files:
+                return Response(json.dumps({
+                    'status': 'error', 
+                    'message': 'File tidak ditemukan dalam request'
+                }), mimetype='application/json', status=400)
+            
+            file = request.httprequest.files['file']
+            file_data = file.read()
+            filename = file.filename
+            
+            # Create attachment
+            attachment_vals = {
+                'name': filename,
+                'datas': base64.b64encode(file_data),
+                'res_model': model,
+                'res_id': int(record_id),
+                'description': description,
+                'type': 'binary'
+            }
+            
+            attachment = request.env['ir.attachment'].sudo().create(attachment_vals)
+            
+            # Hubungkan attachment dengan record
+            if model == 'it.system':
+                record.write({'document_attachment_ids': [(4, attachment.id)]})
+            elif model == 'it.system.feature':
+                record.write({'document_attachment_ids': [(4, attachment.id)]})
+            
+            # Response
+            return Response(json.dumps({
+                'status': 'success',
+                'data': {
+                    'id': attachment.id,
+                    'name': attachment.name,
+                    'mimetype': attachment.mimetype,
+                    'file_size': attachment.file_size,
+                    'url': f'/web/content/{attachment.id}?download=true',
+                    'create_date': self._format_datetime(attachment.create_date)
+                }
+            }), mimetype='application/json')
+            
+        except Exception as e:
+            _logger.error(f"Error upload attachment: {str(e)}")
+            return Response(json.dumps({
+                'status': 'error',
+                'message': str(e)
+            }), mimetype='application/json', status=500)

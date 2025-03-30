@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <template id="report_it_kpi">
+        <t t-call="web.html_container">
+            <t t-call="web.external_layout">
+                <div class="page">
+                    <!-- Custom CSS for styling the report -->
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            font-size: 12px;
+                        }
+                        .page-header {
+                            text-align: center;
+                            margin-bottom: 20px;
+                        }
+                        .page-title {
+                            font-size: 18px;
+                            font-weight: bold;
+                            margin-bottom: 5px;
+                        }
+                        .page-subtitle {
+                            font-size: 14px;
+                            margin-bottom: 10px;
+                        }
+                        .employee-header {
+                            background-color: #f2f2f2;
+                            padding: 10px;
+                            margin-top: 20px;
+                            margin-bottom: 10px;
+                            border: 1px solid #ddd;
+                            border-radius: 5px;
+                        }
+                        .employee-name {
+                            font-size: 14px;
+                            font-weight: bold;
+                        }
+                        .employee-info {
+                            margin-bottom: 5px;
+                        }
+                        table.kpi-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-bottom: 20px;
+                        }
+                        .kpi-table th, .kpi-table td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: left;
+                        }
+                        .kpi-table th {
+                            background-color: #4472C4;
+                            color: white;
+                            font-weight: bold;
+                            text-align: center;
+                        }
+                        .kpi-table tr:nth-child(even) {
+                            background-color: #f9f9f9;
+                        }
+                        .kpi-table tr.summary {
+                            background-color: #FFD966;
+                            font-weight: bold;
+                        }
+                        .numeric {
+                            text-align: center;
+                        }
+                        .achievement-good {
+                            background-color: #C6EFCE;
+                            color: #006100;
+                        }
+                        .achievement-medium {
+                            background-color: #FFEB9C;
+                            color: #9C5700;
+                        }
+                        .achievement-poor {
+                            background-color: #FFC7CE;
+                            color: #9C0006;
+                        }
+                        .summary-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 30px;
+                        }
+                        .summary-table th, .summary-table td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: center;
+                        }
+                        .summary-table th {
+                            background-color: #4472C4;
+                            color: white;
+                            font-weight: bold;
+                        }
+                        .summary-title {
+                            font-size: 16px;
+                            font-weight: bold;
+                            margin-top: 30px;
+                            margin-bottom: 10px;
+                            text-align: center;
+                        }
+                        .page-footer {
+                            font-size: 10px;
+                            text-align: center;
+                            margin-top: 30px;
+                            font-style: italic;
+                        }
+                    </style>
+                    
+                    <!-- Report Header -->
+                    <div class="page-header">
+                        <div class="page-title">LAPORAN KPI TIM TEKNOLOGI INFORMASI (IT)</div>
+                        <div class="page-subtitle">Periode: <t t-esc="period"/></div>
+                        <div class="page-subtitle">Tanggal Cetak: <t t-esc="current_date"/></div>
+                    </div>
+                    
+                    <!-- For each IT team member, create a section -->
+                    <t t-foreach="it_members" t-as="member">
+                        <div class="page-break" t-if="not member_first">
+                            <div style="page-break-before: always;"></div>
+                        </div>
+                        
+                        <!-- Employee Header -->
+                        <div class="employee-header">
+                            <div class="employee-name"><t t-esc="member['employee']['name']"/> - <t t-esc="member['employee']['position']"/></div>
+                            <div class="employee-info">Departemen: <t t-esc="member['employee']['department']"/></div>
+                        </div>
+                        
+                        <!-- KPI Table -->
+                        <table class="kpi-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 5%;">No</th>
+                                    <th style="width: 30%;">KPI</th>
+                                    <th style="width: 8%;">Bobot (%)</th>
+                                    <th style="width: 8%;">Target</th>
+                                    <th style="width: 8%;">Aktual (%)</th>
+                                    <th style="width: 10%;">Pencapaian</th>
+                                    <th style="width: 31%;">Formula/Pengukuran</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="member['kpi_scores']" t-as="kpi">
+                                    <tr>
+                                        <td class="numeric"><t t-esc="kpi['no']"/></td>
+                                        <td><t t-esc="kpi['name']"/></td>
+                                        <td class="numeric"><t t-esc="kpi['weight']"/></td>
+                                        <td class="numeric"><t t-esc="kpi['target']"/></td>
+                                        <td class="numeric"><t t-esc="'%.2f' % kpi['actual']"/></td>
+                                        <td class="numeric"><t t-esc="'%.2f' % kpi['achievement']"/></td>
+                                        <td><t t-esc="kpi['measurement']"/></td>
+                                    </tr>
+                                </t>
+                                <!-- Summary row -->
+                                <tr class="summary">
+                                    <td colspan="2" style="text-align: right;">Total</td>
+                                    <td class="numeric"><t t-esc="member['summary']['total_weight']"/></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td class="numeric"><t t-esc="'%.2f' % member['summary']['total_score']"/></td>
+                                    <td><t t-esc="member['summary']['achievement_status']"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+                    
+                    <!-- Summary Page for All IT Team Members -->
+                    <div class="page-break">
+                        <div style="page-break-before: always;"></div>
+                    </div>
+                    
+                    <div class="summary-title">RINGKASAN KPI SEMUA ANGGOTA TIM IT</div>
+                    <div class="page-subtitle">Periode: <t t-esc="period"/></div>
+                    
+                    <table class="summary-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 5%;">No</th>
+                                <th style="width: 30%;">Karyawan</th>
+                                <th style="width: 25%;">Posisi</th>
+                                <th style="width: 15%;">Skor Total</th>
+                                <th style="width: 25%;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="it_members" t-as="member">
+                                <tr t-attf-class="{{ 'achievement-good' if member['summary']['total_score'] >= member['summary']['target'] else 'achievement-poor' }}">
+                                    <td><t t-esc="member_index + 1"/></td>
+                                    <td><t t-esc="member['employee']['name']"/></td>
+                                    <td><t t-esc="member['employee']['position']"/></td>
+                                    <td class="numeric">
+                                        <t t-esc="'%.2f' % member['summary']['total_score']"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="member['summary']['achievement_status']"/>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+                    
+                    <!-- Page Footer -->
+                    <div class="page-footer">
+                        Laporan ini dibuat secara otomatis dari Sistem Manajemen Bengkel Pitcar
+                    </div>
+                </div>
+            </t>
+        </t>
+    </template>
+</odoo>

@@ -1082,7 +1082,7 @@ class ITSystemAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error di get_it_kpi: {str(e)}")
             return {'status': 'error', 'message': str(e)}
-    
+        
     @http.route('/web/v2/kpi/it/export_pdf', type='http', auth='user', methods=['POST'], csrf=False)
     def export_it_kpi_pdf(self, **kw):
         """Export KPI data untuk Tim IT ke format PDF"""
@@ -1131,7 +1131,6 @@ class ITSystemAPI(http.Controller):
                 '|',
                 '|',
                 ('job_title', 'ilike', 'IT'),
-                ('job_title', 'ilike', 'Sistem'),
                 ('department_id.name', 'ilike', 'IT')
             ])
             
@@ -1202,6 +1201,126 @@ class ITSystemAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error mengekspor KPI IT ke PDF: {str(e)}", exc_info=True)
             return Response(f"Error: {str(e)}", status=500)
+    
+    # @http.route('/web/v2/kpi/it/export_pdf', type='http', auth='user', methods=['POST'], csrf=False)
+    # def export_it_kpi_pdf(self, **kw):
+    #     """Export KPI data untuk Tim IT ke format PDF"""
+    #     try:
+    #         # Dapatkan dan validasi bulan/tahun
+    #         current_date = datetime.now()
+    #         month = int(kw.get('month', current_date.month))
+    #         year = int(kw.get('year', current_date.year))
+
+    #         # Validasi rentang
+    #         if not (1 <= month <= 12):
+    #             return Response('Bulan harus antara 1 dan 12', status=400)
+    #         if year < 2000 or year > 2100:
+    #             return Response('Tahun tidak valid', status=400)
+                
+    #         # Definisikan timezone
+    #         tz = pytz.timezone('Asia/Jakarta')
+            
+    #         # Hitung rentang tanggal dalam timezone lokal
+    #         local_start = datetime(year, month, 1)
+    #         if month == 12:
+    #             local_end = datetime(year + 1, 1, 1) - timedelta(days=1)
+    #         else:
+    #             local_end = datetime(year, month + 1, 1) - timedelta(days=1)
+            
+    #         local_start = local_start.replace(hour=0, minute=0, second=0)
+    #         local_end = local_end.replace(hour=23, minute=59, second=59)
+            
+    #         start_date = tz.localize(local_start)
+    #         end_date = tz.localize(local_end)
+            
+    #         start_date_utc = start_date.astimezone(pytz.UTC)
+    #         end_date_utc = end_date.astimezone(pytz.UTC)
+
+    #         # Format periode untuk tampilan
+    #         month_names = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+    #                     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+    #         month_display = month_names[month-1]
+    #         period = f"{month_display} {year}"
+
+    #         # Persiapkan data untuk laporan PDF
+    #         it_data = []
+
+    #         # Dapatkan semua karyawan Tim IT
+    #         it_employees = request.env['hr.employee'].sudo().search([
+    #             '|',
+    #             '|',
+    #             ('job_title', 'ilike', 'IT'),
+    #             ('job_title', 'ilike', 'Sistem'),
+    #             ('department_id.name', 'ilike', 'IT')
+    #         ])
+            
+    #         # Debug logging
+    #         _logger.info(f"Ditemukan {len(it_employees)} karyawan Tim IT untuk laporan KPI PDF")
+            
+    #         # Proses setiap karyawan IT
+    #         for employee in it_employees:
+    #             # Dapatkan data KPI dengan memanggil endpoint KPI langsung
+    #             kpi_response = self.get_it_kpi(employee_id=employee.id, month=month, year=year)
+                
+    #             if kpi_response.get('status') == 'success' and 'data' in kpi_response:
+    #                 employee_data = kpi_response['data']
+    #                 it_data.append(employee_data)
+    #                 _logger.info(f"Menambahkan karyawan ke laporan: {employee.name}, Posisi: {employee.job_title}")
+    #             else:
+    #                 _logger.warning(f"Tidak dapat mendapatkan data KPI untuk {employee.name}: {kpi_response.get('message', 'Kesalahan tidak diketahui')}")
+            
+    #         # Persiapkan data untuk laporan QWeb
+    #         report_data = {
+    #             'period': period,
+    #             'it_members': it_data,
+    #             'current_date': fields.Date.today().strftime('%d-%m-%Y')
+    #         }
+            
+    #         # Coba render PDF menggunakan laporan QWeb
+    #         try:
+    #             # Pertama periksa apakah template ada
+    #             template_id = request.env['ir.ui.view'].sudo().search([
+    #                 ('key', '=', 'pitcar_custom.report_it_kpi')
+    #             ], limit=1)
+                
+    #             if not template_id:
+    #                 _logger.error("Template QWeb 'pitcar_custom.report_it_kpi' tidak ditemukan")
+    #                 return Response("Error: Template QWeb 'pitcar_custom.report_it_kpi' tidak ditemukan", status=404)
+                
+    #             # Render PDF menggunakan laporan QWeb
+    #             html = request.env['ir.qweb']._render('pitcar_custom.report_it_kpi', report_data)
+    #             pdf_content = request.env['ir.actions.report']._run_wkhtmltopdf(
+    #                 [html],
+    #                 header=b'', footer=b'',
+    #                 landscape=True,
+    #                 specific_paperformat_args={
+    #                     'data-report-margin-top': 10,
+    #                     'data-report-margin-bottom': 10,
+    #                     'data-report-margin-left': 5,
+    #                     'data-report-margin-right': 5,
+    #                 }
+    #             )
+
+    #             # Persiapkan nama file
+    #             filename = f"IT_KPI_{month}_{year}.pdf"
+                
+    #             # Kembalikan respon PDF
+    #             return Response(
+    #                 pdf_content,
+    #                 headers={
+    #                     'Content-Type': 'application/pdf',
+    #                     'Content-Disposition': f'attachment; filename="{filename}"',
+    #                     'Content-Length': len(pdf_content),
+    #                 },
+    #                 status=200
+    #             )
+    #         except Exception as template_error:
+    #             _logger.error(f"Error rendering template QWeb: {str(template_error)}", exc_info=True)
+    #             return Response(f"Error rendering template laporan: {str(template_error)}", status=500)
+        
+    #     except Exception as e:
+    #         _logger.error(f"Error mengekspor KPI IT ke PDF: {str(e)}", exc_info=True)
+    #         return Response(f"Error: {str(e)}", status=500)
 
     @http.route('/web/v2/it/statistics', type='json', auth='user', methods=['POST'], csrf=False)
     def get_it_statistics(self, **kw):

@@ -1131,6 +1131,7 @@ class ITSystemAPI(http.Controller):
                 '|',
                 '|',
                 ('job_title', 'ilike', 'IT'),
+                ('job_title', 'ilike', 'Sistem'),
                 ('department_id.name', 'ilike', 'IT')
             ])
             

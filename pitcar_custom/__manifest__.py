@@ -64,6 +64,7 @@
         'report/report_cs_kpi.xml',
         'report/report_marketing_kpi.xml',
         'report/report_kaizen_kpi.xml',
+        'report/report_it_kpi.xml',
         'report/mechanic_kpi_reports.xml',
 
         'security/mechanic_security.xml',

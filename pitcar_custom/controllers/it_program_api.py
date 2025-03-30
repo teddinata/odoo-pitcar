@@ -11,8 +11,9 @@ _logger = logging.getLogger(__name__)
 
 class ITSystemAPI(http.Controller):
     
+    # Di file IT API controllers
     def _format_datetime(self, dt):
-        """Format datetime dengan penanganan error yang tepat."""
+        """Format datetime dengan timezone Jakarta."""
         if not dt:
             return False
         
@@ -27,24 +28,22 @@ class ITSystemAPI(http.Controller):
                     if 'T' in dt or ' ' in dt:  # Ini adalah string datetime
                         dt = fields.Datetime.from_string(dt)
                     else:  # Ini adalah string date
-                        return dt  # Kembalikan string date langsung
+                        return dt
                 except Exception as e:
-                    _logger.error(f"Error mengkonversi string date/time '{dt}': {e}")
-                    return dt  # Kembalikan string asli jika konversi gagal
+                    return dt
             
-            # Konversi ke string
-            if hasattr(dt, 'hour'):  # Ini adalah datetime, bukan date
-                try:
-                    return fields.Datetime.to_string(dt)
-                except Exception as e:
-                    _logger.error(f"Error mengkonversi datetime '{dt}': {e}")
-                    return str(dt)
+            # Konversi ke zona waktu Jakarta
+            if hasattr(dt, 'hour'):  # Ini adalah datetime
+                jakarta_tz = pytz.timezone('Asia/Jakarta')
+                if not dt.tzinfo:  # Jika tidak memiliki timezone (naive datetime)
+                    dt = pytz.UTC.localize(dt)
+                jakarta_dt = dt.astimezone(jakarta_tz)
+                return fields.Datetime.to_string(jakarta_dt)
             else:
                 # Ini adalah objek date
                 return fields.Date.to_string(dt) if hasattr(dt, 'day') else str(dt)
-                
+                    
         except Exception as e:
-            _logger.error(f"Error tak terduga di _format_datetime: {e}")
             # Kembalikan nilai yang aman
             return str(dt) if dt else False
     

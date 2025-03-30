@@ -927,7 +927,7 @@ class ITSystemAPI(http.Controller):
                         
                         kpi['measurement'] = f"Rating rata-rata: {avg_rating:.1f}/5.0 ({actual:.1f}%)"
                     else:
-                        actual = 0
+                        actual = 100
                         kpi['measurement'] = "Belum ada rating dalam periode ini"
                 
                 # KPI #3: Ketepatan waktu project IT development

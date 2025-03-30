@@ -653,13 +653,17 @@ class ITSystemAPI(http.Controller):
                 return {'status': 'success', 'message': 'Laporan error berhasil dihapus'}
             
             elif operation == 'list_by_system':
+                # Modifikasi: Buat system_id menjadi parameter opsional
                 system_id = kw.get('system_id')
-                if not system_id:
-                    return {'status': 'error', 'message': 'Parameter system_id tidak ada'}
+                
+                # Inisialisasi domain dengan filter dasar
+                domain = []
+                
+                # Hanya tambahkan filter system_id jika parameter diberikan
+                if system_id:
+                    domain.append(('system_id', '=', int(system_id)))
                 
                 # Terapkan filter tambahan jika ada
-                domain = [('system_id', '=', int(system_id))]
-                
                 if kw.get('state'):
                     states = kw['state'].split(',')
                     domain.append(('state', 'in', states))
@@ -667,6 +671,18 @@ class ITSystemAPI(http.Controller):
                 if kw.get('severity'):
                     severities = kw['severity'].split(',')
                     domain.append(('severity', 'in', severities))
+                    
+                if kw.get('search'):
+                    domain.append('|')
+                    domain.append(('name', 'ilike', kw['search']))
+                    domain.append(('description', 'ilike', kw['search']))
+                
+                # Tambahan: Filter berdasarkan tanggal pelaporan
+                if kw.get('date_start'):
+                    domain.append(('reported_date', '>=', kw['date_start']))
+                    
+                if kw.get('date_end'):
+                    domain.append(('reported_date', '<=', kw['date_end']))
                 
                 # Pagination
                 page = int(kw.get('page', 1))
@@ -674,8 +690,11 @@ class ITSystemAPI(http.Controller):
                 offset = (page - 1) * limit
                 
                 # Sorting
-                order = kw.get('order', 'reported_date desc')
+                sort_field = kw.get('sort_field', 'reported_date')
+                sort_order = kw.get('sort_order', 'desc')
+                order = f"{sort_field} {sort_order}"
                 
+                # Ambil data
                 errors = request.env['it.error.report'].sudo().search(
                     domain, limit=limit, offset=offset, order=order
                 )
@@ -694,6 +713,11 @@ class ITSystemAPI(http.Controller):
                         'total_pages': total_pages
                     }
                 }
+            
+            elif operation == 'list_all':
+                # Gunakan parameter yang sama seperti list_by_system tetapi tanpa memerlukan system_id
+                return self.manage_errors(operation='list_by_system', **kw)
+
             
             elif operation == 'list_assigned':
                 assigned_to_id = kw.get('assigned_to_id')

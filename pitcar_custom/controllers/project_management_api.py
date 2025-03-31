@@ -1597,91 +1597,77 @@ class TeamProjectAPI(http.Controller):
                 ('date', '<=', kw['date_to'])
             ]
             
-            # Optional filter by creator
+            # Filter by creator (untuk view pribadi atau filter spesifik anggota tim)
             if kw.get('creator_id'):
                 domain.append(('creator_id', '=', int(kw['creator_id'])))
-            elif not kw.get('team_view', False):
-                # If not team view and no creator specified, default to current user
-                domain.append(('creator_id', '=', request.env.user.employee_id.id))
+            
+            # Filter by project
+            if kw.get('project_id'):
+                domain.append(('project_id', '=', int(kw['project_id'])))
             
             # Get BAU activities
             bau_activities = request.env['team.project.bau'].sudo().search(domain, order='date ASC, time_start ASC')
             
-            # Group activities by date for calendar view
-            calendar_data = {}
-            for bau in bau_activities:
-                date_key = str(bau.date)
-                if date_key not in calendar_data:
-                    calendar_data[date_key] = {
-                        'date': date_key,
-                        'activities': [],
-                        'total_hours': 0,
-                        'target_achieved': False  # Added to match content API
-                    }
-                    
-                # Add activity data
-                activity_data = self._prepare_bau_data(bau)
+            # Tambahkan informasi department ke setiap project yang terlibat
+            calendar_data = []
+            for day in self._group_activities_by_date(bau_activities):
+                # Untuk setiap aktivitas, tambahkan department_id jika ada project
+                for activity in day['activities']:
+                    if activity.get('project'):
+                        project = request.env['team.project'].sudo().browse(activity['project']['id'])
+                        activity['project']['department_id'] = project.department_id.id
+                        activity['project']['department_name'] = project.department_id.name
                 
-                # Add time information for week view (if not already in _prepare_bau_data)
-                if 'time' not in activity_data:
-                    hours = int(bau.hours_spent)
-                    minutes = int((bau.hours_spent - hours) * 60)
-                    
-                    # Mock start at 9 AM and calculate end time
-                    start_hour = 9
-                    end_hour = start_hour + hours
-                    end_minutes = minutes
-                    
-                    # Adjust if hours overflow
-                    if end_hour > 17:  # Cap at 5 PM
-                        end_hour = 17
-                        end_minutes = 0
-                    
-                    activity_data['time'] = {
-                        'start': f"{start_hour:02d}:{0:02d}",
-                        'end': f"{end_hour:02d}:{end_minutes:02d}",
-                        'duration': bau.hours_spent
-                    }
-                
-                calendar_data[date_key]['activities'].append(activity_data)
-                calendar_data[date_key]['total_hours'] += bau.hours_spent
-                
-                # Update target achieved status (matching content API)
-                target_hours = getattr(bau, 'target_hours', 2.0)  # Default to 2 hours if not defined
-                if bau.hours_spent >= target_hours and bau.state == 'done':
-                    calendar_data[date_key]['target_achieved'] = True
-            
-            # Ensure all dates in the range have an entry
-            try:
-                date_from = datetime.strptime(kw['date_from'], '%Y-%m-%d').date()
-                date_to = datetime.strptime(kw['date_to'], '%Y-%m-%d').date()
-                
-                current_date = date_from
-                while current_date <= date_to:
-                    date_str = str(current_date)
-                    if date_str not in calendar_data:
-                        calendar_data[date_str] = {
-                            'date': date_str,
-                            'activities': [],
-                            'total_hours': 0,
-                            'target_achieved': False
-                        }
-                    current_date += timedelta(days=1)
-            except Exception as e:
-                _logger.error(f"Error generating date range: {str(e)}")
-            
-            # Convert to list and sort by date
-            result = list(calendar_data.values())
-            result.sort(key=lambda x: x['date'])
+                calendar_data.append(day)
             
             return {
                 'status': 'success',
-                'data': result
+                'data': calendar_data
             }
-            
+        
         except Exception as e:
             _logger.error(f"Error in get_bau_calendar: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+            
+    # Implementasikan helper method untuk mengelompokkan aktivitas berdasarkan tanggal
+    def _group_activities_by_date(self, activities):
+        """Group activities by date for calendar view."""
+        calendar_data = {}
+        
+        for bau in activities:
+            date_key = str(bau.date)
+            if date_key not in calendar_data:
+                calendar_data[date_key] = {
+                    'date': date_key,
+                    'activities': [],
+                    'total_hours': 0,
+                    'target_achieved': False
+                }
+                
+            # Add activity data
+            activity_data = self._prepare_bau_data(bau)
+            calendar_data[date_key]['activities'].append(activity_data)
+            calendar_data[date_key]['total_hours'] += bau.hours_spent
+            
+        # Convert dictionary to list
+        return list(calendar_data.values())
+    
+    @http.route('/web/v2/team/departments', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_departments(self, **kw):
+        """Get list of departments for dropdown."""
+        try:
+            departments = request.env['hr.department'].sudo().search_read(
+                [], ['id', 'name'], order='name'
+            )
+            
+            return {
+                'status': 'success',
+                'data': departments
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_departments: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
 
     @http.route('/web/v2/team/bau/batch', type='json', auth='user', methods=['POST'], csrf=False)
     def create_batch_bau_activities(self, **kw):
@@ -4324,3 +4310,5 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_on_time_completion_report: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    

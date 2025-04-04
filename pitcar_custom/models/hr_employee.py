@@ -42,6 +42,35 @@ class HrEmployee(models.Model):
     #     """ Extend public fields """
     #     public_fields = super()._get_public_fields()
     #     return public_fields + ['is_mechanic', 'mechanic_id']
+
+    fingerprint_data = fields.Binary(string='Fingerprint Data', attachment=False, help='Fingerprint template data')
+    fingerprint_registered = fields.Boolean(string='Fingerprint Registered', default=False)
+    webauthn_credentials = fields.Text(string='WebAuthn Credentials', help='WebAuthn credential data for fingerprint/biometric')
+    fingerprint_device_id = fields.Char(string='Fingerprint Device ID', help='ID of registered fingerprint device')
+    
+    def register_fingerprint(self, fingerprint_data=None, webauthn_data=None, device_id=None):
+        """Register fingerprint data for employee"""
+        self.ensure_one()
+        try:
+            if fingerprint_data:
+                # Save raw fingerprint template if provided by compatible device
+                self.fingerprint_data = fingerprint_data
+            
+            if webauthn_data:
+                # Save WebAuthn credential data (for browser-based biometric)
+                self.webauthn_credentials = json.dumps(webauthn_data)
+            
+            if device_id:
+                # Save fingerprint device ID
+                self.fingerprint_device_id = device_id
+                
+            # Mark as registered
+            self.fingerprint_registered = True
+            return True
+        except Exception as e:
+            _logger.error(f"Error registering fingerprint: {e}")
+            return False
+
     
     def _get_public_fields(self):
         """ Extend public fields """

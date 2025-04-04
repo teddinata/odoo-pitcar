@@ -294,10 +294,10 @@ class AttendanceAPI(http.Controller):
             today = now.date()
             
             # Get start and end of today in UTC (for database queries)
-            # today_start_utc = jakarta_tz.localize(datetime.combine(today, time.min)).astimezone(pytz.UTC)
-            # today_end_utc = jakarta_tz.localize(datetime.combine(today, time.max)).astimezone(pytz.UTC)
-            today_start_utc = jakarta_tz.localize(datetime.combine(today, dt_time.min)).astimezone(pytz.UTC)
-            today_end_utc = jakarta_tz.localize(datetime.combine(today, dt_time.max)).astimezone(pytz.UTC)
+            today_start_utc = jakarta_tz.localize(datetime.combine(today, time.min)).astimezone(pytz.UTC)
+            today_end_utc = jakarta_tz.localize(datetime.combine(today, time.max)).astimezone(pytz.UTC)
+            # today_start_utc = jakarta_tz.localize(datetime.combine(today, dt_time.min)).astimezone(pytz.UTC)
+            # today_end_utc = jakarta_tz.localize(datetime.combine(today, dt_time.max)).astimezone(pytz.UTC)
 
             # Get today's attendance using UTC times for query
             today_attendance = request.env['hr.attendance'].sudo().search([

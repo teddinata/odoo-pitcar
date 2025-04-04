@@ -2744,13 +2744,17 @@ class AttendanceAPI(http.Controller):
     def init_webauthn_registration(self, **kw):
         """Initialize WebAuthn registration process for fingerprint/biometric"""
         try:
+            # DEBUG LOG
+            _logger.info("Starting webauthn initialization")
+            
             # Get employee
             employee = request.env.user.employee_id
             if not employee:
                 return {'status': 'error', 'message': 'Employee not found'}
             
             # Generate registration options
-            challenge = secrets.token_urlsafe(32)
+            challenge = secrets.token_urlsafe(32)  # Make sure 'secrets' module is imported
+            _logger.info(f"Generated challenge: {challenge[:10]}...")
             
             # Store challenge in session for verification later
             request.session['webauthn_challenge'] = challenge
@@ -2789,8 +2793,9 @@ class AttendanceAPI(http.Controller):
                 }
             }
         except Exception as e:
-            _logger.error(f"Error in init_webauthn_registration: {str(e)}")
+            _logger.error(f"Error in init_webauthn_registration: {str(e)}", exc_info=True)
             return {'status': 'error', 'message': str(e)}
+
 
 
     @http.route('/web/v2/attendance/fingerprint/register', type='json', auth='user', methods=['POST'], csrf=False, cors='*')

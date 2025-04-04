@@ -18,6 +18,18 @@ class HrAttendance(models.Model):
 
     actual_worked_hours = fields.Float('Actual Worked Hours', compute='_compute_actual_worked_hours', store=True)
 
+    check_method = fields.Selection([
+        ('manual', 'Manual'),
+        ('face', 'Face Recognition'),
+        ('fingerprint', 'Fingerprint'),
+        ('location', 'Location')
+    ], string='Check Method', default='manual', required=True)
+    
+    # Tambahkan field baru untuk menyimpan raw data
+    fingerprint_data = fields.Binary(string='Fingerprint Data', attachment=False)
+    device_id = fields.Char(string='Device ID', help='ID of the device used for check-in/out')
+
+
     @api.depends('check_in', 'check_out')
     def _compute_actual_worked_hours(self):
         for attendance in self:

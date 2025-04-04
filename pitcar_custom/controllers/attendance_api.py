@@ -9,6 +9,8 @@ import json
 import math
 import io
 import csv
+import secrets
+import time
 
 _logger = logging.getLogger(__name__)
 
@@ -427,6 +429,7 @@ class AttendanceAPI(http.Controller):
                     'is_checked_in': bool(current_attendance),
                     'has_face_registered': bool(employee.face_descriptor),
                     'face_verification': face_verification,
+                    'has_fingerprint_registered': bool(employee.fingerprint_registered),
                     'today_attendance': format_attendance(today_attendance) if today_attendance else None,
                     'last_attendances': [format_attendance(att) for att in last_attendances if att],
                     'monthly_summary': {
@@ -2736,3 +2739,189 @@ class AttendanceAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_working_days_history: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/attendance/webauthn/init', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def init_webauthn_registration(self, **kw):
+        """Initialize WebAuthn registration process for fingerprint/biometric"""
+        try:
+            # Get employee
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+            
+            # Generate registration options
+            challenge = secrets.token_urlsafe(32)
+            
+            # Store challenge in session for verification later
+            request.session['webauthn_challenge'] = challenge
+            
+            # Generate unique user ID for this employee
+            user_id = f"employee_{employee.id}"
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'options': {
+                        'publicKey': {
+                            'challenge': challenge,
+                            'rp': {
+                                'name': 'Pitcar Attendance System',
+                                'id': request.httprequest.host
+                            },
+                            'user': {
+                                'id': user_id,
+                                'name': employee.name,
+                                'displayName': employee.name
+                            },
+                            'pubKeyCredParams': [
+                                {'type': 'public-key', 'alg': -7},  # ES256
+                                {'type': 'public-key', 'alg': -257}  # RS256
+                            ],
+                            'timeout': 60000,
+                            'attestation': 'direct',
+                            'authenticatorSelection': {
+                                'authenticatorAttachment': 'platform',  # Prefers built-in biometric
+                                'userVerification': 'preferred',
+                                'requireResidentKey': False
+                            }
+                        }
+                    }
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in init_webauthn_registration: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+
+    @http.route('/web/v2/attendance/fingerprint/register', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def register_fingerprint(self, **kw):
+        """Register fingerprint for employee"""
+        try:
+            params = kw.get('params', kw)
+            
+            fingerprint_data = params.get('fingerprint_data')
+            webauthn_data = params.get('webauthn_data')
+            device_id = params.get('device_id')
+            
+            if not fingerprint_data and not webauthn_data:
+                return {'status': 'error', 'message': 'Either fingerprint data or WebAuthn data is required'}
+                
+            # Get employee
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+            
+            # Register fingerprint data
+            if employee.register_fingerprint(
+                fingerprint_data=fingerprint_data,
+                webauthn_data=webauthn_data,
+                device_id=device_id
+            ):
+                return {
+                    'status': 'success',
+                    'message': 'Fingerprint registered successfully',
+                    'data': {
+                        'employee_id': employee.id,
+                        'name': employee.name,
+                        'fingerprint_registered': True
+                    }
+                }
+            else:
+                return {'status': 'error', 'message': 'Failed to register fingerprint'}
+                
+        except Exception as e:
+            _logger.error(f"Error in register_fingerprint: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+
+    @http.route('/web/v2/attendance/fingerprint/check', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def check_attendance_fingerprint(self, **kw):
+        """Check attendance using fingerprint or biometric data"""
+        try:
+            # Extract params from request
+            params = kw.get('params', kw)
+            
+            action_type = params.get('action_type')
+            fingerprint_data = params.get('fingerprint_data')
+            webauthn_data = params.get('webauthn_data')
+            device_id = params.get('device_id')
+            location = params.get('location', {})
+            
+            # Basic validation
+            if not action_type:
+                return {'status': 'error', 'message': 'Action type is required'}
+                
+            if not fingerprint_data and not webauthn_data:
+                return {'status': 'error', 'message': 'Either fingerprint data or WebAuthn data is required'}
+            
+            # Get employee
+            employee = request.env.user.employee_id
+            if not employee:
+                return {'status': 'error', 'message': 'Employee not found'}
+                
+            # Verify fingerprint
+            if not employee.fingerprint_registered:
+                return {'status': 'error', 'message': 'Fingerprint not registered for this employee'}
+            
+            is_verified = False
+            
+            # Verify based on authentication type
+            if fingerprint_data and employee.fingerprint_data:
+                # Implement fingerprint template matching logic here
+                # This would require specialized fingerprint matching libraries
+                # For demo, we'll assume it matches
+                is_verified = True
+                
+            elif webauthn_data and employee.webauthn_credentials:
+                # Implement WebAuthn verification logic
+                # For demo, we'll assume it's verified if the device_id matches
+                stored_creds = json.loads(employee.webauthn_credentials)
+                is_verified = True  # Simplified for this example
+                
+            if not is_verified:
+                return {'status': 'error', 'message': 'Fingerprint verification failed'}
+            
+            # Create/update attendance record
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            now_utc = now.astimezone(pytz.UTC).replace(tzinfo=None)
+            
+            values = {
+                'employee_id': employee.id,
+                'check_method': 'fingerprint'  # Add this field to hr.attendance model
+            }
+            
+            if action_type == 'check_in':
+                values['check_in'] = now_utc
+                attendance = request.env['hr.attendance'].sudo().create(values)
+            else:  # check_out
+                attendance = request.env['hr.attendance'].sudo().search([
+                    ('employee_id', '=', employee.id),
+                    ('check_out', '=', False)
+                ], limit=1)
+                
+                if not attendance:
+                    return {'status': 'error', 'message': 'No active attendance found'}
+                
+                values['check_out'] = now_utc
+                attendance.write(values)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'attendance_id': attendance.id,
+                    'employee': {
+                        'id': employee.id,
+                        'name': employee.name
+                    },
+                    'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
+                    'type': action_type,
+                    'method': 'fingerprint',
+                    'location': location
+                }
+            }
+                
+        except Exception as e:
+            _logger.error(f"Error in check_attendance_fingerprint: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+

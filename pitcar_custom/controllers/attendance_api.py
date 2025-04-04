@@ -1,7 +1,7 @@
 # controllers/attendance_api.py
 from odoo import http
 from odoo.http import request
-# from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from dateutil.relativedelta import relativedelta
 import pytz
 import logging
@@ -11,9 +11,9 @@ import io
 import csv
 import secrets
 # Di bagian awal file
-from datetime import datetime, timedelta
-from datetime import time as dt_time  # Gunakan alias untuk menghindari konflik
-import time  # Ini adalah modul time standar Python
+# from datetime import datetime, timedelta
+# from datetime import time as dt_time  # Gunakan alias untuk menghindari konflik
+# import time  # Ini adalah modul time standar Python
 
 _logger = logging.getLogger(__name__)
 

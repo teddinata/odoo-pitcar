@@ -7137,7 +7137,7 @@ class KPIOverview(http.Controller):
                 'name': 'Jumlah PKB yang diberikan rekomendasi tambahan servis',
                 'type': 'service_recommendation',
                 'weight': 10,
-                'target': 80,
+                'target': 60,
                 'measurement': 'Diukur dari persentase rekomendasi yang diberikan',
                 'include_in_calculation': True
             },

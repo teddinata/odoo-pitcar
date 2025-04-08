@@ -34,13 +34,12 @@ class TeamProjectAutomatedNotification(models.Model):
                         model='team.project.task',
                         res_id=task.id,
                         type='deadline_approaching',
-                        title=f"Deadline Approaching: {task.name}",
-                        message=f"Task '{task.name}' is due in {int(hours_remaining)} hours.",
+                        title=f"Tenggat Waktu Mendekati: {task.name}",
+                        message=f"Tugas '{task.name}' jatuh tempo dalam {int(hours_remaining)} jam.",
                         project_id=task.project_id.id,
                         sender_id=False,  # Ini otomatis sistem
                         recipient_id=assignee.id,
                         category='deadline_approaching',
-                        user_id=assignee.user_id.id,
                         data={
                             'task_id': task.id,
                             'project_id': task.project_id.id,
@@ -77,13 +76,12 @@ class TeamProjectAutomatedNotification(models.Model):
                     model='team.project.task',
                     res_id=task.id,
                     type='task_overdue',
-                    title=f"Overdue Task: {task.name}",
-                    message=f"Task '{task.name}' is overdue by {int(days_overdue)} days.",
+                    title=f"Tugas Terlambat: {task.name}",
+                    message=f"Tugas '{task.name}' telah terlambat selama {int(days_overdue)} hari.",
                     project_id=task.project_id.id,
                     sender_id=False,  # System
                     recipient_id=recipient.id,
                     category='task_overdue',
-                    user_id=recipient.user_id.id,
                     data={
                         'task_id': task.id,
                         'project_id': task.project_id.id,
@@ -111,7 +109,7 @@ class TeamProjectAutomatedNotification(models.Model):
                         sender_id=False,  # System
                         recipient_id=pm.id,
                         category='task_overdue',
-                        user_id=pm.user_id.id,
+                        # user_id=pm.user_id.id,
                         data={
                             'task_id': task.id,
                             'project_id': task.project_id.id,

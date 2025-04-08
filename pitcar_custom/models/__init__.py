@@ -48,3 +48,5 @@ from . import mechanic_hand_tools
 from . import project_management
 from . import kaizen_training_program
 from . import it_program
+from . import team_project_notification
+from . import team_project_automated_notification

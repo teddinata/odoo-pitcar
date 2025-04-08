@@ -4332,4 +4332,122 @@ class TeamProjectAPI(http.Controller):
             _logger.error(f"Error in get_on_time_completion_report: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
+    # Tambahkan ke file controllers/team_project_api.py
+    @http.route('/web/v2/team/notifications', type='json', auth='user', methods=['POST'], csrf=False)
+    def manage_notifications(self, **kw):
+        """Get or update user notifications"""
+        try:
+            operation = kw.get('operation', 'list')
+
+            if operation == 'list':
+                # Get unread notifications for current user
+                employee_id = request.env.user.employee_id.id
+                
+                domain = [('recipient_id', '=', employee_id)]
+                if kw.get('unread_only', True):
+                    domain.append(('is_read', '=', False))
+                    
+                # Optional: filter by project_id
+                if kw.get('project_id'):
+                    domain.append(('project_id', '=', int(kw['project_id'])))
+                    
+                # Optional: filter by category
+                if kw.get('category'):
+                    domain.append(('notification_category', '=', kw['category']))
+                    
+                # Pagination
+                limit = int(kw.get('limit', 20))
+                offset = int(kw.get('offset', 0))
+                
+                # Get notifications
+                notifications = request.env['team.project.notification'].sudo().search(
+                    domain, limit=limit, offset=offset, order='request_time desc'
+                )
+                
+                # Format data
+                notifications_data = []
+                for notif in notifications:
+                    # Parse JSON data
+                    data = {}
+                    if notif.data:
+                        try:
+                            data = json.loads(notif.data)
+                        except:
+                            data = {'error': 'Invalid JSON data'}
+                    
+                    notifications_data.append({
+                        'id': notif.id,
+                        'title': notif.title,
+                        'message': notif.message,
+                        'date': self._format_datetime_jakarta(notif.request_time),
+                        'category': notif.notification_category,
+                        'is_read': notif.is_read,
+                        'priority': notif.priority,
+                        'model': notif.model,
+                        'res_id': notif.res_id,
+                        'data': data,
+                        'sender': {
+                            'id': notif.sender_id.id,
+                            'name': notif.sender_id.name
+                        } if notif.sender_id else None,
+                        'project': {
+                            'id': notif.project_id.id,
+                            'name': notif.project_id.name
+                        } if notif.project_id else None
+                    })
+                
+                return {
+                    'status': 'success',
+                    'data': notifications_data,
+                    'total': request.env['team.project.notification'].sudo().search_count(domain)
+                }
+                
+            elif operation == 'mark_read':
+                notification_id = kw.get('notification_id')
+                if not notification_id:
+                    return {'status': 'error', 'message': 'Missing notification_id'}
+                    
+                notification = request.env['team.project.notification'].sudo().browse(int(notification_id))
+                if not notification.exists():
+                    return {'status': 'error', 'message': 'Notification not found'}
+                    
+                notification.write({'is_read': True})
+                return {'status': 'success', 'message': 'Notification marked as read'}
+                
+            elif operation == 'mark_all_read':
+                # Mark all notifications as read for current user
+                employee_id = request.env.user.employee_id.id
+                domain = [('recipient_id', '=', employee_id), ('is_read', '=', False)]
+                
+                if kw.get('project_id'):
+                    domain.append(('project_id', '=', int(kw['project_id'])))
+                if kw.get('category'):
+                    domain.append(('notification_category', '=', kw['category']))
+                    
+                notifications = request.env['team.project.notification'].sudo().search(domain)
+                notifications.write({'is_read': True})
+                
+                return {
+                    'status': 'success', 
+                    'message': f'{len(notifications)} notifications marked as read'
+                }
+                
+            elif operation == 'get_unread_count':
+                # Mendapatkan jumlah notifikasi yang belum dibaca
+                employee_id = request.env.user.employee_id.id
+                domain = [('recipient_id', '=', employee_id), ('is_read', '=', False)]
+                
+                count = request.env['team.project.notification'].sudo().search_count(domain)
+                
+                return {
+                    'status': 'success',
+                    'count': count
+                }
+                
+            else:
+                return {'status': 'error', 'message': f'Unknown operation: {operation}'}
+                
+        except Exception as e:
+            _logger.error(f"Error in manage_notifications: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
     

@@ -3,6 +3,7 @@ from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
 import logging
 from datetime import datetime, timedelta
+import re
 
 _logger = logging.getLogger(__name__)
 
@@ -487,26 +488,43 @@ class TeamProjectTask(models.Model):
                 task.duration = 0.0
     
     # CRUD Methods
+    # Di model team.project.task - tambahkan ke method create
     @api.model
     def create(self, vals):
         task = super(TeamProjectTask, self).create(vals)
         
-        # Notify team members and project manager
-        for assignee in task.assigned_to:
-            if assignee.user_id:
-                self.env['pitcar.notification'].create_or_update_notification(
-                    model='team.project.task',
-                    res_id=task.id,
-                    type='task_assigned',
-                    title=f"New Task: {task.name}",
-                    message=f"You are assigned to task '{task.name}' in project {task.project_id.name}.",
-                    user_id=assignee.user_id.id,
-                    data={'task_id': task.id, 'action': 'view_task'},
-                    priority=task.priority
-                )
+        # Notifikasi untuk penugasan baru
+        if task.assigned_to:
+            for assignee in task.assigned_to:
+                if assignee.user_id:
+                    self.env['team.project.notification'].create_project_notification(
+                        model='team.project.task',
+                        res_id=task.id,
+                        type='task_assigned',
+                        title=f"New Task: {task.name}",
+                        message=f"You are assigned to task '{task.name}' in project {task.project_id.name}.",
+                        project_id=task.project_id.id,
+                        sender_id=self.env.user.employee_id.id,
+                        recipient_id=assignee.id,
+                        category='task_assigned',
+                        user_id=assignee.user_id.id,
+                        data={
+                            'task_id': task.id, 
+                            'project_id': task.project_id.id,
+                            'action': 'view_task'
+                        },
+                        priority='high' if task.priority in ['2', '3'] else 'normal'
+                    )
+        
         return task
 
     def write(self, vals):
+        # Simpan nilai lama untuk perbandingan
+        old_states = {}
+        if 'state' in vals:
+            for task in self:
+                old_states[task.id] = task.state
+        
         # Untuk setiap task yang diupdate
         for task in self:
             # Jika terjadi perubahan status
@@ -569,48 +587,69 @@ class TeamProjectTask(models.Model):
                 elif vals['state'] == 'done' and not task.actual_date_end:
                     vals['actual_date_end'] = fields.Datetime.now()
         
-        return super(TeamProjectTask, self).write(vals)
+        # Panggil write asli
+        result = super(TeamProjectTask, self).write(vals)
         
-        # Handle notifications
-        if 'state' in vals:
-            state_messages = {
-                'in_progress': f"Task {self.name} is now in progress.",
-                'review': f"Task {self.name} needs review.",
-                'done': f"Task {self.name} has been completed.",
-                'cancelled': f"Task {self.name} has been cancelled."
-            }
-            
-            if vals['state'] in state_messages:
-                # Notify assignees
-                for assignee in self.assigned_to:
-                    if assignee.user_id:
-                        self.env['pitcar.notification'].create_or_update_notification(
+        # Proses notifikasi setelah write
+        for task in self:
+            # Notifikasi perubahan status
+            if 'state' in vals and task.id in old_states and old_states[task.id] != task.state:
+                # Status messages
+                state_messages = {
+                    'in_progress': f"Task {task.name} is now in progress.",
+                    'review': f"Task {task.name} needs review.",
+                    'done': f"Task {task.name} has been completed.",
+                    'cancelled': f"Task {task.name} has been cancelled."
+                }
+                
+                # Tentukan tipe dan pesan berdasarkan status baru
+                current_state = task.state
+                if current_state in state_messages:
+                    # Notify assignees
+                    for assignee in task.assigned_to:
+                        if assignee.user_id:
+                            self.env['team.project.notification'].create_project_notification(
+                                model='team.project.task',
+                                res_id=task.id,
+                                type=f"task_{current_state}",
+                                title=f"Task Update: {task.name}",
+                                message=state_messages[current_state],
+                                project_id=task.project_id.id,
+                                sender_id=self.env.user.employee_id.id,
+                                recipient_id=assignee.id,
+                                category='task_updated',
+                                user_id=assignee.user_id.id,
+                                data={
+                                    'task_id': task.id, 
+                                    'project_id': task.project_id.id,
+                                    'action': 'view_task'
+                                }
+                            )
+                    
+                    # Notify project manager
+                    if task.project_id.project_manager_id.user_id:
+                        self.env['team.project.notification'].create_project_notification(
                             model='team.project.task',
-                            res_id=self.id,
-                            type=f"task_{vals['state']}",
-                            title=f"Task Update: {self.name}",
-                            message=state_messages[vals['state']],
-                            user_id=assignee.user_id.id,
-                            data={'task_id': self.id, 'action': 'view_task'}
+                            res_id=task.id,
+                            type=f"task_{current_state}",
+                            title=f"Task Update: {task.name}",
+                            message=state_messages[current_state],
+                            project_id=task.project_id.id,
+                            sender_id=self.env.user.employee_id.id,
+                            recipient_id=task.project_id.project_manager_id.id,
+                            category='task_updated',
+                            user_id=task.project_id.project_manager_id.user_id.id,
+                            data={
+                                'task_id': task.id, 
+                                'project_id': task.project_id.id,
+                                'action': 'view_task'
+                            }
                         )
                 
-                # Notify project manager
-                if self.project_id.project_manager_id.user_id:
-                    self.env['pitcar.notification'].create_or_update_notification(
-                        model='team.project.task',
-                        res_id=self.id,
-                        type=f"task_{vals['state']}",
-                        title=f"Task Update: {self.name}",
-                        message=state_messages[vals['state']],
-                        user_id=self.project_id.project_manager_id.user_id.id,
-                        data={'task_id': self.id, 'action': 'view_task'}
-                    )
-            
-            # Update project progress when tasks change
-            for task in self:
+                # Update project progress when tasks change
                 task.project_id._compute_progress()
         
-        return res
+        return result
     
     # UI Actions
     def action_start_task(self):
@@ -761,6 +800,124 @@ class TeamProjectMessage(models.Model):
         attachment = self.env['ir.attachment'].sudo().create(vals)
         self.attachment_ids = [(4, attachment.id)]
         return attachment
+    
+    def _process_mentions(self):
+        """Mendeteksi dan memproses mention di pesan dan membuat notifikasi"""
+        if not self.content:
+            return
+
+        # Mencari pola mention (@[user_id])
+        mention_pattern = r'@\[(.*?)\]'
+        mentions = re.findall(mention_pattern, self.content)
+        
+        if not mentions:
+            return
+
+        # Memproses setiap mention yang ditemukan
+        for mention in mentions:
+            # Extract user_id from mention
+            try:
+                # Jika format mention adalah @[employee_name:employee_id]
+                if ':' in mention:
+                    employee_id = int(mention.split(':')[1])
+                else:
+                    # Jika format mention adalah nama saja, cari employee berdasarkan nama
+                    employee = self.env['hr.employee'].search([('name', '=', mention)], limit=1)
+                    if not employee:
+                        continue
+                    employee_id = employee.id
+                    
+                # Cari user_id dari employee
+                employee = self.env['hr.employee'].browse(employee_id)
+                if not employee.exists() or not employee.user_id:
+                    continue
+                    
+                # Siapkan data notifikasi
+                mention_data = {
+                    'message_id': self.id,
+                    'group_id': self.group_id.id,
+                    'action': 'view_group_chat'
+                }
+                
+                # Buat notifikasi mention
+                self.env['team.project.notification'].create_project_notification(
+                    model='team.project.message',
+                    res_id=self.id,
+                    type='mention',
+                    title=f"You were mentioned by {self.author_id.name}",
+                    message=f"You were mentioned in a message: '{self.content[:100]}...'",
+                    project_id=self.project_id.id if self.project_id else False,
+                    sender_id=self.author_id.id,
+                    recipient_id=employee_id,
+                    category='mention',
+                    user_id=employee.user_id.id,
+                    data=mention_data,
+                    priority='medium'
+                )
+                
+            except Exception as e:
+                _logger.error(f"Error processing mention: {str(e)}")
+
+    @api.model
+    def create(self, vals):
+        """Override create untuk memproses mention saat pesan dibuat"""
+        message = super(TeamProjectMessage, self).create(vals)
+        
+        # Proses mention jika fitur aktif
+        message._process_mentions()
+        
+        # Kirim notifikasi umum ke semua anggota grup jika ini grup kolaborasi
+        if message.group_id:
+            message._notify_group_members()
+        
+        return message
+
+    def _notify_group_members(self):
+        """Mengirim notifikasi ke semua anggota grup"""
+        if not self.group_id or not self.group_id.member_ids:
+            return
+            
+        # Jangan kirim notifikasi ke pengirim pesan
+        members = self.group_id.member_ids.filtered(lambda m: m.id != self.author_id.id)
+        
+        for member in members:
+            if not member.user_id:
+                continue
+                
+            # Periksa jika ini adalah pesan dengan tipe khusus
+            if self.message_type == 'announcement':
+                title = f"Announcement in {self.group_id.name}"
+                priority = 'high'
+                category = 'announcement'
+            else:
+                title = f"New message in {self.group_id.name}"
+                priority = 'normal'
+                category = 'new_message'
+                
+            # Siapkan data notifikasi
+            message_data = {
+                'message_id': self.id,
+                'group_id': self.group_id.id,
+                'action': 'view_group_chat',
+                'author_id': self.author_id.id
+            }
+            
+            # Buat notifikasi untuk anggota grup
+            self.env['team.project.notification'].create_project_notification(
+                model='team.project.message',
+                res_id=self.id,
+                type='new_message',
+                title=title,
+                message=f"{self.author_id.name}: {self.content[:100]}...",
+                project_id=self.project_id.id if self.project_id else False,
+                sender_id=self.author_id.id,
+                recipient_id=member.id,
+                category=category,
+                user_id=member.user_id.id,
+                data=message_data,
+                priority=priority
+            )
+
 
 
 class TeamProjectBAU(models.Model):

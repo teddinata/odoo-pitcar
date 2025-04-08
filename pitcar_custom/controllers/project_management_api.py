@@ -1604,6 +1604,24 @@ class TeamProjectAPI(http.Controller):
             # Filter by project
             if kw.get('project_id'):
                 domain.append(('project_id', '=', int(kw['project_id'])))
+
+            # Di endpoint get_bau_calendar
+            # Setelah filter project_id, tambahkan filter department_id
+            if kw.get('department_id'):
+                # Filter berdasarkan departemen proyek
+                # Pertama, dapatkan proyek dari departemen tersebut
+                project_ids = request.env['team.project'].sudo().search([
+                    ('department_id', '=', int(kw['department_id']))
+                ]).ids
+                
+                if project_ids:
+                    domain.append(('project_id', 'in', project_ids))
+                else:
+                    # Jika tidak ada proyek dalam departemen, kembalikan hasil kosong
+                    return {
+                        'status': 'success',
+                        'data': []
+                    }
             
             # Get BAU activities
             bau_activities = request.env['team.project.bau'].sudo().search(domain, order='date ASC, time_start ASC')

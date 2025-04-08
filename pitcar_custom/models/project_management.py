@@ -494,6 +494,7 @@ class TeamProjectTask(models.Model):
         task = super(TeamProjectTask, self).create(vals)
         
         # Notifikasi untuk penugasan baru
+        # Notifikasi untuk penugasan baru
         if task.assigned_to:
             for assignee in task.assigned_to:
                 if assignee.user_id:
@@ -501,13 +502,12 @@ class TeamProjectTask(models.Model):
                         model='team.project.task',
                         res_id=task.id,
                         type='task_assigned',
-                        title=f"New Task: {task.name}",
-                        message=f"You are assigned to task '{task.name}' in project {task.project_id.name}.",
+                        title=f"Tugas Baru: {task.name}",
+                        message=f"Anda ditugaskan ke tugas '{task.name}' dalam proyek {task.project_id.name}.",
                         project_id=task.project_id.id,
                         sender_id=self.env.user.employee_id.id,
                         recipient_id=assignee.id,
                         category='task_assigned',
-                        user_id=assignee.user_id.id,
                         data={
                             'task_id': task.id, 
                             'project_id': task.project_id.id,
@@ -593,32 +593,32 @@ class TeamProjectTask(models.Model):
         # Proses notifikasi setelah write
         for task in self:
             # Notifikasi perubahan status
+            # Di model team.project.task dalam method write
             if 'state' in vals and task.id in old_states and old_states[task.id] != task.state:
-                # Status messages
+                # Pesan untuk setiap status
                 state_messages = {
-                    'in_progress': f"Task {task.name} is now in progress.",
-                    'review': f"Task {task.name} needs review.",
-                    'done': f"Task {task.name} has been completed.",
-                    'cancelled': f"Task {task.name} has been cancelled."
+                    'in_progress': f"Tugas {task.name} sekarang sedang dikerjakan.",
+                    'review': f"Tugas {task.name} perlu ditinjau.",
+                    'done': f"Tugas {task.name} telah selesai.",
+                    'cancelled': f"Tugas {task.name} telah dibatalkan."
                 }
                 
                 # Tentukan tipe dan pesan berdasarkan status baru
                 current_state = task.state
                 if current_state in state_messages:
-                    # Notify assignees
+                    # Beri notifikasi kepada penanggung jawab tugas
                     for assignee in task.assigned_to:
                         if assignee.user_id:
                             self.env['team.project.notification'].create_project_notification(
                                 model='team.project.task',
                                 res_id=task.id,
                                 type=f"task_{current_state}",
-                                title=f"Task Update: {task.name}",
+                                title=f"Pembaruan Tugas: {task.name}",
                                 message=state_messages[current_state],
                                 project_id=task.project_id.id,
                                 sender_id=self.env.user.employee_id.id,
-                                recipient_id=assignee.id,
+                                recipient_id=assignee.id,  # Gunakan recipient_id untuk assignee
                                 category='task_updated',
-                                user_id=assignee.user_id.id,
                                 data={
                                     'task_id': task.id, 
                                     'project_id': task.project_id.id,
@@ -626,19 +626,18 @@ class TeamProjectTask(models.Model):
                                 }
                             )
                     
-                    # Notify project manager
-                    if task.project_id.project_manager_id.user_id:
+                    # Beri notifikasi kepada manajer proyek
+                    if task.project_id.project_manager_id:
                         self.env['team.project.notification'].create_project_notification(
                             model='team.project.task',
                             res_id=task.id,
                             type=f"task_{current_state}",
-                            title=f"Task Update: {task.name}",
+                            title=f"Pembaruan Tugas: {task.name}",
                             message=state_messages[current_state],
                             project_id=task.project_id.id,
                             sender_id=self.env.user.employee_id.id,
-                            recipient_id=task.project_id.project_manager_id.id,
+                            recipient_id=task.project_id.project_manager_id.id,  # Gunakan recipient_id untuk manajer proyek juga
                             category='task_updated',
-                            user_id=task.project_id.project_manager_id.user_id.id,
                             data={
                                 'task_id': task.id, 
                                 'project_id': task.project_id.id,
@@ -646,9 +645,9 @@ class TeamProjectTask(models.Model):
                             }
                         )
                 
-                # Update project progress when tasks change
+                # Perbarui progres proyek saat tugas berubah
                 task.project_id._compute_progress()
-        
+
         return result
     
     # UI Actions
@@ -840,18 +839,22 @@ class TeamProjectMessage(models.Model):
                 }
                 
                 # Buat notifikasi mention
+                # Buat notifikasi mention
                 self.env['team.project.notification'].create_project_notification(
                     model='team.project.message',
                     res_id=self.id,
                     type='mention',
-                    title=f"You were mentioned by {self.author_id.name}",
-                    message=f"You were mentioned in a message: '{self.content[:100]}...'",
+                    title=f"Anda disebut oleh {self.author_id.name}",
+                    message=f"Anda disebut dalam pesan: '{self.content[:100]}...'",
                     project_id=self.project_id.id if self.project_id else False,
                     sender_id=self.author_id.id,
                     recipient_id=employee_id,
                     category='mention',
-                    user_id=employee.user_id.id,
-                    data=mention_data,
+                    data={
+                        'message_id': self.id,
+                        'group_id': self.group_id.id,
+                        'action': 'view_group_chat'
+                    },
                     priority='medium'
                 )
                 
@@ -885,12 +888,13 @@ class TeamProjectMessage(models.Model):
                 continue
                 
             # Periksa jika ini adalah pesan dengan tipe khusus
+            # Periksa jika ini adalah pesan dengan tipe khusus
             if self.message_type == 'announcement':
-                title = f"Announcement in {self.group_id.name}"
+                title = f"Pengumuman di {self.group_id.name}"
                 priority = 'high'
                 category = 'announcement'
             else:
-                title = f"New message in {self.group_id.name}"
+                title = f"Pesan baru di {self.group_id.name}"
                 priority = 'normal'
                 category = 'new_message'
                 
@@ -901,7 +905,7 @@ class TeamProjectMessage(models.Model):
                 'action': 'view_group_chat',
                 'author_id': self.author_id.id
             }
-            
+
             # Buat notifikasi untuk anggota grup
             self.env['team.project.notification'].create_project_notification(
                 model='team.project.message',
@@ -913,7 +917,6 @@ class TeamProjectMessage(models.Model):
                 sender_id=self.author_id.id,
                 recipient_id=member.id,
                 category=category,
-                user_id=member.user_id.id,
                 data=message_data,
                 priority=priority
             )
@@ -1191,21 +1194,27 @@ class TeamProjectMeeting(models.Model):
         for meeting in self:
             for attendee in meeting.attendee_ids:
                 if attendee.user_id and attendee.user_id.partner_id:
-                    self.env['pitcar.notification'].create_or_update_notification(
+                    self.env['team.project.notification'].create_project_notification(
                         model='team.project.meeting',
                         res_id=meeting.id,
-                        type='meeting_invitation',
-                        title=f"Meeting Invitation: {meeting.name}",
+                        type='meeting_scheduled',
+                        title=f"Undangan Rapat: {meeting.name}",
                         message=f"""
-                            <p>You are invited to a meeting:</p>
-                            <p><strong>{meeting.name}</strong></p>
-                            <p>Date: {meeting.start_datetime.strftime('%Y-%m-%d %H:%M')} to {meeting.end_datetime.strftime('%H:%M')}</p>
-                            <p>Location: {meeting.location or 'Not specified'}</p>
-                            <p>Virtual Link: {meeting.virtual_location or 'Not specified'}</p>
-                            <p>Organizer: {meeting.organizer_id.name}</p>
+                            Anda diundang ke rapat:
+                            {meeting.name}
+                            Tanggal: {meeting.start_datetime.strftime('%Y-%m-%d %H:%M')} sampai {meeting.end_datetime.strftime('%H:%M')}
+                            Lokasi: {meeting.location or 'Belum ditentukan'}
+                            Penyelenggara: {meeting.organizer_id.name}
                         """,
-                        user_id=attendee.user_id.id,
-                        data={'meeting_id': meeting.id, 'action': 'view_meeting'},
+                        project_id=meeting.project_id.id if meeting.project_id else False,
+                        sender_id=meeting.organizer_id.id,
+                        recipient_id=attendee.id,
+                        category='meeting_scheduled',
+                        data={
+                            'meeting_id': meeting.id,
+                            'project_id': meeting.project_id.id if meeting.project_id else False,
+                            'action': 'view_meeting'
+                        },
                         priority='medium'
                     )
     
@@ -1222,14 +1231,21 @@ class TeamProjectMeeting(models.Model):
         for meeting in self:
             for attendee in meeting.attendee_ids:
                 if attendee.user_id and attendee.user_id.partner_id:
-                    self.env['pitcar.notification'].create_or_update_notification(
+                    self.env['team.project.notification'].create_project_notification(
                         model='team.project.meeting',
                         res_id=meeting.id,
                         type='meeting_cancelled',
-                        title=f"Meeting Cancelled: {meeting.name}",
-                        message=f"The meeting {meeting.name} scheduled for {meeting.start_datetime.strftime('%Y-%m-%d %H:%M')} has been cancelled.",
-                        user_id=attendee.user_id.id,
-                        data={'meeting_id': meeting.id, 'action': 'view_meeting'},
+                        title=f"Rapat Dibatalkan: {meeting.name}",
+                        message=f"Rapat {meeting.name} yang dijadwalkan pada {meeting.start_datetime.strftime('%Y-%m-%d %H:%M')} telah dibatalkan.",
+                        project_id=meeting.project_id.id if meeting.project_id else False,
+                        sender_id=self.env.user.employee_id.id,
+                        recipient_id=attendee.id,
+                        category='meeting_scheduled',
+                        data={
+                            'meeting_id': meeting.id,
+                            'project_id': meeting.project_id.id if meeting.project_id else False,
+                            'action': 'view_meeting'
+                        },
                         priority='high'
                     )
 

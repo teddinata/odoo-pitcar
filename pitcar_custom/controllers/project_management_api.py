@@ -1629,12 +1629,15 @@ class TeamProjectAPI(http.Controller):
             # Tambahkan informasi department ke setiap project yang terlibat
             calendar_data = []
             for day in self._group_activities_by_date(bau_activities):
-                # Untuk setiap aktivitas, tambahkan department_id jika ada project
+                # Untuk setiap aktivitas, tambahkan department_id pada creator
                 for activity in day['activities']:
-                    if activity.get('project'):
-                        project = request.env['team.project'].sudo().browse(activity['project']['id'])
-                        activity['project']['department_id'] = project.department_id.id
-                        activity['project']['department_name'] = project.department_id.name
+                    if activity.get('creator'):
+                        # Ambil data employee dari creator
+                        employee = request.env['hr.employee'].sudo().browse(activity['creator']['id'])
+                        # Tambahkan department_id ke creator
+                        if employee.department_id:
+                            activity['creator']['department_id'] = employee.department_id.id
+                            activity['creator']['department_name'] = employee.department_id.name
                 
                 calendar_data.append(day)
             

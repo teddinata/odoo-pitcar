@@ -893,7 +893,7 @@ class TeamProjectMessage(models.Model):
         
         # Ekstrak ID yang di-mention
         mentioned_ids = set()
-        mention_pattern = r'@\[(\d+)'  # Ekstrak hanya ID dari format @[id:name]
+        mention_pattern = r'@\[(\d+)'
         
         if self.content:
             mentions = re.findall(mention_pattern, self.content)
@@ -914,6 +914,16 @@ class TeamProjectMessage(models.Model):
             if not member.user_id:
                 continue
                 
+            # PENTING: Cek apakah pengguna berada di departemen yang sama dengan project
+            if self.project_id and self.project_id.department_id:
+                if member.department_id.id != self.project_id.department_id.id:
+                    # Opsi 1: Skip notifikasi untuk departemen berbeda
+                    # continue
+                    
+                    # Opsi 2: Hanya buat notifikasi untuk pesan penting
+                    if self.message_type != 'announcement':
+                        continue
+                    
             # Tentukan jenis notifikasi
             if self.message_type == 'announcement':
                 title = f"Pengumuman di {self.group_id.name}"
@@ -932,7 +942,7 @@ class TeamProjectMessage(models.Model):
                 'author_id': self.author_id.id
             }
 
-            # Buat notifikasi untuk anggota grup dengan sudo()
+            # Buat notifikasi untuk anggota grup
             self.env['team.project.notification'].sudo().create_project_notification(
                 model='team.project.message',
                 res_id=self.id,
@@ -941,8 +951,7 @@ class TeamProjectMessage(models.Model):
                 message=f"{self.author_id.name}: {self.content[:100]}...",
                 project_id=self.project_id.id if self.project_id else False,
                 sender_id=self.author_id.id,
-                # recipient_id=member.id,
-                user_id=member.user_id.id,  # Tambahkan user_id eksplisit
+                user_id=member.user_id.id,
                 category=category,
                 data=message_data,
                 priority=priority

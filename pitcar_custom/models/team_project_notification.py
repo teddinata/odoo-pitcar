@@ -12,7 +12,7 @@ class TeamProjectNotification(models.Model):
     _order = 'request_time desc, id desc'
     
     # Core fields
-    name = fields.Char('Notification Name', compute='_compute_name', store=True)
+    name = fields.Char('Notification Name', store=True)
     model = fields.Char('Related Model', required=True, index=True)
     res_id = fields.Integer('Resource ID', required=True, index=True)
     type = fields.Char('Notification Type', required=True, index=True)
@@ -81,7 +81,10 @@ class TeamProjectNotification(models.Model):
     # @api.depends('title', 'id')
     # def _compute_name(self):
     #     for notif in self:
-    #         notif.name = f"{notif.title} (ID: {notif.id})"
+    #         if notif.title and notif.id:
+    #             notif.name = f"{notif.title} (ID: {notif.id})"
+    #         else:
+    #             notif.name = "New Notification"
 
     @api.model
     def create_notifications_batch(self, notifications_data):

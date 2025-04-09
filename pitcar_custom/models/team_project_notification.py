@@ -52,10 +52,10 @@ class TeamProjectNotification(models.Model):
                                   project_id=False, sender_id=False, recipient_id=False,
                                   category=False, **kwargs):
         """Create specialized project notification"""
-        
-        # Tambahkan logging untuk debug
-        _logger.info(f"Creating notification with type={type}, category={category or type}")
-        
+        # PENTING: Jangan membuat notifikasi jika sender == recipient
+        if sender_id and recipient_id and sender_id == recipient_id:
+            return False
+            
         vals = {
             'model': model,
             'res_id': res_id,
@@ -65,7 +65,7 @@ class TeamProjectNotification(models.Model):
             'project_id': project_id,
             'sender_id': sender_id,
             'recipient_id': recipient_id,
-            'notification_category': category or type,  # Gunakan category jika disediakan, otherwise gunakan type
+            'notification_category': category or type,
             'request_time': kwargs.get('request_time', fields.Datetime.now()),
             'data': json.dumps(kwargs.get('data')) if isinstance(kwargs.get('data'), dict) else kwargs.get('data'),
             'is_read': False,
@@ -73,10 +73,15 @@ class TeamProjectNotification(models.Model):
             'notification_channel': kwargs.get('channel', 'app')
         }
         
-        # Tambahkan user_id jika diberikan - penting untuk notifikasi
+        # Tambahkan user_id jika diberikan
         if kwargs.get('user_id'):
             vals['user_id'] = kwargs['user_id']
-        
+        elif recipient_id:
+            # Coba dapatkan user_id dari employee
+            employee = self.env['hr.employee'].sudo().browse(recipient_id)
+            if employee.exists() and employee.user_id:
+                vals['user_id'] = employee.user_id.id
+                
         # Cek apakah sudah ada notifikasi yang sama
         existing = self.search([
             ('model', '=', model), 
@@ -85,13 +90,8 @@ class TeamProjectNotification(models.Model):
             ('recipient_id', '=', recipient_id)
         ], limit=1)
         
-        try:
-            if existing:
-                _logger.info(f"Updating existing notification {existing.id}")
-                existing.write(vals)
-                return existing
-            else:
-                _logger.info(f"Creating new notification with vals: {vals}")
-                return self.create(vals)
-        except Exception as e:
-            _logger.error(f"Error creating/updating notification: {str(e)}")
+        if existing:
+            existing.write(vals)
+            return existing
+        else:
+            return self.create(vals)

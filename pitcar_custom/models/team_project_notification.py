@@ -14,7 +14,7 @@ class TeamProjectNotification(models.Model):
     # Field tambahan untuk notifikasi proyek
     project_id = fields.Many2one('team.project', string='Project')
     sender_id = fields.Many2one('hr.employee', string='Sender')
-    recipient_id = fields.Many2one('hr.employee', string='Recipient')
+    # recipient_id = fields.Many2one('hr.employee', string='Recipient')
     notification_channel = fields.Selection([
         ('email', 'Email'),
         ('app', 'App Notification'),
@@ -46,6 +46,13 @@ class TeamProjectNotification(models.Model):
     expiration = fields.Datetime('Expiration')
     is_actionable = fields.Boolean('Has Action', default=False)
     action_taken = fields.Boolean('Action Taken', default=False)
+
+    def get_recipient_employee(self):
+        self.ensure_one()
+        if self.user_id:
+            employee = self.env['hr.employee'].sudo().search([('user_id', '=', self.user_id.id)], limit=1)
+            return employee
+        return False
     
     @api.model
     def create_project_notification(self, model, res_id, type, title, message, 
@@ -55,7 +62,7 @@ class TeamProjectNotification(models.Model):
         # PENTING: Jangan membuat notifikasi jika sender == recipient
         if sender_id and recipient_id and sender_id == recipient_id:
             return False
-            
+        
         vals = {
             'model': model,
             'res_id': res_id,
@@ -72,15 +79,20 @@ class TeamProjectNotification(models.Model):
             'priority': kwargs.get('priority', 'normal'),
             'notification_channel': kwargs.get('channel', 'app')
         }
-        
-        # Tambahkan user_id jika diberikan
-        if kwargs.get('user_id'):
-            vals['user_id'] = kwargs['user_id']
-        elif recipient_id:
-            # Coba dapatkan user_id dari employee
+
+        # Tangani user_id dengan konsisten
+        if recipient_id:
+            # Dapatkan user_id dari employee
             employee = self.env['hr.employee'].sudo().browse(recipient_id)
             if employee.exists() and employee.user_id:
                 vals['user_id'] = employee.user_id.id
+        elif kwargs.get('user_id'):
+            # Jika user_id diberikan langsung, gunakan itu
+            vals['user_id'] = kwargs['user_id']
+            # Coba dapatkan employee dari user_id
+            user = self.env['res.users'].sudo().browse(vals['user_id'])
+            if user.exists() and user.employee_id:
+                vals['recipient_id'] = user.employee_id.id
                 
         # Cek apakah sudah ada notifikasi yang sama
         existing = self.search([

@@ -865,8 +865,7 @@ class TeamProjectAPI(http.Controller):
                                 'message_id': message.id, 
                                 'group_id': values['group_id'],
                                 'action': 'view_group_chat'
-                            },
-                            priority='medium'
+                            }
                         )
             
             message_data = self._prepare_message_data(message)

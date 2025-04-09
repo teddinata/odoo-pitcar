@@ -914,11 +914,35 @@ class TeamProjectMessage(models.Model):
         # Jangan kirim notifikasi ke pengirim pesan
         members = self.group_id.member_ids.filtered(lambda m: m.id != self.author_id.id)
         
+        # Cari mentions dalam konten
+        mention_pattern = r'@\[(.*?)\]'
+        mentions = re.findall(mention_pattern, self.content or '')
+        mentioned_ids = []
+        
+        # Ekstrak ID yang di-mention
+        for mention in mentions:
+            if ':' in mention:
+                parts = mention.split(':', 1)
+                try:
+                    mentioned_ids.append(int(parts[0]))
+                except ValueError:
+                    try:
+                        mentioned_ids.append(int(parts[1]))
+                    except ValueError:
+                        pass
+        
+        # Log untuk debug
+        _logger.info(f"Group notification: Found mentions for IDs: {mentioned_ids}")
+        
         for member in members:
+            # Skip notification for members that were already mentioned (to avoid duplicate)
+            if member.id in mentioned_ids:
+                _logger.info(f"Skipping group notification for already mentioned member: {member.name}")
+                continue
+                
             if not member.user_id:
                 continue
                 
-            # Periksa jika ini adalah pesan dengan tipe khusus
             # Periksa jika ini adalah pesan dengan tipe khusus
             if self.message_type == 'announcement':
                 title = f"Pengumuman di {self.group_id.name}"

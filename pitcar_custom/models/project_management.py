@@ -494,7 +494,6 @@ class TeamProjectTask(models.Model):
         task = super(TeamProjectTask, self).create(vals)
         
         # Notifikasi untuk penugasan baru
-        # Notifikasi untuk penugasan baru
         if task.assigned_to:
             for assignee in task.assigned_to:
                 if assignee.user_id:
@@ -507,6 +506,7 @@ class TeamProjectTask(models.Model):
                         project_id=task.project_id.id,
                         sender_id=self.env.user.employee_id.id,
                         recipient_id=assignee.id,
+                        user_id=assignee.user_id.id,  # Tambahkan user_id eksplisit
                         category='task_assigned',
                         data={
                             'task_id': task.id, 
@@ -617,7 +617,8 @@ class TeamProjectTask(models.Model):
                                 message=state_messages[current_state],
                                 project_id=task.project_id.id,
                                 sender_id=self.env.user.employee_id.id,
-                                recipient_id=assignee.id,  # Gunakan recipient_id untuk assignee
+                                recipient_id=assignee.id,
+                                user_id=assignee.user_id.id,  # Tambahkan user_id eksplisit
                                 category='task_updated',
                                 data={
                                     'task_id': task.id, 
@@ -627,7 +628,7 @@ class TeamProjectTask(models.Model):
                             )
                     
                     # Beri notifikasi kepada manajer proyek
-                    if task.project_id.project_manager_id:
+                    if task.project_id.project_manager_id and task.project_id.project_manager_id.user_id:
                         self.env['team.project.notification'].create_project_notification(
                             model='team.project.task',
                             res_id=task.id,
@@ -636,7 +637,8 @@ class TeamProjectTask(models.Model):
                             message=state_messages[current_state],
                             project_id=task.project_id.id,
                             sender_id=self.env.user.employee_id.id,
-                            recipient_id=task.project_id.project_manager_id.id,  # Gunakan recipient_id untuk manajer proyek juga
+                            recipient_id=task.project_id.project_manager_id.id,
+                            user_id=task.project_id.project_manager_id.user_id.id,  # Tambahkan user_id eksplisit
                             category='task_updated',
                             data={
                                 'task_id': task.id, 
@@ -856,6 +858,7 @@ class TeamProjectMessage(models.Model):
                         project_id=self.project_id.id if self.project_id else False,
                         sender_id=self.author_id.id,
                         recipient_id=user.employee_id.id,
+                        user_id=user.id,  # Tambahkan user_id eksplisit
                         category='mention',
                         data=mention_data,
                         priority='medium'
@@ -939,13 +942,11 @@ class TeamProjectMessage(models.Model):
                 project_id=self.project_id.id if self.project_id else False,
                 sender_id=self.author_id.id,
                 recipient_id=member.id,
+                user_id=member.user_id.id,  # Tambahkan user_id eksplisit
                 category=category,
                 data=message_data,
                 priority=priority
             )
-
-
-
 class TeamProjectBAU(models.Model):
     _name = 'team.project.bau'
     _description = 'Business As Usual Activity'
@@ -1216,7 +1217,7 @@ class TeamProjectMeeting(models.Model):
         """Send meeting invitation to attendees"""
         for meeting in self:
             for attendee in meeting.attendee_ids:
-                if attendee.user_id and attendee.user_id.partner_id:
+                if attendee.user_id:
                     self.env['team.project.notification'].create_project_notification(
                         model='team.project.meeting',
                         res_id=meeting.id,
@@ -1232,13 +1233,14 @@ class TeamProjectMeeting(models.Model):
                         project_id=meeting.project_id.id if meeting.project_id else False,
                         sender_id=meeting.organizer_id.id,
                         recipient_id=attendee.id,
+                        user_id=attendee.user_id.id,  # Tambahkan user_id eksplisit
                         category='meeting_scheduled',
                         data={
                             'meeting_id': meeting.id,
                             'project_id': meeting.project_id.id if meeting.project_id else False,
                             'action': 'view_meeting'
                         },
-                        priority='medium'
+                        # priority='medium'
                     )
     
     def action_start_meeting(self):
@@ -1253,7 +1255,7 @@ class TeamProjectMeeting(models.Model):
         # Notify attendees of cancellation
         for meeting in self:
             for attendee in meeting.attendee_ids:
-                if attendee.user_id and attendee.user_id.partner_id:
+                if attendee.user_id:
                     self.env['team.project.notification'].create_project_notification(
                         model='team.project.meeting',
                         res_id=meeting.id,
@@ -1263,15 +1265,15 @@ class TeamProjectMeeting(models.Model):
                         project_id=meeting.project_id.id if meeting.project_id else False,
                         sender_id=self.env.user.employee_id.id,
                         recipient_id=attendee.id,
+                        user_id=attendee.user_id.id,  # Tambahkan user_id eksplisit
                         category='meeting_scheduled',
                         data={
                             'meeting_id': meeting.id,
                             'project_id': meeting.project_id.id if meeting.project_id else False,
                             'action': 'view_meeting'
                         },
-                        priority='high'
+                        # priority='high'
                     )
-
 
 class TeamProjectMeetingAction(models.Model):
     _name = 'team.project.meeting.action'

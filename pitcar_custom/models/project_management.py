@@ -805,30 +805,62 @@ class TeamProjectMessage(models.Model):
         if not self.content:
             return
 
-        # Mencari pola mention (@[user_id])
+        # Mencari pola mention (@[...])
         mention_pattern = r'@\[(.*?)\]'
         mentions = re.findall(mention_pattern, self.content)
         
         if not mentions:
             return
 
+        # Tambahkan log debug untuk melihat mention yang terdeteksi
+        _logger.info(f"Mentions found in message {self.id}: {mentions}")
+        
         # Memproses setiap mention yang ditemukan
         for mention in mentions:
-            # Extract user_id from mention
+            # Extract employee_id from mention
             try:
-                # Jika format mention adalah @[employee_name:employee_id]
+                # Periksa format @[id:name] (format yang Anda gunakan)
                 if ':' in mention:
-                    employee_id = int(mention.split(':')[1])
+                    parts = mention.split(':', 1)  # Split pada : pertama saja
+                    
+                    # Coba format @[id:name] terlebih dahulu
+                    try:
+                        employee_id = int(parts[0])
+                        # Konfirmasi bahwa employee dengan ID ini ada
+                        employee = self.env['hr.employee'].browse(employee_id)
+                        if not employee.exists():
+                            # Jika tidak ada, coba format @[name:id]
+                            employee_id = int(parts[1])
+                            employee = self.env['hr.employee'].browse(employee_id)
+                    except (ValueError, IndexError):
+                        # Jika gagal, coba format @[name:id]
+                        try:
+                            employee_id = int(parts[1])
+                            employee = self.env['hr.employee'].browse(employee_id)
+                        except (ValueError, IndexError):
+                            # Jika kedua format gagal, cari berdasarkan nama
+                            employee_name = parts[0] if parts[0] != '' else parts[1]
+                            employee = self.env['hr.employee'].search([('name', 'ilike', employee_name)], limit=1)
+                            if not employee:
+                                _logger.warning(f"No employee found with name or ID in: {mention}")
+                                continue
+                            employee_id = employee.id
                 else:
-                    # Jika format mention adalah nama saja, cari employee berdasarkan nama
+                    # Format @[name] atau format tidak dikenali
                     employee = self.env['hr.employee'].search([('name', '=', mention)], limit=1)
                     if not employee:
+                        _logger.warning(f"No employee found with name: {mention}")
                         continue
                     employee_id = employee.id
                     
-                # Cari user_id dari employee
-                employee = self.env['hr.employee'].browse(employee_id)
-                if not employee.exists() or not employee.user_id:
+                # Validasi ulang
+                if not employee.exists():
+                    _logger.warning(f"Employee with ID {employee_id} does not exist")
+                    continue
+                    
+                # Cek apakah employee adalah pengirim pesan
+                if employee.id == self.author_id.id:
+                    _logger.info(f"Skipping mention notification for self-mention: {employee.name}")
                     continue
                     
                 # Siapkan data notifikasi
@@ -838,7 +870,6 @@ class TeamProjectMessage(models.Model):
                     'action': 'view_group_chat'
                 }
                 
-                # Buat notifikasi mention
                 # Buat notifikasi mention
                 self.env['team.project.notification'].create_project_notification(
                     model='team.project.message',
@@ -850,16 +881,16 @@ class TeamProjectMessage(models.Model):
                     sender_id=self.author_id.id,
                     recipient_id=employee_id,
                     category='mention',
-                    data={
-                        'message_id': self.id,
-                        'group_id': self.group_id.id,
-                        'action': 'view_group_chat'
-                    },
+                    data=mention_data,
                     priority='medium'
                 )
                 
+                _logger.info(f"Created mention notification for employee {employee.name} (ID: {employee_id})")
+                
             except Exception as e:
                 _logger.error(f"Error processing mention: {str(e)}")
+                import traceback
+                _logger.error(traceback.format_exc())
 
     @api.model
     def create(self, vals):

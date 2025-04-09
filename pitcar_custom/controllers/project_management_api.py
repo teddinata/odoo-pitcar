@@ -4382,85 +4382,107 @@ class TeamProjectAPI(http.Controller):
             operation = kw.get('operation', 'list')
 
             if operation == 'list':
-                # Get current user id
-                current_user_id = request.env.user.id
+                # Dapatkan model notifikasi dan periksa field yang tersedia
+                notification_model = request.env['team.project.notification'].sudo()
+                available_fields = notification_model._fields.keys()
                 
-                # Domain filter berdasarkan user_id, bukan recipient_id
-                domain = [('user_id', '=', current_user_id)]
+                # Tentukan field untuk filter penerima berdasarkan ketersediaan
+                if 'user_id' in available_fields:
+                    recipient_field = 'user_id'
+                    recipient_value = request.env.user.id
+                else:
+                    # Tampilkan semua notifikasi jika tidak bisa filter
+                    recipient_field = 'id'
+                    recipient_value = False
                 
-                # Parameter unread_only
+                # Bangun domain filter
+                if recipient_value:
+                    domain = [(recipient_field, '=', recipient_value)]
+                else:
+                    domain = []
+                
+                # Filter berdasarkan status read
                 unread_only = kw.get('unread_only', False)
-                if unread_only:
+                if unread_only and 'is_read' in available_fields:
                     domain.append(('is_read', '=', False))
                 
                 # Filter kategori
-                if kw.get('category'):
+                if kw.get('category') and 'notification_category' in available_fields:
                     domain.append(('notification_category', '=', kw['category']))
-                    
+                
                 # Pagination
                 limit = int(kw.get('limit', 20))
                 offset = int(kw.get('offset', 0))
                 
                 # Sorting
                 sort_field = kw.get('sort_field', 'request_time')
+                # Pastikan field sorting tersedia
+                if sort_field not in available_fields:
+                    sort_field = 'id'
                 sort_order = kw.get('sort_order', 'desc')
                 order = f"{sort_field} {sort_order}"
                 
-                # Get notifications
-                notifications = request.env['team.project.notification'].sudo().search(
-                    domain, limit=limit, offset=offset, order=order
-                )
+                # Cari notifikasi
+                notifications = notification_model.search(domain, limit=limit, offset=offset, order=order)
                 
                 # Format data
                 notifications_data = []
                 for notif in notifications:
                     # Parse JSON data
                     data = {}
-                    if notif.data:
+                    if hasattr(notif, 'data') and notif.data:
                         try:
                             data = json.loads(notif.data)
                         except:
                             data = {'error': 'Invalid JSON data'}
                     
-                    # Dapatkan recipient (employee) dari user_id jika perlu
-                    recipient = None
-                    if hasattr(notif, 'get_recipient_employee'):
-                        recipient_employee = notif.get_recipient_employee()
-                        if recipient_employee:
-                            recipient = {
-                                'id': recipient_employee.id,
-                                'name': recipient_employee.name
-                            }
-                    
-                    notifications_data.append({
+                    # Siapkan data notifikasi dengan aman
+                    notif_data = {
                         'id': notif.id,
-                        'title': notif.title,
-                        'message': notif.message,
-                        'date': self._format_datetime_jakarta(notif.request_time),
-                        'category': notif.notification_category,
-                        'is_read': notif.is_read,
-                        'priority': notif.priority,
-                        'model': notif.model,
-                        'res_id': notif.res_id,
+                        'title': notif.title if hasattr(notif, 'title') else '',
+                        'message': notif.message if hasattr(notif, 'message') else '',
+                        'date': self._format_datetime_jakarta(notif.request_time) if hasattr(notif, 'request_time') else '',
+                        'is_read': notif.is_read if hasattr(notif, 'is_read') else False,
                         'data': data,
-                        'sender': {
+                    }
+                    
+                    # Tambahkan field opsional jika tersedia
+                    if hasattr(notif, 'notification_category'):
+                        notif_data['category'] = notif.notification_category
+                    
+                    if hasattr(notif, 'priority'):
+                        notif_data['priority'] = notif.priority
+                        
+                    if hasattr(notif, 'model'):
+                        notif_data['model'] = notif.model
+                        
+                    if hasattr(notif, 'res_id'):
+                        notif_data['res_id'] = notif.res_id
+                    
+                    # Tambahkan sender jika tersedia
+                    if hasattr(notif, 'sender_id') and notif.sender_id:
+                        notif_data['sender'] = {
                             'id': notif.sender_id.id,
                             'name': notif.sender_id.name
-                        } if notif.sender_id else None,
-                        'project': {
+                        }
+                        
+                    # Tambahkan project jika tersedia
+                    if hasattr(notif, 'project_id') and notif.project_id:
+                        notif_data['project'] = {
                             'id': notif.project_id.id,
                             'name': notif.project_id.name
-                        } if notif.project_id else None,
-                        'recipient': recipient  # Tambahkan info recipient jika tersedia
-                    })
+                        }
+                    
+                    notifications_data.append(notif_data)
                 
                 return {
                     'status': 'success',
                     'data': notifications_data,
-                    'total': request.env['team.project.notification'].sudo().search_count(domain)
+                    'total': notification_model.search_count(domain)
                 }
                 
             elif operation == 'mark_read':
+                # Tandai satu notifikasi sebagai dibaca
                 notification_id = kw.get('notification_id')
                 if not notification_id:
                     return {'status': 'error', 'message': 'Missing notification_id'}
@@ -4469,33 +4491,66 @@ class TeamProjectAPI(http.Controller):
                 if not notification.exists():
                     return {'status': 'error', 'message': 'Notification not found'}
                     
-                notification.write({'is_read': True})
-                return {'status': 'success', 'message': 'Notification marked as read'}
+                if hasattr(notification, 'is_read'):
+                    notification.write({'is_read': True})
+                    return {'status': 'success', 'message': 'Notification marked as read'}
+                else:
+                    return {'status': 'error', 'message': 'Cannot mark notification as read (is_read field not found)'}
                 
             elif operation == 'mark_all_read':
-                # Mark all notifications as read for current user
-                current_user_id = request.env.user.id
-                domain = [('user_id', '=', current_user_id), ('is_read', '=', False)]
+                # Dapatkan model notifikasi dan periksa field yang tersedia
+                notification_model = request.env['team.project.notification'].sudo()
+                available_fields = notification_model._fields.keys()
                 
-                if kw.get('project_id'):
+                # Tentukan field untuk filter berdasarkan ketersediaan
+                if 'user_id' in available_fields:
+                    domain = [('user_id', '=', request.env.user.id)]
+                elif 'recipient_id' in available_fields:
+                    domain = [('recipient_id', '=', request.env.user.employee_id.id)]
+                else:
+                    # Tidak bisa filter berdasarkan penerima
+                    return {'status': 'error', 'message': 'Cannot identify notifications (no recipient field found)'}
+                
+                # Tambahkan filter is_read jika tersedia
+                if 'is_read' in available_fields:
+                    domain.append(('is_read', '=', False))
+                
+                # Filter tambahan
+                if kw.get('project_id') and 'project_id' in available_fields:
                     domain.append(('project_id', '=', int(kw['project_id'])))
-                if kw.get('category'):
+                if kw.get('category') and 'notification_category' in available_fields:
                     domain.append(('notification_category', '=', kw['category']))
                     
-                notifications = request.env['team.project.notification'].sudo().search(domain)
-                notifications.write({'is_read': True})
+                # Cari notifikasi
+                notifications = notification_model.search(domain)
                 
-                return {
-                    'status': 'success', 
-                    'message': f'{len(notifications)} notifications marked as read'
-                }
+                # Update status jika field is_read tersedia
+                if 'is_read' in available_fields and notifications:
+                    notifications.write({'is_read': True})
+                    return {'status': 'success', 'message': f'{len(notifications)} notifications marked as read'}
+                else:
+                    return {'status': 'error', 'message': 'Cannot mark notifications as read (is_read field not found)'}
                 
             elif operation == 'get_unread_count':
-                # Mendapatkan jumlah notifikasi yang belum dibaca
-                current_user_id = request.env.user.id
-                domain = [('user_id', '=', current_user_id), ('is_read', '=', False)]
+                # Dapatkan model notifikasi dan periksa field yang tersedia
+                notification_model = request.env['team.project.notification'].sudo()
+                available_fields = notification_model._fields.keys()
                 
-                count = request.env['team.project.notification'].sudo().search_count(domain)
+                # Tentukan field untuk filter berdasarkan ketersediaan
+                if 'user_id' in available_fields:
+                    domain = [('user_id', '=', request.env.user.id)]
+                elif 'recipient_id' in available_fields:
+                    domain = [('recipient_id', '=', request.env.user.employee_id.id)]
+                else:
+                    # Tidak bisa filter berdasarkan penerima
+                    return {'status': 'success', 'count': 0}  # Return 0 sebagai fallback
+                
+                # Tambahkan filter is_read jika tersedia
+                if 'is_read' in available_fields:
+                    domain.append(('is_read', '=', False))
+                
+                # Hitung notifikasi
+                count = notification_model.search_count(domain)
                 
                 return {
                     'status': 'success',

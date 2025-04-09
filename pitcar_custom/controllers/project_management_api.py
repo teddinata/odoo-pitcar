@@ -874,7 +874,7 @@ class TeamProjectAPI(http.Controller):
                     
                     # Buat notifikasi mention
                     try:
-                        notif = request.env['team.project.notification'].sudo().create_notification(
+                        notif = request.env['team.project.notification'].sudo().create_project_notification(
                             model='team.project.message',
                             res_id=message.id,
                             notif_type='mention',
@@ -922,7 +922,7 @@ class TeamProjectAPI(http.Controller):
                         continue
                         
                     # Buat notifikasi "new_message"
-                    request.env['team.project.notification'].sudo().create_notification(
+                    request.env['team.project.notification'].sudo().create_project_notification(
                         model='team.project.message',
                         res_id=message.id,
                         notif_type='new_message',

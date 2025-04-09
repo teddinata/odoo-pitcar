@@ -849,8 +849,14 @@ class TeamProjectAPI(http.Controller):
             # Proses mentions jika ada
             if kw.get('mentions'):
                 for user_id in kw['mentions']:
+                    # Hindari self-mention (kunci untuk mengatasi masalah utama)
+                    if int(user_id) == request.env.user.id:
+                        continue
+                        
                     user = request.env['res.users'].sudo().browse(int(user_id))
                     if user.exists() and user.employee_id:
+                        # Pastikan recipient_id adalah employee dari user yang di-mention
+                        # Pastikan sender_id adalah employee dari user yang sedang login
                         request.env['team.project.notification'].sudo().create_project_notification(
                             model='team.project.message',
                             res_id=message.id,

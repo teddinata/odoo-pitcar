@@ -811,81 +811,55 @@ class TeamProjectMessage(models.Model):
         
         if not mentions:
             return
-
-        # Tambahkan log debug untuk melihat mention yang terdeteksi
-        _logger.info(f"Mentions found in message {self.id}: {mentions}")
         
         # Memproses setiap mention yang ditemukan
         for mention in mentions:
-            # Extract employee_id from mention
             try:
-                # Periksa format @[id:name] (format yang Anda gunakan)
+                # Periksa format @[id:name]
                 if ':' in mention:
-                    parts = mention.split(':', 1)  # Split pada : pertama saja
+                    parts = mention.split(':', 1)
                     
-                    # Coba format @[id:name] terlebih dahulu
+                    # Coba ekstrak ID dari format @[id:name]
                     try:
-                        employee_id = int(parts[0])
-                        # Konfirmasi bahwa employee dengan ID ini ada
-                        employee = self.env['hr.employee'].browse(employee_id)
-                        if not employee.exists():
-                            # Jika tidak ada, coba format @[name:id]
-                            employee_id = int(parts[1])
-                            employee = self.env['hr.employee'].browse(employee_id)
+                        user_id = int(parts[0])
+                        user = self.env['res.users'].sudo().browse(user_id)
+                        
+                        # Jika tidak ditemukan, coba format @[name:id]
+                        if not user.exists():
+                            user_id = int(parts[1])
+                            user = self.env['res.users'].sudo().browse(user_id)
                     except (ValueError, IndexError):
-                        # Jika gagal, coba format @[name:id]
-                        try:
-                            employee_id = int(parts[1])
-                            employee = self.env['hr.employee'].browse(employee_id)
-                        except (ValueError, IndexError):
-                            # Jika kedua format gagal, cari berdasarkan nama
-                            employee_name = parts[0] if parts[0] != '' else parts[1]
-                            employee = self.env['hr.employee'].search([('name', 'ilike', employee_name)], limit=1)
-                            if not employee:
-                                _logger.warning(f"No employee found with name or ID in: {mention}")
-                                continue
-                            employee_id = employee.id
-                else:
-                    # Format @[name] atau format tidak dikenali
-                    employee = self.env['hr.employee'].search([('name', '=', mention)], limit=1)
-                    if not employee:
-                        _logger.warning(f"No employee found with name: {mention}")
                         continue
-                    employee_id = employee.id
+                        
+                    # Validasi user dan employee
+                    if not user.exists() or not user.employee_id:
+                        continue
+                        
+                    # PENTING: Skip jika self-mention (user yang ditagged adalah pengirim pesan)
+                    if user.id == self.env.user.id or user.employee_id.id == self.author_id.id:
+                        continue
+                        
+                    # Siapkan data notifikasi
+                    mention_data = {
+                        'message_id': self.id,
+                        'group_id': self.group_id.id,
+                        'action': 'view_group_chat'
+                    }
                     
-                # Validasi ulang
-                if not employee.exists():
-                    _logger.warning(f"Employee with ID {employee_id} does not exist")
-                    continue
-                    
-                # Cek apakah employee adalah pengirim pesan
-                if employee.id == self.author_id.id:
-                    _logger.info(f"Skipping mention notification for self-mention: {employee.name}")
-                    continue
-                    
-                # Siapkan data notifikasi
-                mention_data = {
-                    'message_id': self.id,
-                    'group_id': self.group_id.id,
-                    'action': 'view_group_chat'
-                }
-                
-                # Buat notifikasi mention
-                self.env['team.project.notification'].create_project_notification(
-                    model='team.project.message',
-                    res_id=self.id,
-                    type='mention',
-                    title=f"Anda disebut oleh {self.author_id.name}",
-                    message=f"Anda disebut dalam pesan: '{self.content[:100]}...'",
-                    project_id=self.project_id.id if self.project_id else False,
-                    sender_id=self.author_id.id,
-                    recipient_id=employee_id,
-                    category='mention',
-                    data=mention_data,
-                    priority='medium'
-                )
-                
-                _logger.info(f"Created mention notification for employee {employee.name} (ID: {employee_id})")
+                    # Buat notifikasi dengan sudo() untuk melewati batasan izin
+                    self.env['team.project.notification'].sudo().create_project_notification(
+                        model='team.project.message',
+                        res_id=self.id,
+                        type='mention',
+                        title=f"Anda disebut oleh {self.author_id.name}",
+                        message=f"Anda disebut dalam pesan: '{self.content[:100]}...'",
+                        project_id=self.project_id.id if self.project_id else False,
+                        sender_id=self.author_id.id,
+                        recipient_id=user.employee_id.id,
+                        category='mention',
+                        data=mention_data,
+                        priority='medium'
+                    )
                 
             except Exception as e:
                 _logger.error(f"Error processing mention: {str(e)}")
@@ -914,36 +888,30 @@ class TeamProjectMessage(models.Model):
         # Jangan kirim notifikasi ke pengirim pesan
         members = self.group_id.member_ids.filtered(lambda m: m.id != self.author_id.id)
         
-        # Cari mentions dalam konten
-        mention_pattern = r'@\[(.*?)\]'
-        mentions = re.findall(mention_pattern, self.content or '')
-        mentioned_ids = []
-        
         # Ekstrak ID yang di-mention
-        for mention in mentions:
-            if ':' in mention:
-                parts = mention.split(':', 1)
-                try:
-                    mentioned_ids.append(int(parts[0]))
-                except ValueError:
-                    try:
-                        mentioned_ids.append(int(parts[1]))
-                    except ValueError:
-                        pass
+        mentioned_ids = set()
+        mention_pattern = r'@\[(\d+)'  # Ekstrak hanya ID dari format @[id:name]
         
-        # Log untuk debug
-        _logger.info(f"Group notification: Found mentions for IDs: {mentioned_ids}")
+        if self.content:
+            mentions = re.findall(mention_pattern, self.content)
+            for id_str in mentions:
+                try:
+                    user_id = int(id_str)
+                    user = self.env['res.users'].sudo().browse(user_id)
+                    if user.exists() and user.employee_id:
+                        mentioned_ids.add(user.employee_id.id)
+                except (ValueError, Exception):
+                    continue
         
         for member in members:
-            # Skip notification for members that were already mentioned (to avoid duplicate)
+            # Skip notifikasi untuk anggota yang sudah di-mention
             if member.id in mentioned_ids:
-                _logger.info(f"Skipping group notification for already mentioned member: {member.name}")
                 continue
                 
             if not member.user_id:
                 continue
                 
-            # Periksa jika ini adalah pesan dengan tipe khusus
+            # Tentukan jenis notifikasi
             if self.message_type == 'announcement':
                 title = f"Pengumuman di {self.group_id.name}"
                 priority = 'high'
@@ -961,8 +929,8 @@ class TeamProjectMessage(models.Model):
                 'author_id': self.author_id.id
             }
 
-            # Buat notifikasi untuk anggota grup
-            self.env['team.project.notification'].create_project_notification(
+            # Buat notifikasi untuk anggota grup dengan sudo()
+            self.env['team.project.notification'].sudo().create_project_notification(
                 model='team.project.message',
                 res_id=self.id,
                 type='new_message',

@@ -856,24 +856,26 @@ class TeamProjectAPI(http.Controller):
                         
                     user = request.env['res.users'].sudo().browse(int(user_id))
                     if user.exists() and user.employee_id:
-                        # Gunakan user_id dari user dan recipient_id dari employee
+                        # Gunakan metode baru create_notification
                         request.env['team.project.notification'].sudo().create_project_notification(
                             model='team.project.message',
                             res_id=message.id,
-                            type='mention',
+                            notif_type='mention',  # Ganti 'type' menjadi 'notif_type'
                             title=f"Anda disebut oleh {request.env.user.employee_id.name}",
                             message=f"Anda disebut dalam pesan: '{kw['content'][:100]}...'",
+                            user_id=user.id,  # Parameter wajib
+                            category='mention',
                             project_id=values.get('project_id', False),
                             sender_id=request.env.user.employee_id.id,
-                            # recipient_id=user.employee_id.id,
-                            user_id=user.id,  # Tambahkan user_id eksplisit
-                            category='mention',
                             data={
                                 'message_id': message.id, 
                                 'group_id': values['group_id'],
                                 'action': 'view_group_chat'
                             }
                         )
+            
+            # Proses notifikasi grup setelah mentions diproses
+            message._notify_group_members()  # Ini akan otomatis memanggil fungsi notifikasi grup
             
             message_data = self._prepare_message_data(message)
             
@@ -898,6 +900,8 @@ class TeamProjectAPI(http.Controller):
             return {'status': 'success', 'data': message_data}
         except Exception as e:
             _logger.error(f"Error in send_chat_message: {str(e)}")
+            import traceback
+            _logger.error(traceback.format_exc())
             return {'status': 'error', 'message': str(e)}
 
     # Helper Methods

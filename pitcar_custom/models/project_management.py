@@ -231,36 +231,48 @@ class TeamProject(models.Model):
     
     # Helper Methods
     def _send_project_notifications(self, project, event_type):
-        """Send notifications to relevant users based on project events"""
+        """Kirim notifikasi ke pengguna terkait berdasarkan event proyek"""
         if event_type == 'created':
-            message = f"You have been added to project '{project.name}' starting on {project.date_start}."
-            title = f"New Project: {project.name}"
+            message = f"Anda telah ditambahkan ke proyek '{project.name}' yang dimulai pada {project.date_start}."
+            title = f"Proyek Baru: {project.name}"
         else:
             state_messages = {
-                'planning': f"Project {project.name} is now in planning phase.",
-                'in_progress': f"Project {project.name} has started.",
-                'on_hold': f"Project {project.name} has been put on hold.",
-                'completed': f"Project {project.name} has been completed.",
-                'cancelled': f"Project {project.name} has been cancelled."
+                'planning': f"Proyek {project.name} sekarang dalam tahap perencanaan.",
+                'in_progress': f"Proyek {project.name} telah dimulai.",
+                'on_hold': f"Proyek {project.name} telah ditangguhkan.",
+                'completed': f"Proyek {project.name} telah selesai.",
+                'cancelled': f"Proyek {project.name} telah dibatalkan."
             }
-            message = state_messages.get(event_type, f"Project {project.name} status updated.")
-            title = f"Project Update: {project.name}"
+            message = state_messages.get(event_type, f"Status proyek {project.name} telah diperbarui.")
+            title = f"Pembaruan Proyek: {project.name}"
         
         members = project.team_ids | project.project_manager_id
         if project.stakeholder_ids:
             members |= project.stakeholder_ids
-            
+        
+        # Batch data untuk performa lebih baik
+        notification_batch = []
         for member in members:
             if member.user_id:
-                self.env['pitcar.notification'].create_or_update_notification(
-                    model='team.project',
-                    res_id=project.id,
-                    type=f"project_{event_type}",
-                    title=title,
-                    message=message,
-                    user_id=member.user_id.id,
-                    data={'project_id': project.id, 'action': 'view_project'}
-                )
+                notification_batch.append({
+                    'model': 'team.project',
+                    'res_id': project.id,
+                    'notif_type': f"project_{event_type}",
+                    'title': title,
+                    'message': message,
+                    'user_id': member.user_id.id,
+                    'category': 'project_update',
+                    'project_id': project.id,
+                    'sender_id': self.env.user.employee_id.id if self.env.user.employee_id else False,
+                    'data': {
+                        'project_id': project.id, 
+                        'action': 'view_project'
+                    }
+                })
+        
+        # Buat notifikasi batch
+        if notification_batch:
+            self.env['team.project.notification'].sudo().create_notifications_batch(notification_batch)
     
     # UI Actions
     def action_start_project(self):
@@ -495,26 +507,29 @@ class TeamProjectTask(models.Model):
         
         # Notifikasi untuk penugasan baru
         if task.assigned_to:
+            notification_batch = []
             for assignee in task.assigned_to:
                 if assignee.user_id:
-                    self.env['team.project.notification'].create_project_notification(
-                        model='team.project.task',
-                        res_id=task.id,
-                        type='task_assigned',
-                        title=f"Tugas Baru: {task.name}",
-                        message=f"Anda ditugaskan ke tugas '{task.name}' dalam proyek {task.project_id.name}.",
-                        project_id=task.project_id.id,
-                        sender_id=self.env.user.employee_id.id,
-                        # recipient_id=assignee.id,
-                        user_id=assignee.user_id.id,  # Tambahkan user_id eksplisit
-                        category='task_assigned',
-                        data={
+                    notification_batch.append({
+                        'model': 'team.project.task',
+                        'res_id': task.id,
+                        'notif_type': 'task_assigned',
+                        'title': f"Tugas Baru: {task.name}",
+                        'message': f"Anda ditugaskan ke tugas '{task.name}' dalam proyek {task.project_id.name}.",
+                        'user_id': assignee.user_id.id,
+                        'category': 'task_assigned',
+                        'project_id': task.project_id.id,
+                        'sender_id': self.env.user.employee_id.id,
+                        'data': {
                             'task_id': task.id, 
                             'project_id': task.project_id.id,
                             'action': 'view_task'
                         },
-                        priority='high' if task.priority in ['2', '3'] else 'normal'
-                    )
+                        'priority': 'high' if task.priority in ['2', '3'] else 'normal'
+                    })
+            
+            if notification_batch:
+                self.env['team.project.notification'].sudo().create_notifications_batch(notification_batch)
         
         return task
 
@@ -606,46 +621,52 @@ class TeamProjectTask(models.Model):
                 # Tentukan tipe dan pesan berdasarkan status baru
                 current_state = task.state
                 if current_state in state_messages:
-                    # Beri notifikasi kepada penanggung jawab tugas
+                    notification_batch = []
+                    
+                    # Data untuk penanggung jawab tugas
                     for assignee in task.assigned_to:
                         if assignee.user_id:
-                            self.env['team.project.notification'].create_project_notification(
-                                model='team.project.task',
-                                res_id=task.id,
-                                type=f"task_{current_state}",
-                                title=f"Pembaruan Tugas: {task.name}",
-                                message=state_messages[current_state],
-                                project_id=task.project_id.id,
-                                sender_id=self.env.user.employee_id.id,
-                                # recipient_id=assignee.id,
-                                user_id=assignee.user_id.id,  # Tambahkan user_id eksplisit
-                                category='task_updated',
-                                data={
+                            notification_batch.append({
+                                'model': 'team.project.task',
+                                'res_id': task.id,
+                                'notif_type': f"task_{current_state}",
+                                'title': f"Pembaruan Tugas: {task.name}",
+                                'message': state_messages[current_state],
+                                'user_id': assignee.user_id.id,
+                                'category': 'task_updated',
+                                'project_id': task.project_id.id,
+                                'sender_id': self.env.user.employee_id.id,
+                                'data': {
                                     'task_id': task.id, 
                                     'project_id': task.project_id.id,
                                     'action': 'view_task'
                                 }
-                            )
+                            })
                     
-                    # Beri notifikasi kepada manajer proyek
+                    # Data untuk manajer proyek
                     if task.project_id.project_manager_id and task.project_id.project_manager_id.user_id:
-                        self.env['team.project.notification'].create_project_notification(
-                            model='team.project.task',
-                            res_id=task.id,
-                            type=f"task_{current_state}",
-                            title=f"Pembaruan Tugas: {task.name}",
-                            message=state_messages[current_state],
-                            project_id=task.project_id.id,
-                            sender_id=self.env.user.employee_id.id,
-                            # recipient_id=task.project_id.project_manager_id.id,
-                            user_id=task.project_id.project_manager_id.user_id.id,  # Tambahkan user_id eksplisit
-                            category='task_updated',
-                            data={
-                                'task_id': task.id, 
+                        # Skip jika manajer adalah pengirim
+                        if task.project_id.project_manager_id.user_id.id != self.env.user.id:
+                            notification_batch.append({
+                                'model': 'team.project.task',
+                                'res_id': task.id,
+                                'notif_type': f"task_{current_state}",
+                                'title': f"Pembaruan Tugas: {task.name}",
+                                'message': state_messages[current_state],
+                                'user_id': task.project_id.project_manager_id.user_id.id,
+                                'category': 'task_updated',
                                 'project_id': task.project_id.id,
-                                'action': 'view_task'
-                            }
-                        )
+                                'sender_id': self.env.user.employee_id.id,
+                                'data': {
+                                    'task_id': task.id, 
+                                    'project_id': task.project_id.id,
+                                    'action': 'view_task'
+                                }
+                            })
+                    
+                    # Buat notifikasi batch
+                    if notification_batch:
+                        self.env['team.project.notification'].sudo().create_notifications_batch(notification_batch)
                 
                 # Perbarui progres proyek saat tugas berubah
                 task.project_id._compute_progress()
@@ -802,73 +823,6 @@ class TeamProjectMessage(models.Model):
         self.attachment_ids = [(4, attachment.id)]
         return attachment
     
-    def _process_mentions(self):
-        """Mendeteksi dan memproses mention di pesan dan membuat notifikasi"""
-        if not self.content:
-            return
-
-        # Mencari pola mention (@[...])
-        mention_pattern = r'@\[(.*?)\]'
-        mentions = re.findall(mention_pattern, self.content)
-        
-        if not mentions:
-            return
-        
-        # Memproses setiap mention yang ditemukan
-        for mention in mentions:
-            try:
-                # Periksa format @[id:name]
-                if ':' in mention:
-                    parts = mention.split(':', 1)
-                    
-                    # Coba ekstrak ID dari format @[id:name]
-                    try:
-                        user_id = int(parts[0])
-                        user = self.env['res.users'].sudo().browse(user_id)
-                        
-                        # Jika tidak ditemukan, coba format @[name:id]
-                        if not user.exists():
-                            user_id = int(parts[1])
-                            user = self.env['res.users'].sudo().browse(user_id)
-                    except (ValueError, IndexError):
-                        continue
-                        
-                    # Validasi user dan employee
-                    if not user.exists() or not user.employee_id:
-                        continue
-                        
-                    # PENTING: Skip jika self-mention (user yang ditagged adalah pengirim pesan)
-                    if user.id == self.env.user.id or user.employee_id.id == self.author_id.id:
-                        continue
-                        
-                    # Siapkan data notifikasi
-                    mention_data = {
-                        'message_id': self.id,
-                        'group_id': self.group_id.id,
-                        'action': 'view_group_chat'
-                    }
-                    
-                    # Buat notifikasi dengan sudo() untuk melewati batasan izin
-                    self.env['team.project.notification'].sudo().create_project_notification(
-                        model='team.project.message',
-                        res_id=self.id,
-                        type='mention',
-                        title=f"Anda disebut oleh {self.author_id.name}",
-                        message=f"Anda disebut dalam pesan: '{self.content[:100]}...'",
-                        project_id=self.project_id.id if self.project_id else False,
-                        sender_id=self.author_id.id,
-                        # recipient_id=user.employee_id.id,
-                        user_id=user.id,  # Tambahkan user_id eksplisit
-                        category='mention',
-                        data=mention_data,
-                        priority='medium'
-                    )
-                
-            except Exception as e:
-                _logger.error(f"Error processing mention: {str(e)}")
-                import traceback
-                _logger.error(traceback.format_exc())
-
     @api.model
     def create(self, vals):
         """Override create untuk memproses mention saat pesan dibuat"""
@@ -882,77 +836,144 @@ class TeamProjectMessage(models.Model):
             message._notify_group_members()
         
         return message
+    
+    # Dalam model TeamProjectMessage
+    def _process_mentions(self):
+        """Proses mention dalam konten pesan dengan keandalan yang ditingkatkan"""
+        if not self.content:
+            return
+
+        # Log untuk debugging
+        _logger.info(f"Memproses mention dalam pesan #{self.id}")
+        
+        # Gunakan pola yang lebih robust untuk ekstraksi mention
+        mention_pattern = r'@\[(\d+):([^\]]+)\]'
+        mentions = re.findall(mention_pattern, self.content)
+        
+        if not mentions:
+            _logger.info("Tidak ditemukan mention dalam pesan")
+            return
+            
+        _logger.info(f"Ditemukan {len(mentions)} mention: {mentions}")
+        
+        # Track mention yang berhasil diproses
+        processed_users = []
+        
+        # Proses setiap mention
+        for user_id_str, username in mentions:
+            try:
+                # Konversi ke integer
+                user_id = int(user_id_str)
+                
+                # Skip jika sudah diproses (hindari duplikat)
+                if user_id in processed_users:
+                    continue
+                    
+                # Dapatkan record user
+                user = self.env['res.users'].sudo().browse(user_id)
+                if not user.exists():
+                    _logger.warning(f"User {user_id} ({username}) tidak ditemukan")
+                    continue
+                    
+                # Skip self-mention
+                if user.id == self.env.user.id:
+                    _logger.info(f"Melewati self-mention: {user_id} ({username})")
+                    continue
+                    
+                # Skip mention dimana author adalah user yang dimention
+                if self.author_id and user.employee_id and self.author_id.id == user.employee_id.id:
+                    _logger.info(f"Melewati mention dimana penulis adalah user yang disebutkan: {user_id} ({username})")
+                    continue
+                    
+                # Siapkan data notifikasi
+                mention_data = {
+                    'message_id': self.id,
+                    'group_id': self.group_id.id if self.group_id else False,
+                    'action': 'view_group_chat'
+                }
+                
+                # Buat notifikasi mention
+                notif = self.env['team.project.notification'].sudo().create_notification(
+                    model='team.project.message',
+                    res_id=self.id,
+                    notif_type='mention',
+                    title=f"Anda disebut oleh {self.author_id.name}",
+                    message=f"Anda disebut dalam pesan: '{self.content[:100]}...'",
+                    user_id=user.id,
+                    category='mention',
+                    project_id=self.project_id.id if self.project_id else False,
+                    sender_id=self.author_id.id,
+                    data=mention_data,
+                    priority='medium'
+                )
+                
+                # Tambahkan ke daftar yang sudah diproses
+                if notif:
+                    processed_users.append(user_id)
+                    _logger.info(f"Berhasil membuat notifikasi mention untuk user {user_id} ({username})")
+                
+            except Exception as e:
+                _logger.error(f"Error saat memproses mention untuk {user_id_str}:{username}: {str(e)}")
+                import traceback
+                _logger.error(traceback.format_exc())
 
     def _notify_group_members(self):
-        """Mengirim notifikasi ke semua anggota grup"""
+        """Notifikasi anggota grup tentang pesan baru dengan penanganan mention yang tepat"""
         if not self.group_id or not self.group_id.member_ids:
             return
             
-        # Jangan kirim notifikasi ke pengirim pesan
+        # Lewati notifikasi untuk pengirim
         members = self.group_id.member_ids.filtered(lambda m: m.id != self.author_id.id)
         
-        # Ekstrak ID yang di-mention
-        mentioned_ids = set()
-        mention_pattern = r'@\[(\d+)'
-        
+        # Ekstrak ID user yang dimention
+        mentioned_user_ids = []
         if self.content:
-            mentions = re.findall(mention_pattern, self.content)
-            for id_str in mentions:
-                try:
-                    user_id = int(id_str)
-                    user = self.env['res.users'].sudo().browse(user_id)
-                    if user.exists() and user.employee_id:
-                        mentioned_ids.add(user.employee_id.id)
-                except (ValueError, Exception):
-                    continue
+            mention_pattern = r'@\[(\d+):[^\]]+\]'
+            mentioned_id_strings = re.findall(mention_pattern, self.content)
+            mentioned_user_ids = [int(id_str) for id_str in mentioned_id_strings if id_str.isdigit()]
         
+        _logger.info(f"Memberitahu anggota grup, mentioned_user_ids: {mentioned_user_ids}")
+        
+        # Tentukan tipe pesan dan prioritas
+        is_announcement = self.message_type == 'announcement'
+        if is_announcement:
+            title = f"Pengumuman di {self.group_id.name}"
+            priority = 'high'
+            category = 'announcement'
+        else:
+            title = f"Pesan baru di {self.group_id.name}"
+            priority = 'normal'
+            category = 'new_message'
+        
+        # Notifikasi setiap anggota kecuali yang dimention (mereka sudah mendapat notifikasi mention)
         for member in members:
-            # Skip notifikasi untuk anggota yang sudah di-mention
-            if member.id in mentioned_ids:
-                continue
-                
+            # Lewati anggota tanpa akun pengguna
             if not member.user_id:
                 continue
                 
-            # PENTING: Cek apakah pengguna berada di departemen yang sama dengan project
-            if self.project_id and self.project_id.department_id:
-                if member.department_id.id != self.project_id.department_id.id:
-                    # Opsi 1: Skip notifikasi untuk departemen berbeda
-                    # continue
-                    
-                    # Opsi 2: Hanya buat notifikasi untuk pesan penting
-                    if self.message_type != 'announcement':
-                        continue
-                    
-            # Tentukan jenis notifikasi
-            if self.message_type == 'announcement':
-                title = f"Pengumuman di {self.group_id.name}"
-                priority = 'high'
-                category = 'announcement'
-            else:
-                title = f"Pesan baru di {self.group_id.name}"
-                priority = 'normal'
-                category = 'new_message'
+            # Lewati anggota yang sudah dimention (mereka sudah mendapat notifikasi mention)
+            if member.user_id.id in mentioned_user_ids:
+                _logger.info(f"Melewati notifikasi reguler untuk user yang dimention: {member.user_id.name}")
+                continue
                 
-            # Siapkan data notifikasi
+            # Buat notifikasi pesan
             message_data = {
                 'message_id': self.id,
                 'group_id': self.group_id.id,
                 'action': 'view_group_chat',
                 'author_id': self.author_id.id
             }
-
-            # Buat notifikasi untuk anggota grup
-            self.env['team.project.notification'].sudo().create_project_notification(
+            
+            self.env['team.project.notification'].sudo().create_notification(
                 model='team.project.message',
                 res_id=self.id,
-                type='new_message',
+                notif_type='new_message',
                 title=title,
                 message=f"{self.author_id.name}: {self.content[:100]}...",
-                project_id=self.project_id.id if self.project_id else False,
-                sender_id=self.author_id.id,
                 user_id=member.user_id.id,
                 category=category,
+                project_id=self.project_id.id if self.project_id else False,
+                sender_id=self.author_id.id,
                 data=message_data,
                 priority=priority
             )
@@ -1223,34 +1244,42 @@ class TeamProjectMeeting(models.Model):
     
     # Methods for calendar integration
     def action_notify_attendees(self):
-        """Send meeting invitation to attendees"""
+        """Kirim undangan rapat ke peserta"""
         for meeting in self:
+            notification_batch = []
             for attendee in meeting.attendee_ids:
                 if attendee.user_id:
-                    self.env['team.project.notification'].create_project_notification(
-                        model='team.project.meeting',
-                        res_id=meeting.id,
-                        type='meeting_scheduled',
-                        title=f"Undangan Rapat: {meeting.name}",
-                        message=f"""
+                    # Skip organisator
+                    if attendee.id == meeting.organizer_id.id:
+                        continue
+                        
+                    notification_batch.append({
+                        'model': 'team.project.meeting',
+                        'res_id': meeting.id,
+                        'notif_type': 'meeting_scheduled',
+                        'title': f"Undangan Rapat: {meeting.name}",
+                        'message': f"""
                             Anda diundang ke rapat:
                             {meeting.name}
                             Tanggal: {meeting.start_datetime.strftime('%Y-%m-%d %H:%M')} sampai {meeting.end_datetime.strftime('%H:%M')}
                             Lokasi: {meeting.location or 'Belum ditentukan'}
                             Penyelenggara: {meeting.organizer_id.name}
                         """,
-                        project_id=meeting.project_id.id if meeting.project_id else False,
-                        sender_id=meeting.organizer_id.id,
-                        # recipient_id=attendee.id,
-                        user_id=attendee.user_id.id,  # Tambahkan user_id eksplisit
-                        category='meeting_scheduled',
-                        data={
+                        'user_id': attendee.user_id.id,
+                        'category': 'meeting_scheduled',
+                        'project_id': meeting.project_id.id if meeting.project_id else False,
+                        'sender_id': meeting.organizer_id.id,
+                        'data': {
                             'meeting_id': meeting.id,
                             'project_id': meeting.project_id.id if meeting.project_id else False,
                             'action': 'view_meeting'
                         },
-                        # priority='medium'
-                    )
+                        'priority': 'high'  # Rapat biasanya penting
+                    })
+            
+            # Buat notifikasi batch
+            if notification_batch:
+                self.env['team.project.notification'].sudo().create_notifications_batch(notification_batch)
     
     def action_start_meeting(self):
         self.write({'state': 'in_progress'})
@@ -1261,28 +1290,36 @@ class TeamProjectMeeting(models.Model):
     def action_cancel_meeting(self):
         self.write({'state': 'cancelled'})
         
-        # Notify attendees of cancellation
+        # Notifikasi pembatalan kepada peserta
         for meeting in self:
+            notification_batch = []
             for attendee in meeting.attendee_ids:
                 if attendee.user_id:
-                    self.env['team.project.notification'].create_project_notification(
-                        model='team.project.meeting',
-                        res_id=meeting.id,
-                        type='meeting_cancelled',
-                        title=f"Rapat Dibatalkan: {meeting.name}",
-                        message=f"Rapat {meeting.name} yang dijadwalkan pada {meeting.start_datetime.strftime('%Y-%m-%d %H:%M')} telah dibatalkan.",
-                        project_id=meeting.project_id.id if meeting.project_id else False,
-                        sender_id=self.env.user.employee_id.id,
-                        # recipient_id=attendee.id,
-                        user_id=attendee.user_id.id,  # Tambahkan user_id eksplisit
-                        category='meeting_scheduled',
-                        data={
+                    # Skip jika sama dengan pengirim
+                    if attendee.user_id.id == self.env.user.id:
+                        continue
+                        
+                    notification_batch.append({
+                        'model': 'team.project.meeting',
+                        'res_id': meeting.id,
+                        'notif_type': 'meeting_cancelled',
+                        'title': f"Rapat Dibatalkan: {meeting.name}",
+                        'message': f"Rapat {meeting.name} yang dijadwalkan pada {meeting.start_datetime.strftime('%Y-%m-%d %H:%M')} telah dibatalkan.",
+                        'user_id': attendee.user_id.id,
+                        'category': 'meeting_scheduled',
+                        'project_id': meeting.project_id.id if meeting.project_id else False,
+                        'sender_id': self.env.user.employee_id.id,
+                        'data': {
                             'meeting_id': meeting.id,
                             'project_id': meeting.project_id.id if meeting.project_id else False,
                             'action': 'view_meeting'
                         },
-                        # priority='high'
-                    )
+                        'priority': 'high'  # Pembatalan rapat biasanya penting
+                    })
+            
+            # Buat notifikasi batch
+            if notification_batch:
+                self.env['team.project.notification'].sudo().create_notifications_batch(notification_batch)
 
 class TeamProjectMeetingAction(models.Model):
     _name = 'team.project.meeting.action'

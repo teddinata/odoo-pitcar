@@ -91,7 +91,7 @@ class TeamProjectNotification(models.Model):
         """Create multiple notifications in batch for better performance"""
         created_notifs = []
         for data in notifications_data:
-            notif = self.create_notification(**data)
+            notif = self.create_project_notification(**data)
             if notif:
                 created_notifs.append(notif.id)
         return created_notifs

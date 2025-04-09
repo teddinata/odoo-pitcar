@@ -505,7 +505,7 @@ class TeamProjectTask(models.Model):
                         message=f"Anda ditugaskan ke tugas '{task.name}' dalam proyek {task.project_id.name}.",
                         project_id=task.project_id.id,
                         sender_id=self.env.user.employee_id.id,
-                        recipient_id=assignee.id,
+                        # recipient_id=assignee.id,
                         user_id=assignee.user_id.id,  # Tambahkan user_id eksplisit
                         category='task_assigned',
                         data={
@@ -617,7 +617,7 @@ class TeamProjectTask(models.Model):
                                 message=state_messages[current_state],
                                 project_id=task.project_id.id,
                                 sender_id=self.env.user.employee_id.id,
-                                recipient_id=assignee.id,
+                                # recipient_id=assignee.id,
                                 user_id=assignee.user_id.id,  # Tambahkan user_id eksplisit
                                 category='task_updated',
                                 data={
@@ -637,7 +637,7 @@ class TeamProjectTask(models.Model):
                             message=state_messages[current_state],
                             project_id=task.project_id.id,
                             sender_id=self.env.user.employee_id.id,
-                            recipient_id=task.project_id.project_manager_id.id,
+                            # recipient_id=task.project_id.project_manager_id.id,
                             user_id=task.project_id.project_manager_id.user_id.id,  # Tambahkan user_id eksplisit
                             category='task_updated',
                             data={
@@ -857,7 +857,7 @@ class TeamProjectMessage(models.Model):
                         message=f"Anda disebut dalam pesan: '{self.content[:100]}...'",
                         project_id=self.project_id.id if self.project_id else False,
                         sender_id=self.author_id.id,
-                        recipient_id=user.employee_id.id,
+                        # recipient_id=user.employee_id.id,
                         user_id=user.id,  # Tambahkan user_id eksplisit
                         category='mention',
                         data=mention_data,
@@ -941,7 +941,7 @@ class TeamProjectMessage(models.Model):
                 message=f"{self.author_id.name}: {self.content[:100]}...",
                 project_id=self.project_id.id if self.project_id else False,
                 sender_id=self.author_id.id,
-                recipient_id=member.id,
+                # recipient_id=member.id,
                 user_id=member.user_id.id,  # Tambahkan user_id eksplisit
                 category=category,
                 data=message_data,
@@ -1232,7 +1232,7 @@ class TeamProjectMeeting(models.Model):
                         """,
                         project_id=meeting.project_id.id if meeting.project_id else False,
                         sender_id=meeting.organizer_id.id,
-                        recipient_id=attendee.id,
+                        # recipient_id=attendee.id,
                         user_id=attendee.user_id.id,  # Tambahkan user_id eksplisit
                         category='meeting_scheduled',
                         data={
@@ -1264,7 +1264,7 @@ class TeamProjectMeeting(models.Model):
                         message=f"Rapat {meeting.name} yang dijadwalkan pada {meeting.start_datetime.strftime('%Y-%m-%d %H:%M')} telah dibatalkan.",
                         project_id=meeting.project_id.id if meeting.project_id else False,
                         sender_id=self.env.user.employee_id.id,
-                        recipient_id=attendee.id,
+                        # recipient_id=attendee.id,
                         user_id=attendee.user_id.id,  # Tambahkan user_id eksplisit
                         category='meeting_scheduled',
                         data={

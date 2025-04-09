@@ -56,13 +56,21 @@ class TeamProjectNotification(models.Model):
     
     @api.model
     def create_project_notification(self, model, res_id, type, title, message, 
-                                  project_id=False, sender_id=False, recipient_id=False,
+                                  project_id=False, sender_id=False, user_id=False,
                                   category=False, **kwargs):
         """Create specialized project notification"""
-        # PENTING: Jangan membuat notifikasi jika sender == recipient
-        if sender_id and recipient_id and sender_id == recipient_id:
-            return False
+        # Jangan membuat notifikasi jika sender == recipient berdasarkan user_id
+        if sender_id and user_id:
+            sender_employee = self.env['hr.employee'].sudo().browse(sender_id)
+            if sender_employee.exists() and sender_employee.user_id and sender_employee.user_id.id == user_id:
+                return False
         
+        # Jika user_id tidak diberikan tapi recipient_id diberikan, ambil user_id dari employee
+        if not user_id and kwargs.get('recipient_id'):
+            employee = self.env['hr.employee'].sudo().browse(kwargs.get('recipient_id'))
+            if employee.exists() and employee.user_id:
+                user_id = employee.user_id.id
+                
         vals = {
             'model': model,
             'res_id': res_id,
@@ -71,7 +79,7 @@ class TeamProjectNotification(models.Model):
             'message': message,
             'project_id': project_id,
             'sender_id': sender_id,
-            'recipient_id': recipient_id,
+            'user_id': user_id,  # Gunakan user_id, bukan recipient_id
             'notification_category': category or type,
             'request_time': kwargs.get('request_time', fields.Datetime.now()),
             'data': json.dumps(kwargs.get('data')) if isinstance(kwargs.get('data'), dict) else kwargs.get('data'),
@@ -79,27 +87,13 @@ class TeamProjectNotification(models.Model):
             'priority': kwargs.get('priority', 'normal'),
             'notification_channel': kwargs.get('channel', 'app')
         }
-
-        # Tangani user_id dengan konsisten
-        if recipient_id:
-            # Dapatkan user_id dari employee
-            employee = self.env['hr.employee'].sudo().browse(recipient_id)
-            if employee.exists() and employee.user_id:
-                vals['user_id'] = employee.user_id.id
-        elif kwargs.get('user_id'):
-            # Jika user_id diberikan langsung, gunakan itu
-            vals['user_id'] = kwargs['user_id']
-            # Coba dapatkan employee dari user_id
-            user = self.env['res.users'].sudo().browse(vals['user_id'])
-            if user.exists() and user.employee_id:
-                vals['recipient_id'] = user.employee_id.id
                 
         # Cek apakah sudah ada notifikasi yang sama
         existing = self.search([
             ('model', '=', model), 
             ('res_id', '=', res_id), 
             ('type', '=', type),
-            ('recipient_id', '=', recipient_id)
+            ('user_id', '=', user_id)  # Gunakan user_id, bukan recipient_id
         ], limit=1)
         
         if existing:

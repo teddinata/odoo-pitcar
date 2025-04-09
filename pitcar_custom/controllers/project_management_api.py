@@ -865,7 +865,7 @@ class TeamProjectAPI(http.Controller):
                             message=f"Anda disebut dalam pesan: '{kw['content'][:100]}...'",
                             project_id=values.get('project_id', False),
                             sender_id=request.env.user.employee_id.id,
-                            recipient_id=user.employee_id.id,
+                            # recipient_id=user.employee_id.id,
                             user_id=user.id,  # Tambahkan user_id eksplisit
                             category='mention',
                             data={
@@ -4382,17 +4382,18 @@ class TeamProjectAPI(http.Controller):
             operation = kw.get('operation', 'list')
 
             if operation == 'list':
-                # Get employee_id for current user
-                employee_id = request.env.user.employee_id.id
+                # Get current user id
+                current_user_id = request.env.user.id
                 
-                domain = [('recipient_id', '=', employee_id)]
+                # Domain filter berdasarkan user_id, bukan recipient_id
+                domain = [('user_id', '=', current_user_id)]
                 
-                # Key change: Make this parameter explicit and default to False
+                # Parameter unread_only
                 unread_only = kw.get('unread_only', False)
                 if unread_only:
                     domain.append(('is_read', '=', False))
                 
-                # Tambahkan filter kategori jika ada
+                # Filter kategori
                 if kw.get('category'):
                     domain.append(('notification_category', '=', kw['category']))
                     
@@ -4400,7 +4401,7 @@ class TeamProjectAPI(http.Controller):
                 limit = int(kw.get('limit', 20))
                 offset = int(kw.get('offset', 0))
                 
-                # Sorting - tambahkan opsi sorting
+                # Sorting
                 sort_field = kw.get('sort_field', 'request_time')
                 sort_order = kw.get('sort_order', 'desc')
                 order = f"{sort_field} {sort_order}"
@@ -4421,6 +4422,16 @@ class TeamProjectAPI(http.Controller):
                         except:
                             data = {'error': 'Invalid JSON data'}
                     
+                    # Dapatkan recipient (employee) dari user_id jika perlu
+                    recipient = None
+                    if hasattr(notif, 'get_recipient_employee'):
+                        recipient_employee = notif.get_recipient_employee()
+                        if recipient_employee:
+                            recipient = {
+                                'id': recipient_employee.id,
+                                'name': recipient_employee.name
+                            }
+                    
                     notifications_data.append({
                         'id': notif.id,
                         'title': notif.title,
@@ -4439,7 +4450,8 @@ class TeamProjectAPI(http.Controller):
                         'project': {
                             'id': notif.project_id.id,
                             'name': notif.project_id.name
-                        } if notif.project_id else None
+                        } if notif.project_id else None,
+                        'recipient': recipient  # Tambahkan info recipient jika tersedia
                     })
                 
                 return {
@@ -4462,8 +4474,8 @@ class TeamProjectAPI(http.Controller):
                 
             elif operation == 'mark_all_read':
                 # Mark all notifications as read for current user
-                employee_id = request.env.user.employee_id.id
-                domain = [('recipient_id', '=', employee_id), ('is_read', '=', False)]
+                current_user_id = request.env.user.id
+                domain = [('user_id', '=', current_user_id), ('is_read', '=', False)]
                 
                 if kw.get('project_id'):
                     domain.append(('project_id', '=', int(kw['project_id'])))
@@ -4480,8 +4492,8 @@ class TeamProjectAPI(http.Controller):
                 
             elif operation == 'get_unread_count':
                 # Mendapatkan jumlah notifikasi yang belum dibaca
-                employee_id = request.env.user.employee_id.id
-                domain = [('recipient_id', '=', employee_id), ('is_read', '=', False)]
+                current_user_id = request.env.user.id
+                domain = [('user_id', '=', current_user_id), ('is_read', '=', False)]
                 
                 count = request.env['team.project.notification'].sudo().search_count(domain)
                 
@@ -4496,4 +4508,3 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in manage_notifications: {str(e)}")
             return {'status': 'error', 'message': str(e)}
-    

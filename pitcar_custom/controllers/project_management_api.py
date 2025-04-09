@@ -826,6 +826,15 @@ class TeamProjectAPI(http.Controller):
                 'message_type': kw.get('message_type', 'regular')
             }
             
+            # Proses mentions terlebih dahulu
+            mentions = []
+            if kw.get('mentions'):
+                mentions = [int(user_id) for user_id in kw['mentions']]
+                
+            # Log mentions yang ditemukan
+            _logger.info(f"Creating message with mentions: {mentions}")
+            
+            # Buat pesan
             message = request.env['team.project.message'].sudo().create(values)
             
             # Proses attachment yang mungkin telah diupload sebelumnya
@@ -836,34 +845,42 @@ class TeamProjectAPI(http.Controller):
                 for attachment_id in attachment_ids:
                     attachment = request.env['ir.attachment'].sudo().browse(int(attachment_id))
                     if attachment.exists() and (not attachment.res_id or not attachment.res_model):
-                        # Update attachment untuk mengaitkannya dengan pesan
                         attachment.write({
                             'res_model': 'team.project.message',
                             'res_id': message.id
                         })
-                        # Tambahkan ke pesan
                         message.write({
                             'attachment_ids': [(4, attachment.id)]
                         })
             
-            # Proses mentions jika ada
-            if kw.get('mentions'):
+            # Proses mentions secara eksplisit
+            if mentions:
                 current_user_id = request.env.user.id
-                for user_id in kw['mentions']:
-                    # Hindari self-mention (kunci untuk mengatasi masalah utama)
-                    if int(user_id) == current_user_id:
+                
+                # Buat notifikasi untuk setiap user yang di-mention
+                for user_id in mentions:
+                    # Skip self-mention
+                    if user_id == current_user_id:
+                        _logger.info(f"Skipping self-mention for user_id: {user_id}")
                         continue
-                        
-                    user = request.env['res.users'].sudo().browse(int(user_id))
-                    if user.exists() and user.employee_id:
-                        # Gunakan metode baru create_notification
-                        request.env['team.project.notification'].sudo().create_project_notification(
+                    
+                    # Cek keberadaan user
+                    user = request.env['res.users'].sudo().browse(user_id)
+                    if not user.exists() or not user.employee_id:
+                        _logger.warning(f"User {user_id} not found or has no employee record")
+                        continue
+                    
+                    _logger.info(f"Creating mention notification for user_id: {user_id}")
+                    
+                    # Buat notifikasi mention
+                    try:
+                        notif = request.env['team.project.notification'].sudo().create_notification(
                             model='team.project.message',
                             res_id=message.id,
-                            notif_type='mention',  # Ganti 'type' menjadi 'notif_type'
+                            notif_type='mention',
                             title=f"Anda disebut oleh {request.env.user.employee_id.name}",
                             message=f"Anda disebut dalam pesan: '{kw['content'][:100]}...'",
-                            user_id=user.id,  # Parameter wajib
+                            user_id=user_id,
                             category='mention',
                             project_id=values.get('project_id', False),
                             sender_id=request.env.user.employee_id.id,
@@ -873,9 +890,55 @@ class TeamProjectAPI(http.Controller):
                                 'action': 'view_group_chat'
                             }
                         )
+                        
+                        if notif:
+                            _logger.info(f"Successfully created mention notification #{notif.id} for user_id: {user_id}")
+                        else:
+                            _logger.warning(f"Failed to create mention notification for user_id: {user_id}")
+                            
+                    except Exception as e:
+                        _logger.error(f"Error creating mention notification for user_id {user_id}: {str(e)}")
             
-            # Proses notifikasi grup setelah mentions diproses
-            message._notify_group_members()  # Ini akan otomatis memanggil fungsi notifikasi grup
+            # Panggil notify_group_members setelah semua mention diproses
+            # Hapus baris ini jika Anda belum mengimplementasikan metode ini
+            # message._notify_group_members()
+            
+            # Atau gunakan kode berikut untuk memproses notifikasi grup secara manual
+            group = message.group_id
+            if group and group.member_ids:
+                # Notifikasi semua anggota grup kecuali pengirim dan yang sudah di-mention
+                for member in group.member_ids:
+                    if not member.user_id:
+                        continue
+                        
+                    user_id = member.user_id.id
+                    
+                    # Skip pengirim pesan
+                    if member.id == message.author_id.id:
+                        continue
+                        
+                    # Skip user yang sudah di-mention
+                    if user_id in mentions:
+                        continue
+                        
+                    # Buat notifikasi "new_message"
+                    request.env['team.project.notification'].sudo().create_notification(
+                        model='team.project.message',
+                        res_id=message.id,
+                        notif_type='new_message',
+                        title=f"Pesan baru di {group.name}",
+                        message=f"{message.author_id.name}: {message.content[:100]}...",
+                        user_id=user_id,
+                        category='new_message',
+                        project_id=message.project_id.id if message.project_id else False,
+                        sender_id=message.author_id.id,
+                        data={
+                            'message_id': message.id,
+                            'group_id': group.id,
+                            'action': 'view_group_chat',
+                            'author_id': message.author_id.id
+                        }
+                    )
             
             message_data = self._prepare_message_data(message)
             

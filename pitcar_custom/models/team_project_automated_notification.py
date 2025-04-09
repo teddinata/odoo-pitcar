@@ -9,6 +9,47 @@ _logger = logging.getLogger(__name__)
 class TeamProjectAutomatedNotification(models.Model):
     _name = 'team.project.automated.notification'
     _description = 'Automated Project Notifications'
+
+    @api.model
+    def send_task_deadline_notifications(self):
+        """Kirim notifikasi untuk tugas yang mendekati deadline"""
+        today = fields.Date.today()
+        tomorrow = today + timedelta(days=1)
+        upcoming_tasks = self.env['team.project.task'].sudo().search([
+            ('planned_date_end', '>=', today),
+            ('planned_date_end', '<=', tomorrow),
+            ('state', 'not in', ['done', 'cancelled'])
+        ])
+        
+        notification_batch = []
+        for task in upcoming_tasks:
+            # Notifikasi kepada pengguna yang ditugaskan
+            for assignee in task.assigned_to:
+                if assignee.user_id:
+                    notification_batch.append({
+                        'model': 'team.project.task',
+                        'res_id': task.id,
+                        'notif_type': 'deadline_approaching',
+                        'title': f"Deadline Mendekat: {task.name}",
+                        'message': f"Tugas '{task.name}' memiliki deadline pada {fields.Date.to_string(task.planned_date_end)}.",
+                        'user_id': assignee.user_id.id,
+                        'category': 'deadline_approaching',
+                        'project_id': task.project_id.id,
+                        'data': {
+                            'task_id': task.id,
+                            'project_id': task.project_id.id,
+                            'action': 'view_task',
+                            'days_remaining': (task.planned_date_end - today).days
+                        },
+                        'priority': 'high'
+                    })
+        
+        # Buat notifikasi batch
+        if notification_batch:
+            self.env['team.project.notification'].sudo().create_notifications_batch(notification_batch)
+            return len(notification_batch)
+        
+        return 0
     
     @api.model
     def _notify_approaching_deadlines(self):

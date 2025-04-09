@@ -4331,27 +4331,57 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_on_time_completion_report: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/team/notification/categories', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_notification_categories(self, **kw):
+        try:
+            # Dapatkan semua kategori yang tersedia di sistem
+            categories = request.env['team.project.notification'].sudo()._fields['notification_category'].selection
+            
+            # Format hasil
+            category_list = []
+            for value, label in categories:
+                category_list.append({
+                    'value': value,
+                    'label': label
+                })
+                
+            # Kelompokkan kategori berdasarkan tipe
+            grouped_categories = {
+                'project': ['task_assigned', 'task_updated', 'task_completed', 'task_overdue', 'project_update', 'deadline_approaching'],
+                'chat': ['mention', 'new_message', 'comment_added'],
+                'meeting': ['meeting_scheduled', 'meeting_reminder']
+            }
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'categories': category_list,
+                    'grouped': grouped_categories
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_notification_categories: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
 
     # Tambahkan ke file controllers/team_project_api.py
     @http.route('/web/v2/team/notifications', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_notifications(self, **kw):
-        """Get or update user notifications"""
         try:
             operation = kw.get('operation', 'list')
 
             if operation == 'list':
-                # Get unread notifications for current user
+                # Get employee_id for current user
                 employee_id = request.env.user.employee_id.id
                 
                 domain = [('recipient_id', '=', employee_id)]
-                if kw.get('unread_only', True):
+                
+                # Key change: Make this parameter explicit and default to False
+                unread_only = kw.get('unread_only', False)
+                if unread_only:
                     domain.append(('is_read', '=', False))
-                    
-                # Optional: filter by project_id
-                if kw.get('project_id'):
-                    domain.append(('project_id', '=', int(kw['project_id'])))
-                    
-                # Optional: filter by category
+                
+                # Tambahkan filter kategori jika ada
                 if kw.get('category'):
                     domain.append(('notification_category', '=', kw['category']))
                     
@@ -4359,9 +4389,14 @@ class TeamProjectAPI(http.Controller):
                 limit = int(kw.get('limit', 20))
                 offset = int(kw.get('offset', 0))
                 
+                # Sorting - tambahkan opsi sorting
+                sort_field = kw.get('sort_field', 'request_time')
+                sort_order = kw.get('sort_order', 'desc')
+                order = f"{sort_field} {sort_order}"
+                
                 # Get notifications
                 notifications = request.env['team.project.notification'].sudo().search(
-                    domain, limit=limit, offset=offset, order='request_time desc'
+                    domain, limit=limit, offset=offset, order=order
                 )
                 
                 # Format data

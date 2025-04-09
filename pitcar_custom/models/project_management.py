@@ -893,7 +893,7 @@ class TeamProjectMessage(models.Model):
                 }
                 
                 # Buat notifikasi mention
-                notif = self.env['team.project.notification'].sudo().create_notification(
+                notif = self.env['team.project.notification'].sudo().create_project_notification(
                     model='team.project.message',
                     res_id=self.id,
                     notif_type='mention',
@@ -964,7 +964,7 @@ class TeamProjectMessage(models.Model):
                 'author_id': self.author_id.id
             }
             
-            self.env['team.project.notification'].sudo().create_notification(
+            self.env['team.project.notification'].sudo().create_project_notification(
                 model='team.project.message',
                 res_id=self.id,
                 notif_type='new_message',

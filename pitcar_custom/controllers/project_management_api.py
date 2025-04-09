@@ -849,20 +849,25 @@ class TeamProjectAPI(http.Controller):
             # Proses mentions jika ada
             if kw.get('mentions'):
                 for user_id in kw['mentions']:
-                    # Buat notifikasi untuk setiap user yang di-mention
-                    request.env['pitcar.notification'].sudo().create_or_update_notification(
-                        model='team.project.message',
-                        res_id=message.id,
-                        type='mention',
-                        title=f"You were mentioned by {request.env.user.name}",
-                        message=f"You were mentioned in a message: '{kw['content'][:100]}...'",
-                        user_id=user_id,
-                        data={
-                            'message_id': message.id, 
-                            'group_id': values['group_id'],
-                            'action': 'view_group_chat'
-                        }
-                    )
+                    user = request.env['res.users'].sudo().browse(int(user_id))
+                    if user.exists() and user.employee_id:
+                        request.env['team.project.notification'].sudo().create_project_notification(
+                            model='team.project.message',
+                            res_id=message.id,
+                            type='mention',
+                            title=f"Anda disebut oleh {request.env.user.employee_id.name}",
+                            message=f"Anda disebut dalam pesan: '{kw['content'][:100]}...'",
+                            project_id=values.get('project_id', False),
+                            sender_id=request.env.user.employee_id.id,
+                            recipient_id=user.employee_id.id,
+                            category='mention',
+                            data={
+                                'message_id': message.id, 
+                                'group_id': values['group_id'],
+                                'action': 'view_group_chat'
+                            },
+                            priority='medium'
+                        )
             
             message_data = self._prepare_message_data(message)
             

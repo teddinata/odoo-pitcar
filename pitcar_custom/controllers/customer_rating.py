@@ -1403,7 +1403,7 @@ Mobil sudah tampil hebat,
 Yuk beri rating sekarang ya! 
 
 Hai, *{order.partner_id.name}*!
-Saya Valen dari Pitcar. Terima kasih telah mempercayakan perbaikan mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} kepada Pitcar Body Repair.
+Saya Wylda dari Pitcar. Terima kasih telah mempercayakan perbaikan mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} kepada Pitcar Body Repair.
 
 Yuk, berikan penilaian Anda melalui link berikut:
 {feedback_url}

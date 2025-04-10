@@ -4405,8 +4405,8 @@ class TeamProjectAPI(http.Controller):
                 
             # Kelompokkan kategori berdasarkan tipe
             grouped_categories = {
-                'project': ['task_assigned', 'task_updated', 'task_completed', 'task_overdue', 'project_update', 'deadline_approaching'],
-                'chat': ['mention', 'new_message', 'comment_added'],
+                'project': ['task_assigned', 'task_updated', 'task_completed', 'task_overdue', 'project_update', 'deadline_approaching', 'new_message'],
+                'chat': ['mention', 'comment_added'],
                 'meeting': ['meeting_scheduled', 'meeting_reminder']
             }
             

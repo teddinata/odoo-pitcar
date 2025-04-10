@@ -819,6 +819,10 @@ class TeamProjectAPI(http.Controller):
             if not all(kw.get(field) for field in required_fields):
                 return {'status': 'error', 'message': 'Missing required fields'}
 
+            # Pastikan user saat ini memiliki employee
+            if not request.env.user.employee_id:
+                return {'status': 'error', 'message': 'Current user has no employee record'}
+
             # Pertama, buat pesan chat seperti biasa
             values = {
                 'group_id': int(kw['group_id']),
@@ -845,60 +849,68 @@ class TeamProjectAPI(http.Controller):
                         message.write({
                             'attachment_ids': [(4, attachment.id)]
                         })
+            
             # Ekstrak mentions dari content menggunakan regex
             mention_pattern = r'@\[(\d+):([^\]]+)\]'
             mentions = re.findall(mention_pattern, kw['content'])
             
             _logger.info(f"Extracted mentions: {mentions}")
             
-            # Simpan semua user yang di-mention untuk keperluan notifikasi grup
-            mentioned_user_ids = []
+            # Simpan semua employee yang di-mention untuk keperluan notifikasi grup
+            mentioned_employee_ids = []
 
-            # Proses mention secara terpisah menggunakan model baru
+            # Proses mention secara terpisah
             if mentions:
-                for user_id_str, username in mentions:
+                for employee_id_str, username in mentions:
                     try:
-                        user_id = int(user_id_str)
-                        mentioned_user_ids.append(user_id)
+                        employee_id = int(employee_id_str)
                         
+                        # Skip jika sudah diproses (hindari duplikat)
+                        if employee_id in mentioned_employee_ids:
+                            continue
+                            
                         # Skip self-mention
-                        if user_id == request.env.user.id:
-                            _logger.info(f"Skipping self-mention: {user_id} ({username})")
+                        if employee_id == request.env.user.employee_id.id:
+                            _logger.info(f"Skipping self-mention: {employee_id} ({username})")
                             continue
                         
                         # Buat mention menggunakan model baru
                         mention = request.env['team.project.mention'].sudo().create_mention(
                             message_id=message.id,
-                            mentioned_user_id=user_id,
+                            mentioned_employee_id=employee_id,
                             mentioned_by_id=request.env.user.employee_id.id
                         )
                         
-                        _logger.info(f"Created mention result: {mention and mention.id or 'Failed'}")
+                        if mention:
+                            mentioned_employee_ids.append(employee_id)
+                            _logger.info(f"Created mention successfully: {mention.id}")
                         
                     except Exception as e:
-                        _logger.error(f"Error processing mention for {user_id_str}: {str(e)}")
+                        _logger.error(f"Error processing mention for {employee_id_str}: {str(e)}")
+                        import traceback
+                        _logger.error(traceback.format_exc())
             
             # Buat notifikasi normal untuk anggota grup (kecuali yang di-mention)
             group = request.env['team.project.group'].sudo().browse(int(kw['group_id']))
             if group.exists() and group.member_ids:
                 # Notifikasi semua anggota grup kecuali pengirim dan yang di-mention
                 for member in group.member_ids:
-                    if (not member.user_id or 
-                        member.id == request.env.user.employee_id.id or
-                        member.user_id.id in mentioned_user_ids):
+                    if (member.id == request.env.user.employee_id.id or 
+                        member.id in mentioned_employee_ids or 
+                        not member.user_id):
                         continue
                     
-                    # Buat notifikasi pesan baru normal seperti sebelumnya
+                    # Buat notifikasi pesan baru
                     request.env['team.project.notification'].sudo().create_project_notification(
                         model='team.project.message',
                         res_id=message.id,
                         notif_type='new_message',
                         title=f"Pesan baru di {group.name}",
                         message=f"{request.env.user.employee_id.name}: {kw['content'][:100]}...",
-                        user_id=member.user_id.id,
+                        recipient_id=member.id,
+                        sender_id=request.env.user.employee_id.id,
                         category='new_message',
                         project_id=values.get('project_id', False),
-                        sender_id=request.env.user.employee_id.id,
                         data={
                             'message_id': message.id,
                             'group_id': group.id,
@@ -4412,16 +4424,19 @@ class TeamProjectAPI(http.Controller):
     # Tambahkan ke file controllers/team_project_api.py
     @http.route('/web/v2/team/notifications', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_notifications(self, **kw):
-        """Enhanced notification endpoint with improved filtering and error handling"""
+        """Enhanced notification endpoint with improved employee-based filtering"""
         try:
             operation = kw.get('operation', 'list')
             
-            if operation == 'list':
-                # Get current user
-                current_user_id = request.env.user.id
+            # Pastikan user saat ini memiliki employee
+            if not request.env.user.employee_id:
+                return {'status': 'error', 'message': 'Current user has no employee record'}
                 
-                # Base domain for current user's notifications
-                domain = [('user_id', '=', current_user_id)]
+            current_employee_id = request.env.user.employee_id.id
+            
+            if operation == 'list':
+                # Base domain for current employee's notifications
+                domain = [('recipient_id', '=', current_employee_id)]
                 
                 # Apply additional filters
                 if kw.get('unread_only'):
@@ -4439,7 +4454,7 @@ class TeamProjectAPI(http.Controller):
                     domain.append(('project_id', '=', int(kw['project_id'])))
                 
                 # Filter by department (for project notifications)
-                if kw.get('filter_by_department') and request.env.user.employee_id and request.env.user.employee_id.department_id:
+                if kw.get('filter_by_department') and request.env.user.employee_id.department_id:
                     department_id = request.env.user.employee_id.department_id.id
                     
                     # Get projects in the department
@@ -4522,11 +4537,11 @@ class TeamProjectAPI(http.Controller):
                             'department_name': notif.project_id.department_id.name if notif.project_id.department_id else '',
                         }
                     
-                    # Add employee info if available
-                    if notif.employee_id:
-                        notif_info['employee'] = {
-                            'id': notif.employee_id.id,
-                            'name': notif.employee_id.name
+                    # Add recipient info if available
+                    if notif.recipient_id:
+                        notif_info['recipient'] = {
+                            'id': notif.recipient_id.id,
+                            'name': notif.recipient_id.name
                         }
                     
                     notification_data.append(notif_info)
@@ -4537,7 +4552,7 @@ class TeamProjectAPI(http.Controller):
                     'data': notification_data,
                     'total': total_count,
                     'unread_count': request.env['team.project.notification'].sudo().search_count([
-                        ('user_id', '=', current_user_id),
+                        ('recipient_id', '=', current_employee_id),
                         ('is_read', '=', False)
                     ])
                 }
@@ -4551,8 +4566,8 @@ class TeamProjectAPI(http.Controller):
                 if not notification.exists():
                     return {'status': 'error', 'message': 'Notification not found'}
                     
-                # Ensure notification belongs to current user
-                if notification.user_id.id != request.env.user.id:
+                # Ensure notification belongs to current employee
+                if notification.recipient_id.id != current_employee_id:
                     return {'status': 'error', 'message': 'Access denied'}
                     
                 notification.mark_as_read()
@@ -4561,15 +4576,15 @@ class TeamProjectAPI(http.Controller):
                     'status': 'success',
                     'message': 'Notification marked as read',
                     'unread_count': request.env['team.project.notification'].sudo().search_count([
-                        ('user_id', '=', request.env.user.id),
+                        ('recipient_id', '=', current_employee_id),
                         ('is_read', '=', False)
                     ])
                 }
                 
             elif operation == 'mark_all_read':
-                # Build domain for current user's unread notifications
+                # Build domain for current employee's unread notifications
                 domain = [
-                    ('user_id', '=', request.env.user.id),
+                    ('recipient_id', '=', current_employee_id),
                     ('is_read', '=', False)
                 ]
                 
@@ -4595,7 +4610,7 @@ class TeamProjectAPI(http.Controller):
                     'message': f'{len(notifications)} notifications marked as read',
                     'count': len(notifications),
                     'unread_count': request.env['team.project.notification'].sudo().search_count([
-                        ('user_id', '=', request.env.user.id),
+                        ('recipient_id', '=', current_employee_id),
                         ('is_read', '=', False)
                     ])
                 }
@@ -4603,7 +4618,7 @@ class TeamProjectAPI(http.Controller):
             elif operation == 'get_unread_count':
                 # Get unread count with optional category filter
                 domain = [
-                    ('user_id', '=', request.env.user.id),
+                    ('recipient_id', '=', current_employee_id),
                     ('is_read', '=', False)
                 ]
                 
@@ -4652,14 +4667,20 @@ class TeamProjectAPI(http.Controller):
         
     @http.route('/web/v2/team/mentions', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_mentions(self, **kw):
-        """Manage mention operations"""
+        """Manage mention operations with employee-based targeting"""
         try:
             operation = kw.get('operation', 'list')
             
+            # Pastikan user saat ini memiliki employee
+            if not request.env.user.employee_id:
+                return {'status': 'error', 'message': 'Current user has no employee record'}
+                
+            current_employee_id = request.env.user.employee_id.id
+            
             if operation == 'list':
-                # Get mentions for current user
+                # Get mentions for current employee
                 mentions = request.env['team.project.mention'].sudo().search([
-                    ('mentioned_user_id', '=', request.env.user.id)
+                    ('mentioned_employee_id', '=', current_employee_id)
                 ], order='create_date desc', limit=kw.get('limit', 20))
                 
                 mention_data = []
@@ -4688,7 +4709,7 @@ class TeamProjectAPI(http.Controller):
                         'group': {
                             'id': mention.group_id.id,
                             'name': mention.group_id.name
-                        },
+                        } if mention.group_id else None,
                         'project': {
                             'id': mention.project_id.id,
                             'name': mention.project_id.name
@@ -4699,7 +4720,7 @@ class TeamProjectAPI(http.Controller):
                 
                 # Get unread count
                 unread_count = request.env['team.project.mention'].sudo().search_count([
-                    ('mentioned_user_id', '=', request.env.user.id),
+                    ('mentioned_employee_id', '=', current_employee_id),
                     ('is_read', '=', False)
                 ])
                 
@@ -4718,15 +4739,15 @@ class TeamProjectAPI(http.Controller):
                 if not mention.exists():
                     return {'status': 'error', 'message': 'Mention not found'}
                     
-                # Ensure mention belongs to current user
-                if mention.mentioned_user_id.id != request.env.user.id:
+                # Ensure mention belongs to current employee
+                if mention.mentioned_employee_id.id != current_employee_id:
                     return {'status': 'error', 'message': 'Access denied'}
                     
                 mention.mark_as_read()
                 
                 # Get updated unread count
                 unread_count = request.env['team.project.mention'].sudo().search_count([
-                    ('mentioned_user_id', '=', request.env.user.id),
+                    ('mentioned_employee_id', '=', current_employee_id),
                     ('is_read', '=', False)
                 ])
                 
@@ -4738,7 +4759,7 @@ class TeamProjectAPI(http.Controller):
                 
             elif operation == 'mark_all_read':
                 mentions = request.env['team.project.mention'].sudo().search([
-                    ('mentioned_user_id', '=', request.env.user.id),
+                    ('mentioned_employee_id', '=', current_employee_id),
                     ('is_read', '=', False)
                 ])
                 
@@ -4753,7 +4774,7 @@ class TeamProjectAPI(http.Controller):
                 
             elif operation == 'get_unread_count':
                 unread_count = request.env['team.project.mention'].sudo().search_count([
-                    ('mentioned_user_id', '=', request.env.user.id),
+                    ('mentioned_employee_id', '=', current_employee_id),
                     ('is_read', '=', False)
                 ])
                 

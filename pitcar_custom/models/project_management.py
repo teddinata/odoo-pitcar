@@ -253,22 +253,21 @@ class TeamProject(models.Model):
         # Batch data untuk performa lebih baik
         notification_batch = []
         for member in members:
-            if member.user_id:
-                notification_batch.append({
-                    'model': 'team.project',
-                    'res_id': project.id,
-                    'notif_type': f"project_{event_type}",
-                    'title': title,
-                    'message': message,
-                    'user_id': member.user_id.id,
-                    'category': 'project_update',
-                    'project_id': project.id,
-                    'sender_id': self.env.user.employee_id.id if self.env.user.employee_id else False,
-                    'data': {
-                        'project_id': project.id, 
-                        'action': 'view_project'
-                    }
-                })
+            notification_batch.append({
+                'model': 'team.project',
+                'res_id': project.id,
+                'notif_type': f"project_{event_type}",
+                'title': title,
+                'message': message,
+                'recipient_id': member.id,  # Gunakan employee_id langsung
+                'category': 'project_update',
+                'project_id': project.id,
+                'sender_id': self.env.user.employee_id.id if self.env.user.employee_id else False,
+                'data': {
+                    'project_id': project.id, 
+                    'action': 'view_project'
+                }
+            })
         
         # Buat notifikasi batch
         if notification_batch:
@@ -509,24 +508,23 @@ class TeamProjectTask(models.Model):
         if task.assigned_to:
             notification_batch = []
             for assignee in task.assigned_to:
-                if assignee.user_id:
-                    notification_batch.append({
-                        'model': 'team.project.task',
-                        'res_id': task.id,
-                        'notif_type': 'task_assigned',
-                        'title': f"Tugas Baru: {task.name}",
-                        'message': f"Anda ditugaskan ke tugas '{task.name}' dalam proyek {task.project_id.name}.",
-                        'user_id': assignee.user_id.id,
-                        'category': 'task_assigned',
+                notification_batch.append({
+                    'model': 'team.project.task',
+                    'res_id': task.id,
+                    'notif_type': 'task_assigned',
+                    'title': f"Tugas Baru: {task.name}",
+                    'message': f"Anda ditugaskan ke tugas '{task.name}' dalam proyek {task.project_id.name}.",
+                    'recipient_id': assignee.id,  # Gunakan employee_id langsung
+                    'category': 'task_assigned',
+                    'project_id': task.project_id.id,
+                    'sender_id': self.env.user.employee_id.id,
+                    'data': {
+                        'task_id': task.id, 
                         'project_id': task.project_id.id,
-                        'sender_id': self.env.user.employee_id.id,
-                        'data': {
-                            'task_id': task.id, 
-                            'project_id': task.project_id.id,
-                            'action': 'view_task'
-                        },
-                        'priority': 'high' if task.priority in ['2', '3'] else 'normal'
-                    })
+                        'action': 'view_task'
+                    },
+                    'priority': 'high' if task.priority in ['2', '3'] else 'normal'
+                })
             
             if notification_batch:
                 self.env['team.project.notification'].sudo().create_notifications_batch(notification_batch)
@@ -632,7 +630,7 @@ class TeamProjectTask(models.Model):
                                 'notif_type': f"task_{current_state}",
                                 'title': f"Pembaruan Tugas: {task.name}",
                                 'message': state_messages[current_state],
-                                'user_id': assignee.user_id.id,
+                                'recipient_id': assignee.id,  # Gunakan employee_id langsung
                                 'category': 'task_updated',
                                 'project_id': task.project_id.id,
                                 'sender_id': self.env.user.employee_id.id,
@@ -653,7 +651,7 @@ class TeamProjectTask(models.Model):
                                 'notif_type': f"task_{current_state}",
                                 'title': f"Pembaruan Tugas: {task.name}",
                                 'message': state_messages[current_state],
-                                'user_id': task.project_id.project_manager_id.user_id.id,
+                                'recipient_id': task.project_id.project_manager_id.id,  # Gunakan employee_id langsung
                                 'category': 'task_updated',
                                 'project_id': task.project_id.id,
                                 'sender_id': self.env.user.employee_id.id,
@@ -839,7 +837,7 @@ class TeamProjectMessage(models.Model):
     
     # Dalam model TeamProjectMessage
     def _process_mentions(self):
-        """Proses mention dalam konten pesan dengan keandalan yang ditingkatkan"""
+        """Proses mention dalam konten pesan dengan dengan model yang lebih konsisten"""
         if not self.content:
             return
 
@@ -857,63 +855,44 @@ class TeamProjectMessage(models.Model):
         _logger.info(f"Ditemukan {len(mentions)} mention: {mentions}")
         
         # Track mention yang berhasil diproses
-        processed_users = []
+        processed_employees = []
         
         # Proses setiap mention
-        for user_id_str, username in mentions:
+        for employee_id_str, username in mentions:
             try:
                 # Konversi ke integer
-                user_id = int(user_id_str)
+                employee_id = int(employee_id_str)
                 
                 # Skip jika sudah diproses (hindari duplikat)
-                if user_id in processed_users:
+                if employee_id in processed_employees:
                     continue
                     
-                # Dapatkan record user
-                user = self.env['res.users'].sudo().browse(user_id)
-                if not user.exists():
-                    _logger.warning(f"User {user_id} ({username}) tidak ditemukan")
+                # Dapatkan record employee
+                employee = self.env['hr.employee'].sudo().browse(employee_id)
+                if not employee.exists():
+                    _logger.warning(f"Employee {employee_id} ({username}) tidak ditemukan")
                     continue
                     
                 # Skip self-mention
-                if user.id == self.env.user.id:
-                    _logger.info(f"Melewati self-mention: {user_id} ({username})")
+                if self.author_id and self.author_id.id == employee.id:
+                    _logger.info(f"Melewati self-mention: {employee_id} ({username})")
                     continue
                     
-                # Skip mention dimana author adalah user yang dimention
-                if self.author_id and user.employee_id and self.author_id.id == user.employee_id.id:
-                    _logger.info(f"Melewati mention dimana penulis adalah user yang disebutkan: {user_id} ({username})")
-                    continue
-                    
-                # Siapkan data notifikasi
-                mention_data = {
-                    'message_id': self.id,
-                    'group_id': self.group_id.id if self.group_id else False,
-                    'action': 'view_group_chat'
-                }
-                
-                # Buat notifikasi mention
-                notif = self.env['team.project.notification'].sudo().create_project_notification(
-                    model='team.project.message',
-                    res_id=self.id,
-                    notif_type='mention',
-                    title=f"Anda disebut oleh {self.author_id.name}",
-                    message=f"Anda disebut dalam pesan: '{self.content[:100]}...'",
-                    user_id=user.id,
-                    category='mention',
-                    project_id=self.project_id.id if self.project_id else False,
-                    sender_id=self.author_id.id,
-                    data=mention_data,
-                    priority='medium'
+                # Buat mention menggunakan model baru
+                mention = self.env['team.project.mention'].sudo().create_mention(
+                    message_id=self.id,
+                    mentioned_employee_id=employee_id,
+                    mentioned_by_id=self.author_id.id
                 )
                 
                 # Tambahkan ke daftar yang sudah diproses
-                if notif:
-                    processed_users.append(user_id)
-                    _logger.info(f"Berhasil membuat notifikasi mention untuk user {user_id} ({username})")
+                # Tambahkan ke daftar yang sudah diproses
+                if mention:
+                    processed_employees.append(employee_id)
+                    _logger.info(f"Berhasil membuat mention untuk employee {employee_id} ({username})")
                 
             except Exception as e:
-                _logger.error(f"Error saat memproses mention untuk {user_id_str}:{username}: {str(e)}")
+                _logger.error(f"Error saat memproses mention untuk {employee_id_str}:{username}: {str(e)}")
                 import traceback
                 _logger.error(traceback.format_exc())
 
@@ -970,7 +949,7 @@ class TeamProjectMessage(models.Model):
                 notif_type='new_message',
                 title=title,
                 message=f"{self.author_id.name}: {self.content[:100]}...",
-                user_id=member.user_id.id,
+                recipient_id=member.id,  # Gunakan employee_id langsung
                 category=category,
                 project_id=self.project_id.id if self.project_id else False,
                 sender_id=self.author_id.id,
@@ -1265,7 +1244,7 @@ class TeamProjectMeeting(models.Model):
                             Lokasi: {meeting.location or 'Belum ditentukan'}
                             Penyelenggara: {meeting.organizer_id.name}
                         """,
-                        'user_id': attendee.user_id.id,
+                        'recipient_id': attendee.id,  # Gunakan employee_id langsung
                         'category': 'meeting_scheduled',
                         'project_id': meeting.project_id.id if meeting.project_id else False,
                         'sender_id': meeting.organizer_id.id,
@@ -1305,7 +1284,7 @@ class TeamProjectMeeting(models.Model):
                         'notif_type': 'meeting_cancelled',
                         'title': f"Rapat Dibatalkan: {meeting.name}",
                         'message': f"Rapat {meeting.name} yang dijadwalkan pada {meeting.start_datetime.strftime('%Y-%m-%d %H:%M')} telah dibatalkan.",
-                        'user_id': attendee.user_id.id,
+                        'recipient_id': attendee.id,  # Gunakan employee_id langsung
                         'category': 'meeting_scheduled',
                         'project_id': meeting.project_id.id if meeting.project_id else False,
                         'sender_id': self.env.user.employee_id.id,
@@ -1346,82 +1325,104 @@ class TeamProjectMeetingAction(models.Model):
     
     def action_cancel(self):
         self.write({'state': 'cancelled'})
-
-    class TeamProjectMention(models.Model):
-        _name = 'team.project.mention'
-        _description = 'Project Message Mention'
-        _order = 'create_date desc'
+class TeamProjectMention(models.Model):
+    _name = 'team.project.mention'
+    _description = 'Project Message Mention'
+    _order = 'create_date desc'
+    
+    # Fields
+    name = fields.Char('Name', compute='_compute_name', store=True)
+    message_id = fields.Many2one('team.project.message', string='Message', required=True, ondelete='cascade')
+    mentioned_employee_id = fields.Many2one('hr.employee', string='Mentioned Employee', required=True)
+    mentioned_by_id = fields.Many2one('hr.employee', string='Mentioned By', required=True)
+    project_id = fields.Many2one('team.project', string='Project', related='message_id.project_id', store=True)
+    group_id = fields.Many2one('team.project.group', string='Group', related='message_id.group_id', store=True)
+    is_read = fields.Boolean('Is Read', default=False)
+    create_date = fields.Datetime('Created On', readonly=True)
+    
+    @api.depends('message_id', 'mentioned_employee_id')
+    def _compute_name(self):
+        for record in self:
+            record.name = f"{record.mentioned_employee_id.name} mentioned by {record.mentioned_by_id.name}" if record.mentioned_employee_id and record.mentioned_by_id else "New Mention"
+    
+    def mark_as_read(self):
+        """Mark mention as read"""
+        self.write({'is_read': True})
         
-        # Fields
-        name = fields.Char('Name', compute='_compute_name', store=True)
-        message_id = fields.Many2one('team.project.message', string='Message', required=True, ondelete='cascade')
-        mentioned_user_id = fields.Many2one('res.users', string='Mentioned User', required=True)
-        mentioned_by_id = fields.Many2one('hr.employee', string='Mentioned By', required=True)
-        project_id = fields.Many2one('team.project', string='Project', related='message_id.project_id', store=True)
-        group_id = fields.Many2one('team.project.group', string='Group', related='message_id.group_id', store=True)
-        is_read = fields.Boolean('Is Read', default=False)
-        create_date = fields.Datetime('Created On', readonly=True)
+    @api.model
+    def create_mention(self, message_id, mentioned_employee_id, mentioned_by_id):
+        """Create a new mention record with validation"""
+        if not all([message_id, mentioned_employee_id, mentioned_by_id]):
+            _logger.warning("Missing required parameters for creating mention")
+            return False
+            
+        # Validate message exists
+        message = self.env['team.project.message'].sudo().browse(message_id)
+        if not message.exists():
+            _logger.warning(f"Message {message_id} does not exist")
+            return False
+            
+        # Validate mentioned employee exists
+        mentioned_employee = self.env['hr.employee'].sudo().browse(mentioned_employee_id)
+        if not mentioned_employee.exists():
+            _logger.warning(f"Employee {mentioned_employee_id} does not exist")
+            return False
+            
+        # Validate employee who mentioned exists
+        mentioned_by = self.env['hr.employee'].sudo().browse(mentioned_by_id)
+        if not mentioned_by.exists():
+            _logger.warning(f"Employee {mentioned_by_id} does not exist")
+            return False
+            
+        # Skip self-mentions
+        if mentioned_employee_id == mentioned_by_id:
+            _logger.info(f"Skipping self-mention: {mentioned_employee.name}")
+            return False
+            
+        # Check for existing mention to avoid duplicates
+        existing = self.search([
+            ('message_id', '=', message_id),
+            ('mentioned_employee_id', '=', mentioned_employee_id)
+        ], limit=1)
         
-        @api.depends('message_id', 'mentioned_user_id')
-        def _compute_name(self):
-            for record in self:
-                record.name = f"{record.mentioned_user_id.name} mentioned by {record.mentioned_by_id.name}" if record.mentioned_user_id and record.mentioned_by_id else "New Mention"
+        if existing:
+            _logger.info(f"Mention already exists: {existing.id}")
+            return existing
+            
+        # Create new mention
+        values = {
+            'message_id': message_id,
+            'mentioned_employee_id': mentioned_employee_id,
+            'mentioned_by_id': mentioned_by_id
+        }
         
-        def mark_as_read(self):
-            """Mark mention as read"""
-            self.write({'is_read': True})
+        try:
+            mention = self.create(values)
+            _logger.info(f"Created new mention: {mention.id}")
             
-        @api.model
-        def create_mention(self, message_id, mentioned_user_id, mentioned_by_id):
-            """Create a new mention record with validation"""
-            if not message_id or not mentioned_user_id or not mentioned_by_id:
-                _logger.warning("Missing required parameters for creating mention")
-                return False
+            # Optionally create notification for this mention if mentioned employee has a user
+            if mentioned_employee.user_id:
+                mention_data = {
+                    'message_id': message_id,
+                    'group_id': message.group_id.id if message.group_id else False,
+                    'action': 'view_group_chat'
+                }
                 
-            # Validate message exists
-            message = self.env['team.project.message'].sudo().browse(message_id)
-            if not message.exists():
-                _logger.warning(f"Message {message_id} does not exist")
-                return False
-                
-            # Validate user exists
-            user = self.env['res.users'].sudo().browse(mentioned_user_id)
-            if not user.exists():
-                _logger.warning(f"User {mentioned_user_id} does not exist")
-                return False
-                
-            # Validate employee exists
-            employee = self.env['hr.employee'].sudo().browse(mentioned_by_id)
-            if not employee.exists():
-                _logger.warning(f"Employee {mentioned_by_id} does not exist")
-                return False
-                
-            # Skip self-mentions
-            if user.employee_id and user.employee_id.id == employee.id:
-                _logger.info(f"Skipping self-mention: {user.name}")
-                return False
-                
-            # Check for existing mention to avoid duplicates
-            existing = self.search([
-                ('message_id', '=', message_id),
-                ('mentioned_user_id', '=', mentioned_user_id)
-            ], limit=1)
+                self.env['team.project.notification'].sudo().create_project_notification(
+                    model='team.project.message',
+                    res_id=message_id,
+                    notif_type='mention',
+                    title=f"Anda disebut oleh {mentioned_by.name}",
+                    message=f"Anda disebut dalam pesan: '{message.content[:100]}...'",
+                    recipient_id=mentioned_employee_id,
+                    category='mention',
+                    project_id=message.project_id.id if message.project_id else False,
+                    sender_id=mentioned_by_id,
+                    data=mention_data,
+                    priority='medium'
+                )
             
-            if existing:
-                _logger.info(f"Mention already exists: {existing.id}")
-                return existing
-                
-            # Create new mention
-            values = {
-                'message_id': message_id,
-                'mentioned_user_id': mentioned_user_id,
-                'mentioned_by_id': mentioned_by_id
-            }
-            
-            try:
-                mention = self.create(values)
-                _logger.info(f"Created new mention: {mention.id}")
-                return mention
-            except Exception as e:
-                _logger.error(f"Error creating mention: {str(e)}")
-                return False
+            return mention
+        except Exception as e:
+            _logger.error(f"Error creating mention: {str(e)}")
+            return False

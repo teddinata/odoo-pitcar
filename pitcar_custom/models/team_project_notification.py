@@ -29,14 +29,16 @@ class TeamProjectNotification(models.Model):
     is_actionable = fields.Boolean('Has Action', default=False)
     action_taken = fields.Boolean('Action Taken', default=False)
     
-    # Recipients
-    user_id = fields.Many2one('res.users', string='Recipient User', required=True, index=True,
-                            help="The user who will receive this notification")
-    employee_id = fields.Many2one('hr.employee', string='Recipient Employee', 
-                                compute='_compute_employee_id', store=True)
+    # Participants - Menggunakan relasi hr.employee untuk sender dan recipient
+    sender_id = fields.Many2one('hr.employee', string='Sender', index=True)
+    recipient_id = fields.Many2one('hr.employee', string='Recipient', required=True, index=True,
+                                  help="The employee who will receive this notification")
+    
+    # Computed field untuk user_id jika diperlukan untuk backward compatibility
+    user_id = fields.Many2one('res.users', string='User', compute='_compute_user_id', store=True, 
+                            help="Related user of the recipient employee")
     
     # Source information
-    sender_id = fields.Many2one('hr.employee', string='Sender')
     project_id = fields.Many2one('team.project', string='Project', index=True)
     
     # Classification
@@ -73,8 +75,8 @@ class TeamProjectNotification(models.Model):
     action_url = fields.Char('Action URL')
     
     _sql_constraints = [
-        ('unique_user_notification', 
-         'unique(model, res_id, type, user_id, notification_category)', 
+        ('unique_employee_notification', 
+         'unique(model, res_id, type, recipient_id, notification_category)', 
          'Duplicate notification is not allowed!')
     ]
     
@@ -85,6 +87,12 @@ class TeamProjectNotification(models.Model):
     #             notif.name = f"{notif.title} (ID: {notif.id})"
     #         else:
     #             notif.name = "New Notification"
+    
+    @api.depends('recipient_id')
+    def _compute_user_id(self):
+        """Compute related user_id dari recipient_id employee"""
+        for notif in self:
+            notif.user_id = notif.recipient_id.user_id.id if notif.recipient_id and notif.recipient_id.user_id else False
 
     @api.model
     def create_notifications_batch(self, notifications_data):
@@ -96,39 +104,33 @@ class TeamProjectNotification(models.Model):
                 created_notifs.append(notif.id)
         return created_notifs
     
-    @api.depends('user_id')
-    def _compute_employee_id(self):
-        for notif in self:
-            if notif.user_id:
-                employee = self.env['hr.employee'].sudo().search([
-                    ('user_id', '=', notif.user_id.id)
-                ], limit=1)
-                notif.employee_id = employee.id if employee else False
-            else:
-                notif.employee_id = False
-    
     @api.model
     def create_project_notification(self, model, res_id, notif_type, title, message, 
-                          user_id, category=False, project_id=False, sender_id=False, **kwargs):
-        """Create a notification with improved error handling and validation"""
+                          recipient_id, category=False, project_id=False, sender_id=False, **kwargs):
+        """Create a notification with improved employee-based targeting"""
         try:
             # Validate required parameters
-            if not (model and res_id and notif_type and title and message and user_id):
+            if not all([model, res_id, notif_type, title, message, recipient_id]):
                 _logger.warning("Missing required parameters for notification creation")
                 return False
             
-            # Validate user exists
-            user = self.env['res.users'].sudo().browse(user_id)
-            if not user.exists():
-                _logger.warning(f"Cannot create notification: User {user_id} does not exist")
+            # Validate recipient employee exists
+            recipient = self.env['hr.employee'].sudo().browse(recipient_id)
+            if not recipient.exists():
+                _logger.warning(f"Cannot create notification: Employee recipient {recipient_id} does not exist")
                 return False
                 
             # Skip self-notifications
+            if sender_id and sender_id == recipient_id:
+                _logger.info(f"Skipping self-notification for employee {recipient_id}")
+                return False
+                
+            # Validate sender employee if provided
             if sender_id:
-                sender_employee = self.env['hr.employee'].sudo().browse(sender_id)
-                if sender_employee.exists() and sender_employee.user_id and sender_employee.user_id.id == user_id:
-                    _logger.info(f"Skipping self-notification for user {user_id}")
-                    return False
+                sender = self.env['hr.employee'].sudo().browse(sender_id)
+                if not sender.exists():
+                    _logger.warning(f"Invalid sender_id {sender_id}, using system as sender")
+                    sender_id = False
                     
             # Prepare notification values
             vals = {
@@ -137,10 +139,10 @@ class TeamProjectNotification(models.Model):
                 'type': notif_type,
                 'title': title,
                 'message': message,
-                'user_id': user_id,
+                'recipient_id': recipient_id,
+                'sender_id': sender_id,
                 'notification_category': category or notif_type,
                 'project_id': project_id,
-                'sender_id': sender_id,
                 'request_time': kwargs.get('request_time', fields.Datetime.now()),
                 'expiration': kwargs.get('expiration', False),
                 'is_actionable': kwargs.get('is_actionable', False),
@@ -155,7 +157,7 @@ class TeamProjectNotification(models.Model):
                 ('model', '=', model),
                 ('res_id', '=', res_id),
                 ('type', '=', notif_type),
-                ('user_id', '=', user_id),
+                ('recipient_id', '=', recipient_id),
                 ('notification_category', '=', vals['notification_category'])
             ]
             
@@ -169,7 +171,7 @@ class TeamProjectNotification(models.Model):
             else:
                 # Create new notification
                 new_notif = self.create(vals)
-                _logger.info(f"Created new notification #{new_notif.id}")
+                _logger.info(f"Created new notification #{new_notif.id} for employee #{recipient_id}")
                 return new_notif
                 
         except Exception as e:

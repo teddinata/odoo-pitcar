@@ -8,6 +8,7 @@ import datetime
 from datetime import datetime, timedelta
 import base64
 import os
+import re
 import werkzeug
 from werkzeug.utils import secure_filename
 
@@ -818,6 +819,7 @@ class TeamProjectAPI(http.Controller):
             if not all(kw.get(field) for field in required_fields):
                 return {'status': 'error', 'message': 'Missing required fields'}
 
+            # Pertama, buat pesan chat seperti biasa
             values = {
                 'group_id': int(kw['group_id']),
                 'author_id': request.env.user.employee_id.id,
@@ -826,15 +828,6 @@ class TeamProjectAPI(http.Controller):
                 'message_type': kw.get('message_type', 'regular')
             }
             
-            # Proses mentions terlebih dahulu
-            mentions = []
-            if kw.get('mentions'):
-                mentions = [int(user_id) for user_id in kw['mentions']]
-                
-            # Log mentions yang ditemukan
-            _logger.info(f"Creating message with mentions: {mentions}")
-            
-            # Buat pesan
             message = request.env['team.project.message'].sudo().create(values)
             
             # Proses attachment yang mungkin telah diupload sebelumnya
@@ -852,91 +845,65 @@ class TeamProjectAPI(http.Controller):
                         message.write({
                             'attachment_ids': [(4, attachment.id)]
                         })
+            # Ekstrak mentions dari content menggunakan regex
+            mention_pattern = r'@\[(\d+):([^\]]+)\]'
+            mentions = re.findall(mention_pattern, kw['content'])
             
-            # Proses mentions secara eksplisit
+            _logger.info(f"Extracted mentions: {mentions}")
+            
+            # Simpan semua user yang di-mention untuk keperluan notifikasi grup
+            mentioned_user_ids = []
+
+            # Proses mention secara terpisah menggunakan model baru
             if mentions:
-                current_user_id = request.env.user.id
-                
-                # Buat notifikasi untuk setiap user yang di-mention
-                for user_id in mentions:
-                    # Skip self-mention
-                    if user_id == current_user_id:
-                        _logger.info(f"Skipping self-mention for user_id: {user_id}")
-                        continue
-                    
-                    # Cek keberadaan user
-                    user = request.env['res.users'].sudo().browse(user_id)
-                    if not user.exists() or not user.employee_id:
-                        _logger.warning(f"User {user_id} not found or has no employee record")
-                        continue
-                    
-                    _logger.info(f"Creating mention notification for user_id: {user_id}")
-                    
-                    # Buat notifikasi mention
+                for user_id_str, username in mentions:
                     try:
-                        notif = request.env['team.project.notification'].sudo().create_project_notification(
-                            model='team.project.message',
-                            res_id=message.id,
-                            notif_type='mention',
-                            title=f"Anda disebut oleh {request.env.user.employee_id.name}",
-                            message=f"Anda disebut dalam pesan: '{kw['content'][:100]}...'",
-                            user_id=user_id,
-                            category='mention',
-                            project_id=values.get('project_id', False),
-                            sender_id=request.env.user.employee_id.id,
-                            data={
-                                'message_id': message.id, 
-                                'group_id': values['group_id'],
-                                'action': 'view_group_chat'
-                            }
+                        user_id = int(user_id_str)
+                        mentioned_user_ids.append(user_id)
+                        
+                        # Skip self-mention
+                        if user_id == request.env.user.id:
+                            _logger.info(f"Skipping self-mention: {user_id} ({username})")
+                            continue
+                        
+                        # Buat mention menggunakan model baru
+                        mention = request.env['team.project.mention'].sudo().create_mention(
+                            message_id=message.id,
+                            mentioned_user_id=user_id,
+                            mentioned_by_id=request.env.user.employee_id.id
                         )
                         
-                        if notif:
-                            _logger.info(f"Successfully created mention notification #{notif.id} for user_id: {user_id}")
-                        else:
-                            _logger.warning(f"Failed to create mention notification for user_id: {user_id}")
-                            
+                        _logger.info(f"Created mention result: {mention and mention.id or 'Failed'}")
+                        
                     except Exception as e:
-                        _logger.error(f"Error creating mention notification for user_id {user_id}: {str(e)}")
+                        _logger.error(f"Error processing mention for {user_id_str}: {str(e)}")
             
-            # Panggil notify_group_members setelah semua mention diproses
-            # Hapus baris ini jika Anda belum mengimplementasikan metode ini
-            # message._notify_group_members()
-            
-            # Atau gunakan kode berikut untuk memproses notifikasi grup secara manual
-            group = message.group_id
-            if group and group.member_ids:
-                # Notifikasi semua anggota grup kecuali pengirim dan yang sudah di-mention
+            # Buat notifikasi normal untuk anggota grup (kecuali yang di-mention)
+            group = request.env['team.project.group'].sudo().browse(int(kw['group_id']))
+            if group.exists() and group.member_ids:
+                # Notifikasi semua anggota grup kecuali pengirim dan yang di-mention
                 for member in group.member_ids:
-                    if not member.user_id:
+                    if (not member.user_id or 
+                        member.id == request.env.user.employee_id.id or
+                        member.user_id.id in mentioned_user_ids):
                         continue
-                        
-                    user_id = member.user_id.id
                     
-                    # Skip pengirim pesan
-                    if member.id == message.author_id.id:
-                        continue
-                        
-                    # Skip user yang sudah di-mention
-                    if user_id in mentions:
-                        continue
-                        
-                    # Buat notifikasi "new_message"
-                    request.env['team.project.notification'].sudo().create_project_notification(
+                    # Buat notifikasi pesan baru normal seperti sebelumnya
+                    request.env['team.project.notification'].sudo().create_notification(
                         model='team.project.message',
                         res_id=message.id,
                         notif_type='new_message',
                         title=f"Pesan baru di {group.name}",
-                        message=f"{message.author_id.name}: {message.content[:100]}...",
-                        user_id=user_id,
+                        message=f"{request.env.user.employee_id.name}: {kw['content'][:100]}...",
+                        user_id=member.user_id.id,
                         category='new_message',
-                        project_id=message.project_id.id if message.project_id else False,
-                        sender_id=message.author_id.id,
+                        project_id=values.get('project_id', False),
+                        sender_id=request.env.user.employee_id.id,
                         data={
                             'message_id': message.id,
                             'group_id': group.id,
                             'action': 'view_group_chat',
-                            'author_id': message.author_id.id
+                            'author_id': request.env.user.employee_id.id
                         }
                     )
             
@@ -4679,6 +4646,127 @@ class TeamProjectAPI(http.Controller):
                 
         except Exception as e:
             _logger.error(f"Error in manage_notifications: {str(e)}")
+            import traceback
+            _logger.error(traceback.format_exc())
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/team/mentions', type='json', auth='user', methods=['POST'], csrf=False)
+    def manage_mentions(self, **kw):
+        """Manage mention operations"""
+        try:
+            operation = kw.get('operation', 'list')
+            
+            if operation == 'list':
+                # Get mentions for current user
+                mentions = request.env['team.project.mention'].sudo().search([
+                    ('mentioned_user_id', '=', request.env.user.id)
+                ], order='create_date desc', limit=kw.get('limit', 20))
+                
+                mention_data = []
+                for mention in mentions:
+                    message = mention.message_id
+                    
+                    # Get message content preview
+                    message_preview = message.content
+                    if message_preview:
+                        # Strip HTML tags for preview
+                        message_preview = re.sub(r'<[^>]+>', '', message_preview)
+                        message_preview = message_preview[:100] + ('...' if len(message_preview) > 100 else '')
+                    
+                    data = {
+                        'id': mention.id,
+                        'is_read': mention.is_read,
+                        'create_date': fields.Datetime.to_string(mention.create_date),
+                        'message': {
+                            'id': message.id,
+                            'content_preview': message_preview
+                        },
+                        'mentioned_by': {
+                            'id': mention.mentioned_by_id.id,
+                            'name': mention.mentioned_by_id.name
+                        },
+                        'group': {
+                            'id': mention.group_id.id,
+                            'name': mention.group_id.name
+                        },
+                        'project': {
+                            'id': mention.project_id.id,
+                            'name': mention.project_id.name
+                        } if mention.project_id else None
+                    }
+                    
+                    mention_data.append(data)
+                
+                # Get unread count
+                unread_count = request.env['team.project.mention'].sudo().search_count([
+                    ('mentioned_user_id', '=', request.env.user.id),
+                    ('is_read', '=', False)
+                ])
+                
+                return {
+                    'status': 'success',
+                    'data': mention_data,
+                    'unread_count': unread_count
+                }
+                
+            elif operation == 'mark_read':
+                mention_id = kw.get('mention_id')
+                if not mention_id:
+                    return {'status': 'error', 'message': 'Missing mention_id'}
+                    
+                mention = request.env['team.project.mention'].sudo().browse(int(mention_id))
+                if not mention.exists():
+                    return {'status': 'error', 'message': 'Mention not found'}
+                    
+                # Ensure mention belongs to current user
+                if mention.mentioned_user_id.id != request.env.user.id:
+                    return {'status': 'error', 'message': 'Access denied'}
+                    
+                mention.mark_as_read()
+                
+                # Get updated unread count
+                unread_count = request.env['team.project.mention'].sudo().search_count([
+                    ('mentioned_user_id', '=', request.env.user.id),
+                    ('is_read', '=', False)
+                ])
+                
+                return {
+                    'status': 'success',
+                    'message': 'Mention marked as read',
+                    'unread_count': unread_count
+                }
+                
+            elif operation == 'mark_all_read':
+                mentions = request.env['team.project.mention'].sudo().search([
+                    ('mentioned_user_id', '=', request.env.user.id),
+                    ('is_read', '=', False)
+                ])
+                
+                if mentions:
+                    mentions.mark_as_read()
+                
+                return {
+                    'status': 'success',
+                    'message': f'{len(mentions)} mentions marked as read',
+                    'count': len(mentions)
+                }
+                
+            elif operation == 'get_unread_count':
+                unread_count = request.env['team.project.mention'].sudo().search_count([
+                    ('mentioned_user_id', '=', request.env.user.id),
+                    ('is_read', '=', False)
+                ])
+                
+                return {
+                    'status': 'success',
+                    'count': unread_count
+                }
+                
+            else:
+                return {'status': 'error', 'message': f'Unknown operation: {operation}'}
+                
+        except Exception as e:
+            _logger.error(f"Error in manage_mentions: {str(e)}")
             import traceback
             _logger.error(traceback.format_exc())
             return {'status': 'error', 'message': str(e)}

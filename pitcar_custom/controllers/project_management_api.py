@@ -889,7 +889,7 @@ class TeamProjectAPI(http.Controller):
                         continue
                     
                     # Buat notifikasi pesan baru normal seperti sebelumnya
-                    request.env['team.project.notification'].sudo().create_notification(
+                    request.env['team.project.notification'].sudo().create_project_notification(
                         model='team.project.message',
                         res_id=message.id,
                         notif_type='new_message',

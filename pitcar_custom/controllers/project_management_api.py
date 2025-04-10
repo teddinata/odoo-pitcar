@@ -4685,6 +4685,8 @@ class TeamProjectAPI(http.Controller):
                 
                 mention_data = []
                 for mention in mentions:
+                    formatted_date = self._format_datetime_jakarta(mention.create_date)
+
                     message = mention.message_id
                     
                     # Get message content preview
@@ -4697,7 +4699,7 @@ class TeamProjectAPI(http.Controller):
                     data = {
                         'id': mention.id,
                         'is_read': mention.is_read,
-                        'create_date': fields.Datetime.to_string(mention.create_date),
+                        'create_date': formatted_date,
                         'message': {
                             'id': message.id,
                             'content_preview': message_preview

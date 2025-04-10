@@ -1346,3 +1346,82 @@ class TeamProjectMeetingAction(models.Model):
     
     def action_cancel(self):
         self.write({'state': 'cancelled'})
+
+    class TeamProjectMention(models.Model):
+        _name = 'team.project.mention'
+        _description = 'Project Message Mention'
+        _order = 'create_date desc'
+        
+        # Fields
+        name = fields.Char('Name', compute='_compute_name', store=True)
+        message_id = fields.Many2one('team.project.message', string='Message', required=True, ondelete='cascade')
+        mentioned_user_id = fields.Many2one('res.users', string='Mentioned User', required=True)
+        mentioned_by_id = fields.Many2one('hr.employee', string='Mentioned By', required=True)
+        project_id = fields.Many2one('team.project', string='Project', related='message_id.project_id', store=True)
+        group_id = fields.Many2one('team.project.group', string='Group', related='message_id.group_id', store=True)
+        is_read = fields.Boolean('Is Read', default=False)
+        create_date = fields.Datetime('Created On', readonly=True)
+        
+        @api.depends('message_id', 'mentioned_user_id')
+        def _compute_name(self):
+            for record in self:
+                record.name = f"{record.mentioned_user_id.name} mentioned by {record.mentioned_by_id.name}" if record.mentioned_user_id and record.mentioned_by_id else "New Mention"
+        
+        def mark_as_read(self):
+            """Mark mention as read"""
+            self.write({'is_read': True})
+            
+        @api.model
+        def create_mention(self, message_id, mentioned_user_id, mentioned_by_id):
+            """Create a new mention record with validation"""
+            if not message_id or not mentioned_user_id or not mentioned_by_id:
+                _logger.warning("Missing required parameters for creating mention")
+                return False
+                
+            # Validate message exists
+            message = self.env['team.project.message'].sudo().browse(message_id)
+            if not message.exists():
+                _logger.warning(f"Message {message_id} does not exist")
+                return False
+                
+            # Validate user exists
+            user = self.env['res.users'].sudo().browse(mentioned_user_id)
+            if not user.exists():
+                _logger.warning(f"User {mentioned_user_id} does not exist")
+                return False
+                
+            # Validate employee exists
+            employee = self.env['hr.employee'].sudo().browse(mentioned_by_id)
+            if not employee.exists():
+                _logger.warning(f"Employee {mentioned_by_id} does not exist")
+                return False
+                
+            # Skip self-mentions
+            if user.employee_id and user.employee_id.id == employee.id:
+                _logger.info(f"Skipping self-mention: {user.name}")
+                return False
+                
+            # Check for existing mention to avoid duplicates
+            existing = self.search([
+                ('message_id', '=', message_id),
+                ('mentioned_user_id', '=', mentioned_user_id)
+            ], limit=1)
+            
+            if existing:
+                _logger.info(f"Mention already exists: {existing.id}")
+                return existing
+                
+            # Create new mention
+            values = {
+                'message_id': message_id,
+                'mentioned_user_id': mentioned_user_id,
+                'mentioned_by_id': mentioned_by_id
+            }
+            
+            try:
+                mention = self.create(values)
+                _logger.info(f"Created new mention: {mention.id}")
+                return mention
+            except Exception as e:
+                _logger.error(f"Error creating mention: {str(e)}")
+                return False

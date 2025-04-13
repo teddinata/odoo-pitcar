@@ -526,6 +526,26 @@ class TeamProjectTask(models.Model):
                     'priority': 'high' if task.priority in ['2', '3'] else 'normal'
                 })
             
+            # Notifikasi untuk reviewer
+            if task.reviewer_id and task.reviewer_id.id != self.env.user.employee_id.id:
+                notification_batch.append({
+                    'model': 'team.project.task',
+                    'res_id': task.id,
+                    'notif_type': 'task_review',
+                    'title': f"Tugas untuk Direview: {task.name}",
+                    'message': f"Anda ditunjuk sebagai reviewer untuk tugas '{task.name}' dalam proyek {task.project_id.name}.",
+                    'recipient_id': task.reviewer_id.id,  # Gunakan recipient_id
+                    'category': 'task_assigned',
+                    'project_id': task.project_id.id,
+                    'sender_id': self.env.user.employee_id.id,
+                    'data': {
+                        'task_id': task.id, 
+                        'project_id': task.project_id.id,
+                        'action': 'view_task'
+                    },
+                    'priority': 'high' if task.priority in ['2', '3'] else 'normal'
+                })
+            
             if notification_batch:
                 self.env['team.project.notification'].sudo().create_notifications_batch(notification_batch)
         
@@ -623,7 +643,7 @@ class TeamProjectTask(models.Model):
                     
                     # Data untuk penanggung jawab tugas
                     for assignee in task.assigned_to:
-                        if assignee.user_id:
+                        # if assignee.user_id:
                             notification_batch.append({
                                 'model': 'team.project.task',
                                 'res_id': task.id,
@@ -644,7 +664,7 @@ class TeamProjectTask(models.Model):
                     # Data untuk manajer proyek
                     if task.project_id.project_manager_id and task.project_id.project_manager_id.user_id:
                         # Skip jika manajer adalah pengirim
-                        if task.project_id.project_manager_id.user_id.id != self.env.user.id:
+                        if task.project_id.project_manager_id.id != self.env.user.employee_id.id:
                             notification_batch.append({
                                 'model': 'team.project.task',
                                 'res_id': task.id,
@@ -661,7 +681,36 @@ class TeamProjectTask(models.Model):
                                     'action': 'view_task'
                                 }
                             })
-                    
+
+                    # Notifikasi untuk reviewer jika ada dan bukan pengirim
+                    if task.reviewer_id and task.reviewer_id.id != self.env.user.employee_id.id:
+                        # Khusus tambahkan notifikasi review jika status berubah menjadi 'review'
+                        notification_message = state_messages[current_state]
+                        notification_title = f"Pembaruan Tugas: {task.name}"
+                        
+                        if current_state == 'review':
+                            notification_title = f"Tugas Perlu Review: {task.name}"
+                            notification_message = f"Tugas {task.name} memerlukan review Anda."
+                        
+                        notification_batch.append({
+                            'model': 'team.project.task',
+                            'res_id': task.id,
+                            'notif_type': f"task_{current_state}",
+                            'title': notification_title,
+                            'message': notification_message,
+                            'recipient_id': task.reviewer_id.id,
+                            'category': 'task_updated',
+                            'project_id': task.project_id.id,
+                            'sender_id': self.env.user.employee_id.id,
+                            'data': {
+                                'task_id': task.id, 
+                                'project_id': task.project_id.id,
+                                'action': 'view_task'
+                            },
+                            'priority': 'high' if current_state == 'review' else 'normal'
+                        })
+
+                    # Tambahkan setelah notifikasi untuk project manager
                     # Buat notifikasi batch
                     if notification_batch:
                         self.env['team.project.notification'].sudo().create_notifications_batch(notification_batch)
@@ -1227,7 +1276,7 @@ class TeamProjectMeeting(models.Model):
         for meeting in self:
             notification_batch = []
             for attendee in meeting.attendee_ids:
-                if attendee.user_id:
+                # if attendee.user_id:
                     # Skip organisator
                     if attendee.id == meeting.organizer_id.id:
                         continue

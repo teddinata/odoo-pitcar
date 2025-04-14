@@ -17,6 +17,16 @@ class MentorRequest(models.Model):
     
     # Core Relations
     sale_order_id = fields.Many2one('sale.order', string='Service Order', required=True, tracking=True)
+
+    # Tambahkan di bagian field-field untuk model MentorRequest
+    leader_id = fields.Many2one('pitcar.mechanic.new', string='Team Leader', 
+                            domain="[('position_code', '=', 'leader')]", tracking=True)
+    leader_response = fields.Text('Leader Response', tracking=True)
+    leader_response_datetime = fields.Datetime('Leader Response Time', tracking=True)
+    escalated_to_mentor = fields.Boolean('Escalated to Mentor', default=False, tracking=True)
+    escalated_to_mentor_datetime = fields.Datetime('Escalated to Mentor Time', tracking=True)
+    escalation_notes = fields.Text('Escalation Notes', tracking=True)
+
     mentor_id = fields.Many2one('hr.employee', string='Mentor', tracking=True)  # Sekarang ke hr.employee
     mechanic_ids = fields.Many2many('pitcar.mechanic.new', string='Mechanics', required=True, tracking=True)
 
@@ -40,11 +50,22 @@ class MentorRequest(models.Model):
     # Status & Flow
     state = fields.Selection([
         ('draft', 'Draft'),
-        ('requested', 'Requested'),
-        ('in_progress', 'In Progress'),
-        ('solved', 'Solved'),
-        ('cancelled', 'Cancelled')
+        ('requested', 'Requested'),  # Mechanic meminta bantuan
+        ('leader_assigned', 'Leader Assigned'),  # Leader ditugaskan
+        ('leader_responded', 'Leader Responded'),  # Leader merespon
+        ('escalated', 'Escalated to Mentor'),  # Dieskalasi ke Kaizen Mentor
+        ('in_progress', 'In Progress'),  # Mentor mulai menangani
+        ('solved', 'Solved'),  # Masalah diselesaikan
+        ('cancelled', 'Cancelled')  # Permintaan dibatalkan
     ], string='Status', default='draft', tracking=True)
+
+    # Tambahkan field untuk mencatat siapa yang menyelesaikan masalah
+    resolved_by = fields.Selection([
+        ('leader', 'Team Leader'),
+        ('mentor', 'Kaizen Mentor')
+    ], string='Resolved By', tracking=True)
+
+    leader_response_time = fields.Float('Leader Response Time (Minutes)', compute='_compute_leader_response_time', store=True)
 
     # Resolution Details
     resolution_notes = fields.Text('Resolution Notes', tracking=True)
@@ -73,17 +94,149 @@ class MentorRequest(models.Model):
         if 'name' not in vals or vals['name'] in ('New', '/', False):
             vals['name'] = self.env['ir.sequence'].next_by_code('mentor.request') or 'MRQ-%s' % datetime.now().strftime('%Y%m%d-%H%M%S')
         return super(MentorRequest, self).create(vals)
+    
+    # Tambahkan method compute untuk leader_response_time
+    @api.depends('request_datetime', 'leader_response_datetime')
+    def _compute_leader_response_time(self):
+        for record in self:
+            if record.request_datetime and record.leader_response_datetime:
+                delta = record.leader_response_datetime - record.request_datetime
+                record.leader_response_time = delta.total_seconds() / 60
+            else:
+                record.leader_response_time = 0
+
+    def _send_leader_assignment_notifications(self, leader_id):
+        if not self:
+            return False
+        
+        leader = self.env['pitcar.mechanic.new'].browse(leader_id)
+        if not leader.exists():
+            _logger.warning(f"Leader with ID {leader_id} does not exist")
+            return False
+        
+        # Gunakan context untuk mencegah auto-subscription
+        records = self.with_context(mail_create_nosubscribe=True)
+        
+        notification_type = 'leader_assignment'
+        title_template = "Anda Ditugaskan sebagai Leader: {name}"
+        message_template = "Anda telah ditugaskan untuk membantu {mechanic_names} dengan {category}"
+        
+        # Cari semua leader untuk notifikasi
+        recipients = self.env['pitcar.mechanic.new'].browse([leader_id])
+        
+        return self._send_notifications(notification_type, title_template, message_template, recipients)
 
     def action_submit_request(self):
         for record in self:
             if not record.problem_description:
                 raise UserError('Harap isi deskripsi masalah')
+                
+            # Auto assign team leader jika belum ditentukan
+            if not record.leader_id:
+                # Ambil leader dari mechanic pertama
+                mechanic = record.mechanic_ids[0] if record.mechanic_ids else False
+                if mechanic and mechanic.leader_id:
+                    record.leader_id = mechanic.leader_id.id
+        
         self.write({
             'state': 'requested',
             'request_datetime': fields.Datetime.now()
         })
+        
+        # Kirim notifikasi ke leader
+        for record in self:
+            if record.leader_id:
+                record._send_leader_assignment_notifications(record.leader_id.id)
+        
         self._send_state_change_notifications('requested', self)
         return True
+    
+    def action_leader_respond(self, response, is_resolved=False):
+        """Team leader memberikan respon terhadap permintaan"""
+        self.ensure_one()
+        values = {
+            'leader_response': response,
+            'leader_response_datetime': fields.Datetime.now(),
+        }
+        
+        if is_resolved:
+            values.update({
+                'state': 'solved',
+                'resolved_by': 'leader',
+                'end_datetime': fields.Datetime.now()
+            })
+        else:
+            values.update({
+                'state': 'leader_responded'
+            })
+            
+        self.write(values)
+        
+        # Kirim notifikasi ke mechanic
+        notification_type = 'leader_response'
+        title = f"Leader telah merespon permintaan: {self.name}"
+        message = f"Leader telah memberikan respon untuk permintaan bantuan Anda"
+        
+        # Gunakan context untuk mencegah auto-subscription
+        self = self.with_context(mail_create_nosubscribe=True)
+        
+        # Data tambahan untuk notifikasi
+        data = {
+            'request_id': self.id,
+            'leader_id': self.leader_id.id if self.leader_id else False,
+            'leader_name': self.leader_id.name if self.leader_id else 'Unknown',
+            'response': response,
+            'is_resolved': is_resolved,
+        }
+        
+        # Kirim notifikasi ke mechanic
+        recipients = self.mechanic_ids
+        
+        self._send_notifications(notification_type, title, message, recipients, data_extras=data)
+        
+        return True
+    
+    def action_escalate_to_mentor(self, mentor_id, escalation_notes=False):
+        """Eskalasi permintaan dari leader ke mentor Kaizen"""
+        self.ensure_one()
+        if self.state != 'leader_responded':
+            raise UserError('Permintaan harus dalam status "Leader Responded" untuk dieskalasi')
+            
+        self.write({
+            'mentor_id': mentor_id,
+            'escalated_to_mentor': True,
+            'escalated_to_mentor_datetime': fields.Datetime.now(),
+            'escalation_notes': escalation_notes,
+            'state': 'escalated'
+        })
+        
+        # Kirim notifikasi ke mentor
+        self._send_mentor_assignment_notifications(mentor_id, self)
+        
+        # Kirim notifikasi ke mechanic
+        notification_type = 'request_escalated'
+        title = f"Permintaan dieskalasi ke Mentor: {self.name}"
+        message = f"Permintaan bantuan Anda telah dieskalasi ke Mentor Kaizen"
+        
+        # Data tambahan untuk notifikasi
+        data = {
+            'request_id': self.id,
+            'leader_id': self.leader_id.id if self.leader_id else False,
+            'leader_name': self.leader_id.name if self.leader_id else 'Unknown',
+            'mentor_id': mentor_id,
+            'escalation_notes': escalation_notes,
+        }
+        
+        # Kirim notifikasi ke mechanic
+        recipients = self.mechanic_ids
+        
+        # Gunakan context untuk mencegah auto-subscription
+        self = self.with_context(mail_create_nosubscribe=True)
+        
+        self._send_notifications(notification_type, title, message, recipients, data_extras=data)
+        
+        return True
+
 
     def action_start_mentoring(self):
         for record in self:
@@ -100,6 +253,14 @@ class MentorRequest(models.Model):
         for record in self:
             if not record.resolution_notes:
                 raise UserError('Harap isi catatan penyelesaian masalah')
+                
+            # Set resolved_by jika belum ditentukan
+            if not record.resolved_by:
+                if record.state == 'leader_responded':
+                    record.resolved_by = 'leader'
+                elif record.state in ['escalated', 'in_progress']:
+                    record.resolved_by = 'mentor'
+                    
         self.write({
             'state': 'solved',
             'end_datetime': fields.Datetime.now()

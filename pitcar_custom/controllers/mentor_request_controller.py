@@ -220,15 +220,109 @@ class MentorRequestController(http.Controller):
                 return self._handle_solve_action(req, kw)
             elif action == 'cancel':
                 return self._handle_cancel_action(req)
+            elif action == 'leader_respond':
+                return self._handle_leader_response(req, kw)
+            elif action == 'escalate':
+                return self._handle_escalate_action(req, kw)
             else:
                 return {"status": "error", "message": "Invalid action specified"}
         except Exception as e:
             _logger.error(f"Error handling request action: {str(e)}", exc_info=True)
             return {"status": "error", "message": str(e)}
+        
+    def _handle_leader_response(self, req, kw):
+        """Handler untuk aksi leader_respond"""
+        if not kw.get('response'):
+            return {
+                "status": "error",
+                "message": "Response is required"
+            }
+        
+        is_resolved = kw.get('is_resolved', False)
+        
+        try:
+            # Gunakan savepoint untuk transaksi
+            with request.env.cr.savepoint():
+                req.action_leader_respond(kw['response'], is_resolved)
+                
+                return {
+                    "status": "success",
+                    "data": self._get_request_details(req),
+                    "message": "Team leader telah memberikan respon" + (" dan menyelesaikan permintaan" if is_resolved else "")
+                }
+        except Exception as e:
+            _logger.error(f"Error in leader response: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+    
+    def _handle_escalate_action(self, req, kw):
+        """Handler untuk aksi escalate"""
+        if not kw.get('mentor_id'):
+            return {
+                "status": "error",
+                "message": "Mentor ID is required"
+            }
+        
+        try:
+            # Verifikasi mentor
+            mentor_id = int(kw['mentor_id'])
+            mentor = request.env['hr.employee'].sudo().browse(mentor_id)
+            if not mentor.exists():
+                return {"status": "error", "message": f"Mentor with ID {mentor_id} not found"}
+            
+            # Gunakan savepoint untuk transaksi
+            with request.env.cr.savepoint():
+                req.action_escalate_to_mentor(mentor_id, kw.get('escalation_notes', ''))
+                
+                return {
+                    "status": "success",
+                    "data": self._get_request_details(req),
+                    "message": "Permintaan telah dieskalasi ke Mentor Kaizen"
+                }
+        except Exception as e:
+            _logger.error(f"Error in escalation action: {str(e)}", exc_info=True)
+            return {
+                "status": "error",
+                "message": str(e)
+            }
 
+        
     def _handle_start_action(self, req, kw):
         _logger.info(f"Start action called with params: {kw}")
         
+        # Parameter untuk flow berjenjang
+        use_team_leader = kw.get('use_team_leader', False)
+        
+        # Jika menggunakan flow berjenjang dan state draft
+        if use_team_leader and req.state == 'draft':
+            try:
+                _logger.info(f"Using team leader flow for request {req.id}")
+                
+                # Wrap dalam savepoint untuk keamanan transaksi
+                with request.env.cr.savepoint():
+                    # Jalankan action untuk submit ke team leader
+                    req.sudo().action_submit_request()
+                    
+                    # Flush perubahan untuk memastikan konsistensi data
+                    request.env.cr.flush()
+                    
+                    # Log hasil
+                    _logger.info(f"Request {req.id} successfully submitted to team leader")
+                    
+                    # Return response sukses
+                    return {
+                        "status": "success",
+                        "data": self._get_request_details(req),
+                        "message": "Permintaan bantuan telah dikirim ke Team Leader"
+                    }
+            except Exception as e:
+                # Log exception secara detail
+                _logger.exception(f"Error submitting request to team leader: {str(e)}")
+                return {"status": "error", "message": str(e)}
+        
+        # Untuk kasus non-berjenjang, tetap gunakan flow normal
         mentor_id = None
         if 'mentor_id' in kw and kw['mentor_id']:
             mentor_id = kw['mentor_id']
@@ -240,15 +334,18 @@ class MentorRequestController(http.Controller):
         if not mentor_id and req.mentor_id:
             mentor_id = req.mentor_id.id
         
+        # Validasi mentor_id untuk flow normal
         if not mentor_id:
             return {"status": "error", "message": "Mentor ID required"}
 
+        # Flow normal yang sudah ada
         try:
-            # Gunakan savepoint untuk transaksi
             with request.env.cr.savepoint():
                 values = {
                     'mentor_id': mentor_id
                 }
+                
+                # Support untuk flow lama dan flow baru
                 if req.state == 'draft':
                     values.update({
                         'state': 'requested',
@@ -259,18 +356,23 @@ class MentorRequestController(http.Controller):
                         'state': 'in_progress',
                         'start_datetime': fields.Datetime.now()
                     })
+                elif req.state == 'escalated':
+                    values.update({
+                        'state': 'in_progress',
+                        'start_datetime': fields.Datetime.now()
+                    })
                 
                 _logger.info(f"Writing values to request {req.id}: {values}")
                 req.sudo().write(values)
                 
-                # Gunakan context untuk mencegah auto-subscription
+                # Konteks untuk mencegah auto-subscription
                 req = req.with_context(mail_create_nosubscribe=True, mail_auto_subscribe_no_notify=True)
                 
-                # Panggil _send_mentor_assignment_notifications dan log hasilnya
+                # Panggil notifikasi
                 notif_result = req._send_mentor_assignment_notifications(mentor_id, req)
                 _logger.info(f"Notification result: {notif_result}")
                 
-                # Juga buat notifikasi manual untuk memastikan
+                # Buat notifikasi manual
                 notif_data = {
                     'request_id': req.id,
                     'mentor_id': mentor_id,
@@ -434,6 +536,8 @@ class MentorRequestController(http.Controller):
             
             # Format timestamps with Jakarta timezone
             request_time = self._format_to_jakarta_time(req.request_datetime) if req.request_datetime else None
+            leader_response_time = self._format_to_jakarta_time(req.leader_response_datetime) if req.leader_response_datetime else None
+            escalated_time = self._format_to_jakarta_time(req.escalated_to_mentor_datetime) if req.escalated_to_mentor_datetime else None
             start_time = self._format_to_jakarta_time(req.start_datetime) if req.start_datetime else None
             end_time = self._format_to_jakarta_time(req.end_datetime) if req.end_datetime else None
             
@@ -445,6 +549,10 @@ class MentorRequestController(http.Controller):
                 'category': req.problem_category,
                 'description': req.problem_description,
                 'mechanics': [{'id': m.id, 'name': m.name} for m in req.mechanic_ids],
+                'leader': {
+                    'id': req.leader_id.id,
+                    'name': req.leader_id.name
+                } if req.leader_id else {},
                 'mentor': {
                     'id': req.mentor_id.id,
                     'name': req.mentor_id.name
@@ -455,15 +563,24 @@ class MentorRequestController(http.Controller):
                 } if req.sale_order_id else {},
                 'timestamps': {
                     'request': request_time,
+                    'leader_response': leader_response_time,
+                    'escalated': escalated_time,
                     'start': start_time,
                     'end': end_time
                 },
+                'resolved_by': req.resolved_by,
+                'escalated_to_mentor': req.escalated_to_mentor,
+                'leader_response': req.leader_response,
+                'escalation_notes': req.escalation_notes,
                 'resolution': {
                     'notes': req.resolution_notes or "",
                     'learning_points': req.learning_points or "",
                     'mechanic_rating': req.mechanic_rating or ""
                 },
-                'resolution_time': req.resolution_time if hasattr(req, 'resolution_time') else None
+                'response_times': {
+                    'leader_response_time': req.leader_response_time if hasattr(req, 'leader_response_time') else None,
+                    'resolution_time': req.resolution_time if hasattr(req, 'resolution_time') else None
+                }
             }
         except Exception as e:
             _logger.error(f"Error formatting request details: {str(e)}", exc_info=True)

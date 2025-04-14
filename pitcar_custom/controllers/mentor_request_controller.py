@@ -135,7 +135,12 @@ class MentorRequestController(http.Controller):
         
         # Filter berdasarkan state
         if kw.get('state'):
-            domain.append(('state', '=', kw['state']))
+            # Cek apakah state berupa string dengan koma
+            if isinstance(kw.get('state'), str) and ',' in kw.get('state'):
+                states = kw.get('state').split(',')
+                domain.append(('state', 'in', states))
+            else:
+                domain.append(('state', '=', kw['state']))
         
         # Filter berdasarkan priority
         if kw.get('priority'):

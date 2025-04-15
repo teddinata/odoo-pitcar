@@ -616,14 +616,19 @@ class LeadTimePartController(http.Controller):
             }
 
     @http.route('/web/part-purchase/create', type='json', auth='user', methods=['POST'])
-    def create_part_request(self, order_id, items, notes=None, **kw):
+    def create_part_request(self, **kw):
         """Create new part purchase record"""
         try:
-            # Ambil params langsung dari kw karena kita pakai type='json'
-            order_id = kw.get('order_id')
-            items = kw.get('items', [])
-            sale_order_id = kw.get('sale_order_id')
-            partman_id = kw.get('partman_id')
+            # Buat log untuk debugging
+            _logger.info(f"Received kw in create_part_request: {kw}")
+            
+            # Ekstrak params dari kw
+            params = kw.get('params', {})
+            _logger.info(f"Extracted params: {params}")
+            
+            # Ambil parameter yang diperlukan
+            sale_order_id = params.get('sale_order_id')
+            partman_id = params.get('partman_id')
             
             # Validasi required fields
             if not sale_order_id or not partman_id:
@@ -633,7 +638,7 @@ class LeadTimePartController(http.Controller):
                 }
             
             # Add purchase type validation
-            purchase_type = kw.get('purchase_type', 'part')  # Default to 'part'
+            purchase_type = params.get('purchase_type', 'part')  # Default to 'part'
             if purchase_type not in ['part', 'tool']:
                 return {
                     'status': 'error',
@@ -641,8 +646,8 @@ class LeadTimePartController(http.Controller):
                 }
 
             # Parse time inputs
-            est_departure_str = kw.get('estimated_departure')
-            est_return_str = kw.get('estimated_return')
+            est_departure_str = params.get('estimated_departure')
+            est_return_str = params.get('estimated_return')
             
             if not est_departure_str or not est_return_str:
                 return {
@@ -672,8 +677,8 @@ class LeadTimePartController(http.Controller):
                 'sale_order_id': int(sale_order_id),
                 'partman_id': int(partman_id),
                 'purchase_type': purchase_type,
-                'review_type': kw.get('review_type'),
-                'notes': kw.get('notes'),
+                'review_type': params.get('review_type'),
+                'notes': params.get('notes'),
                 'estimated_departure': est_departure,
                 'estimated_return': est_return,
                 'estimated_duration': estimated_duration
@@ -682,7 +687,7 @@ class LeadTimePartController(http.Controller):
             purchase = request.env['part.purchase.leadtime'].create(values)
 
             # After successfully creating the request, send a notification
-            order = request.env['sale.order'].browse(int(order_id))
+            order = request.env['sale.order'].browse(int(sale_order_id))
             
             # Call the notification method
             self._publish_notification(
@@ -693,7 +698,7 @@ class LeadTimePartController(http.Controller):
                     'order_id': order.id,
                     'order_name': order.name,
                     'request_time': fields.Datetime.now().isoformat(),
-                    'item_count': len(items)
+                    'item_count': 0  # Atau jumlah item lainnya jika ada
                 }
             )
             

@@ -620,6 +620,8 @@ class LeadTimePartController(http.Controller):
         """Create new part purchase record"""
         try:
             # Ambil params langsung dari kw karena kita pakai type='json'
+            order_id = kw.get('order_id')
+            items = kw.get('items', [])
             sale_order_id = kw.get('sale_order_id')
             partman_id = kw.get('partman_id')
             

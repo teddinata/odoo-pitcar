@@ -619,16 +619,15 @@ class LeadTimePartController(http.Controller):
     def create_part_request(self, **kw):
         """Create new part purchase record"""
         try:
-            # Buat log untuk debugging
-            _logger.info(f"Received kw in create_part_request: {kw}")
+            # Tambahkan log detail untuk debug
+            _logger.info(f"Received in create_part_request: {kw}")
             
-            # Ekstrak params dari kw
-            params = kw.get('params', {})
-            _logger.info(f"Extracted params: {params}")
+            # Cara yang benar untuk mengakses parameter dalam type='json'
+            # Parameter langsung tersedia sebagai argumen fungsi
+            sale_order_id = kw.get('sale_order_id')
+            partman_id = kw.get('partman_id')
             
-            # Ambil parameter yang diperlukan
-            sale_order_id = params.get('sale_order_id')
-            partman_id = params.get('partman_id')
+            _logger.info(f"Extracted: sale_order_id={sale_order_id}, partman_id={partman_id}")
             
             # Validasi required fields
             if not sale_order_id or not partman_id:
@@ -638,16 +637,11 @@ class LeadTimePartController(http.Controller):
                 }
             
             # Add purchase type validation
-            purchase_type = params.get('purchase_type', 'part')  # Default to 'part'
-            if purchase_type not in ['part', 'tool']:
-                return {
-                    'status': 'error',
-                    'message': 'Invalid purchase type. Must be either "part" or "tool"'
-                }
-
+            purchase_type = kw.get('purchase_type', 'part')  # Default to 'part'
+            
             # Parse time inputs
-            est_departure_str = params.get('estimated_departure')
-            est_return_str = params.get('estimated_return')
+            est_departure_str = kw.get('estimated_departure')
+            est_return_str = kw.get('estimated_return')
             
             if not est_departure_str or not est_return_str:
                 return {
@@ -677,8 +671,8 @@ class LeadTimePartController(http.Controller):
                 'sale_order_id': int(sale_order_id),
                 'partman_id': int(partman_id),
                 'purchase_type': purchase_type,
-                'review_type': params.get('review_type'),
-                'notes': params.get('notes'),
+                'review_type': kw.get('review_type'),
+                'notes': kw.get('notes'),
                 'estimated_departure': est_departure,
                 'estimated_return': est_return,
                 'estimated_duration': estimated_duration
@@ -690,17 +684,18 @@ class LeadTimePartController(http.Controller):
             order = request.env['sale.order'].browse(int(sale_order_id))
             
             # Call the notification method
-            self._publish_notification(
-                'request',
-                'Request Part Baru',
-                f"Order #{order.name} memerlukan part",
-                {
-                    'order_id': order.id,
-                    'order_name': order.name,
-                    'request_time': fields.Datetime.now().isoformat(),
-                    'item_count': 0  # Atau jumlah item lainnya jika ada
-                }
-            )
+            if hasattr(self, '_publish_notification'):
+                self._publish_notification(
+                    'request',
+                    'Request Part Baru',
+                    f"Order #{order.name} memerlukan part",
+                    {
+                        'order_id': order.id,
+                        'order_name': order.name,
+                        'request_time': fields.Datetime.now().isoformat(),
+                        'item_count': 0
+                    }
+                )
             
             return {
                 'status': 'success',

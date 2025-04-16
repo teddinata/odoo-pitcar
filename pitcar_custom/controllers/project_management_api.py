@@ -364,8 +364,17 @@ class TeamProjectAPI(http.Controller):
                 domain.append(('state', '=', kw['state']))
                 
             # Filter untuk include/exclude archived projects
-            include_archived = kw.get('include_archived') == 'true'
-            if not include_archived:
+            # include_archived = kw.get('include_archived') == 'true'
+            # if not include_archived:
+            #     domain.append(('active', '=', True))
+            # Filter untuk include/exclude archived projects
+            include_archived = kw.get('include_archived')
+            if include_archived in [True, 'true', '1', 1]:
+                # Jika include_archived true, tidak menambahkan filter active
+                # sehingga menampilkan semua proyek (aktif maupun arsip)
+                pass
+            else:
+                # Jika include_archived false atau tidak ada, hanya tampilkan yang aktif
                 domain.append(('active', '=', True))
             
             # Filter tanggal

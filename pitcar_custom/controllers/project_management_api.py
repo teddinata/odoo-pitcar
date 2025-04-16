@@ -67,7 +67,7 @@ class TeamProjectAPI(http.Controller):
             operation = kw.get('operation', 'create')
 
             if operation == 'create':
-                required_fields = ['name', 'date_start', 'date_end', 'project_manager_id', 'department_id']
+                required_fields = ['name', 'date_start', 'date_end', 'project_manager_id']
                 if not all(kw.get(field) for field in required_fields):
                     return {'status': 'error', 'message': 'Missing required fields'}
 
@@ -76,18 +76,23 @@ class TeamProjectAPI(http.Controller):
                     'date_start': kw['date_start'],
                     'date_end': kw['date_end'],
                     'project_manager_id': int(kw['project_manager_id']),
-                    # 'department_id': int(kw['department_id']),
                     'description': kw.get('description'),
                     'state': kw.get('state', 'draft'),
                     'priority': kw.get('priority', '1'),
-                    'project_type': kw.get('project_type', 'general'),  # Default ke general jika tidak disebutkan
+                    'project_type': kw.get('project_type', 'general'),
+                    'active': True,  # Default ke aktif saat pertama dibuat
                 }
+                
+                # Handle department_ids (multi-department)
                 if kw.get('department_ids'):
                     dept_ids = kw['department_ids'] if isinstance(kw['department_ids'], list) else json.loads(kw['department_ids'])
                     values['department_ids'] = [(6, 0, dept_ids)]
+                elif kw.get('department_id'):  # Backward compatibility
+                    values['department_ids'] = [(6, 0, [int(kw['department_id'])])]
                 else:
-                    # Minimal satu department harus dipilih
-                    return {'status': 'error', 'message': 'At least one department is required'}
+                    return {'status': 'error', 'message': 'At least one department must be specified'}
+                    
+                # Handle team_ids
                 if kw.get('team_ids'):
                     team_ids = kw['team_ids'] if isinstance(kw['team_ids'], list) else json.loads(kw['team_ids'])
                     values['team_ids'] = [(6, 0, team_ids)]
@@ -346,90 +351,80 @@ class TeamProjectAPI(http.Controller):
         try:
             domain = []
             
-            # Filter departemen
-            # if kw.get('department_id'):
-            #     domain.append(('department_id', '=', int(kw['department_id'])))
-
+            # Filter departemen (ubah untuk multi-department)
             if kw.get('department_id'):
-                department_id = int(kw['department_id'])
-                domain.append(('department_ids', 'in', [department_id]))
+                domain.append(('department_ids', 'in', [int(kw['department_id'])]))
             
-            # Filter project_type yang baru ditambahkan
+            # Filter project_type
             if kw.get('project_type'):
                 domain.append(('project_type', '=', kw['project_type']))
             
             # Filter status
             if kw.get('state'):
                 domain.append(('state', '=', kw['state']))
-            
-            # Filter tanggal - ubah logika untuk menangkap proyek yang overlap dengan rentang
-            if kw.get('date_start') and kw.get('date_end'):
-                # Proyek yang berakhir setelah date_start dan dimulai sebelum date_end
-                # Ini menangkap semua proyek yang overlap dengan rentang tanggal
-                domain.append('|')
-                domain.append('&')
-                domain.append(('date_start', '<=', kw['date_end']))  # Proyek dimulai sebelum atau pada tanggal akhir filter
-                domain.append(('date_end', '>=', kw['date_start']))  # Proyek berakhir setelah atau pada tanggal awal filter
                 
-                # Atau proyek yang belum memiliki tanggal akhir (date_end = False)
-                domain.append('&')
-                domain.append(('date_start', '<=', kw['date_end']))
-                domain.append(('date_end', '=', False))
-            
-            # Jika hanya date_start yang diisi
-            elif kw.get('date_start'):
-                domain.append(('date_end', '>=', kw['date_start']))  # Proyek yang berakhir setelah date_start
-            
-            # Jika hanya date_end yang diisi
-            elif kw.get('date_end'):
-                domain.append(('date_start', '<=', kw['date_end']))  # Proyek yang dimulai sebelum date_end
-            
-            # Filter manager proyek jika ada
-            if kw.get('project_manager_id'):
-                domain.append(('project_manager_id', '=', int(kw['project_manager_id'])))
-            
-            # Filter prioritas jika ada
-            if kw.get('priority'):
-                domain.append(('priority', '=', kw['priority']))
-
-            # Pada endpoint get_projects, tambahkan parameter include_archived
+            # Filter untuk include/exclude archived projects
             include_archived = kw.get('include_archived') == 'true'
             if not include_archived:
                 domain.append(('active', '=', True))
             
-            # Filter pencarian (search)
+            # Filter tanggal
+            if kw.get('date_start') and kw.get('date_end'):
+                domain.append('|')
+                domain.append('&')
+                domain.append(('date_start', '<=', kw['date_end']))
+                domain.append(('date_end', '>=', kw['date_start']))
+                domain.append('&')
+                domain.append(('date_start', '<=', kw['date_end']))
+                domain.append(('date_end', '=', False))
+            
+            elif kw.get('date_start'):
+                domain.append(('date_end', '>=', kw['date_start']))
+            
+            elif kw.get('date_end'):
+                domain.append(('date_start', '<=', kw['date_end']))
+            
+            # Filter manager proyek
+            if kw.get('project_manager_id'):
+                domain.append(('project_manager_id', '=', int(kw['project_manager_id'])))
+            
+            # Filter prioritas
+            if kw.get('priority'):
+                domain.append(('priority', '=', kw['priority']))
+            
+            # Filter pencarian
             if kw.get('search'):
                 domain.append('|')
                 domain.append(('name', 'ilike', kw['search']))
                 domain.append(('code', 'ilike', kw['search']))
             
-            # Pagination yang lebih baik
+            # Pagination
             page = int(kw.get('page', 1))
             limit = int(kw.get('limit', 10))
             offset = (page - 1) * limit
             
             # Sorting
-            sort_field = kw.get('sort_field', 'priority')
+            sort_field = kw.get('sort_field', 'priority')  # Default sort by priority
+            # Validasi field sort yang diizinkan
             allowed_sort_fields = ['date_start', 'date_end', 'name', 'priority', 'state', 'progress']
             if sort_field not in allowed_sort_fields:
-                sort_field = 'date_start'  # Default jika field tidak valid
-
-            sort_order = kw.get('sort_order', 'desc')
+                sort_field = 'priority'
+                
+            sort_order = kw.get('sort_order', 'desc')  # Default desc
             if sort_order not in ['asc', 'desc']:
-                sort_order = 'desc'  # Default jika order tidak valid
+                sort_order = 'desc'
+                
             order = f"{sort_field} {sort_order}"
             
-            # Tambahkan logging untuk debugging
             _logger.info(f"Project filter domain: {domain}")
             
             # Cari proyek dengan domain filter
             projects = request.env['team.project'].sudo().search(domain, limit=limit, offset=offset, order=order)
             total = request.env['team.project'].sudo().search_count(domain)
             
-            # Hitung total pages untuk membantu frontend
+            # Hitung total pages untuk pagination
             total_pages = (total + limit - 1) // limit if limit > 0 else 1
             
-            # Log jumlah hasil
             _logger.info(f"Found {len(projects)} projects matching the filter criteria")
             
             return {
@@ -798,6 +793,7 @@ class TeamProjectAPI(http.Controller):
         
     @http.route('/web/v2/team/projects/toggle_archive', type='json', auth='user', methods=['POST'], csrf=False)
     def toggle_project_archive(self, **kw):
+        """Toggle status archive project."""
         try:
             project_id = kw.get('project_id')
             if not project_id:
@@ -807,7 +803,8 @@ class TeamProjectAPI(http.Controller):
             if not project.exists():
                 return {'status': 'error', 'message': 'Project not found'}
                 
-            project.toggle_active()
+            # Toggle status active
+            project.write({'active': not project.active})
             
             return {
                 'status': 'success',
@@ -1012,12 +1009,11 @@ class TeamProjectAPI(http.Controller):
 
     # Helper Methods
     def _prepare_project_data(self, project):
-        """Menyiapkan data proyek untuk respons API dengan informasi pelacakan waktu penyelesaian."""
+        """Menyiapkan data proyek untuk respons API dengan informasi departments."""
         project_data = {
             'id': project.id,
             'name': project.name,
             'code': project.code,
-            # 'department': {'id': project.department_id.id, 'name': project.department_id.name},
             'departments': [{'id': d.id, 'name': d.name} for d in project.department_ids],
             'project_type': project.project_type,
             'dates': {
@@ -1039,7 +1035,8 @@ class TeamProjectAPI(http.Controller):
             'completion': {
                 'is_on_time': project.is_on_time,
                 'days_delayed': project.days_delayed
-            }
+            },
+            'active': project.active  # Tambahkan field active untuk menunjukkan status archived
         }
         
         return project_data
@@ -4855,6 +4852,64 @@ class TeamProjectAPI(http.Controller):
                 
         except Exception as e:
             _logger.error(f"Error in manage_mentions: {str(e)}")
+            import traceback
+            _logger.error(traceback.format_exc())
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/team/employees', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_team_employees(self, **kw):
+        """Get employees for team selection with support for multiple departments."""
+        try:
+            # Ambil department_ids dari parameter
+            params = kw.get('params', {})
+            department_ids = params.get('department_ids', [])
+            
+            # Pastikan department_ids adalah list
+            if isinstance(department_ids, int):
+                department_ids = [department_ids]
+            elif not isinstance(department_ids, list):
+                department_ids = []
+                
+            # Validasi input
+            if not department_ids:
+                return {'status': 'error', 'message': 'Department ID is required'}
+                
+            # Buat domain untuk filter karyawan
+            domain = [('active', '=', True)]
+            
+            # Filter berdasarkan departemen jika ada
+            if department_ids:
+                domain.append(('department_id', 'in', department_ids))
+                
+            # Ambil employees berdasarkan domain
+            employees = request.env['hr.employee'].sudo().search_read(
+                domain,
+                ['id', 'name', 'job_id', 'department_id', 'image_128']
+            )
+            
+            # Format data untuk respons
+            employee_data = []
+            for employee in employees:
+                emp_data = {
+                    'id': employee['id'],
+                    'name': employee['name'],
+                    'job_title': employee['job_id'][1] if employee.get('job_id') else '',
+                    'department': employee['department_id'][1] if employee.get('department_id') else ''
+                }
+                
+                # Tambahkan avatar jika tersedia
+                if employee.get('image_128'):
+                    emp_data['avatar'] = f"data:image/png;base64,{employee['image_128'].decode('utf-8')}" if isinstance(employee['image_128'], bytes) else employee['image_128']
+                
+                employee_data.append(emp_data)
+                
+            return {
+                'status': 'success',
+                'data': employee_data
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in get_team_employees: {str(e)}")
             import traceback
             _logger.error(traceback.format_exc())
             return {'status': 'error', 'message': str(e)}

@@ -76,12 +76,18 @@ class TeamProjectAPI(http.Controller):
                     'date_start': kw['date_start'],
                     'date_end': kw['date_end'],
                     'project_manager_id': int(kw['project_manager_id']),
-                    'department_id': int(kw['department_id']),
+                    # 'department_id': int(kw['department_id']),
                     'description': kw.get('description'),
                     'state': kw.get('state', 'draft'),
                     'priority': kw.get('priority', '1'),
                     'project_type': kw.get('project_type', 'general'),  # Default ke general jika tidak disebutkan
                 }
+                if kw.get('department_ids'):
+                    dept_ids = kw['department_ids'] if isinstance(kw['department_ids'], list) else json.loads(kw['department_ids'])
+                    values['department_ids'] = [(6, 0, dept_ids)]
+                else:
+                    # Minimal satu department harus dipilih
+                    return {'status': 'error', 'message': 'At least one department is required'}
                 if kw.get('team_ids'):
                     team_ids = kw['team_ids'] if isinstance(kw['team_ids'], list) else json.loads(kw['team_ids'])
                     values['team_ids'] = [(6, 0, team_ids)]
@@ -166,6 +172,10 @@ class TeamProjectAPI(http.Controller):
                 if kw.get('team_ids'):
                     team_ids = kw['team_ids'] if isinstance(kw['team_ids'], list) else json.loads(kw['team_ids'])
                     update_values['team_ids'] = [(6, 0, team_ids)]
+                # Di manage_projects saat operation == 'update'
+                if kw.get('department_ids'):
+                    dept_ids = kw['department_ids'] if isinstance(kw['department_ids'], list) else json.loads(kw['department_ids'])
+                    update_values['department_ids'] = [(6, 0, dept_ids)]
 
                 project.write(update_values)
                 return {'status': 'success', 'data': self._prepare_project_data(project), 'message': 'Project updated'}
@@ -337,8 +347,12 @@ class TeamProjectAPI(http.Controller):
             domain = []
             
             # Filter departemen
+            # if kw.get('department_id'):
+            #     domain.append(('department_id', '=', int(kw['department_id'])))
+
             if kw.get('department_id'):
-                domain.append(('department_id', '=', int(kw['department_id'])))
+                department_id = int(kw['department_id'])
+                domain.append(('department_ids', 'in', [department_id]))
             
             # Filter project_type yang baru ditambahkan
             if kw.get('project_type'):
@@ -377,6 +391,11 @@ class TeamProjectAPI(http.Controller):
             # Filter prioritas jika ada
             if kw.get('priority'):
                 domain.append(('priority', '=', kw['priority']))
+
+            # Pada endpoint get_projects, tambahkan parameter include_archived
+            include_archived = kw.get('include_archived') == 'true'
+            if not include_archived:
+                domain.append(('active', '=', True))
             
             # Filter pencarian (search)
             if kw.get('search'):
@@ -390,8 +409,14 @@ class TeamProjectAPI(http.Controller):
             offset = (page - 1) * limit
             
             # Sorting
-            sort_field = kw.get('sort_field', 'date_start')
+            sort_field = kw.get('sort_field', 'priority')
+            allowed_sort_fields = ['date_start', 'date_end', 'name', 'priority', 'state', 'progress']
+            if sort_field not in allowed_sort_fields:
+                sort_field = 'date_start'  # Default jika field tidak valid
+
             sort_order = kw.get('sort_order', 'desc')
+            if sort_order not in ['asc', 'desc']:
+                sort_order = 'desc'  # Default jika order tidak valid
             order = f"{sort_field} {sort_order}"
             
             # Tambahkan logging untuk debugging
@@ -517,9 +542,22 @@ class TeamProjectAPI(http.Controller):
                         domain.append(('name', 'ilike', kw['search']))
                         domain.append(('description', 'ilike', kw['search']))
 
-                    
-                    # Get tasks based on domain filters
-                    tasks = request.env['team.project.task'].sudo().search(domain)
+                    # Pada function manage_tasks di TeamProjectAPI saat operation 'list'
+                    if 'sort_field' in kw and 'sort_order' in kw:
+                        allowed_sort_fields = ['name', 'priority', 'state', 'progress', 'planned_date_end']
+                        sort_field = kw.get('sort_field')
+                        if sort_field not in allowed_sort_fields:
+                            sort_field = 'priority'  # Default jika field tidak valid
+                            
+                        sort_order = kw.get('sort_order')
+                        if sort_order not in ['asc', 'desc']:
+                            sort_order = 'desc'  # Default jika order tidak valid
+                            
+                        order = f"{sort_field} {sort_order}"
+                    else:
+                        order = "priority desc, sequence, id desc"  # Sesuai _order di model
+
+                    tasks = request.env['team.project.task'].sudo().search(domain, order=order)
                     
                     # Buat task data dengan error handling
                     task_data = []
@@ -758,6 +796,32 @@ class TeamProjectAPI(http.Controller):
             _logger.error(f"Error in manage_tasks: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
+    @http.route('/web/v2/team/projects/toggle_archive', type='json', auth='user', methods=['POST'], csrf=False)
+    def toggle_project_archive(self, **kw):
+        try:
+            project_id = kw.get('project_id')
+            if not project_id:
+                return {'status': 'error', 'message': 'Missing project_id'}
+                
+            project = request.env['team.project'].sudo().browse(int(project_id))
+            if not project.exists():
+                return {'status': 'error', 'message': 'Project not found'}
+                
+            project.toggle_active()
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'id': project.id,
+                    'name': project.name,
+                    'active': project.active
+                },
+                'message': f"Project {'activated' if project.active else 'archived'} successfully"
+            }
+        except Exception as e:
+            _logger.error(f"Error in toggle_project_archive: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
     @http.route('/web/v2/team/upload_temporary_attachment', type='http', auth='user', methods=['POST'], csrf=False)
     def upload_temporary_attachment(self, **kw):
         """Upload attachment sementara yang bisa dikaitkan dengan pesan."""
@@ -953,7 +1017,8 @@ class TeamProjectAPI(http.Controller):
             'id': project.id,
             'name': project.name,
             'code': project.code,
-            'department': {'id': project.department_id.id, 'name': project.department_id.name},
+            # 'department': {'id': project.department_id.id, 'name': project.department_id.name},
+            'departments': [{'id': d.id, 'name': d.name} for d in project.department_ids],
             'project_type': project.project_type,
             'dates': {
                 'start': fields.Date.to_string(project.date_start),

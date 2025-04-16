@@ -17,8 +17,11 @@ class TeamProject(models.Model):
     name = fields.Char(string='Project Name', required=True, tracking=True)
     code = fields.Char(string='Project Code', readonly=True, copy=False, 
                      default=lambda self: self.env['ir.sequence'].next_by_code('team.project'))
-    department_id = fields.Many2one('hr.department', string='Department', required=True, tracking=True,
-                                  help="Department responsible for this project")
+    # department_id = fields.Many2one('hr.department', string='Department', required=True, tracking=True,
+    #                               help="Department responsible for this project")
+    department_ids = fields.Many2many('hr.department', 'project_department_rel', 'project_id', 'department_id', 
+                                string='Departments', required=True, tracking=True,
+                                help="Departments involved in this project")
     date_start = fields.Date(string='Start Date', required=True, tracking=True)
     date_end = fields.Date(string='End Date', required=True, tracking=True)
     description = fields.Html(string='Description', tracking=True)
@@ -119,6 +122,14 @@ class TeamProject(models.Model):
     actual_date_end = fields.Date(string='Actual End Date', readonly=True, tracking=True)
     is_on_time = fields.Boolean(string='Completed On Time', compute='_compute_is_on_time', store=True)
     days_delayed = fields.Integer(string='Days Delayed', compute='_compute_days_delayed', store=True)
+
+    active = fields.Boolean(default=True, string='Active', 
+                     help="If unchecked, it will allow you to hide the project without removing it.")
+
+    def toggle_active(self):
+        for record in self:
+            record.active = not record.active
+
 
     @api.depends('date_end', 'actual_date_end', 'state')
     def _compute_is_on_time(self):
@@ -331,7 +342,9 @@ class TeamProjectTask(models.Model):
     name = fields.Char(string='Task Name', required=True, tracking=True)
     sequence = fields.Integer(string='Sequence', default=10)
     project_id = fields.Many2one('team.project', string='Project', required=True, ondelete='cascade')
-    department_id = fields.Many2one('hr.department', string='Department', related='project_id.department_id', store=True)
+    # department_id = fields.Many2one('hr.department', string='Department', related='project_id.department_id', store=True)
+    department_id = fields.Many2one('hr.department', string='Department', 
+                              compute='_compute_department', store=True)
     user_id = fields.Many2one('res.users', string='Assigned User', tracking=True)
     
     # Assignments
@@ -362,6 +375,22 @@ class TeamProjectTask(models.Model):
         domain=[('res_model', '=', 'team.project.task')]
     )
     attachment_count = fields.Integer(compute='_compute_attachment_count', string='Attachment Count')
+
+    active = fields.Boolean(default=True, string='Active',
+                     help="If unchecked, it will allow you to hide the task without removing it.")
+
+    def toggle_active(self):
+        for record in self:
+            record.active = not record.active
+
+    @api.depends('project_id', 'project_id.department_ids')
+    def _compute_department(self):
+        for task in self:
+            if task.project_id and task.project_id.department_ids:
+                # Ambil department pertama sebagai default untuk task
+                task.department_id = task.project_id.department_ids[0].id if task.project_id.department_ids else False
+            else:
+                task.department_id = False
     
     @api.depends('attachment_ids')
     def _compute_attachment_count(self):

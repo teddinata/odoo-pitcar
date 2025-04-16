@@ -392,6 +392,15 @@ class TeamProjectTask(models.Model):
             else:
                 task.department_id = False
     
+    def _migrate_department_data(self):
+        """Migrasi data dari field lama ke baru."""
+        projects = self.search([])
+        for project in projects:
+            if not project.department_ids and hasattr(project, 'department_id') and project.department_id:
+                project.write({
+                    'department_ids': [(6, 0, [project.department_id.id])]
+                })
+    
     @api.depends('attachment_ids')
     def _compute_attachment_count(self):
         for task in self:

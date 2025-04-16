@@ -817,9 +817,16 @@ class TeamProjectAPI(http.Controller):
             project = request.env['team.project'].sudo().browse(int(project_id))
             if not project.exists():
                 return {'status': 'error', 'message': 'Project not found'}
-                
-            # Toggle status active
-            project.write({'active': not project.active})
+            
+            # Toggle status active dan log untuk debugging
+            new_active_state = not project.active
+            _logger.info(f"Toggling project {project.id} archive status: active={project.active} -> {new_active_state}")
+            
+            project.write({'active': new_active_state})
+            
+            # Verifikasi nilai diubah dengan benar
+            project.invalidate_cache()
+            _logger.info(f"After toggle, project {project.id} active status: {project.active}")
             
             return {
                 'status': 'success',

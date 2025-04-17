@@ -4950,83 +4950,69 @@ class TeamProjectAPI(http.Controller):
     @http.route('/web/employees/multi-dept', type='json', auth='user', methods=['POST'], csrf=False)
     def get_employees(self, **kw):
         try:
-            # Log incoming request for debugging
             _logger.info(f"get_employees/multi-dept called with params: {kw}")
             
             params = kw.get('params', {})
             
-            # Extract and process department_ids properly
-            department_ids = params.get('department_ids', [])
+            # Gunakan nama parameter baru
+            department_ids = params.get('filter_departments', [])
+            if not department_ids:
+                # Coba fallback ke parameter lama jika parameter baru tidak ada
+                department_ids = params.get('department_ids', [])
+            
             if department_ids:
-                # Ensure department_ids is a list
                 if not isinstance(department_ids, list):
                     department_ids = [department_ids]
-                
-                # Convert all IDs to integers, filtering out falsy values
                 department_ids = [int(dept_id) for dept_id in department_ids if dept_id]
-                
-                _logger.info(f"Filtering employees by department_ids: {department_ids}")
+                _logger.info(f"Filtering employees by departments: {department_ids}")
             
-            # Get total count for comparison
-            all_employees_count = request.env['hr.employee'].sudo().search_count([('active', '=', True)])
-            _logger.info(f"Total active employees: {all_employees_count}")
-            
-            # Build domain filter
+            # Buat domain pencarian
             domain = [('active', '=', True)]
             
-            # Add department filter if specified
+            # Tambahkan filter departemen jika ada
             if department_ids:
-                # Check counts by individual department first for debugging
-                for dept_id in department_ids:
-                    dept_count = request.env['hr.employee'].sudo().search_count([
-                        ('active', '=', True),
-                        ('department_id', '=', dept_id)
-                    ])
-                    _logger.info(f"Department {dept_id} has {dept_count} employees")
-                
-                # Add department filter to domain
+                # Gunakan operator LEFT JOIN untuk memastikan filter bekerja dengan benar
+                # Untuk Odoo, gunakan penulisan operator seperti ini:
                 domain.append(('department_id', 'in', department_ids))
             
-            # Add search query filter if specified
-            if params.get('search'):
-                domain.append(('name', 'ilike', params.get('search')))
+            _logger.info(f"Search domain: {domain}")
             
-            # Add specific employee IDs filter if specified
-            if params.get('ids') and isinstance(params.get('ids'), list):
-                domain.append(('id', 'in', params.get('ids')))
+            # Jalankan kueri langsung ke database untuk verifikasi
+            if department_ids:
+                query = """
+                SELECT COUNT(id) FROM hr_employee 
+                WHERE department_id IN %s AND active = true
+                """
+                request.env.cr.execute(query, (tuple(department_ids),))
+                count_result = request.env.cr.fetchone()[0]
+                _logger.info(f"Direct SQL count of employees in departments {department_ids}: {count_result}")
             
-            # Log final search domain
-            _logger.info(f"Final search domain: {domain}")
-            
-            # Execute search with domain
+            # Lakukan pencarian dengan domain yang sudah dibuat
             employees = request.env['hr.employee'].sudo().search_read(
                 domain=domain,
                 fields=['id', 'name', 'job_id', 'department_id', 'image_128'],
                 limit=params.get('limit', 100),
-                order=f"{params.get('sort_by', 'name')} {params.get('sort_order', 'asc')}"
+                order='name asc'
             )
             
             _logger.info(f"Search returned {len(employees)} employees")
             
-            # Format employee data for response
+            # Format hasil untuk response
             result = []
             for employee in employees:
-                # Extract employee details safely
                 position_id = employee.get('job_id') and employee['job_id'][0] or False
                 position_name = employee.get('job_id') and employee['job_id'][1] or ''
                 department_id = employee.get('department_id') and employee['department_id'][0] or False
                 department_name = employee.get('department_id') and employee['department_id'][1] or ''
                 
-                # Create employee object with all needed fields
                 emp_data = {
                     'id': employee['id'],
                     'name': employee['name'],
                     'position': {'id': position_id, 'name': position_name},
                     'department': department_name,
-                    'department_id': department_id  # Add department_id explicitly for frontend filtering
+                    'department_id': department_id
                 }
                 
-                # Add avatar if available
                 if employee.get('image_128'):
                     if isinstance(employee['image_128'], bytes):
                         emp_data['avatar'] = f"data:image/png;base64,{employee['image_128'].decode('utf-8')}"
@@ -5035,10 +5021,12 @@ class TeamProjectAPI(http.Controller):
                 
                 result.append(emp_data)
             
-            # Log results summary
-            _logger.info(f"Returning {len(result)} employees for department_ids: {department_ids}")
-            if result and len(result) > 0:
-                _logger.info(f"Sample employee: {result[0]}")
+            # Jika parameter filter ada tapi hasil masih menunjukkan semua employee,
+            # lakukan filter manual sebagai solusi sementara
+            if department_ids and len(result) == len(employees):
+                _logger.warning(f"Database filter tidak bekerja, menerapkan filter manual")
+                result = [emp for emp in result if emp.get('department_id') in department_ids]
+                _logger.info(f"After manual filtering: {len(result)} employees")
             
             return {
                 'status': 'success',

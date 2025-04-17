@@ -114,82 +114,82 @@ class EmployeeAPI(http.Controller):
             _logger.error(f"Error formatting employee data: {str(e)}")
             return {}
         
-    # @http.route('/web/employees/masters', type='json', auth='user', methods=['POST'], csrf=False)
-    # def get_employee_masters(self, **kw):
-    #     """Get master data for employees (departments, positions, locations, and selection fields)"""
-    #     try:
-    #         # Get Departments
-    #         Department = request.env['hr.department']
-    #         departments = Department.search([])
-    #         department_list = [{
-    #             'id': dept.id,
-    #             'name': dept.name,
-    #             'manager': dept.manager_id.name if dept.manager_id else None,
-    #             'parent_dept': dept.parent_id.name if dept.parent_id else None,
-    #             'total_employees': len(dept.member_ids)
-    #         } for dept in departments]
-
-    #         # Get Job Positions
-    #         Job = request.env['hr.job']
-    #         jobs = Job.search([])
-    #         position_list = [{
-    #             'id': job.id,
-    #             'name': job.name,
-    #             'department_id': job.department_id.id if job.department_id else None,
-    #             'department': {
-    #                 'id': job.department_id.id,
-    #                 'name': job.department_id.name,
-    #                 'manager_id': job.department_id.manager_id.id if job.department_id.manager_id else None,
-    #                 'manager_name': job.department_id.manager_id.name if job.department_id.manager_id else None
-    #             } if job.department_id else None,
-    #             'total_employees': job.no_of_employee,
-    #             'description': job.description or None
-    #         } for job in jobs]
-
-    #         # Get Work Locations
-    #         Location = request.env['pitcar.work.location']
-    #         locations = Location.search([])
-    #         location_list = [{
-    #             'id': loc.id,
-    #             'name': loc.name,
-    #             'address': loc.address if hasattr(loc, 'address') else None
-    #         } for loc in locations]
-
-    #         # Get Selection Fields
-    #         Employee = request.env['hr.employee']
-    #         selection_fields = {
-    #             'gender': dict(Employee._fields['gender'].selection or []),
-    #             'marital': dict(Employee._fields['marital'].selection or [])
-    #         }
-
-    #         # Get employee count
-    #         employee_count = Employee.search_count([('active', '=', True)])
-
-    #         return {
-    #             'status': 'success',
-    #             'data': {
-    #                 'departments': department_list,
-    #                 'positions': position_list,
-    #                 'locations': location_list,
-    #                 'selection_fields': selection_fields,
-    #                 'summary': {
-    #                     'total_departments': len(departments),
-    #                     'total_positions': len(jobs),
-    #                     'total_locations': len(locations),
-    #                     'total_employees': employee_count
-    #                 }
-    #             }
-    #         }
-
-    #     except Exception as e:
-    #         _logger.error(f"Error in get_employee_masters: {str(e)}", exc_info=True)
-    #         return {
-    #             'status': 'error',
-    #             'message': str(e)
-    #         }
-
-    # Perbarui API endpoint untuk mendukung multiple departments
     @http.route('/web/employees/masters', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_employee_masters(self, **kw):
+        """Get master data for employees (departments, positions, locations, and selection fields)"""
+        try:
+            # Get Departments
+            Department = request.env['hr.department']
+            departments = Department.search([])
+            department_list = [{
+                'id': dept.id,
+                'name': dept.name,
+                'manager': dept.manager_id.name if dept.manager_id else None,
+                'parent_dept': dept.parent_id.name if dept.parent_id else None,
+                'total_employees': len(dept.member_ids)
+            } for dept in departments]
+
+            # Get Job Positions
+            Job = request.env['hr.job']
+            jobs = Job.search([])
+            position_list = [{
+                'id': job.id,
+                'name': job.name,
+                'department_id': job.department_id.id if job.department_id else None,
+                'department': {
+                    'id': job.department_id.id,
+                    'name': job.department_id.name,
+                    'manager_id': job.department_id.manager_id.id if job.department_id.manager_id else None,
+                    'manager_name': job.department_id.manager_id.name if job.department_id.manager_id else None
+                } if job.department_id else None,
+                'total_employees': job.no_of_employee,
+                'description': job.description or None
+            } for job in jobs]
+
+            # Get Work Locations
+            Location = request.env['pitcar.work.location']
+            locations = Location.search([])
+            location_list = [{
+                'id': loc.id,
+                'name': loc.name,
+                'address': loc.address if hasattr(loc, 'address') else None
+            } for loc in locations]
+
+            # Get Selection Fields
+            Employee = request.env['hr.employee']
+            selection_fields = {
+                'gender': dict(Employee._fields['gender'].selection or []),
+                'marital': dict(Employee._fields['marital'].selection or [])
+            }
+
+            # Get employee count
+            employee_count = Employee.search_count([('active', '=', True)])
+
+            return {
+                'status': 'success',
+                'data': {
+                    'departments': department_list,
+                    'positions': position_list,
+                    'locations': location_list,
+                    'selection_fields': selection_fields,
+                    'summary': {
+                        'total_departments': len(departments),
+                        'total_positions': len(jobs),
+                        'total_locations': len(locations),
+                        'total_employees': employee_count
+                    }
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_employee_masters: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    # Buat endpoint baru untuk mendukung multiple departments dengan nama sesuai
+    @http.route('/web/multi-employees', type='json', auth='user', methods=['POST'], csrf=False)
     def get_employees(self, **kw):
         try:
             # Log untuk debugging
@@ -219,6 +219,14 @@ class EmployeeAPI(http.Controller):
             # Filter berdasarkan departemen jika ada
             if department_ids:
                 domain.append(('department_id', 'in', department_ids))
+                
+            # Filter berdasarkan search query jika ada
+            if params.get('search'):
+                domain.append(('name', 'ilike', params.get('search')))
+                
+            # Filter berdasarkan ID spesifik jika ada
+            if params.get('ids') and isinstance(params.get('ids'), list):
+                domain.append(('id', 'in', params.get('ids')))
             
             # Tampilkan log untuk debugging
             _logger.info(f"Fetching employees with domain: {domain}")
@@ -226,7 +234,7 @@ class EmployeeAPI(http.Controller):
             # Cari employee berdasarkan domain
             employees = request.env['hr.employee'].sudo().search_read(
                 domain=domain,
-                fields=['id', 'name', 'job_id', 'department_id'],
+                fields=['id', 'name', 'job_id', 'department_id', 'image_128'],
                 limit=params.get('limit', 100),
                 order=f"{params.get('sort_by', 'name')} {params.get('sort_order', 'asc')}"
             )
@@ -243,6 +251,13 @@ class EmployeeAPI(http.Controller):
                     'position': {'id': employee.get('job_id') and employee['job_id'][0] or False, 'name': position_name},
                     'department': department_name
                 }
+                
+                # Tambahkan avatar jika ada
+                if employee.get('image_128'):
+                    if isinstance(employee['image_128'], bytes):
+                        emp_data['avatar'] = f"data:image/png;base64,{employee['image_128'].decode('utf-8')}"
+                    else:
+                        emp_data['avatar'] = employee['image_128']
                 
                 result.append(emp_data)
             

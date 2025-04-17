@@ -4950,42 +4950,55 @@ class TeamProjectAPI(http.Controller):
     @http.route('/web/employees/multi-dept', type='json', auth='user', methods=['POST'], csrf=False)
     def get_employees(self, **kw):
         try:
-            # Log for debugging
-            _logger.info(f"Get employees called with params: {kw}")
+            # Log incoming request for debugging
+            _logger.info(f"get_employees/multi-dept called with params: {kw}")
             
             params = kw.get('params', {})
             
-            # Extract department_ids, ensuring it's a list of integers
+            # Extract and process department_ids properly
             department_ids = params.get('department_ids', [])
             if department_ids:
                 # Ensure department_ids is a list
                 if not isinstance(department_ids, list):
                     department_ids = [department_ids]
                 
-                # Convert all IDs to integers
+                # Convert all IDs to integers, filtering out falsy values
                 department_ids = [int(dept_id) for dept_id in department_ids if dept_id]
                 
                 _logger.info(f"Filtering employees by department_ids: {department_ids}")
             
-            # Create search domain
+            # Get total count for comparison
+            all_employees_count = request.env['hr.employee'].sudo().search_count([('active', '=', True)])
+            _logger.info(f"Total active employees: {all_employees_count}")
+            
+            # Build domain filter
             domain = [('active', '=', True)]
             
-            # Filter by department_ids if provided
+            # Add department filter if specified
             if department_ids:
+                # Check counts by individual department first for debugging
+                for dept_id in department_ids:
+                    dept_count = request.env['hr.employee'].sudo().search_count([
+                        ('active', '=', True),
+                        ('department_id', '=', dept_id)
+                    ])
+                    _logger.info(f"Department {dept_id} has {dept_count} employees")
+                
+                # Add department filter to domain
                 domain.append(('department_id', 'in', department_ids))
             
-            # Filter by search query if provided
+            # Add search query filter if specified
             if params.get('search'):
                 domain.append(('name', 'ilike', params.get('search')))
             
-            # Filter by specific IDs if provided
+            # Add specific employee IDs filter if specified
             if params.get('ids') and isinstance(params.get('ids'), list):
                 domain.append(('id', 'in', params.get('ids')))
             
-            # Log the final domain for debugging
-            _logger.info(f"Fetching employees with domain: {domain}")
+            # Log final search domain
+            _logger.info(f"Final search domain: {domain}")
             
-            # Search for employees with the constructed domain
+            # Execute search with domain
             employees = request.env['hr.employee'].sudo().search_read(
                 domain=domain,
                 fields=['id', 'name', 'job_id', 'department_id', 'image_128'],
@@ -4993,19 +5006,24 @@ class TeamProjectAPI(http.Controller):
                 order=f"{params.get('sort_by', 'name')} {params.get('sort_order', 'asc')}"
             )
             
-            # Format response
+            _logger.info(f"Search returned {len(employees)} employees")
+            
+            # Format employee data for response
             result = []
             for employee in employees:
+                # Extract employee details safely
+                position_id = employee.get('job_id') and employee['job_id'][0] or False
                 position_name = employee.get('job_id') and employee['job_id'][1] or ''
-                department_name = employee.get('department_id') and employee['department_id'][1] or ''
                 department_id = employee.get('department_id') and employee['department_id'][0] or False
+                department_name = employee.get('department_id') and employee['department_id'][1] or ''
                 
+                # Create employee object with all needed fields
                 emp_data = {
                     'id': employee['id'],
                     'name': employee['name'],
-                    'position': {'id': employee.get('job_id') and employee['job_id'][0] or False, 'name': position_name},
+                    'position': {'id': position_id, 'name': position_name},
                     'department': department_name,
-                    'department_id': department_id  # Add department_id explicitly
+                    'department_id': department_id  # Add department_id explicitly for frontend filtering
                 }
                 
                 # Add avatar if available
@@ -5017,7 +5035,10 @@ class TeamProjectAPI(http.Controller):
                 
                 result.append(emp_data)
             
-            _logger.info(f"Found {len(result)} employees for department_ids: {department_ids}")
+            # Log results summary
+            _logger.info(f"Returning {len(result)} employees for department_ids: {department_ids}")
+            if result and len(result) > 0:
+                _logger.info(f"Sample employee: {result[0]}")
             
             return {
                 'status': 'success',
@@ -5028,7 +5049,7 @@ class TeamProjectAPI(http.Controller):
             }
             
         except Exception as e:
-            _logger.error(f"Error in get_employees: {str(e)}")
+            _logger.error(f"Error in get_employees/multi-dept: {str(e)}")
             import traceback
             _logger.error(traceback.format_exc())
             return {

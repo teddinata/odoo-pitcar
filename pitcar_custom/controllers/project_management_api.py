@@ -4945,3 +4945,93 @@ class TeamProjectAPI(http.Controller):
             import traceback
             _logger.error(traceback.format_exc())
             return {'status': 'error', 'message': str(e)}
+
+    # Buat endpoint baru untuk mendukung multiple departments dengan nama sesuai
+    @http.route('/web/employees/multi-dept', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_employees(self, **kw):
+        try:
+            # Log untuk debugging
+            _logger.info(f"Get employees called with params: {kw.get('params', {})}")
+            
+            params = kw.get('params', {})
+            
+            # Dapatkan departemen (single atau multiple)
+            department_id = params.get('department_id')
+            department_ids = params.get('department_ids', [])
+            
+            # Jika ada department_ids, gunakan itu
+            if department_ids:
+                # Pastikan department_ids dalam bentuk list
+                if not isinstance(department_ids, list):
+                    department_ids = [department_ids]
+            # Jika tidak, fallback ke department_id lama
+            elif department_id:
+                department_ids = [department_id]
+            
+            # Konversi ke integer
+            department_ids = [int(dept_id) for dept_id in department_ids if dept_id]
+            
+            # Buat domain search
+            domain = [('active', '=', True)]
+            
+            # Filter berdasarkan departemen jika ada
+            if department_ids:
+                domain.append(('department_id', 'in', department_ids))
+                
+            # Filter berdasarkan search query jika ada
+            if params.get('search'):
+                domain.append(('name', 'ilike', params.get('search')))
+                
+            # Filter berdasarkan ID spesifik jika ada
+            if params.get('ids') and isinstance(params.get('ids'), list):
+                domain.append(('id', 'in', params.get('ids')))
+            
+            # Tampilkan log untuk debugging
+            _logger.info(f"Fetching employees with domain: {domain}")
+            
+            # Cari employee berdasarkan domain
+            employees = request.env['hr.employee'].sudo().search_read(
+                domain=domain,
+                fields=['id', 'name', 'job_id', 'department_id', 'image_128'],
+                limit=params.get('limit', 100),
+                order=f"{params.get('sort_by', 'name')} {params.get('sort_order', 'asc')}"
+            )
+            
+            # Format response
+            result = []
+            for employee in employees:
+                position_name = employee.get('job_id') and employee['job_id'][1] or ''
+                department_name = employee.get('department_id') and employee['department_id'][1] or ''
+                
+                emp_data = {
+                    'id': employee['id'],
+                    'name': employee['name'],
+                    'position': {'id': employee.get('job_id') and employee['job_id'][0] or False, 'name': position_name},
+                    'department': department_name
+                }
+                
+                # Tambahkan avatar jika ada
+                if employee.get('image_128'):
+                    if isinstance(employee['image_128'], bytes):
+                        emp_data['avatar'] = f"data:image/png;base64,{employee['image_128'].decode('utf-8')}"
+                    else:
+                        emp_data['avatar'] = employee['image_128']
+                
+                result.append(emp_data)
+            
+            _logger.info(f"Found {len(result)} employees for department_ids: {department_ids}")
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'rows': result,
+                    'total': len(result)
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in get_employees: {str(e)}")
+            return {
+                'status': 'error', 
+                'message': str(e)
+            }

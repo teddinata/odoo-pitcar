@@ -4551,9 +4551,9 @@ class TeamProjectAPI(http.Controller):
                 if kw.get('filter_by_department') and request.env.user.employee_id.department_id:
                     department_id = request.env.user.employee_id.department_id.id
                     
-                    # Get projects in the department
+                    # Get projects in the department - FIX: Use department_ids instead of department_id
                     project_ids = request.env['team.project'].sudo().search([
-                        ('department_id', '=', department_id)
+                        ('department_ids', 'in', [department_id])  # Changed from department_id to department_ids
                     ]).ids
                     
                     if project_ids:
@@ -4624,11 +4624,16 @@ class TeamProjectAPI(http.Controller):
                     
                     # Add project info if available
                     if notif.project_id:
+                        # FIX: Use department_ids instead of department_id
+                        departments = notif.project_id.department_ids
+                        department_id = departments[0].id if departments else False
+                        department_name = departments[0].name if departments else ''
+                        
                         notif_info['project'] = {
                             'id': notif.project_id.id,
                             'name': notif.project_id.name,
-                            'department_id': notif.project_id.department_id.id if notif.project_id.department_id else False,
-                            'department_name': notif.project_id.department_id.name if notif.project_id.department_id else '',
+                            'department_id': department_id,
+                            'department_name': department_name,
                         }
                     
                     # Add recipient info if available
@@ -4650,7 +4655,8 @@ class TeamProjectAPI(http.Controller):
                         ('is_read', '=', False)
                     ])
                 }
-                
+
+            # Rest of the method remains unchanged...
             elif operation == 'mark_read':
                 notification_id = kw.get('notification_id')
                 if not notification_id:

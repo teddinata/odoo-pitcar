@@ -364,7 +364,7 @@ class TeamProjectAPI(http.Controller):
                 domain.append(('state', '=', kw['state']))
                 
             # Filter untuk include/exclude archived projects
-            include_archived = kw.get('include_archived') == 'true'
+            # include_archived = kw.get('include_archived') == 'true'
             # if not include_archived:
             #     domain.append(('active', '=', True))
             # Filter untuk include/exclude archived projects
@@ -376,12 +376,19 @@ class TeamProjectAPI(http.Controller):
             # else:
             #     # Jika include_archived false atau tidak ada, hanya tampilkan yang aktif
             #     domain.append(('active', '=', True))
+            # Kode filter yang lebih tegas
+            include_archived_param = kw.get('include_archived')
+            include_archived = str(include_archived_param).lower() in ['true', '1']
+
             if include_archived:
-                domain.append('|')  # Operator OR
+                # Gunakan OR operator secara eksplisit untuk mengambil active=True dan active=False
+                domain.append('|')
                 domain.append(('active', '=', True))
                 domain.append(('active', '=', False))
+                _logger.info("Including archived projects - domain: %s", domain)
             else:
                 domain.append(('active', '=', True))
+                _logger.info("Excluding archived projects - domain: %s", domain)
             
             # Filter tanggal
             if kw.get('date_start') and kw.get('date_end'):
@@ -434,8 +441,11 @@ class TeamProjectAPI(http.Controller):
             _logger.info(f"Project filter domain: {domain}")
             
             # Cari proyek dengan domain filter
-            projects = request.env['team.project'].sudo().search(domain, limit=limit, offset=offset, order=order)
-            total = request.env['team.project'].sudo().search_count(domain)
+            # projects = request.env['team.project'].sudo().search(domain, limit=limit, offset=offset, order=order)
+            # total = request.env['team.project'].sudo().search_count(domain)
+            # Di endpoint get_projects
+            projects = request.env['team.project'].with_context(active_test=False).sudo().search(domain, limit=limit, offset=offset, order=order)
+            total = request.env['team.project'].with_context(active_test=False).sudo().search_count(domain)
             
             # Hitung total pages untuk pagination
             total_pages = (total + limit - 1) // limit if limit > 0 else 1
@@ -817,18 +827,36 @@ class TeamProjectAPI(http.Controller):
             project = request.env['team.project'].sudo().browse(int(project_id))
             if not project.exists():
                 return {'status': 'error', 'message': 'Project not found'}
-                
-            # Toggle status active
-            project.write({'active': not project.active})
+            
+            current_active = project.active
+            new_active = not current_active
+            
+            _logger.info(f"Toggling archive for project {project.id}: active={current_active} -> {new_active}")
+            
+            # Force update dengan mengakses kolom langsung
+            project.with_context(active_test=False).write({'active': new_active})
+            
+            # Verify the update worked
+            project.invalidate_cache()
+            updated_value = project.active
+            _logger.info(f"After toggle: project.active = {updated_value}")
+            
+            # Langsung cek di database untuk memverifikasi
+            self.env.cr.execute("""
+                SELECT active FROM team_project WHERE id = %s
+            """, (project.id,))
+            db_value = self.env.cr.fetchone()[0]
+            _logger.info(f"DB value after toggle: active = {db_value}")
             
             return {
                 'status': 'success',
                 'data': {
                     'id': project.id,
                     'name': project.name,
-                    'active': project.active
+                    'active': updated_value,
+                    'db_value': db_value
                 },
-                'message': f"Project {'activated' if project.active else 'archived'} successfully"
+                'message': f"Project {'activated' if updated_value else 'archived'} successfully"
             }
         except Exception as e:
             _logger.error(f"Error in toggle_project_archive: {str(e)}")

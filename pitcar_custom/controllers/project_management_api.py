@@ -828,35 +828,24 @@ class TeamProjectAPI(http.Controller):
             if not project.exists():
                 return {'status': 'error', 'message': 'Project not found'}
             
-            current_active = project.active
-            new_active = not current_active
+            # Toggle status active dan log untuk debugging
+            new_active_state = not project.active
+            _logger.info(f"Toggling project {project.id} archive status: active={project.active} -> {new_active_state}")
             
-            _logger.info(f"Toggling archive for project {project.id}: active={current_active} -> {new_active}")
+            project.write({'active': new_active_state})
             
-            # Force update dengan mengakses kolom langsung
-            project.with_context(active_test=False).write({'active': new_active})
-            
-            # Verify the update worked
+            # Verifikasi nilai diubah dengan benar
             project.invalidate_cache()
-            updated_value = project.active
-            _logger.info(f"After toggle: project.active = {updated_value}")
-            
-            # Langsung cek di database untuk memverifikasi
-            self.env.cr.execute("""
-                SELECT active FROM team_project WHERE id = %s
-            """, (project.id,))
-            db_value = self.env.cr.fetchone()[0]
-            _logger.info(f"DB value after toggle: active = {db_value}")
+            _logger.info(f"After toggle, project {project.id} active status: {project.active}")
             
             return {
                 'status': 'success',
                 'data': {
                     'id': project.id,
                     'name': project.name,
-                    'active': updated_value,
-                    'db_value': db_value
+                    'active': project.active
                 },
-                'message': f"Project {'activated' if updated_value else 'archived'} successfully"
+                'message': f"Project {'activated' if project.active else 'archived'} successfully"
             }
         except Exception as e:
             _logger.error(f"Error in toggle_project_archive: {str(e)}")

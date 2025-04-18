@@ -15,15 +15,63 @@ from werkzeug.utils import secure_filename
 _logger = logging.getLogger(__name__)
 
 class TeamProjectAPI(http.Controller):
+    def _convert_to_utc(self, dt_str, is_date=False):
+        """Mengkonversi string datetime dari timezone Jakarta ke UTC untuk penyimpanan."""
+        if not dt_str:
+            return False
+            
+        try:
+            # Jika hanya tanggal (tanpa waktu)
+            if is_date or (isinstance(dt_str, str) and len(dt_str) == 10 and dt_str.count('-') == 2):
+                # Return date string as is, no conversion needed for dates
+                return dt_str
+                
+            # Jika sudah dalam bentuk objek datetime
+            if hasattr(dt_str, 'astimezone'):
+                if dt_str.tzinfo is None:
+                    # Localize ke Jakarta terlebih dahulu jika tidak memiliki timezone
+                    jakarta_tz = pytz.timezone('Asia/Jakarta')
+                    dt_jakarta = jakarta_tz.localize(dt_str)
+                    return dt_jakarta.astimezone(pytz.UTC)
+                else:
+                    # Jika sudah memiliki timezone, konversi ke UTC
+                    return dt_str.astimezone(pytz.UTC)
+                    
+            # Jika string berisi timezone info atau format ISO
+            if isinstance(dt_str, str):
+                # Coba parse string dengan berbagai format
+                for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
+                    try:
+                        # Asumsikan input adalah waktu Jakarta
+                        dt = datetime.strptime(dt_str.split('+')[0].split('.')[0], fmt)
+                        jakarta_tz = pytz.timezone('Asia/Jakarta')
+                        dt_jakarta = jakarta_tz.localize(dt)
+                        dt_utc = dt_jakarta.astimezone(pytz.UTC)
+                        return fields.Datetime.to_string(dt_utc)
+                    except Exception:
+                        continue
+                        
+                # Jika format lain, gunakan parser Odoo
+                try:
+                    dt = fields.Datetime.from_string(dt_str)
+                    jakarta_tz = pytz.timezone('Asia/Jakarta')
+                    dt_jakarta = jakarta_tz.localize(dt)
+                    dt_utc = dt_jakarta.astimezone(pytz.UTC)
+                    return fields.Datetime.to_string(dt_utc)
+                except Exception as e:
+                    _logger.error(f"Error converting to UTC: {e}")
+                    return dt_str
+            
+            return dt_str
+        except Exception as e:
+            _logger.error(f"Unexpected error in _convert_to_utc: {e}")
+            return dt_str
     def _format_datetime_jakarta(self, dt):
-        """Menyiapkan format datetime ke timezone Jakarta dengan penanganan error yang tepat."""
+        """Menyiapkan format datetime dari UTC ke timezone Jakarta dengan penanganan error yang tepat."""
         if not dt:
             return False
         
         try:
-            # Import datetime langsung di dalam fungsi untuk memastikan ketersediaan
-            import datetime
-            
             # Untuk tipe Date (bukan Datetime)
             if hasattr(dt, 'day') and not hasattr(dt, 'hour'):
                 return fields.Date.to_string(dt)
@@ -45,8 +93,14 @@ class TeamProjectAPI(http.Controller):
             # Convert ke Jakarta timezone (hanya untuk objek datetime)
             if hasattr(dt, 'hour'):  # Ini adalah datetime, bukan date
                 try:
-                    dt_utc = pytz.utc.localize(dt) if not hasattr(dt, 'tzinfo') or dt.tzinfo is None else dt
-                    dt_jakarta = dt_utc.astimezone(jakarta_tz)
+                    # Pastikan dt memiliki timezone info (UTC)
+                    if not dt.tzinfo:
+                        dt = pytz.utc.localize(dt)
+                    elif dt.tzinfo.zone != 'UTC':
+                        dt = dt.astimezone(pytz.UTC)
+                        
+                    # Konversi ke Jakarta
+                    dt_jakarta = dt.astimezone(jakarta_tz)
                     return fields.Datetime.to_string(dt_jakarta)
                 except Exception as e:
                     _logger.error(f"Error converting datetime '{dt}': {e}")
@@ -54,7 +108,7 @@ class TeamProjectAPI(http.Controller):
             else:
                 # Ini adalah objek date
                 return fields.Date.to_string(dt) if hasattr(dt, 'day') else str(dt)
-                
+                    
         except Exception as e:
             _logger.error(f"Unexpected error in _format_datetime_jakarta: {e}")
             # Return nilai yang aman
@@ -70,11 +124,15 @@ class TeamProjectAPI(http.Controller):
                 required_fields = ['name', 'date_start', 'date_end', 'project_manager_id']
                 if not all(kw.get(field) for field in required_fields):
                     return {'status': 'error', 'message': 'Missing required fields'}
+                
+                # Lakukan konversi zona waktu untuk date fields
+                date_start = self._convert_to_utc(kw['date_start'], is_date=True)
+                date_end = self._convert_to_utc(kw['date_end'], is_date=True)
 
                 values = {
                     'name': kw['name'],
-                    'date_start': kw['date_start'],
-                    'date_end': kw['date_end'],
+                    'date_start': date_start,
+                    'date_end': date_end,
                     'project_manager_id': int(kw['project_manager_id']),
                     'description': kw.get('description'),
                     'state': kw.get('state', 'draft'),
@@ -169,6 +227,12 @@ class TeamProjectAPI(http.Controller):
                     return {'status': 'error', 'message': 'Project not found'}
 
                 update_values = {}
+                # Konversi zona waktu untuk field tanggal/waktu
+                if 'date_start' in kw:
+                    update_values['date_start'] = self._convert_to_utc(kw['date_start'], is_date=True)
+                if 'date_end' in kw:
+                    update_values['date_end'] = self._convert_to_utc(kw['date_end'], is_date=True)
+
                 for field in ['name', 'date_start', 'date_end', 'description', 'state', 'priority', 'project_type']:
                     if field in kw:
                         update_values[field] = kw[field]
@@ -681,6 +745,12 @@ class TeamProjectAPI(http.Controller):
                         'state': kw.get('state', 'draft'),
                         'priority': kw.get('priority', '1'),
                     }
+
+                    # Handle datetime fields dengan konversi zona waktu
+                    if kw.get('planned_date_start'):
+                        values['planned_date_start'] = self._convert_to_utc(kw['planned_date_start'])
+                    if kw.get('planned_date_end'):
+                        values['planned_date_end'] = self._convert_to_utc(kw['planned_date_end'])
 
                     # Handle assigned_to conversion
                     if kw.get('assigned_to'):
@@ -1485,8 +1555,8 @@ class TeamProjectAPI(http.Controller):
 
                 values = {
                     'name': kw['name'],
-                    'start_datetime': fields.Datetime.to_string(start_utc),
-                    'end_datetime': fields.Datetime.to_string(end_utc),
+                    'start_datetime': self._convert_to_utc(kw['start_datetime']),
+                    'end_datetime': self._convert_to_utc(kw['end_datetime']),
                     'organizer_id': int(kw['organizer_id']),
                     'project_id': int(kw['project_id']) if kw.get('project_id') else False,
                     'location': kw.get('location'),

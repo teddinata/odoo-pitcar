@@ -508,6 +508,24 @@ class TeamProjectAPI(http.Controller):
                     # Filter prioritas
                     if kw.get('priority'):
                         domain.append(('priority', '=', kw['priority']))
+
+                     # Add this block to handle archived tasks filtering
+                    # Check if include_archived parameter is provided
+                    include_archived = kw.get('include_archived', False)
+                    # Convert string to boolean if needed
+                    if isinstance(include_archived, str):
+                        include_archived = include_archived.lower() in ('true', '1', 'yes')
+                    
+                    # Add active filter based on include_archived parameter
+                    if not include_archived:
+                        # Only show active tasks
+                        domain.append(('active', '=', True))
+                    else:
+                        # Show both active and archived tasks
+                        domain.append('|')
+                        domain.append(('active', '=', True))
+                        domain.append(('active', '=', False))
+
                     
                     # Filter rentang tanggal due date
                     if kw.get('due_date_from'):
@@ -850,6 +868,89 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in toggle_project_archive: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/tasks/toggle_archive', type='json', auth='user', methods=['POST'], csrf=False)
+    def toggle_task_archive(self, **kw):
+        """Toggle archive status for a task."""
+        try:
+            task_id = kw.get('task_id')
+            if not task_id:
+                return {'status': 'error', 'message': 'Missing task_id'}
+                    
+            task = request.env['team.project.task'].sudo().browse(int(task_id))
+            if not task.exists():
+                return {'status': 'error', 'message': 'Task not found'}
+            
+            # Toggle status active and log for debugging
+            new_active_state = not task.active
+            _logger.info(f"Toggling task {task.id} archive status: active={task.active} -> {new_active_state}")
+            
+            task.write({'active': new_active_state})
+            
+            # Verify the value was changed correctly
+            task.invalidate_cache()
+            _logger.info(f"After toggle, task {task.id} active status: {task.active}")
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'id': task.id,
+                    'name': task.name,
+                    'active': task.active
+                },
+                'message': f"Task {'activated' if task.active else 'archived'} successfully"
+            }
+        except Exception as e:
+            _logger.error(f"Error in toggle_task_archive: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v2/team/tasks/toggle_archive_multiple', type='json', auth='user', methods=['POST'], csrf=False)
+    def toggle_task_archive_multiple(self, **kw):
+        """Toggle archive status for multiple tasks."""
+        try:
+            task_ids = kw.get('task_ids')
+            if not task_ids or not isinstance(task_ids, list) or not task_ids:
+                return {'status': 'error', 'message': 'Missing or invalid task_ids (must be a non-empty list)'}
+            
+            # Convert all IDs to integers to ensure consistency
+            task_ids = [int(task_id) for task_id in task_ids]
+            
+            # Get desired active state
+            new_active_state = kw.get('active')
+            if new_active_state is None:
+                return {'status': 'error', 'message': 'Missing active parameter (true to activate, false to archive)'}
+            
+            # Convert to boolean if string
+            if isinstance(new_active_state, str):
+                new_active_state = new_active_state.lower() in ('true', '1', 'yes')
+            
+            # Get tasks
+            tasks = request.env['team.project.task'].sudo().browse(task_ids)
+            valid_tasks = tasks.exists()
+            
+            if not valid_tasks:
+                return {'status': 'error', 'message': 'No valid tasks found with provided IDs'}
+            
+            # Log action
+            _logger.info(f"Changing archive status for {len(valid_tasks)} tasks to active={new_active_state}")
+            
+            # Update tasks
+            valid_tasks.write({'active': new_active_state})
+            
+            # Return result
+            action_description = 'activated' if new_active_state else 'archived'
+            return {
+                'status': 'success',
+                'data': {
+                    'processed_count': len(valid_tasks),
+                    'task_ids': valid_tasks.ids,
+                    'active': new_active_state
+                },
+                'message': f"{len(valid_tasks)} tasks {action_description} successfully"
+            }
+        except Exception as e:
+            _logger.error(f"Error in toggle_task_archive_multiple: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
         
     @http.route('/web/v2/team/upload_temporary_attachment', type='http', auth='user', methods=['POST'], csrf=False)
     def upload_temporary_attachment(self, **kw):
@@ -1082,6 +1183,9 @@ class TeamProjectAPI(http.Controller):
                 'name': task.name,
                 'priority': task.priority
             }
+
+            # You need to add the active field here
+            task_data['active'] = task.active if hasattr(task, 'active') else True
             
             # Add project info if available
             if hasattr(task, 'project_id') and task.project_id:

@@ -5058,7 +5058,7 @@ class TeamProjectAPI(http.Controller):
 
     # Buat endpoint baru untuk mendukung multiple departments dengan nama sesuai
     @http.route('/web/employees/multi-dept', type='json', auth='user', methods=['POST'], csrf=False)
-    def get_employees(self, **kw):
+    def get_employees_multi(self, **kw):
         try:
             _logger.info(f"get_employees/multi-dept called with params: {kw}")
             

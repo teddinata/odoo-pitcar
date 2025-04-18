@@ -99,6 +99,56 @@ class TeamProjectAPI(http.Controller):
             _logger.error(f"Unexpected error in _format_datetime_jakarta: {e}")
             # Return nilai yang aman
             return str(dt) if dt else False
+        
+    def _format_message_datetime_jakarta(self, dt):
+        """Memformat waktu dari UTC ke zona waktu Jakarta."""
+        if not dt:
+            return False
+        
+        try:
+            # Jika objek datetime (Datetime field)
+            if hasattr(dt, 'tzinfo'):
+                # Pastikan dt memiliki timezone info (UTC)
+                if not dt.tzinfo:
+                    dt = pytz.utc.localize(dt)
+                
+                # Konversi ke Jakarta
+                jakarta_tz = pytz.timezone('Asia/Jakarta')
+                dt_jakarta = dt.astimezone(jakarta_tz)
+                return fields.Datetime.to_string(dt_jakarta)
+            
+            # Jika string datetime (dari database)
+            elif isinstance(dt, str) and ('T' in dt or ' ' in dt or ':' in dt):
+                try:
+                    # Parse string to datetime object
+                    dt_obj = fields.Datetime.from_string(dt)
+                    
+                    # Localize to UTC if it doesn't have timezone info
+                    if not dt_obj.tzinfo:
+                        dt_obj = pytz.utc.localize(dt_obj)
+                    
+                    # Convert to Jakarta time
+                    jakarta_tz = pytz.timezone('Asia/Jakarta')
+                    dt_jakarta = dt_obj.astimezone(jakarta_tz)
+                    return fields.Datetime.to_string(dt_jakarta)
+                except Exception as e:
+                    _logger.error(f"Error parsing datetime string: {str(e)}")
+                    return dt
+            
+            # Jika date object (Date field)
+            elif hasattr(dt, 'day') and not hasattr(dt, 'hour'):
+                return fields.Date.to_string(dt)
+            
+            # Jika date string (YYYY-MM-DD)
+            elif isinstance(dt, str) and len(dt) == 10 and dt.count('-') == 2:
+                return dt
+                
+            # Jika format lain, kembalikan apa adanya
+            return str(dt)
+                
+        except Exception as e:
+            _logger.error(f"Error in _format_datetime_jakarta: {str(e)}")
+            return str(dt) if dt else False
     
     @http.route('/web/v2/team/projects', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_projects(self, **kw):
@@ -1341,7 +1391,7 @@ class TeamProjectAPI(http.Controller):
             'group_id': message.group_id.id,
             'author': {'id': message.author_id.id, 'name': message.author_id.name},
             'content': message.content,
-            'date': self._format_datetime_jakarta(message.date),
+            'date': self._format_message_datetime_jakarta(message.date),
             'project_id': message.project_id.id if message.project_id else None,
             'is_pinned': message.is_pinned,
             'attachment_count': message.attachment_count if hasattr(message, 'attachment_count') else len(message.attachment_ids)
@@ -4767,7 +4817,7 @@ class TeamProjectAPI(http.Controller):
                         'id': notif.id,
                         'title': notif.title,
                         'message': notif.message,
-                        'date': self._format_datetime_jakarta(notif.request_time),
+                        'date': self._format__message_datetime_jakarta(notif.request_time),
                         'is_read': notif.is_read,
                         'data': data,
                         'category': notif.notification_category,
@@ -4947,7 +4997,7 @@ class TeamProjectAPI(http.Controller):
                 
                 mention_data = []
                 for mention in mentions:
-                    formatted_date = self._format_datetime_jakarta(mention.create_date)
+                    formatted_date = self._format_message_datetime_jakarta(mention.create_date)
 
                     message = mention.message_id
                     

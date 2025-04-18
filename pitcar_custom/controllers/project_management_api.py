@@ -67,53 +67,37 @@ class TeamProjectAPI(http.Controller):
             _logger.error(f"Unexpected error in _convert_to_utc: {e}")
             return dt_str
     def _format_datetime_jakarta(self, dt):
-        """Memformat waktu dari UTC ke zona waktu Jakarta."""
+        """Menyiapkan format datetime ke timezone Jakarta dengan penanganan error yang tepat."""
         if not dt:
             return False
         
         try:
-            # Jika objek datetime (Datetime field)
-            if hasattr(dt, 'tzinfo'):
-                # Pastikan dt memiliki timezone info (UTC)
-                if not dt.tzinfo:
-                    dt = pytz.utc.localize(dt)
-                
-                # Konversi ke Jakarta
-                jakarta_tz = pytz.timezone('Asia/Jakarta')
-                dt_jakarta = dt.astimezone(jakarta_tz)
-                return fields.Datetime.to_string(dt_jakarta)
-            
-            # Jika string datetime (dari database)
-            elif isinstance(dt, str) and ('T' in dt or ' ' in dt or ':' in dt):
-                try:
-                    # Parse string to datetime object
-                    dt_obj = fields.Datetime.from_string(dt)
-                    
-                    # Localize to UTC if it doesn't have timezone info
-                    if not dt_obj.tzinfo:
-                        dt_obj = pytz.utc.localize(dt_obj)
-                    
-                    # Convert to Jakarta time
-                    jakarta_tz = pytz.timezone('Asia/Jakarta')
-                    dt_jakarta = dt_obj.astimezone(jakarta_tz)
-                    return fields.Datetime.to_string(dt_jakarta)
-                except Exception as e:
-                    _logger.error(f"Error parsing datetime string: {str(e)}")
-                    return dt
-            
-            # Jika date object (Date field)
-            elif hasattr(dt, 'day') and not hasattr(dt, 'hour'):
+            # Untuk tipe Date (bukan Datetime)
+            if hasattr(dt, 'day') and not hasattr(dt, 'hour'):
                 return fields.Date.to_string(dt)
+                    
+            # Jika dt adalah string, konversi ke objek datetime
+            if isinstance(dt, str):
+                try:
+                    if 'T' in dt or ' ' in dt:  # Ini datetime string
+                        dt = fields.Datetime.from_string(dt)
+                    else:  # Ini date string
+                        return dt  # Kembalikan date string langsung
+                except Exception as e:
+                    _logger.error(f"Error converting date/time string '{dt}': {e}")
+                    return dt  # Kembalikan string asli jika konversi gagal
             
-            # Jika date string (YYYY-MM-DD)
-            elif isinstance(dt, str) and len(dt) == 10 and dt.count('-') == 2:
-                return dt
-                
-            # Jika format lain, kembalikan apa adanya
-            return str(dt)
-                
+            # TIDAK PERLU KONVERSI, KARENA WAKTU YANG DISIMPAN SUDAH DALAM TIMEZONE JAKARTA
+            # Return format string Odoo langsung
+            if hasattr(dt, 'hour'):  # Ini adalah datetime
+                return fields.Datetime.to_string(dt)
+            else:
+                # Ini adalah date
+                return fields.Date.to_string(dt)
+                    
         except Exception as e:
-            _logger.error(f"Error in _format_datetime_jakarta: {str(e)}")
+            _logger.error(f"Unexpected error in _format_datetime_jakarta: {e}")
+            # Return nilai yang aman
             return str(dt) if dt else False
     
     @http.route('/web/v2/team/projects', type='json', auth='user', methods=['POST'], csrf=False)

@@ -3448,7 +3448,7 @@ class TeamProjectAPI(http.Controller):
                         'id': task.assigned_to[0].id if task.assigned_to else False,
                         'name': task.assigned_to[0].name if task.assigned_to else 'Unassigned'
                     },
-                    'date': self._format_datetime_jakarta(task.actual_date_end),
+                    'date': self._format_message_datetime_jakarta(task.actual_date_end),
                     'description': f"Task completed"
                 })
                 
@@ -3466,7 +3466,7 @@ class TeamProjectAPI(http.Controller):
                         'id': timesheet.employee_id.id,
                         'name': timesheet.employee_id.name
                     },
-                    'date': self._format_datetime_jakarta(timesheet.create_date),
+                    'date': self._format_message_datetime_jakarta(timesheet.create_date),
                     'description': f"{timesheet.hours} hours logged" + (f": {timesheet.description}" if timesheet.description else "")
                 })
                 
@@ -3484,7 +3484,7 @@ class TeamProjectAPI(http.Controller):
                         'id': meeting.organizer_id.id,
                         'name': meeting.organizer_id.name
                     },
-                    'date': self._format_datetime_jakarta(meeting.start_datetime),
+                    'date': self._format_message_datetime_jakarta(meeting.start_datetime),
                     'description': f"Meeting {meeting.state}"
                 })
                 

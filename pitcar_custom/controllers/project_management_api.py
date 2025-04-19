@@ -4817,7 +4817,7 @@ class TeamProjectAPI(http.Controller):
                         'id': notif.id,
                         'title': notif.title,
                         'message': notif.message,
-                        'date': self._format__message_datetime_jakarta(notif.request_time),
+                        'date': self._format_message_datetime_jakarta(notif.request_time),
                         'is_read': notif.is_read,
                         'data': data,
                         'category': notif.notification_category,

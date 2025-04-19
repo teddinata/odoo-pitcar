@@ -3403,6 +3403,7 @@ class TeamProjectAPI(http.Controller):
             # Get optional filters
             department_id = kw.get('department_id') and int(kw['department_id'])
             limit = int(kw.get('limit', 10))
+            offset = int(kw.get('offset', 0))  # Tambahkan parameter offset untuk pagination
             
             # Build domain for projects
             project_domain = []
@@ -3418,18 +3419,18 @@ class TeamProjectAPI(http.Controller):
                 ('project_id', 'in', project_ids),
                 ('state', '=', 'done'),
                 ('actual_date_end', '!=', False)
-            ], limit=limit, order='actual_date_end desc')
+            ], limit=limit+offset, order='actual_date_end desc')
             
             # Recent timesheet entries
             recent_timesheets = request.env['team.project.timesheet'].sudo().search([
                 ('project_id', 'in', project_ids)
-            ], limit=limit, order='create_date desc')
+            ], limit=limit+offset, order='create_date desc')
             
             # Recent meetings
             recent_meetings = request.env['team.project.meeting'].sudo().search([
                 ('project_id', 'in', project_ids),
                 ('state', 'in', ['done', 'in_progress'])
-            ], limit=limit, order='start_datetime desc')
+            ], limit=limit+offset, order='start_datetime desc')
             
             # Format activity data
             activity_data = []
@@ -3491,9 +3492,17 @@ class TeamProjectAPI(http.Controller):
             # Sort all activity by date (newest first)
             activity_data.sort(key=lambda x: x['date'], reverse=True)
             
+            # Apply offset and limit (after sorting to ensure correct pagination)
+            paginated_data = activity_data[offset:offset+limit]
+            
+            # Add total count for frontend pagination
+            total_count = len(activity_data)
+            
             return {
                 'status': 'success',
-                'data': activity_data[:limit]  # Limit to requested number
+                'data': paginated_data,
+                'total_count': total_count,
+                'has_more': offset + limit < total_count
             }
         except Exception as e:
             _logger.error(f"Error in get_dashboard_activity: {str(e)}")

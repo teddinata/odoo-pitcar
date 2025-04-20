@@ -149,6 +149,43 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error in _format_datetime_jakarta: {str(e)}")
             return str(dt) if dt else False
+
+    def _check_and_archive_expired_projects(self):
+        """Helper function untuk memeriksa dan mengarsipkan proyek yang telah melewati due date lebih dari 7 hari."""
+        try:
+            # Default 7 hari
+            days_overdue = 7
+            
+            # Hitung tanggal cutoff (hari ini - days_overdue)
+            today = fields.Date.today()
+            cutoff_date = today - timedelta(days=days_overdue)
+            
+            # Cari proyek aktif dengan tanggal akhir sebelum cutoff_date
+            domain = [
+                ('active', '=', True),  # Hanya proyek yang aktif
+                ('date_end', '<', cutoff_date),  # Due date sudah lewat 7 hari
+                ('state', 'not in', ['cancelled', 'completed'])  # Bukan proyek yang sudah selesai atau dibatalkan
+            ]
+            
+            # Dapatkan proyek yang akan diarsipkan
+            projects_to_archive = request.env['team.project'].sudo().search(domain)
+            
+            if not projects_to_archive:
+                _logger.info("Auto-archive check: No overdue projects to archive")
+                return 0  # Tidak ada proyek yang diarsipkan
+            
+            # Arsipkan proyek (set active=False)
+            projects_to_archive.write({'active': False})
+            
+            # Log tindakan
+            _logger.info(f"Auto-archived {len(projects_to_archive)} projects that are {days_overdue} days past due date")
+            
+            # Return jumlah proyek yang diarsipkan
+            return len(projects_to_archive)
+        except Exception as e:
+            _logger.error(f"Error in _check_and_archive_expired_projects: {str(e)}")
+            return 0  # Tidak ada proyek yang diarsipkan karena error
+
     
     @http.route('/web/v2/team/projects', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_projects(self, **kw):
@@ -449,6 +486,9 @@ class TeamProjectAPI(http.Controller):
     def get_projects(self, **kw):
         """Mengambil daftar proyek dengan filter dan pagination yang lebih baik."""
         try:
+            # Auto-archive expired projects
+            archived_count = self._check_and_archive_expired_projects()
+            
             domain = []
             
             # Filter departemen (ubah untuk multi-department)
@@ -464,19 +504,6 @@ class TeamProjectAPI(http.Controller):
                 domain.append(('state', '=', kw['state']))
                 
             # Filter untuk include/exclude archived projects
-            # include_archived = kw.get('include_archived') == 'true'
-            # if not include_archived:
-            #     domain.append(('active', '=', True))
-            # Filter untuk include/exclude archived projects
-            # include_archived = kw.get('include_archived')
-            # if include_archived in [True, 'true', '1', 1]:
-            #     # Jika include_archived true, tidak menambahkan filter active
-            #     # sehingga menampilkan semua proyek (aktif maupun arsip)
-            #     pass
-            # else:
-            #     # Jika include_archived false atau tidak ada, hanya tampilkan yang aktif
-            #     domain.append(('active', '=', True))
-            # Kode filter yang lebih tegas
             include_archived_param = kw.get('include_archived')
             include_archived = str(include_archived_param).lower() in ['true', '1']
 
@@ -541,9 +568,6 @@ class TeamProjectAPI(http.Controller):
             _logger.info(f"Project filter domain: {domain}")
             
             # Cari proyek dengan domain filter
-            # projects = request.env['team.project'].sudo().search(domain, limit=limit, offset=offset, order=order)
-            # total = request.env['team.project'].sudo().search_count(domain)
-            # Di endpoint get_projects
             projects = request.env['team.project'].with_context(active_test=False).sudo().search(domain, limit=limit, offset=offset, order=order)
             total = request.env['team.project'].with_context(active_test=False).sudo().search_count(domain)
             
@@ -552,7 +576,8 @@ class TeamProjectAPI(http.Controller):
             
             _logger.info(f"Found {len(projects)} projects matching the filter criteria")
             
-            return {
+            # Tambahkan informasi tentang jumlah proyek yang diarsipkan secara otomatis
+            response_data = {
                 'status': 'success',
                 'data': [self._prepare_project_data(project) for project in projects],
                 'pagination': {
@@ -562,9 +587,19 @@ class TeamProjectAPI(http.Controller):
                     'total_pages': total_pages
                 }
             }
+            
+            # Tambahkan informasi auto-archive hanya jika ada proyek yang diarsipkan
+            if archived_count > 0:
+                response_data['auto_archive'] = {
+                    'count': archived_count,
+                    'message': f"{archived_count} projects that are 7 days past due date have been automatically archived"
+                }
+            
+            return response_data
         except Exception as e:
             _logger.error(f"Error in get_projects: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
 
     @http.route('/web/v2/team/tasks', type='json', auth='user', methods=['POST'], csrf=False)
     def manage_tasks(self, **kw):

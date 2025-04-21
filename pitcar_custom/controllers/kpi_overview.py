@@ -3358,7 +3358,12 @@ class KPIOverview(http.Controller):
                         formatted_target = "{:,.0f}".format(monthly_target)
                         kpi['measurement'] = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan ({actual:.1f}%)"
                     
+                    # Temukan bagian kode dengan tipe service_time pada fungsi get_mechanic_kpi
+                    # Sekitar baris 590-670 dalam kode yang diberikan
                     elif kpi['type'] == 'service_time':
+                        # Inisialisasi measurement di awal
+                        measurement = ""  # Inisialisasi measurement terlebih dahulu
+                        
                         # Calculate service time compliance - combines service efficiency and reception time
                         
                         # Part 1: Service Efficiency (duration_deviation)
@@ -3420,7 +3425,7 @@ class KPIOverview(http.Controller):
                         if orders_with_duration and orders_with_reception and part_waiting_orders:
                             # Gabungkan ketiga metrik dengan bobot yang sama (33% masing-masing)
                             actual = (service_efficiency * 0.33) + (reception_efficiency * 0.33) + (part_waiting_efficiency * 0.34)
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                 f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                 f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
@@ -3429,21 +3434,21 @@ class KPIOverview(http.Controller):
                         # Jika hanya ada dua metrik
                         elif orders_with_duration and orders_with_reception:
                             actual = (service_efficiency * 0.5) + (reception_efficiency * 0.5)
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                 f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                 f"Total efisiensi waktu: {actual:.1f}%"
                             )
                         elif orders_with_duration and part_waiting_orders:
                             actual = (service_efficiency * 0.5) + (part_waiting_efficiency * 0.5)
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                 f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
                                 f"Total efisiensi waktu: {actual:.1f}%"
                             )
                         elif orders_with_reception and part_waiting_orders:
                             actual = (reception_efficiency * 0.5) + (part_waiting_efficiency * 0.5)
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                 f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
                                 f"Total efisiensi waktu: {actual:.1f}%"
@@ -3451,25 +3456,25 @@ class KPIOverview(http.Controller):
                         # Satu metrik saja
                         elif orders_with_duration:
                             actual = service_efficiency
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                 f"Tidak ada data waktu penerimaan dan tunggu part"
                             )
                         elif orders_with_reception:
                             actual = reception_efficiency
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                 f"Tidak ada data deviasi waktu pengerjaan dan tunggu part"
                             )
                         elif part_waiting_orders:
                             actual = part_waiting_efficiency
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
                                 f"Tidak ada data waktu servis dan penerimaan"
                             )
                         else:
                             actual = 0
-                            kpi['measurement'] = "Tidak ada data waktu servis, penerimaan, dan tunggu part"
+                            measurement = "Tidak ada data waktu servis, penerimaan, dan tunggu part"
                     
                     # Penggantian kode mechanic_efficiency untuk API KPI Head Store
                     elif kpi['type'] == 'mechanic_efficiency':
@@ -3921,18 +3926,63 @@ class KPIOverview(http.Controller):
                             kpi['measurement'] = f"Error: {str(e)}"
                     
                     elif kpi['type'] == 'employee_development':
-                        # Make this field editable since the training feature isn't available yet
-                        actual = 0
+                        # Ambil data training program selama periode yang ditentukan
+                        training_programs = request.env['kaizen.training.program'].sudo().search([
+                            ('date_start', '>=', start_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('date_end', '<=', end_date_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                            ('state', '=', 'completed')  # Hanya program yang sudah selesai
+                        ])
                         
-                        # Check if there's a stored value in kpi_values
-                        if 'employee_development' in kpi_values:
-                            stored_kpi = kpi_values['employee_development']
-                            actual = stored_kpi.get('actual', 0)
-                            kpi['measurement'] = stored_kpi.get('measurement', 'Data editable - training belum tersedia')
+                        if training_programs:
+                            # Dapatkan semua karyawan dari departemen bengkel
+                            all_mechanics = request.env['hr.employee'].sudo().search([
+                                ('department_id.name', 'ilike', 'mechanic')
+                            ])
+                            
+                            # Dapatkan semua peserta unik dari training yang telah selesai
+                            all_attendees_ids = []
+                            for program in training_programs:
+                                all_attendees_ids.extend(program.attendee_ids.ids)
+                            
+                            # Hapus duplikat
+                            unique_attendee_ids = list(set(all_attendees_ids))
+                            
+                            # Filter untuk mendapatkan karyawan departemen bengkel yang mengikuti training
+                            mechanic_attendees = request.env['hr.employee'].sudo().browse(unique_attendee_ids).filtered(
+                                lambda e: e.department_id and 'mechanic' in e.department_id.name.lower()
+                            )
+                            
+                            # Hitung persentase keikutsertaan
+                            total_mechanics = len(all_mechanics)
+                            attended_mechanics = len(mechanic_attendees)
+                            
+                            if total_mechanics > 0:
+                                actual = (attended_mechanics / total_mechanics * 100)
+                                
+                                # Siapkan teks deskripsi
+                                program_names = ", ".join(training_programs.mapped('name'))
+                                mechanics_list = ", ".join(mechanic_attendees.mapped('name'))
+                                
+                                kpi['measurement'] = (
+                                    f"Total pelatihan dalam periode: {len(training_programs)} program\n"
+                                    f"Program: {program_names}\n"
+                                    f"Karyawan yang mengikuti training: {attended_mechanics} dari {total_mechanics} ({actual:.1f}%)\n"
+                                    f"Karyawan yang telah dilatih: {mechanics_list if len(mechanics_list) < 100 else mechanics_list[:100] + '...'}"
+                                )
+                            else:
+                                actual = 0
+                                kpi['measurement'] = "Tidak ada karyawan bengkel untuk dievaluasi"
                         else:
-                            kpi['measurement'] = 'Data editable - training belum tersedia'
+                            # Jika tidak ada training program, cek apakah ada nilai yang tersimpan
+                            if 'employee_development' in kpi_values:
+                                stored_kpi = kpi_values['employee_development']
+                                actual = stored_kpi.get('actual', 0)
+                                kpi['measurement'] = stored_kpi.get('measurement', 'Tidak ada program pelatihan pada periode ini')
+                            else:
+                                actual = 0
+                                kpi['measurement'] = 'Tidak ada program pelatihan pada periode ini'
                         
-                        # Mark this KPI as editable
+                        # KPI ini tetap editable untuk fleksibilitas
                         kpi['editable'] = True
                     
                     # Calculate weighted score
@@ -4407,7 +4457,12 @@ class KPIOverview(http.Controller):
                             formatted_target = "{:,.0f}".format(monthly_target)
                             measurement = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan ({actual:.1f}%)"
                         
+                        # Temukan bagian kode dengan tipe service_time pada fungsi get_mechanic_kpi
+                        # Sekitar baris 590-670 dalam kode yang diberikan
                         elif kpi['type'] == 'service_time':
+                            # Inisialisasi measurement di awal
+                            measurement = ""  # Inisialisasi measurement terlebih dahulu
+                            
                             # Calculate service time compliance - combines service efficiency and reception time
                             
                             # Part 1: Service Efficiency (duration_deviation)
@@ -4469,7 +4524,7 @@ class KPIOverview(http.Controller):
                             if orders_with_duration and orders_with_reception and part_waiting_orders:
                                 # Gabungkan ketiga metrik dengan bobot yang sama (33% masing-masing)
                                 actual = (service_efficiency * 0.33) + (reception_efficiency * 0.33) + (part_waiting_efficiency * 0.34)
-                                kpi['measurement'] = (
+                                measurement = (
                                     f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                     f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                     f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
@@ -4478,21 +4533,21 @@ class KPIOverview(http.Controller):
                             # Jika hanya ada dua metrik
                             elif orders_with_duration and orders_with_reception:
                                 actual = (service_efficiency * 0.5) + (reception_efficiency * 0.5)
-                                kpi['measurement'] = (
+                                measurement = (
                                     f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                     f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                     f"Total efisiensi waktu: {actual:.1f}%"
                                 )
                             elif orders_with_duration and part_waiting_orders:
                                 actual = (service_efficiency * 0.5) + (part_waiting_efficiency * 0.5)
-                                kpi['measurement'] = (
+                                measurement = (
                                     f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                     f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
                                     f"Total efisiensi waktu: {actual:.1f}%"
                                 )
                             elif orders_with_reception and part_waiting_orders:
                                 actual = (reception_efficiency * 0.5) + (part_waiting_efficiency * 0.5)
-                                kpi['measurement'] = (
+                                measurement = (
                                     f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                     f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
                                     f"Total efisiensi waktu: {actual:.1f}%"
@@ -4500,25 +4555,25 @@ class KPIOverview(http.Controller):
                             # Satu metrik saja
                             elif orders_with_duration:
                                 actual = service_efficiency
-                                kpi['measurement'] = (
+                                measurement = (
                                     f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                     f"Tidak ada data waktu penerimaan dan tunggu part"
                                 )
                             elif orders_with_reception:
                                 actual = reception_efficiency
-                                kpi['measurement'] = (
+                                measurement = (
                                     f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                     f"Tidak ada data deviasi waktu pengerjaan dan tunggu part"
                                 )
                             elif part_waiting_orders:
                                 actual = part_waiting_efficiency
-                                kpi['measurement'] = (
+                                measurement = (
                                     f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
                                     f"Tidak ada data waktu servis dan penerimaan"
                                 )
                             else:
                                 actual = 0
-                                kpi['measurement'] = "Tidak ada data waktu servis, penerimaan, dan tunggu part"
+                                measurement = "Tidak ada data waktu servis, penerimaan, dan tunggu part"
                         
                         # Versi untuk export PDF di Head Store
                         elif kpi['type'] == 'mechanic_efficiency':
@@ -5570,7 +5625,12 @@ class KPIOverview(http.Controller):
                         formatted_target = "{:,.0f}".format(monthly_target)
                         measurement = f"Revenue: Rp {formatted_revenue} dari target Rp {formatted_target}/bulan ({actual:.1f}%)"
                     
+                    # Temukan bagian kode dengan tipe service_time pada fungsi get_mechanic_kpi
+                    # Sekitar baris 590-670 dalam kode yang diberikan
                     elif kpi['type'] == 'service_time':
+                        # Inisialisasi measurement di awal
+                        measurement = ""  # Inisialisasi measurement terlebih dahulu
+                        
                         # Calculate service time compliance - combines service efficiency and reception time
                         
                         # Part 1: Service Efficiency (duration_deviation)
@@ -5632,7 +5692,7 @@ class KPIOverview(http.Controller):
                         if orders_with_duration and orders_with_reception and part_waiting_orders:
                             # Gabungkan ketiga metrik dengan bobot yang sama (33% masing-masing)
                             actual = (service_efficiency * 0.33) + (reception_efficiency * 0.33) + (part_waiting_efficiency * 0.34)
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                 f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                 f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
@@ -5641,21 +5701,21 @@ class KPIOverview(http.Controller):
                         # Jika hanya ada dua metrik
                         elif orders_with_duration and orders_with_reception:
                             actual = (service_efficiency * 0.5) + (reception_efficiency * 0.5)
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                 f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                 f"Total efisiensi waktu: {actual:.1f}%"
                             )
                         elif orders_with_duration and part_waiting_orders:
                             actual = (service_efficiency * 0.5) + (part_waiting_efficiency * 0.5)
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                 f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
                                 f"Total efisiensi waktu: {actual:.1f}%"
                             )
                         elif orders_with_reception and part_waiting_orders:
                             actual = (reception_efficiency * 0.5) + (part_waiting_efficiency * 0.5)
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                 f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
                                 f"Total efisiensi waktu: {actual:.1f}%"
@@ -5663,25 +5723,25 @@ class KPIOverview(http.Controller):
                         # Satu metrik saja
                         elif orders_with_duration:
                             actual = service_efficiency
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi waktu servis: {service_efficiency:.1f}% (deviasi: {avg_deviation:.1f}%)\n"
                                 f"Tidak ada data waktu penerimaan dan tunggu part"
                             )
                         elif orders_with_reception:
                             actual = reception_efficiency
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi penerimaan: {reception_efficiency:.1f}% ({orders_on_time}/{total_receptions} dalam 15 menit)\n"
                                 f"Tidak ada data deviasi waktu pengerjaan dan tunggu part"
                             )
                         elif part_waiting_orders:
                             actual = part_waiting_efficiency
-                            kpi['measurement'] = (
+                            measurement = (
                                 f"Efisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)\n"
                                 f"Tidak ada data waktu servis dan penerimaan"
                             )
                         else:
                             actual = 0
-                            kpi['measurement'] = "Tidak ada data waktu servis, penerimaan, dan tunggu part"
+                            measurement = "Tidak ada data waktu servis, penerimaan, dan tunggu part"
                     
                     # Versi untuk export PDF di Head Store
                     elif kpi['type'] == 'mechanic_efficiency':

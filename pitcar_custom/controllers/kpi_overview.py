@@ -3360,9 +3360,12 @@ class KPIOverview(http.Controller):
                     
                     # Temukan bagian kode dengan tipe service_time pada fungsi get_mechanic_kpi
                     # Sekitar baris 590-670 dalam kode yang diberikan
+                    # Perbaikan komprehensif untuk fungsi get_mechanic_kpi
+                    # Fokus pada tipe service_time dalam head_store_kpi_template
+
                     elif kpi['type'] == 'service_time':
-                        # Inisialisasi measurement di awal
-                        measurement = ""  # Inisialisasi measurement terlebih dahulu
+                        # Inisialisasi variabel
+                        measurement = ""
                         
                         # Calculate service time compliance - combines service efficiency and reception time
                         
@@ -3373,6 +3376,7 @@ class KPIOverview(http.Controller):
                             service_efficiency = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
                         else:
                             service_efficiency = 0
+                            avg_deviation = 0
                         
                         # Part 2: Reception Time (lead_time_penerimaan)
                         orders_with_reception = store_orders.filtered(lambda o: o.lead_time_penerimaan > 0)
@@ -3384,6 +3388,8 @@ class KPIOverview(http.Controller):
                             reception_efficiency = (orders_on_time / total_receptions * 100) if total_receptions > 0 else 0
                         else:
                             reception_efficiency = 0
+                            orders_on_time = 0
+                            total_receptions = 0
 
                         # Part 3: tunggu part
                         # Perhitungan Efisiensi Tunggu Part dengan target 40 menit
@@ -3415,11 +3421,10 @@ class KPIOverview(http.Controller):
                                 part_waiting_efficiency = (on_time_count / total_part_waits * 100)
                             else:
                                 part_waiting_efficiency = 100  # Jika tidak ada tunggu part, efisiensi 100%
-                            
-                            measurement += f"\nEfisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)"
                         else:
                             part_waiting_efficiency = 100  # Jika tidak ada order yang menunggu part, efisiensi 100%
-                            measurement += "\nTidak ada data tunggu part"
+                            on_time_count = 0
+                            total_part_waits = 0
                         
                         # Combine all three metrics (service efficiency, reception efficiency, part waiting efficiency)
                         if orders_with_duration and orders_with_reception and part_waiting_orders:
@@ -3475,6 +3480,9 @@ class KPIOverview(http.Controller):
                         else:
                             actual = 0
                             measurement = "Tidak ada data waktu servis, penerimaan, dan tunggu part"
+                        
+                        # PENTING: Tetapkan nilai measurement ke kpi['measurement']
+                        kpi['measurement'] = measurement
                     
                     # Penggantian kode mechanic_efficiency untuk API KPI Head Store
                     elif kpi['type'] == 'mechanic_efficiency':
@@ -4460,8 +4468,8 @@ class KPIOverview(http.Controller):
                         # Temukan bagian kode dengan tipe service_time pada fungsi get_mechanic_kpi
                         # Sekitar baris 590-670 dalam kode yang diberikan
                         elif kpi['type'] == 'service_time':
-                            # Inisialisasi measurement di awal
-                            measurement = ""  # Inisialisasi measurement terlebih dahulu
+                            # Inisialisasi variabel
+                            measurement = ""
                             
                             # Calculate service time compliance - combines service efficiency and reception time
                             
@@ -4472,6 +4480,7 @@ class KPIOverview(http.Controller):
                                 service_efficiency = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
                             else:
                                 service_efficiency = 0
+                                avg_deviation = 0
                             
                             # Part 2: Reception Time (lead_time_penerimaan)
                             orders_with_reception = store_orders.filtered(lambda o: o.lead_time_penerimaan > 0)
@@ -4483,6 +4492,8 @@ class KPIOverview(http.Controller):
                                 reception_efficiency = (orders_on_time / total_receptions * 100) if total_receptions > 0 else 0
                             else:
                                 reception_efficiency = 0
+                                orders_on_time = 0
+                                total_receptions = 0
 
                             # Part 3: tunggu part
                             # Perhitungan Efisiensi Tunggu Part dengan target 40 menit
@@ -4514,11 +4525,10 @@ class KPIOverview(http.Controller):
                                     part_waiting_efficiency = (on_time_count / total_part_waits * 100)
                                 else:
                                     part_waiting_efficiency = 100  # Jika tidak ada tunggu part, efisiensi 100%
-                                
-                                measurement += f"\nEfisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)"
                             else:
                                 part_waiting_efficiency = 100  # Jika tidak ada order yang menunggu part, efisiensi 100%
-                                measurement += "\nTidak ada data tunggu part"
+                                on_time_count = 0
+                                total_part_waits = 0
                             
                             # Combine all three metrics (service efficiency, reception efficiency, part waiting efficiency)
                             if orders_with_duration and orders_with_reception and part_waiting_orders:
@@ -4574,6 +4584,9 @@ class KPIOverview(http.Controller):
                             else:
                                 actual = 0
                                 measurement = "Tidak ada data waktu servis, penerimaan, dan tunggu part"
+                            
+                            # PENTING: Tetapkan nilai measurement ke kpi['measurement']
+                            kpi['measurement'] = measurement
                         
                         # Versi untuk export PDF di Head Store
                         elif kpi['type'] == 'mechanic_efficiency':
@@ -5628,8 +5641,8 @@ class KPIOverview(http.Controller):
                     # Temukan bagian kode dengan tipe service_time pada fungsi get_mechanic_kpi
                     # Sekitar baris 590-670 dalam kode yang diberikan
                     elif kpi['type'] == 'service_time':
-                        # Inisialisasi measurement di awal
-                        measurement = ""  # Inisialisasi measurement terlebih dahulu
+                        # Inisialisasi variabel
+                        measurement = ""
                         
                         # Calculate service time compliance - combines service efficiency and reception time
                         
@@ -5640,6 +5653,7 @@ class KPIOverview(http.Controller):
                             service_efficiency = max(0, 100 - avg_deviation)  # Convert deviation to efficiency
                         else:
                             service_efficiency = 0
+                            avg_deviation = 0
                         
                         # Part 2: Reception Time (lead_time_penerimaan)
                         orders_with_reception = store_orders.filtered(lambda o: o.lead_time_penerimaan > 0)
@@ -5651,6 +5665,8 @@ class KPIOverview(http.Controller):
                             reception_efficiency = (orders_on_time / total_receptions * 100) if total_receptions > 0 else 0
                         else:
                             reception_efficiency = 0
+                            orders_on_time = 0
+                            total_receptions = 0
 
                         # Part 3: tunggu part
                         # Perhitungan Efisiensi Tunggu Part dengan target 40 menit
@@ -5682,11 +5698,10 @@ class KPIOverview(http.Controller):
                                 part_waiting_efficiency = (on_time_count / total_part_waits * 100)
                             else:
                                 part_waiting_efficiency = 100  # Jika tidak ada tunggu part, efisiensi 100%
-                            
-                            measurement += f"\nEfisiensi tunggu part: {part_waiting_efficiency:.1f}% ({on_time_count}/{total_part_waits} dalam {target_waiting_minutes} menit)"
                         else:
                             part_waiting_efficiency = 100  # Jika tidak ada order yang menunggu part, efisiensi 100%
-                            measurement += "\nTidak ada data tunggu part"
+                            on_time_count = 0
+                            total_part_waits = 0
                         
                         # Combine all three metrics (service efficiency, reception efficiency, part waiting efficiency)
                         if orders_with_duration and orders_with_reception and part_waiting_orders:
@@ -5742,6 +5757,9 @@ class KPIOverview(http.Controller):
                         else:
                             actual = 0
                             measurement = "Tidak ada data waktu servis, penerimaan, dan tunggu part"
+                        
+                        # PENTING: Tetapkan nilai measurement ke kpi['measurement']
+                        kpi['measurement'] = measurement
                     
                     # Versi untuk export PDF di Head Store
                     elif kpi['type'] == 'mechanic_efficiency':

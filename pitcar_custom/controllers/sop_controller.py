@@ -1127,7 +1127,7 @@ class SOPController(http.Controller):
             if existing_code:
                 return {'status': 'error', 'message': 'Kode SOP sudah digunakan'}
             
-            # Siapkan values untuk create
+            # In your create_sop method, update the values preparation:
             vals = {
                 'name': kw.get('name'),
                 'code': kw.get('code'),
@@ -1136,18 +1136,24 @@ class SOPController(http.Controller):
                 'role': kw.get('role'),
                 'sampling_type': kw.get('sampling_type', 'both'),
                 'activity_type': kw.get('activity_type', 'pembuatan'),
-                'date_start': kw.get('date_start'),
-                'date_end': kw.get('date_end'),
                 'state': kw.get('state', 'draft'),
                 'review_state': kw.get('review_state', 'waiting'),
                 'revision_state': kw.get('revision_state', 'no_revision'),
                 'document_url': kw.get('document_url', ''),
                 'socialization_state': kw.get('socialization_state', 'not_started'),
-                'socialization_date': kw.get('socialization_date'),
-                'socialization_target_date': kw.get('socialization_target_date'),
                 'notes': kw.get('notes', ''),
                 'sequence': kw.get('sequence', 10)
             }
+
+            # Only add date fields if they have values
+            if kw.get('date_start'):
+                vals['date_start'] = kw.get('date_start')
+            if kw.get('date_end'):
+                vals['date_end'] = kw.get('date_end')
+            if kw.get('socialization_date'):
+                vals['socialization_date'] = kw.get('socialization_date')
+            if kw.get('socialization_target_date'):
+                vals['socialization_target_date'] = kw.get('socialization_target_date')
             
             # Buat SOP baru
             new_sop = request.env['pitcar.sop'].sudo().create(vals)

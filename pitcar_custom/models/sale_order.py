@@ -336,58 +336,23 @@ class SaleOrder(models.Model):
     def _onchange_order_line(self):
         """
         Menangani perubahan order_line dengan optimasi performa.
-        Hanya menghitung ulang jika diperlukan dan menggunakan caching untuk mengurangi beban.
+        Hanya menghitung ulang jika diperlukan.
         """
         # Skip computation jika tidak ada order_line atau sedang dalam operasi batch
         if not self.order_line or self.env.context.get('skip_order_line_calculation'):
             return
         
-        # Hitung total durasi hanya untuk line yang berubah atau memiliki durasi > 0
-        # Gunakan list comprehension untuk performa lebih baik daripada filter+map
-        changed_lines = [line for line in self.order_line if line._origin.id not in self._origin.order_line.ids]
-        total_duration = 0
+        # Hitung total durasi dari service_duration di order_line
+        total_duration = sum(line.service_duration for line in self.order_line 
+                            if not line.display_type and line.product_id.type == 'service')
         
-        # Cache untuk line products untuk mengurangi lookups database
-        product_cache = {}
-        
-        # Hanya hitung total dari line baru atau yang berubah
-        if changed_lines:
-            for line in self.order_line:
-                if line.display_type:
-                    continue
-                    
-                # Gunakan cache untuk menghindari lookup database berulang
-                product_id = line.product_id.id
-                if product_id not in product_cache:
-                    product_cache[product_id] = line.product_id.type
-                    
-                if product_cache[product_id] == 'service' and line.service_duration > 0:
-                    total_duration += line.service_duration
-        else:
-            # Jika tidak ada line baru, periksa apakah nilai sebelumnya sudah dihitung
-            if hasattr(self, '_prev_duration') and self._prev_duration > 0:
-                return
-                
-            # Jika belum, hitung total durasi dari semua line
-            for line in self.order_line:
-                if not line.display_type:
-                    product_id = line.product_id.id
-                    if product_id not in product_cache:
-                        product_cache[product_id] = line.product_id.type
-                        
-                    if product_cache[product_id] == 'service' and line.service_duration > 0:
-                        total_duration += line.service_duration
-        
-        # Simpan durasi yang dihitung untuk perbandingan di invokasi berikutnya
-        self._prev_duration = total_duration
-        
-        # Jika tidak ada durasi yang berarti, tidak perlu melanjutkan
+        # Jika tidak ada durasi, tidak perlu melanjutkan
         if total_duration <= 0:
             return
-            
+        
         # Logic untuk update waktu estimasi
         if not self.controller_estimasi_mulai:
-            # Jika belum ada estimasi, set waktu sekarang (cached)
+            # Jika belum ada estimasi, set waktu sekarang
             start_time = fields.Datetime.now()
             self.controller_estimasi_mulai = start_time
             self.controller_estimasi_selesai = self._calculate_end_time_optimized(start_time, total_duration)
@@ -429,7 +394,6 @@ class SaleOrder(models.Model):
     def _calculate_end_time_optimized(self, start_time, duration):
         """
         Versi teroptimasi dari _calculate_end_time dengan lazy evaluation
-        dan caching untuk mengurangi beban server
         """
         if not start_time or duration <= 0:
             return start_time
@@ -456,7 +420,6 @@ class SaleOrder(models.Model):
             return end_local.astimezone(pytz.UTC).replace(tzinfo=None)
         
         # Untuk durasi yang lebih panjang atau lintas hari, gunakan algoritma lengkap
-        # dengan optimasi lazy loading
         current_time = start_local
         remaining_duration = duration
         day_end_hour = 17

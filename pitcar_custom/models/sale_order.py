@@ -323,14 +323,220 @@ class SaleOrder(models.Model):
         store=True
     )
 
+    # @api.onchange('order_line')
+    # def _onchange_order_line(self):
+    #     if self.order_line:
+    #         total_duration = sum(line.service_duration for line in self.order_line)
+    #         if total_duration:
+    #             start_time = fields.Datetime.now()
+    #             self.controller_estimasi_mulai = start_time 
+    #             self.controller_estimasi_selesai = start_time + timedelta(hours=total_duration)
+
     @api.onchange('order_line')
     def _onchange_order_line(self):
-        if self.order_line:
-            total_duration = sum(line.service_duration for line in self.order_line)
-            if total_duration:
-                start_time = fields.Datetime.now()
-                self.controller_estimasi_mulai = start_time 
-                self.controller_estimasi_selesai = start_time + timedelta(hours=total_duration)
+        """
+        Menangani perubahan order_line dengan optimasi performa.
+        Hanya menghitung ulang jika diperlukan dan menggunakan caching untuk mengurangi beban.
+        """
+        # Skip computation jika tidak ada order_line atau sedang dalam operasi batch
+        if not self.order_line or self.env.context.get('skip_order_line_calculation'):
+            return
+        
+        # Hitung total durasi hanya untuk line yang berubah atau memiliki durasi > 0
+        # Gunakan list comprehension untuk performa lebih baik daripada filter+map
+        changed_lines = [line for line in self.order_line if line._origin.id not in self._origin.order_line.ids]
+        total_duration = 0
+        
+        # Cache untuk line products untuk mengurangi lookups database
+        product_cache = {}
+        
+        # Hanya hitung total dari line baru atau yang berubah
+        if changed_lines:
+            for line in self.order_line:
+                if line.display_type:
+                    continue
+                    
+                # Gunakan cache untuk menghindari lookup database berulang
+                product_id = line.product_id.id
+                if product_id not in product_cache:
+                    product_cache[product_id] = line.product_id.type
+                    
+                if product_cache[product_id] == 'service' and line.service_duration > 0:
+                    total_duration += line.service_duration
+        else:
+            # Jika tidak ada line baru, periksa apakah nilai sebelumnya sudah dihitung
+            if hasattr(self, '_prev_duration') and self._prev_duration > 0:
+                return
+                
+            # Jika belum, hitung total durasi dari semua line
+            for line in self.order_line:
+                if not line.display_type:
+                    product_id = line.product_id.id
+                    if product_id not in product_cache:
+                        product_cache[product_id] = line.product_id.type
+                        
+                    if product_cache[product_id] == 'service' and line.service_duration > 0:
+                        total_duration += line.service_duration
+        
+        # Simpan durasi yang dihitung untuk perbandingan di invokasi berikutnya
+        self._prev_duration = total_duration
+        
+        # Jika tidak ada durasi yang berarti, tidak perlu melanjutkan
+        if total_duration <= 0:
+            return
+            
+        # Logic untuk update waktu estimasi
+        if not self.controller_estimasi_mulai:
+            # Jika belum ada estimasi, set waktu sekarang (cached)
+            start_time = fields.Datetime.now()
+            self.controller_estimasi_mulai = start_time
+            self.controller_estimasi_selesai = self._calculate_end_time_optimized(start_time, total_duration)
+        else:
+            # Jika sudah ada estimasi, hitung perubahan durasi
+            old_duration = 0
+            if self.controller_estimasi_selesai and self.controller_estimasi_mulai:
+                # Gunakan metode cepat untuk menghitung durasi
+                old_duration = self._calculate_approx_duration(
+                    self.controller_estimasi_mulai, 
+                    self.controller_estimasi_selesai
+                )
+            
+            # Hanya update jika durasi berubah signifikan (lebih dari 0.1 jam atau 6 menit)
+            if abs(total_duration - old_duration) > 0.1:
+                # Gunakan waktu mulai yang ada untuk hitung waktu selesai baru
+                self.controller_estimasi_selesai = self._calculate_end_time_optimized(
+                    self.controller_estimasi_mulai, 
+                    total_duration
+                )
+
+    def _calculate_approx_duration(self, start_time, end_time):
+        """
+        Metode cepat untuk menghitung perkiraan durasi antara dua waktu
+        Mengabaikan perhitungan detail untuk performa lebih baik dalam onchange
+        """
+        if not start_time or not end_time or end_time <= start_time:
+            return 0
+        
+        # Kalkulasi sederhana dalam jam
+        delta = (end_time - start_time).total_seconds() / 3600
+        
+        # Perkiraan pengurangan untuk istirahat (1 jam untuk setiap hari kerja)
+        days = (end_time.date() - start_time.date()).days + 1
+        lunch_reduction = min(days, delta / 8)  # Asumsi max 1 jam istirahat per 8 jam kerja
+        
+        return max(0, delta - lunch_reduction)
+
+    def _calculate_end_time_optimized(self, start_time, duration):
+        """
+        Versi teroptimasi dari _calculate_end_time dengan lazy evaluation
+        dan caching untuk mengurangi beban server
+        """
+        if not start_time or duration <= 0:
+            return start_time
+        
+        # Konversi waktu mulai ke datetime lokal
+        local_tz = pytz.timezone('Asia/Jakarta')
+        start_local = pytz.UTC.localize(fields.Datetime.from_string(start_time) 
+                    if isinstance(start_time, str) else start_time).astimezone(local_tz)
+        
+        # Jika durasi pendek (< 3 jam), gunakan perhitungan sederhana
+        if duration < 3:
+            # Cek apakah durasi melewati jam istirahat
+            hour_now = start_local.hour + start_local.minute/60.0
+            crosses_lunch = (hour_now < 12 and hour_now + duration >= 12)
+            
+            # Tambahkan durasi
+            end_seconds = duration * 3600
+            if crosses_lunch:
+                end_seconds += 3600  # Tambah 1 jam untuk istirahat
+                
+            end_local = start_local + timedelta(seconds=end_seconds)
+            
+            # Konversi kembali ke UTC
+            return end_local.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        # Untuk durasi yang lebih panjang atau lintas hari, gunakan algoritma lengkap
+        # dengan optimasi lazy loading
+        current_time = start_local
+        remaining_duration = duration
+        day_end_hour = 17
+        
+        # Jadwal kerja dan istirahat
+        work_hours = {
+            'start': 8,
+            'end': 17,
+            'lunch_start': 12,
+            'lunch_end': 13
+        }
+        
+        # Loop sampai seluruh durasi terhitung
+        while remaining_duration > 0:
+            current_date = current_time.date()
+            current_hour = current_time.hour + current_time.minute/60.0
+            
+            # Cepat cek apakah sedang dalam jam kerja
+            if current_hour < work_hours['start']:
+                # Sebelum jam kerja, pindah ke awal jam kerja
+                current_time = local_tz.localize(datetime.combine(current_date, time(work_hours['start'], 0)))
+                current_hour = work_hours['start']
+            elif current_hour >= day_end_hour:
+                # Setelah jam kerja, pindah ke hari berikutnya
+                next_day = current_date + timedelta(days=1)
+                current_time = local_tz.localize(datetime.combine(next_day, time(work_hours['start'], 0)))
+                current_hour = work_hours['start']
+                continue
+            
+            # Hitung berapa banyak jam kerja tersisa di hari ini
+            available_hours = 0
+            
+            # Jika saat ini sebelum istirahat
+            if current_hour < work_hours['lunch_start']:
+                # Jam tersedia sampai istirahat
+                available_hours += work_hours['lunch_start'] - current_hour
+                # Jam tersedia setelah istirahat
+                available_hours += work_hours['end'] - work_hours['lunch_end']
+            # Jika saat ini dalam jam istirahat
+            elif current_hour >= work_hours['lunch_start'] and current_hour < work_hours['lunch_end']:
+                # Pindah ke akhir istirahat
+                current_time = local_tz.localize(datetime.combine(current_date, time(work_hours['lunch_end'], 0)))
+                current_hour = work_hours['lunch_end']
+                # Jam tersedia sampai akhir hari
+                available_hours += work_hours['end'] - work_hours['lunch_end']
+            # Jika saat ini setelah istirahat
+            else:
+                # Jam tersedia sampai akhir hari
+                available_hours += work_hours['end'] - current_hour
+            
+            # Jika durasi yang tersisa bisa selesai hari ini
+            if remaining_duration <= available_hours:
+                # Jika saat ini sebelum istirahat dan akan selesai setelah istirahat
+                if current_hour < work_hours['lunch_start'] and (current_hour + remaining_duration) >= work_hours['lunch_start']:
+                    # Tambahkan waktu sampai istirahat
+                    before_lunch = work_hours['lunch_start'] - current_hour
+                    remaining_duration -= before_lunch
+                    
+                    # Lewati waktu istirahat
+                    current_time = local_tz.localize(datetime.combine(current_date, time(work_hours['lunch_end'], 0)))
+                    
+                    # Tambahkan sisa durasi
+                    end_seconds = remaining_duration * 3600
+                    current_time = current_time + timedelta(seconds=end_seconds)
+                    remaining_duration = 0
+                else:
+                    # Tambahkan sisa durasi tanpa melewati istirahat
+                    end_seconds = remaining_duration * 3600
+                    current_time = current_time + timedelta(seconds=end_seconds)
+                    remaining_duration = 0
+            else:
+                # Tambahkan semua waktu yang tersedia hari ini
+                remaining_duration -= available_hours
+                
+                # Pindah ke hari berikutnya
+                next_day = current_date + timedelta(days=1)
+                current_time = local_tz.localize(datetime.combine(next_day, time(work_hours['start'], 0)))
+        
+        # Konversi kembali ke UTC
+        return current_time.astimezone(pytz.UTC).replace(tzinfo=None)
 
     @api.depends('controller_mulai_servis', 'controller_selesai', 'order_line.service_duration')
     def _compute_duration_performance(self):

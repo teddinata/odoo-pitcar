@@ -364,6 +364,25 @@ class ServiceBooking(models.Model):
         compute='_compute_amounts',
         currency_field='currency_id'
     )
+    
+    # Tambahan fields
+    stall_id = fields.Many2one('pitcar.service.stall', string='Assigned Stall', tracking=True)
+    booking_end_time = fields.Float('Booking End Time', compute='_compute_end_time', store=True)
+    booking_source = fields.Selection([
+        ('internal', 'Internal'),
+        ('web', 'Website'),
+        ('whatsapp', 'WhatsApp'),
+        ('phone', 'Phone'),
+    ], string='Booking Source', default='internal')
+    booking_link_token = fields.Char('Booking Link Token', copy=False)
+    
+    @api.depends('booking_time', 'estimated_duration')
+    def _compute_end_time(self):
+        for booking in self:
+            if booking.booking_time and booking.estimated_duration:
+                booking.booking_end_time = booking.booking_time + booking.estimated_duration
+            else:
+                booking.booking_end_time = booking.booking_time + 1.0 if booking.booking_time else 0.0
 
     @api.depends('booking_line_ids.price_subtotal', 'booking_line_ids.price_tax')
     def _compute_amounts(self):
@@ -692,3 +711,58 @@ class ServiceBookingLine(models.Model):
                 return self.product_id.description_sale
             return self.product_id.name
         return self.name
+
+class PitcarServiceStall(models.Model):
+    _name = 'pitcar.service.stall'
+    _description = 'Service Stall Management'
+    
+    name = fields.Char('Stall Name', required=True)
+    code = fields.Char('Stall Code', required=True)
+    active = fields.Boolean('Active', default=True)
+    mechanic_ids = fields.Many2many(
+        'pitcar.mechanic.new', 
+        string='Assigned Mechanics',
+        help='Mechanics assigned to this stall'
+    )
+    is_quick_service = fields.Boolean(
+        'Quick Service', 
+        default=False,
+        help='Check if this stall is dedicated for quick services'
+    )
+    max_capacity = fields.Integer(
+        'Max Capacity', 
+        default=1,
+        help='Maximum number of cars that can be serviced simultaneously'
+    )
+    current_booking_id = fields.Many2one('pitcar.service.booking', 'Current Booking')
+    next_available_time = fields.Datetime('Next Available Time', compute='_compute_next_available')
+    
+    # One2many untuk booking
+    booking_ids = fields.One2many('pitcar.service.booking', 'stall_id', string='Bookings')
+    
+    @api.depends('booking_ids', 'booking_ids.state', 'booking_ids.booking_date', 'booking_ids.booking_time')
+    def _compute_next_available(self):
+        for stall in self:
+            now = fields.Datetime.now()
+            today = fields.Date.today()
+            current_hour = now.hour + now.minute / 60.0
+            
+            # Cari booking aktif terdekat
+            active_bookings = self.env['pitcar.service.booking'].search([
+                ('stall_id', '=', stall.id),
+                ('state', 'not in', ['cancelled']),
+                '|',
+                ('booking_date', '>', today),
+                '&',
+                ('booking_date', '=', today),
+                ('booking_time', '>=', current_hour)
+            ], order='booking_date, booking_time', limit=1)
+            
+            if active_bookings:
+                booking = active_bookings[0]
+                end_time = booking.booking_time + booking.estimated_duration
+                # Konversi ke datetime
+                end_datetime = datetime.combine(booking.booking_date, datetime.min.time()) + timedelta(hours=end_time)
+                stall.next_available_time = end_datetime
+            else:
+                stall.next_available_time = now

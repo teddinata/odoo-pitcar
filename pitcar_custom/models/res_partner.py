@@ -37,6 +37,32 @@ class ResPartner(models.Model):
                                     column2='category_id', string='Tags', required=True)
     phone = fields.Char(unaccent=False, required=True)
 
+    # def phone_get_sanitized_number(self, number_fname='phone', country_fname='country_id', force_format='E164'):
+    #     """Override to handle context no_phone_validation"""
+    #     if self.env.context.get('no_phone_validation'):
+    #         return {self[number_fname]: {'sanitized': self[number_fname], 'code': ''}}
+    #     return super().phone_get_sanitized_number(number_fname, country_fname, force_format)
+    
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Override create to handle phone validation issues"""
+        # Check if phone validation should be skipped
+        if self.env.context.get('phone_validation_skip'):
+            # Create records without phone validation
+            self = self.with_context(mail_notrack=True)
+            for vals in vals_list:
+                if 'phone' in vals:
+                    # Keep the phone as is without validation
+                    vals['phone_sanitized'] = vals['phone']
+        
+        return super(ResPartner, self).create(vals_list)
+    
+    def _phone_format(self, number, country=None, company=None):
+        """Override to handle phone validation skip"""
+        if self.env.context.get('phone_validation_skip'):
+            return number
+        return super(ResPartner, self)._phone_format(number, country, company)
+
 class PitcarMechanic(models.Model):
     _name = 'pitcar.mechanic'
     _description = 'Mechanic'

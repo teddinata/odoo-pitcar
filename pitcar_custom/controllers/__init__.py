@@ -24,3 +24,4 @@ from . import project_management_api
 from . import kpi_marketing
 from . import kaizen_training_api
 from . import it_program_api
+from . import booking_controller

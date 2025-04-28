@@ -2,6 +2,9 @@ from odoo import models, fields, api, _
 from datetime import datetime, timedelta
 from random import randint, choices
 import string  # Juga perlu import string untuk karakter yang akan digunakan
+from odoo.exceptions import ValidationError, AccessError, UserError
+import logging
+_logger = logging.getLogger(__name__)
 
 
 class PartnerCategory(models.Model):
@@ -57,11 +60,24 @@ class ResPartner(models.Model):
         
         return super(ResPartner, self).create(vals_list)
     
-    def _phone_format(self, number, country=None, company=None):
-        """Override to handle phone validation skip"""
+    def _phone_format(self, number, country=None, company=None, force_format=None):
+        """Override to handle phone validation skip and force_format parameter"""
         if self.env.context.get('phone_validation_skip'):
             return number
+        
+        # Panggil super method tanpa force_format karena versi Odoo Anda tidak mendukungnya
         return super(ResPartner, self)._phone_format(number, country, company)
+    
+    @api.onchange('phone')
+    def _onchange_phone_validation(self):
+        """Override phone validation onchange to handle formatting issues"""
+        if self.phone and not self.env.context.get('phone_validation_skip'):
+            try:
+                # Coba dengan format yang lebih aman
+                self.phone = self._phone_format(self.phone)
+            except Exception as e:
+                # Log error tapi jangan crash UI
+                _logger.error("Phone validation error: %s", str(e))
 
 class PitcarMechanic(models.Model):
     _name = 'pitcar.mechanic'

@@ -20,7 +20,7 @@ class BookingController(http.Controller):
           'details': details if details else None
       }
     
-    @http.route('/api/v1/booking/verify-vehicle', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/verify-vehicle', type='json', auth="public", methods=['POST'], csrf=False)
     def verify_vehicle(self, **kw):
         """Verifikasi kendaraan berdasarkan plat nomor"""
         try:
@@ -57,7 +57,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in verify_vehicle: {str(e)}")
             return {'status': 'error', 'message': str(e)}
     
-    @http.route('/api/v1/booking/check-availability', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/check-availability', type='json', auth="public", methods=['POST'], csrf=False)
     def check_availability(self, **kw):
         """Cek ketersediaan stall berdasarkan tanggal, waktu, dan durasi layanan"""
         try:
@@ -152,7 +152,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in check_availability: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    @http.route('/api/v1/booking/init-stalls', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/init-stalls', type='json', auth="public", methods=['POST'], csrf=False)
     def init_stalls(self, **kw):
         """Initialize stalls if not exist"""
         try:
@@ -172,7 +172,7 @@ class BookingController(http.Controller):
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
         
-    @http.route('/api/v1/booking/get-stalls', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/get-stalls', type='json', auth="public", methods=['POST'], csrf=False)
     def get_stalls(self, **kw):
         """Mendapatkan daftar stall yang tersedia"""
         try:
@@ -201,7 +201,7 @@ class BookingController(http.Controller):
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
     
-    @http.route('/api/v1/booking/create', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/create', type='json', auth="public", methods=['POST'], csrf=False)
     def create_booking(self, **kw):
         """Create booking lengkap dengan registrasi customer/kendaraan jika diperlukan"""
         try:
@@ -333,7 +333,7 @@ class BookingController(http.Controller):
             request.env.cr.rollback()
             return {'status': 'error', 'message': str(e)}
     
-    @http.route('/api/v1/booking/stall-status', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/stall-status', type='json', auth="public", methods=['POST'], csrf=False)
     def get_stall_status(self, **kw):
         """Mendapatkan status real-time semua stall"""
         try:
@@ -377,7 +377,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in get_stall_status: {str(e)}")
             return {'status': 'error', 'message': str(e)}
     
-    @http.route('/api/v1/booking/get-brands', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/get-brands', type='json', auth="public", methods=['POST'], csrf=False)
     def get_brands(self, **kw):
         """Mendapatkan daftar brand mobil"""
         try:
@@ -393,7 +393,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in get_brands: {str(e)}")
             return {'status': 'error', 'message': str(e)}
     
-    @http.route('/api/v1/booking/get-brand-types', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/get-brand-types', type='json', auth="public", methods=['POST'], csrf=False)
     def get_brand_types(self, **kw):
         """Mendapatkan daftar tipe mobil berdasarkan brand"""
         try:
@@ -416,7 +416,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in get_brand_types: {str(e)}")
             return {'status': 'error', 'message': str(e)}
     
-    @http.route('/api/v1/booking/get-services', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/get-services', type='json', auth="public", methods=['POST'], csrf=False)
     def get_services(self, **kw):
         """Mendapatkan daftar layanan yang tersedia"""
         try:
@@ -448,7 +448,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in get_services: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
-    @http.route('/api/v1/booking/get-transmissions', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/get-transmissions', type='json', auth="public", methods=['POST'], csrf=False)
     def get_transmissions(self, **kw):
         """Mendapatkan daftar jenis transmisi"""
         try:
@@ -464,7 +464,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in get_transmissions: {str(e)}")
             return {'status': 'error', 'message': str(e)}
     
-    @http.route('/api/v1/booking/status', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/status', type='json', auth="public", methods=['POST'], csrf=False)
     def get_booking_status(self, **kw):
         """Mendapatkan status booking"""
         try:
@@ -500,7 +500,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in get_booking_status: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
-    @http.route('/api/v1/booking/list', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/list', type='json', auth="public", methods=['POST'], csrf=False)
     def get_booking_list(self, **kw):
         """Mendapatkan daftar booking dengan filter"""
         try:
@@ -570,7 +570,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in get_booking_list: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
-    @http.route('/api/v1/booking/stats', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/stats', type='json', auth="public", methods=['POST'], csrf=False)
     def get_booking_stats(self, **kw):
         """Mendapatkan statistik booking untuk dashboard"""
         try:
@@ -634,7 +634,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in get_booking_stats: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
-    @http.route('/api/v1/booking/update-status', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/update-status', type='json', auth="public", methods=['POST'], csrf=False)
     def update_booking_status(self, **kw):
         """Update status booking"""
         try:
@@ -689,7 +689,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in update_booking_status: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
-    @http.route('/api/v1/booking/daily-schedule', type='json', auth="public", methods=['POST'], csrf=False)
+    @http.route('/web/v1/booking/daily-schedule', type='json', auth="public", methods=['POST'], csrf=False)
     def get_daily_schedule(self, **kw):
         """Mendapatkan jadwal booking harian untuk tampilan kalender"""
         try:

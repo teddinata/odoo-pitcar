@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_booking_metrics_search" model="ir.ui.view">
+        <field name="name">pitcar.booking.metrics.search</field>
+        <field name="model">pitcar.booking.metrics</field>
+        <field name="arch" type="xml">
+            <!-- Tambahkan deklarasi field timedelta di sini -->
+            <search string="Cari Metrik">
+                <field name="date"/>
+                
+                <filter string="Hari Ini" name="today" domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter string="Kemarin" name="yesterday" domain="[('date', '=', (context_today() + relativedelta(days=-1)).strftime('%Y-%m-%d'))]"/>
+                
+                <filter string="7 Hari Terakhir" name="last_7_days" domain="[('date', '&gt;=', (context_today() + relativedelta(days=-7)).strftime('%Y-%m-%d')), ('date', '&lt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter string="30 Hari Terakhir" name="last_30_days" domain="[('date', '&gt;=', (context_today() + relativedelta(days=-30)).strftime('%Y-%m-%d')), ('date', '&lt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                
+                <separator/>
+                <filter string="Harian" name="daily" domain="[('period_type', '=', 'day')]"/>
+                <filter string="Mingguan" name="weekly" domain="[('period_type', '=', 'week')]"/>
+                <filter string="Bulanan" name="monthly" domain="[('period_type', '=', 'month')]"/>
+                
+                <group expand="0" string="Group By">
+                    <filter string="Periode" name="group_period" context="{'group_by': 'period_type'}"/>
+                    <filter string="Tanggal" name="group_date" context="{'group_by': 'date'}"/>
+                    <filter string="Tanggal (minggu)" name="group_date_week" context="{'group_by': 'date:week'}"/>
+                    <filter string="Tanggal (bulan)" name="group_date_month" context="{'group_by': 'date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+
+    <record id="view_booking_metrics_tree" model="ir.ui.view">
+        <field name="name">pitcar.booking.metrics.tree</field>
+        <field name="model">pitcar.booking.metrics</field>
+        <field name="arch" type="xml">
+            <tree string="Metrik Booking">
+                <field name="date"/>
+                <field name="period_type"/>
+                <field name="total_bookings"/>
+                <field name="confirmed_bookings"/>
+                <field name="converted_bookings"/>
+                <field name="cancelled_bookings"/>
+                <field name="confirmation_rate" widget="percentage"/>
+                <field name="conversion_rate" widget="percentage"/>
+                <field name="cancellation_rate" widget="percentage"/>
+                <field name="actual_revenue" sum="Total Revenue"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_booking_metrics_pivot" model="ir.ui.view">
+        <field name="name">pitcar.booking.metrics.pivot</field>
+        <field name="model">pitcar.booking.metrics</field>
+        <field name="arch" type="xml">
+            <pivot string="Analisis Booking">
+                <field name="date" type="row"/>
+                <field name="total_bookings" type="measure"/>
+                <field name="confirmation_rate" type="measure"/>
+                <field name="conversion_rate" type="measure"/>
+                <field name="cancellation_rate" type="measure"/>
+                <field name="actual_revenue" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_booking_metrics_graph" model="ir.ui.view">
+        <field name="name">pitcar.booking.metrics.graph</field>
+        <field name="model">pitcar.booking.metrics</field>
+        <field name="arch" type="xml">
+            <graph string="Analisis Booking" type="line">
+                <field name="date"/>
+                <field name="confirmation_rate" type="measure"/>
+                <field name="conversion_rate" type="measure"/>
+                <field name="cancellation_rate" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_booking_metrics_form" model="ir.ui.view">
+        <field name="name">pitcar.booking.metrics.form</field>
+        <field name="model">pitcar.booking.metrics</field>
+        <field name="arch" type="xml">
+            <form string="Metrik Booking">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="date"/>
+                            <field name="period_type"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                        <group>
+                            <field name="total_bookings"/>
+                            <field name="actual_revenue"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Metrik Status">
+                            <group>
+                                <group string="Jumlah">
+                                    <field name="draft_bookings"/>
+                                    <field name="confirmed_bookings"/>
+                                    <field name="converted_bookings"/>
+                                    <field name="cancelled_bookings"/>
+                                </group>
+                                <group string="Persentase">
+                                    <field name="confirmation_rate" widget="percentage"/>
+                                    <field name="conversion_rate" widget="percentage"/>
+                                    <field name="cancellation_rate" widget="percentage"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Detail Pembatalan">
+                            <group>
+                                <field name="customer_cancelled"/>
+                                <field name="no_show_cancelled"/>
+                                <field name="rescheduled_cancelled"/>
+                                <field name="other_cancelled"/>
+                            </group>
+                        </page>
+                        <page string="Metrik Revenue">
+                            <group>
+                                <field name="potential_revenue"/>
+                                <field name="actual_revenue"/>
+                                <field name="lost_revenue"/>
+                                <field name="avg_booking_value"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_booking_metrics" model="ir.actions.act_window">
+        <field name="name">Analisis Booking</field>
+        <field name="res_model">pitcar.booking.metrics</field>
+        <field name="view_mode">pivot,graph,tree,form</field>
+        <field name="context">{'search_default_daily': 1}</field>
+        <field name="domain">[]</field>  <!-- Kosongkan domain di XML -->
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Belum ada data metrik booking
+            </p>
+            <p>
+                Data metrik akan dikumpulkan secara otomatis setiap hari.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu untuk Metrik Booking -->
+    <menuitem id="menu_pitcar_booking_metrics" 
+              name="Analisis Booking" 
+              action="action_booking_metrics" 
+              parent="sale.sale_menu_root" 
+              sequence="20"/>
+</odoo>

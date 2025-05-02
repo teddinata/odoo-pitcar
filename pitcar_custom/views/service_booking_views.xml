@@ -65,6 +65,10 @@
                             <field name="partner_car_id"/>
                             <field name="partner_car_odometer"/>
                             <field name="service_advisor_id" widget="many2many_tags"/>
+                            
+                             <!-- Add stall fields -->
+                            <field name="stall_id" options="{'no_create': True}"/>
+                            <field name="stall_position"/>
                         </group>
                         <group>
                             <field name="formatted_create_date" string="Booking Created"/>
@@ -273,6 +277,31 @@
         </field>
     </record>
 
+    <!-- <record id="view_pitcar_stall_dashboard_action" model="ir.actions.act_window">
+        <field name="name">Stall Dashboard</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">pitcar.service.booking</field>
+        <field name="view_mode">kanban,form,calendar</field>
+        <field name="domain">[('booking_date', '=', context_today())]</field>
+        <field name="context">{
+            'search_default_group_stall_position': 1,
+            'kanban_view_ref': 'pitcar_custom.view_pitcar_service_booking_kanban_stall'
+        }</field>
+        <field name="view_ids" eval="[(5, 0, 0), 
+            (0, 0, {'view_mode': 'kanban', 'view_id': ref('view_pitcar_service_booking_kanban_stall')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_pitcar_service_booking_form')}),
+            (0, 0, {'view_mode': 'calendar', 'view_id': ref('view_pitcar_service_booking_calendar')})
+        ]"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No service bookings scheduled for today
+            </p>
+            <p>
+                Create a new booking or schedule for another day
+            </p>
+        </field>
+    </record> -->
+
     <record id="view_booking_link_sale_order_wizard_form" model="ir.ui.view">
         <field name="name">booking.link.sale.order.wizard.form</field>
         <field name="model">booking.link.sale.order.wizard</field>
@@ -294,48 +323,15 @@
         </field>
     </record>
 
-    <!-- Actions -->
-     <!-- Search View -->
-    <record id="view_pitcar_service_booking_search" model="ir.ui.view">
-        <field name="name">pitcar.service.booking.search</field>
-        <field name="model">pitcar.service.booking</field>
-        <field name="arch" type="xml">
-            <search>
-                <field name="name"/>
-                <field name="partner_id"/>
-                <field name="partner_car_id"/>
-                <field name="service_advisor_id"/>
-                <filter string="Draft" name="draft" domain="[('state','=','draft')]"/>
-                <filter string="Confirmed" name="confirmed" domain="[('state','=','confirmed')]"/>
-                <filter string="Arrived" name="arrived" domain="[('state','=','arrived')]"/>
-                <filter string="Today" name="today" domain="[('booking_date','=',context_today())]"/>
-                <group expand="0" string="Group By">
-                    <filter string="Status" name="status" context="{'group_by':'state'}"/>
-                    <filter string="Booking Date" name="booking_date" context="{'group_by':'booking_date'}"/>
-                    <filter string="Customer" name="customer" context="{'group_by':'partner_id'}"/>
-                    <filter string="Service Category" name="category" context="{'group_by':'service_category'}"/>
-                    <filter name="status" position="after">
-                    <filter string="Stall" name="group_stall" context="{'group_by': 'stall_position'}"/>
-                    </filter>
-                    <filter name="draft" position="before">
-                        <filter string="Unassigned Stall" name="unassigned_stall" 
-                                domain="[('stall_position', '=', 'unassigned')]"/>
-                    </filter>
-                </group>
-            </search>
-        </field>
-    </record>
 
-      <!-- Update action window to set default grouping -->
+    <!-- Update action window to set default grouping -->
     <record id="action_pitcar_service_booking" model="ir.actions.act_window">
         <field name="name">Service Bookings</field>
         <field name="type">ir.actions.act_window</field>
         <field name="res_model">pitcar.service.booking</field>
         <field name="view_mode">kanban,tree,form,calendar</field>
-        <field name="context">{
-            'search_default_group_booking_date': 1,
-            'group_by': 'booking_date'
-        }</field>
+        <field name="search_view_id" ref="view_pitcar_service_booking_search"/>
+        <field name="context">{'search_default_this_week': 1, 'group_by': 'stall_id'}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Belum ada booking di stall
@@ -356,22 +352,57 @@
                 <field name="partner_id"/>
                 <field name="partner_car_id"/>
                 <field name="service_advisor_id"/>
-                <filter string="Today" name="today" domain="[('booking_date','=',context_today())]"/>
-                <filter string="This Week" name="this_week" domain="[('booking_date','&gt;=', (context_today() + relativedelta(weeks=-1, days=1, weekday=0)).strftime('%Y-%m-%d')),
-                                                                   ('booking_date','&lt;=', (context_today() + relativedelta(weekday=6)).strftime('%Y-%m-%d'))]"/>
+                <field name="stall_id"/> <!-- Add stall_id search -->
+                
+                <!-- Basic filters -->
+                <!-- Filter waktu -->
+                <filter string="Today" name="today" domain="[('booking_date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter string="This Week" name="this_week" domain="[
+                    ('booking_date', '&gt;=', (context_today() + relativedelta(weekday=0)).strftime('%Y-%m-%d')),
+                    ('booking_date', '&lt;=', (context_today() + relativedelta(weekday=6)).strftime('%Y-%m-%d'))
+                ]"/>
+                <filter string="This Month" name="filter_this_month" 
+                        domain="[('booking_date', '&gt;=', (context_today() + relativedelta(days=-30)).strftime('%Y-%m-%d')),
+                                ('booking_date', '&lt;=', context_today().strftime('%Y-%m-%d'))]" 
+                        help="Bookings for the last 30 days"/>
+                
+                <!-- Status filters -->
                 <separator/>
                 <filter string="Draft" name="draft" domain="[('state','=','draft')]"/>
                 <filter string="Confirmed" name="confirmed" domain="[('state','=','confirmed')]"/>
+                <filter string="Converted" name="converted" domain="[('state','=','converted')]"/>
+                <filter string="Cancelled" name="cancelled" domain="[('state','=','cancelled')]"/>
+                
+                <!-- Stall filters -->
+                <separator/>
+                <filter string="Show All Stalls" name="show_all_stalls" help="Show all stalls including empty ones"
+                context="{'group_by': 'stall_position'}" />
+                <filter string="Unassigned" name="unassigned_stall" domain="[('stall_position','=','unassigned')]"/>
+                <filter string="STALL 1" name="stall1" domain="[('stall_position','=','stall1')]"/>
+                <filter string="STALL 2" name="stall2" domain="[('stall_position','=','stall2')]"/>
+                <filter string="STALL 3" name="stall3" domain="[('stall_position','=','stall3')]"/>
+                <filter string="STALL 4" name="stall4" domain="[('stall_position','=','stall4')]"/>
+                <filter string="STALL 5" name="stall5" domain="[('stall_position','=','stall5')]"/>
+                <filter string="STALL 6" name="stall6" domain="[('stall_position','=','stall6')]"/>
+                <filter string="STALL 7" name="stall7" domain="[('stall_position','=','stall7')]"/>
+                <filter string="STALL 8" name="stall8" domain="[('stall_position','=','stall8')]"/>
+                <filter string="STALL 9" name="stall9" domain="[('stall_position','=','stall9')]"/>
+                <filter string="STALL 10" name="stall10" domain="[('stall_position','=','stall10')]"/>
+                
+                <!-- Group By options -->
                 <group expand="0" string="Group By">
                     <filter string="Booking Date" name="group_booking_date" context="{'group_by': 'booking_date'}"/>
                     <filter string="Status" name="status" context="{'group_by': 'state'}"/>
                     <filter string="Customer" name="customer" context="{'group_by': 'partner_id'}"/>
+                    <!-- <filter string="Stall Position" name="group_stall_position" context="{'group_by': 'stall_position'}"/> -->
+                    <filter string="Physical Stall" name="group_stall_id" context="{'group_by': 'stall_id'}"/>
+                    <filter string="Service Category" name="group_service_category" context="{'group_by': 'service_category'}"/>
                 </group>
             </search>
         </field>
     </record>
 
-     <record id="view_service_booking_form_inherit" model="ir.ui.view">
+     <!-- <record id="view_service_booking_form_inherit" model="ir.ui.view">
         <field name="name">service.booking.form.inherit.stall</field>
         <field name="model">pitcar.service.booking</field>
         <field name="inherit_id" ref="view_pitcar_service_booking_form"/>
@@ -380,27 +411,60 @@
                 <field name="stall_position"/>
             </xpath>
         </field>
-    </record>
+    </record> -->
 
-    <!-- Perbaiki Action Window -->
-    <record id="action_pitcar_service_booking" model="ir.actions.act_window">
-        <field name="name">Service Bookings</field>
+    <record id="action_pitcar_stall_dashboard" model="ir.actions.act_window">
+        <field name="name">Stall Dashboard</field>
         <field name="type">ir.actions.act_window</field>
         <field name="res_model">pitcar.service.booking</field>
-        <field name="view_mode">kanban,tree,form,calendar</field>
-        <field name="search_view_id" ref="view_pitcar_service_booking_search"/>
-        <field name="context">{'search_default_today': 1}</field>
+        <field name="view_mode">kanban</field>
+        <field name="view_id" ref="view_pitcar_service_booking_kanban_stall"/>
+        <field name="domain">[('booking_date','=',context_today())]</field>
+        <field name="context">{
+            'search_default_group_stall_id': 1,
+            'default_group_by': 'stall_id',
+            'group_by': 'stall_id'
+        }</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
-                Create your first service booking!
+                Belum ada booking di stall
+            </p>
+            <p>
+                Drag and drop booking ke stall yang tersedia
             </p>
         </field>
     </record>
 
+    <record id="action_pitcar_stall_list" model="ir.actions.act_window">
+        <field name="name">Service Stalls</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">pitcar.service.stall</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first service stall
+            </p>
+        </field>
+    </record>
+
+    
     <!-- Menu -->
     <menuitem id="menu_pitcar_service_booking"
-              name="Service Bookings"
-              parent="sale.sale_menu_root"
-              action="action_pitcar_service_booking"
-              sequence="15"/>
+            name="Service Bookings"
+            parent="sale.sale_menu_root"
+            action="action_pitcar_service_booking"
+            sequence="15"/>
+
+    <!-- <menuitem id="menu_pitcar_stall_dashboard"
+            name="Stall Dashboard"
+            parent="sale.sale_menu_root"
+            action="action_pitcar_stall_dashboard"
+            sequence="10"/> -->
+
+    <menuitem id="menu_pitcar_stall_list"
+            name="Service Stalls"
+            parent="sale.menu_sale_config"
+            action="action_pitcar_stall_list"
+            sequence="20"/>
+
 </odoo>

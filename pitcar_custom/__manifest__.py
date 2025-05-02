@@ -31,21 +31,25 @@
         ],
         'web.assets_backend': [
             # CSS first
+            'pitcar_custom/static/src/scss/stall_dashboard.scss',
             'pitcar_custom/static/src/css/custom_button.css',
             'pitcar_custom/static/src/css/lead_time.css',
             'pitcar_custom/static/src/css/custom_dashboard.css',
             'pitcar_custom/static/src/css/map.css',
             'pitcar_custom/static/src/scss/dashboard.scss',
             'pitcar_custom/static/src/css/timeline.css',
+            # Tambahkan CSS stall dashboard Anda di sini
             # External CSS
             ('include', 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.css'),
             # JS files
             ('include', 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js'),
+            'pitcar_custom/static/src/js/stall_dashboard.js',
             'pitcar_custom/static/src/js/product_template_list.js',
             'pitcar_custom/static/src/js/product_template_kanban.js',
             'pitcar_custom/static/src/js/lead_time_widget.js',
             'pitcar_custom/static/src/js/queue_dashboard.js',
             'pitcar_custom/static/src/js/map_widget.js',
+            # Tambahkan JS stall dashboard Anda di sini
         ],
     },
     'data': [
@@ -106,6 +110,7 @@
         'views/hr_attendance_views.xml',
         'views/utm_menu.xml',
         'views/notification_views.xml',
+        'views/booking_metrics_views.xml',
         'views/menu.xml',
     ],
     'installable': True,

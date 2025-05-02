@@ -24,5 +24,44 @@
             <field name="doall" eval="False"/>
             <field name="active" eval="True"/>
         </record>
+
+          <!-- Arsipkan booking lama setiap minggu -->
+        <record id="ir_cron_archive_old_bookings" model="ir.cron">
+            <field name="name">PitCar: Arsipkan booking lama</field>
+            <field name="model_id" ref="model_pitcar_service_booking"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_archive_old_bookings()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">weeks</field>
+            <field name="numbercall">-1</field>
+            <field name="doall" eval="False"/>
+            <field name="active" eval="True"/>
+        </record>
+        
+        <!-- Update status booking setiap hari -->
+        <record id="ir_cron_update_booking_statuses" model="ir.cron">
+            <field name="name">PitCar: Update status booking</field>
+            <field name="model_id" ref="model_pitcar_service_booking"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_update_booking_statuses()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">-1</field>
+            <field name="doall" eval="False"/>
+            <field name="active" eval="True"/>
+        </record>
+        
+        <!-- Kumpulkan metrik harian -->
+        <record id="ir_cron_collect_daily_metrics" model="ir.cron">
+            <field name="name">PitCar: Kumpulkan metrik harian</field>
+            <field name="model_id" ref="model_pitcar_booking_metrics"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_collect_daily_metrics()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">-1</field>
+            <field name="doall" eval="False"/>
+            <field name="active" eval="True"/>
+        </record>
     </data>
 </odoo>

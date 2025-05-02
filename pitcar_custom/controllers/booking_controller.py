@@ -116,6 +116,16 @@ class BookingController(http.Controller):
                         'service': booking.service_subcategory
                     })
                 
+                # Tentukan stall_position berdasarkan stall.name
+                stall_position = 'unassigned'
+                if stall.name and "Stall " in stall.name:
+                    try:
+                        stall_number = int(stall.name.replace("Stall ", ""))
+                        if 1 <= stall_number <= 10:
+                            stall_position = f'stall{stall_number}'
+                    except ValueError:
+                        pass
+                
                 # Jika tidak ada konflik, tambahkan ke available stalls
                 if not conflicting_bookings:
                     available_stalls.append({
@@ -124,7 +134,8 @@ class BookingController(http.Controller):
                         'code': stall.code,
                         'mechanics': [{'id': m.id, 'name': m.name} for m in stall.mechanic_ids],
                         'booked_slots': booked_slots,
-                        'is_available': True
+                        'is_available': True,
+                        'stall_position': stall_position  # Tambahkan informasi ini
                     })
                 else:
                     # Optional: Return stall yang sudah terisi juga dengan flag is_available=False
@@ -134,7 +145,8 @@ class BookingController(http.Controller):
                         'code': stall.code,
                         'mechanics': [{'id': m.id, 'name': m.name} for m in stall.mechanic_ids],
                         'booked_slots': booked_slots,
-                        'is_available': False
+                        'is_available': False,
+                        'stall_position': stall_position  # Tambahkan informasi ini
                     })
             
             return {
@@ -159,7 +171,8 @@ class BookingController(http.Controller):
             stalls = request.env['pitcar.service.stall'].sudo().search([])
             
             if not stalls:
-                for i in range(1, 7):
+                # Ubah dari 8 menjadi 10 stall
+                for i in range(1, 11):  # 1 sampai 10
                     request.env['pitcar.service.stall'].sudo().create({
                         'name': f'Stall {i}',
                         'code': f'S{i:02d}',
@@ -179,8 +192,8 @@ class BookingController(http.Controller):
             stalls = request.env['pitcar.service.stall'].sudo().search([('active', '=', True)])
             
             if not stalls:
-                # Create default stalls
-                for i in range(1, 7):
+                # Ubah dari 6 menjadi 10 stall
+                for i in range(1, 11):  # 1 sampai 10
                     request.env['pitcar.service.stall'].sudo().create({
                         'name': f'Stall {i}',
                         'code': f'S{i:02d}',
@@ -200,6 +213,43 @@ class BookingController(http.Controller):
             
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v1/booking/add-additional-stalls', type='json', auth="public", methods=['POST'], csrf=False)
+    def add_additional_stalls(self, **kw):
+        """Tambahkan stall tambahan jika diperlukan"""
+        try:
+            # Cek stall tertinggi yang sudah ada
+            stalls = request.env['pitcar.service.stall'].sudo().search([], order='id desc', limit=1)
+            
+            highest_stall_number = 0
+            if stalls:
+                # Coba ekstrak nomor dari nama stall terakhir
+                # Asumsi format: "Stall X"
+                stall_name = stalls[0].name
+                if "Stall " in stall_name:
+                    try:
+                        highest_stall_number = int(stall_name.replace("Stall ", ""))
+                    except ValueError:
+                        highest_stall_number = 0
+            
+            # Tambahkan stall baru hingga mencapai 10
+            stalls_added = 0
+            for i in range(highest_stall_number + 1, 11):
+                request.env['pitcar.service.stall'].sudo().create({
+                    'name': f'Stall {i}',
+                    'code': f'S{i:02d}',
+                    'active': True
+                })
+                stalls_added += 1
+            
+            return {
+                'status': 'success', 
+                'message': f'Added {stalls_added} new stalls', 
+                'total_stalls': 10
+            }
+            
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
     
     @http.route('/web/v1/booking/create', type='json', auth="public", methods=['POST'], csrf=False)
     def create_booking(self, **kw):
@@ -207,10 +257,14 @@ class BookingController(http.Controller):
         try:
             with request.env.cr.savepoint():
                 # Validasi input wajib
-                required_fields = ['plate_number', 'date', 'time', 'service_ids', 'stall_id']
+                required_fields = ['plate_number', 'date', 'time', 'stall_id']
                 for field in required_fields:
                     if not kw.get(field):
                         return {'status': 'error', 'message': f'Missing required field: {field}'}
+                
+                # Check if either service_ids or template_id is provided
+                if not kw.get('service_ids') and not kw.get('template_id'):
+                    return {'status': 'error', 'message': 'Either service_ids or template_id is required'}
                 
                 # Validasi stall exists
                 stall_id = int(kw.get('stall_id'))
@@ -223,6 +277,16 @@ class BookingController(http.Controller):
                     stall = available_stalls[0]
                     stall_id = stall.id
                 
+                # Tentukan stall_position berdasarkan stall_id
+                stall_position = 'unassigned'
+                if stall.name and "Stall " in stall.name:
+                    try:
+                        stall_number = int(stall.name.replace("Stall ", ""))
+                        if 1 <= stall_number <= 10:
+                            stall_position = f'stall{stall_number}'
+                    except ValueError:
+                        pass
+                
                 plate_number = kw.get('plate_number').replace(" ", "").upper()
                 
                 # Cek kendaraan
@@ -233,7 +297,7 @@ class BookingController(http.Controller):
                 # Jika kendaraan belum ada, buat baru
                 if not car:
                     if not all([kw.get('customer_name'), kw.get('customer_phone'), 
-                              kw.get('brand_id'), kw.get('brand_type_id')]):
+                            kw.get('brand_id'), kw.get('brand_type_id')]):
                         return {'status': 'error', 'message': 'Missing required customer/car data'}
                     
                     # Format phone number (hapus format phone validation)
@@ -274,7 +338,7 @@ class BookingController(http.Controller):
                     }
                     car = request.env['res.partner.car'].sudo().create(car_vals)
                 
-                # Create booking
+                # Create booking with appropriate stall_id and stall_position
                 booking_vals = {
                     'partner_id': car.partner_id.id,
                     'partner_car_id': car.id,
@@ -283,27 +347,41 @@ class BookingController(http.Controller):
                     'service_category': kw.get('service_category', 'maintenance'),
                     'service_subcategory': kw.get('service_subcategory', 'periodic_service'),
                     'stall_id': stall_id,
+                    'stall_position': stall_position,
                     'notes': kw.get('notes', ''),
                     'state': 'draft',
                     'booking_source': 'web',
                 }
                 
+                # Check if a template is provided
+                template_id = kw.get('template_id')
+                service_ids = kw.get('service_ids', [])
+                
+                if template_id:
+                    template = request.env['sale.order.template'].sudo().browse(int(template_id))
+                    if template.exists():
+                        booking_vals['sale_order_template_id'] = template.id
+                
                 booking = request.env['pitcar.service.booking'].sudo().create(booking_vals)
                 
-                # Add service lines
-                for service_id in kw.get('service_ids', []):
-                    product = request.env['product.product'].sudo().browse(int(service_id))
-                    if product.exists():
-                        line_vals = {
-                            'booking_id': booking.id,
-                            'product_id': product.id,
-                            'name': product.name,
-                            'quantity': 1,
-                            'price_unit': product.list_price,
-                            'service_duration': getattr(product, 'service_duration', 1.0),
-                            'tax_ids': [(6, 0, product.taxes_id.ids)],
-                        }
-                        request.env['pitcar.service.booking.line'].sudo().create(line_vals)
+                # Jika ada template, gunakan template untuk mengisi booking_line_ids
+                if template_id and booking.sale_order_template_id:
+                    booking._onchange_sale_order_template_id()
+                elif service_ids:
+                    # Add service lines individually
+                    for service_id in service_ids:
+                        product = request.env['product.product'].sudo().browse(int(service_id))
+                        if product.exists():
+                            line_vals = {
+                                'booking_id': booking.id,
+                                'product_id': product.id,
+                                'name': product.name,
+                                'quantity': 1,
+                                'price_unit': product.list_price,
+                                'service_duration': getattr(product, 'service_duration', 1.0),
+                                'tax_ids': [(6, 0, product.taxes_id.ids)],
+                            }
+                            request.env['pitcar.service.booking.line'].sudo().create(line_vals)
                 
                 # Force compute all fields to avoid cache issues
                 booking.invalidate_recordset()
@@ -332,6 +410,7 @@ class BookingController(http.Controller):
             _logger.error(f"Error in create_booking: {str(e)}")
             request.env.cr.rollback()
             return {'status': 'error', 'message': str(e)}
+
     
     @http.route('/web/v1/booking/stall-status', type='json', auth="public", methods=['POST'], csrf=False)
     def get_stall_status(self, **kw):
@@ -418,35 +497,200 @@ class BookingController(http.Controller):
     
     @http.route('/web/v1/booking/get-services', type='json', auth="public", methods=['POST'], csrf=False)
     def get_services(self, **kw):
-        """Mendapatkan daftar layanan yang tersedia"""
+        """Mendapatkan daftar layanan yang tersedia dan template paket layanan"""
         try:
-            service_category = kw.get('service_category', 'maintenance')
+            # Get service type parameter with default values
+            service_type = kw.get('service_type', 'all')  # Options: 'all', 'individual', 'package'
             
-            # Ganti query karena service_category tidak ada di product.product
-            # Gunakan product type service dan filter berdasarkan nama atau kategori produk
-            domain = [
-                ('type', '=', 'service'),
-                ('sale_ok', '=', True),
-            ]
+            # Initialize result containers
+            services = []
+            template_packages = []
             
-            # Jika ada kategori tertentu, bisa ditambahkan filter custom
-            # Misalnya menggunakan kategori produk atau custom field
-            products = request.env['product.product'].sudo().search(domain)
+            # If requesting individual services or all
+            if service_type in ['all', 'individual']:
+                # Get individual services
+                domain = [
+                    ('type', '=', 'service'),
+                    ('sale_ok', '=', True),
+                ]
+                    
+                products = request.env['product.product'].sudo().search(domain)
+                
+                for product in products:
+                    services.append({
+                        'id': product.id,
+                        'name': product.name,
+                        'price': product.list_price,
+                        'duration': product.service_duration if hasattr(product, 'service_duration') else 1.0,
+                        'description': product.description_sale or '',
+                        'type': 'individual'
+                    })
+            
+            # If requesting package templates or all
+            if service_type in ['all', 'package']:
+                # Get service templates/packages
+                templates = request.env['sale.order.template'].sudo().search([])
+                
+                for template in templates:
+                    # Calculate total duration and price
+                    total_duration = 0
+                    total_price = 0
+                    included_services = []
+                    
+                    for line in template.sale_order_template_line_ids:
+                        if not line.display_type and line.product_id and line.product_id.type == 'service':
+                            duration = line.service_duration or 0
+                            price = line.product_id.list_price * line.product_uom_qty
+                            
+                            total_duration += duration
+                            total_price += price
+                            
+                            included_services.append({
+                                'id': line.product_id.id,
+                                'name': line.name or line.product_id.name,
+                                'quantity': line.product_uom_qty,
+                                'duration': duration
+                            })
+                    
+                    template_packages.append({
+                        'id': template.id,
+                        'name': template.name,
+                        'price': total_price,
+                        'duration': total_duration,
+                        'description': template.note or '',
+                        'included_services': included_services,
+                        'type': 'package'
+                    })
+            
+            # Format response based on what was requested
+            result = {}
+            if service_type == 'individual':
+                result = {'individual_services': services}
+            elif service_type == 'package':
+                result = {'service_packages': template_packages}
+            else:  # 'all'
+                result = {
+                    'individual_services': services,
+                    'service_packages': template_packages
+                }
+            
+            return {
+                'status': 'success', 
+                'data': result
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_services: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v1/booking/get-template-details', type='json', auth="public", methods=['POST'], csrf=False)
+    def get_template_details(self, **kw):
+        """Mendapatkan detail paket layanan dari template"""
+        try:
+            template_id = kw.get('template_id')
+            if not template_id:
+                return {'status': 'error', 'message': 'Template ID is required'}
+            
+            template = request.env['sale.order.template'].sudo().browse(int(template_id))
+            if not template.exists():
+                return {'status': 'error', 'message': 'Template not found'}
+            
+            lines = []
+            total_duration = 0
+            total_price = 0
+            
+            for line in template.sale_order_template_line_ids:
+                if line.display_type:
+                    # Handle section and note lines
+                    lines.append({
+                        'display_type': line.display_type,
+                        'name': line.name,
+                        'sequence': line.sequence
+                    })
+                elif line.product_id:
+                    # Calculate price with tax
+                    unit_price = line.product_id.list_price
+                    line_price = unit_price * line.product_uom_qty
+                    
+                    # Add service duration
+                    duration = line.service_duration if hasattr(line, 'service_duration') else 0
+                    if line.product_id.type == 'service':
+                        total_duration += duration * line.product_uom_qty
+                        total_price += line_price
+                    
+                    # Handle product lines
+                    lines.append({
+                        'product_id': line.product_id.id,
+                        'name': line.name or line.product_id.name,
+                        'quantity': line.product_uom_qty,
+                        'price_unit': unit_price,
+                        'price_subtotal': line_price,
+                        'duration': duration,
+                        'sequence': line.sequence,
+                        'tax_ids': line.product_id.taxes_id.ids if hasattr(line.product_id, 'taxes_id') else [],
+                        'product_type': line.product_id.type
+                    })
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'id': template.id,
+                    'name': template.name,
+                    'note': template.note,
+                    'lines': lines,
+                    'total_duration': total_duration,
+                    'total_price': total_price
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_template_details: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v1/booking/get-templates', type='json', auth="public", methods=['POST'], csrf=False)
+    def get_templates(self, **kw):
+        """Mendapatkan daftar template paket layanan"""
+        try:
+            templates = request.env['sale.order.template'].sudo().search([])
             
             result = []
-            for product in products:
+            for template in templates:
+                # Hitung total durasi dan harga
+                total_duration = 0
+                total_price = 0
+                services_count = 0
+                services_list = []
+                
+                for line in template.sale_order_template_line_ids:
+                    if not line.display_type and line.product_id and line.product_id.type == 'service':
+                        duration = line.service_duration or 0
+                        price = line.product_id.list_price * line.product_uom_qty
+                        
+                        total_duration += duration
+                        total_price += price
+                        services_count += 1
+                        
+                        # Add service to list
+                        services_list.append({
+                            'id': line.product_id.id,
+                            'name': line.product_id.name,
+                            'quantity': line.product_uom_qty,
+                            'duration': duration
+                        })
+                
                 result.append({
-                    'id': product.id,
-                    'name': product.name,
-                    'price': product.list_price,
-                    'duration': product.service_duration if hasattr(product, 'service_duration') else 1.0,
-                    'description': product.description_sale or ''
+                    'id': template.id,
+                    'name': template.name,
+                    'price': total_price,
+                    'duration': total_duration,
+                    'services_count': services_count,
+                    'description': template.note or '',
+                    'services': services_list
                 })
             
             return {'status': 'success', 'data': result}
         except Exception as e:
-            _logger.error(f"Error in get_services: {str(e)}")
+            _logger.error(f"Error in get_templates: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
         
     @http.route('/web/v1/booking/get-transmissions', type='json', auth="public", methods=['POST'], csrf=False)
     def get_transmissions(self, **kw):
@@ -748,4 +992,77 @@ class BookingController(http.Controller):
                 
         except Exception as e:
             _logger.error(f"Error in get_daily_schedule: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v1/booking/metrics', type='json', auth="public", methods=['POST'], csrf=False)
+    def get_booking_metrics(self, **kw):
+        """Mendapatkan metrik booking untuk dashboard"""
+        try:
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            period_type = kw.get('period_type', 'day')
+            
+            domain = [('period_type', '=', period_type)]
+            if date_from:
+                domain.append(('date', '>=', date_from))
+            if date_to:
+                domain.append(('date', '<=', date_to))
+                
+            metrics = request.env['pitcar.booking.metrics'].sudo().search(domain, order='date')
+            
+            # Jika tidak ada data, kembalikan response yang sesuai
+            if not metrics:
+                return {
+                    'status': 'success', 
+                    'data': {
+                        'summary': {
+                            'total_bookings': 0,
+                            'confirmation_rate': 0,
+                            'conversion_rate': 0,
+                            'cancellation_rate': 0,
+                            'actual_revenue': 0
+                        },
+                        'trend': []
+                    }
+                }
+            
+            # Hitung rata-rata tertimbang untuk persentase
+            total_bookings = sum(metrics.mapped('total_bookings'))
+            confirmed_bookings = sum(metrics.mapped('confirmed_bookings'))
+            
+            # Buat summary
+            summary = {
+                'total_bookings': total_bookings,
+                'confirmed_bookings': sum(metrics.mapped('confirmed_bookings')),
+                'converted_bookings': sum(metrics.mapped('converted_bookings')),
+                'cancelled_bookings': sum(metrics.mapped('cancelled_bookings')),
+                'confirmation_rate': sum(m.confirmation_rate * m.total_bookings for m in metrics) / total_bookings if total_bookings else 0,
+                'conversion_rate': sum(m.conversion_rate * m.confirmed_bookings for m in metrics) / confirmed_bookings if confirmed_bookings else 0,
+                'cancellation_rate': sum(m.cancellation_rate * m.total_bookings for m in metrics) / total_bookings if total_bookings else 0,
+                'actual_revenue': sum(metrics.mapped('actual_revenue')),
+                'potential_revenue': sum(metrics.mapped('potential_revenue')),
+            }
+            
+            # Buat data trend
+            trend = [{
+                'date': fields.Date.to_string(m.date),
+                'total': m.total_bookings,
+                'confirmed': m.confirmed_bookings,
+                'converted': m.converted_bookings,
+                'cancelled': m.cancelled_bookings,
+                'confirmation_rate': m.confirmation_rate,
+                'conversion_rate': m.conversion_rate,
+                'cancellation_rate': m.cancellation_rate,
+                'revenue': m.actual_revenue,
+            } for m in metrics]
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'summary': summary,
+                    'trend': trend
+                }
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_booking_metrics: {str(e)}")
             return {'status': 'error', 'message': str(e)}

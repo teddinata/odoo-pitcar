@@ -1,0 +1,140 @@
+.o_stall_dashboard {
+  .o_kanban_view.o_kanban_grouped {
+      // Overall layout
+      padding: 0;
+      background-color: #f4f7fa;
+      
+      // Styling untuk grup/kolom
+      .o_kanban_group {
+          width: 250px !important;  // Fixed width for columns
+          min-width: 250px !important;
+          padding: 0 8px !important;
+          background-color: #f8f9fa;
+          margin-left: 8px;
+          border-radius: 6px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+          
+          // Header styling
+          .o_kanban_header {
+              min-height: 50px;
+              margin: 0;
+              padding: 8px 8px 4px;
+              
+              .o_column_title {
+                  font-size: 14px;
+                  font-weight: 600;
+                  color: #495057;
+                  text-transform: uppercase;
+                  
+                  &::before {
+                      content: "";
+                      display: inline-block;
+                      width: 12px;
+                      height: 12px;
+                      border-radius: 50%;
+                      margin-right: 6px;
+                  }
+              }
+              
+              // Avoid plus icon for adding records (we disable creation in groups)
+              .o_kanban_quick_add {
+                  display: none;
+              }
+              
+              // Make the counter more visible
+              .o_kanban_counter {
+                  margin-top: 4px;
+                  
+                  .o_kanban_counter_side {
+                      background-color: #e9ecef;
+                      color: #495057;
+                      font-weight: 600;
+                      padding: 0 8px;
+                      border-radius: 12px;
+                  }
+              }
+          }
+          
+          // Different colors for stall columns
+          &[data-id="stall1"] { 
+              border-top: 3px solid #007bff; 
+              .o_column_title::before { background-color: #007bff; }
+          }
+          &[data-id="stall2"] { 
+              border-top: 3px solid #28a745;
+              .o_column_title::before { background-color: #28a745; }
+          }
+          &[data-id="stall3"] { 
+              border-top: 3px solid #fd7e14; 
+              .o_column_title::before { background-color: #fd7e14; }
+          }
+          &[data-id="stall4"] { 
+              border-top: 3px solid #dc3545; 
+              .o_column_title::before { background-color: #dc3545; }
+          }
+          &[data-id="stall5"] { 
+              border-top: 3px solid #6f42c1; 
+              .o_column_title::before { background-color: #6f42c1; }
+          }
+          &[data-id="stall6"] { 
+              border-top: 3px solid #20c997; 
+              .o_column_title::before { background-color: #20c997; }
+          }
+          &[data-id="stall7"] { 
+              border-top: 3px solid #e83e8c; 
+              .o_column_title::before { background-color: #e83e8c; }
+          }
+          &[data-id="stall8"] { 
+              border-top: 3px solid #17a2b8; 
+              .o_column_title::before { background-color: #17a2b8; }
+          }
+          &[data-id="stall9"] { 
+              border-top: 3px solid #ffc107; 
+              .o_column_title::before { background-color: #ffc107; }
+          }
+          &[data-id="stall10"] { 
+              border-top: 3px solid #6c757d; 
+              .o_column_title::before { background-color: #6c757d; }
+          }
+          &[data-id="unassigned"] { 
+              border-top: 3px solid #adb5bd; 
+              background-color: #e9ecef;
+              .o_column_title::before { background-color: #adb5bd; }
+          }
+          
+          // Card container
+          .o_kanban_record_container {
+              padding: 8px 0;
+          }
+      }
+      
+      // Card styling
+      .o_kanban_record {
+          margin-bottom: 8px !important;
+          border-radius: 6px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          border: 1px solid #dee2e6;
+          overflow: hidden;
+          background-color: white;
+          transition: all 0.2s ease;
+          padding: 0 !important;
+          
+          // Hover effect
+          &:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+              border-color: #ced4da;
+          }
+          
+          // Spacing for empty placeholder
+          &.o_kanban_ghost {
+              height: 0 !important;
+              min-height: 0 !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              border: none !important;
+              box-shadow: none !important;
+          }
+      }
+  }
+}

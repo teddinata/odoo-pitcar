@@ -114,6 +114,23 @@ class ServiceBooking(models.Model):
         ('cancelled', 'Cancelled')
     ], string='Status', default='draft', tracking=True, index=True)
 
+    # Field untuk arsip dan analisis
+    is_archived = fields.Boolean('Diarsipkan', default=False, index=True)
+    is_completed = fields.Boolean('Selesai', compute='_compute_is_completed', store=True, index=True)
+    completion_date = fields.Datetime('Tanggal Selesai', readonly=True)
+    cancellation_reason = fields.Selection([
+        ('customer', 'Dibatalkan oleh Pelanggan'),
+        ('no_show', 'Pelanggan Tidak Hadir'),
+        ('rescheduled', 'Dijadwalkan Ulang'),
+        ('other', 'Alasan Lain')
+    ], string='Alasan Pembatalan')
+    cancellation_notes = fields.Text('Catatan Pembatalan')
+    
+    @api.depends('state')
+    def _compute_is_completed(self):
+        for booking in self:
+            booking.is_completed = booking.state in ['converted', 'cancelled']
+
     # Tambahkan field date_stop
     date_stop = fields.Date(
         string='End Date', 
@@ -366,7 +383,7 @@ class ServiceBooking(models.Model):
     )
     
     # Tambahan fields
-    stall_id = fields.Many2one('pitcar.service.stall', string='Assigned Stall', tracking=True)
+    # stall_id = fields.Many2one('pitcar.service.stall', string='Assigned Stall', tracking=True)
     booking_end_time = fields.Float('Booking End Time', compute='_compute_end_time', store=True)
     booking_source = fields.Selection([
         ('internal', 'Internal'),
@@ -517,6 +534,11 @@ class ServiceBooking(models.Model):
         
         return date_groups, {}
     
+    # Tambahkan ke model pitcar.service.booking
+    stall_id = fields.Many2one('pitcar.service.stall', string='Physical Stall',
+                            tracking=True, index=True,
+                            help="Physical stall where the service will be performed")
+
     stall_position = fields.Selection([
         ('stall1', 'STALL 1'),
         ('stall2', 'STALL 2'),
@@ -524,20 +546,153 @@ class ServiceBooking(models.Model):
         ('stall4', 'STALL 4'),
         ('stall5', 'STALL 5'),
         ('stall6', 'STALL 6'),
+        ('stall7', 'STALL 7'),
+        ('stall8', 'STALL 8'),
+        ('stall9', 'STALL 9'),
+        ('stall10', 'STALL 10'),
         ('unassigned', 'Unassigned'),
-    ], string='Pilih Stall', default='stall1', required=True, tracking=True)
+    ], string='Stall Position', default='unassigned', required=True, tracking=True,
+    help="Position in the kanban view for visual management")
 
+    @api.onchange('stall_id')
+    def _onchange_stall_id(self):
+        """Sinkronkan stall_position saat stall_id berubah"""
+        if self.stall_id:
+            # Extract number from stall name (assuming format "Stall X")
+            stall_name = self.stall_id.name
+            if "Stall " in stall_name:
+                try:
+                    stall_number = int(stall_name.replace("Stall ", ""))
+                    if 1 <= stall_number <= 10:
+                        self.stall_position = f'stall{stall_number}'
+                        return
+                except ValueError:
+                    pass
+            # Default fallback
+            self.stall_position = 'unassigned'
+        else:
+            self.stall_position = 'unassigned'
+
+    @api.onchange('stall_position')
+    def _onchange_stall_position(self):
+        """Sinkronkan stall_id saat stall_position berubah"""
+        if self.stall_position and self.stall_position != 'unassigned':
+            # Extract number from stall_position (stall1 -> 1)
+            try:
+                stall_number = int(self.stall_position.replace("stall", ""))
+                stall = self.env['pitcar.service.stall'].search([
+                    ('name', '=', f'Stall {stall_number}')
+                ], limit=1)
+                if stall:
+                    self.stall_id = stall.id
+                    return
+            except ValueError:
+                pass
+            # Reset stall_id if no match
+            self.stall_id = False
+        else:
+            self.stall_id = False
+
+    # Override write method untuk memastikan sinkronisasi saat record disimpan
     def write(self, vals):
-        """Override write untuk menangani perubahan stall via drag & drop"""
-        if 'stall_position' in vals:
-            # Log perubahan stall di chatter
-            for record in self:
-                old_stall = dict(self._fields['stall_position'].selection).get(record.stall_position, 'Unassigned')
-                new_stall = dict(self._fields['stall_position'].selection).get(vals['stall_position'], 'Unassigned')
-                msg = _(f"Booking dipindahkan dari {old_stall} ke {new_stall} oleh {self.env.user.name}")
-                record.message_post(body=msg)
+        # Sinkronisasi saat stall_id diubah
+        if 'stall_id' in vals and vals['stall_id']:
+            stall = self.env['pitcar.service.stall'].browse(vals['stall_id'])
+            if stall.exists() and "Stall " in stall.name:
+                try:
+                    stall_number = int(stall.name.replace("Stall ", ""))
+                    vals['stall_position'] = f'stall{stall_number}'
+                except ValueError:
+                    vals['stall_position'] = 'unassigned'
+        elif 'stall_id' in vals and not vals['stall_id']:
+            vals['stall_position'] = 'unassigned'
         
-        return super().write(vals)
+        # Sinkronisasi saat stall_position diubah
+        if 'stall_position' in vals and vals['stall_position'] != 'unassigned':
+            try:
+                stall_number = int(vals['stall_position'].replace("stall", ""))
+                stall = self.env['pitcar.service.stall'].search([
+                    ('name', '=', f'Stall {stall_number}')
+                ], limit=1)
+                if stall:
+                    vals['stall_id'] = stall.id
+            except ValueError:
+                vals['stall_id'] = False
+        elif 'stall_position' in vals and vals['stall_position'] == 'unassigned':
+            vals['stall_id'] = False
+        
+        return super(ServiceBooking, self).write(vals)
+
+    @api.model
+    def ensure_all_stall_positions_exist(self):
+        """Pastikan semua stall ada di database"""
+        # Pastikan semua physical stalls ada di DB
+        stall_names = ['Stall 1', 'Stall 2', 'Stall 3', 'Stall 4', 'Stall 5', 
+                    'Stall 6', 'Stall 7', 'Stall 8', 'Stall 9', 'Stall 10']
+        
+        for stall_name in stall_names:
+            stall = self.env['pitcar.service.stall'].search([
+                ('name', '=', stall_name)
+            ], limit=1)
+            
+            if not stall:
+                # Buat stall baru jika belum ada
+                stall_number = int(stall_name.replace('Stall ', ''))
+                self.env['pitcar.service.stall'].create({
+                    'name': stall_name,
+                    'code': f'S{stall_number:02d}',
+                    'active': True
+                })
+        
+        return True
+    
+    @api.model
+    def _cron_update_booking_statuses(self):
+        """Update status booking yang telah lewat tanggalnya (otomatis membatalkan booking yang tidak hadir)"""
+        today = fields.Date.today()
+        yesterday = today - timedelta(days=1)
+        
+        # Tandai booking yang tidak hadir sebagai cancelled
+        missed_bookings = self.search([
+            ('booking_date', '<', today),
+            ('state', '=', 'confirmed'),
+            ('is_archived', '=', False)
+        ])
+        
+        if missed_bookings:
+            # Batalkan dengan alasan tidak hadir
+            missed_bookings.write({
+                'state': 'cancelled',
+                'cancellation_reason': 'no_show',
+                'completion_date': fields.Datetime.now(),
+                'cancellation_notes': 'Dibatalkan otomatis: Booking telah lewat dan pelanggan tidak hadir.'
+            })
+            
+            # Log pesan di chatter untuk pelacakan
+            for booking in missed_bookings:
+                booking.message_post(
+                    body=_('Booking dibatalkan otomatis: Pelanggan tidak hadir'),
+                    message_type='comment',
+                    subtype_xmlid='mail.mt_note'
+                )
+
+    @api.model
+    def _cron_archive_old_bookings(self):
+        """Arsipkan booking lama untuk menjaga performa sistem"""
+        archive_date = fields.Date.today() - timedelta(days=90)  # Arsipkan booking lebih dari 90 hari
+        
+        # Cari booking lama yang sudah selesai dan belum diarsipkan
+        old_bookings = self.search([
+            ('booking_date', '<', archive_date),
+            ('is_completed', '=', True),  # Status converted atau cancelled
+            ('is_archived', '=', False)
+        ])
+        
+        if old_bookings:
+            old_bookings.write({'is_archived': True})
+            
+            # Log jumlah booking yang diarsipkan
+            _logger.info(f"Berhasil mengarsipkan {len(old_bookings)} booking lama.")
 
 # pitcar_custom/models/service_booking.py
 class ServiceBookingLine(models.Model):

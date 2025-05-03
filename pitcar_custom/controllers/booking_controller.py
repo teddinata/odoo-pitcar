@@ -368,7 +368,7 @@ class BookingController(http.Controller):
                 if template_id and booking.sale_order_template_id:
                     booking._onchange_sale_order_template_id()
                 elif service_ids:
-                    # Add service lines individually
+                    # Add all product lines individually (both services and products)
                     for service_id in service_ids:
                         product = request.env['product.product'].sudo().browse(int(service_id))
                         if product.exists():
@@ -378,11 +378,10 @@ class BookingController(http.Controller):
                                 'name': product.name,
                                 'quantity': 1,
                                 'price_unit': product.list_price,
-                                'service_duration': getattr(product, 'service_duration', 1.0),
+                                'service_duration': getattr(product, 'service_duration', 0.0) if product.type == 'service' else 0.0,
                                 'tax_ids': [(6, 0, product.taxes_id.ids)],
                             }
                             request.env['pitcar.service.booking.line'].sudo().create(line_vals)
-                
                 # Force compute all fields to avoid cache issues
                 booking.invalidate_recordset()
                 
@@ -611,13 +610,16 @@ class BookingController(http.Controller):
                     unit_price = line.product_id.list_price
                     line_price = unit_price * line.product_uom_qty
                     
-                    # Add service duration
-                    duration = line.service_duration if hasattr(line, 'service_duration') else 0
+                    # Add service duration for services
+                    duration = line.service_duration if hasattr(line, 'service_duration') and line.product_id.type == 'service' else 0
+                    
                     if line.product_id.type == 'service':
                         total_duration += duration * line.product_uom_qty
-                        total_price += line_price
                     
-                    # Handle product lines
+                    # Tambahkan total price untuk semua produk (termasuk service dan product)
+                    total_price += line_price
+                    
+                    # Handle product lines - tambahkan product_type untuk dikenali di frontend
                     lines.append({
                         'product_id': line.product_id.id,
                         'name': line.name or line.product_id.name,
@@ -627,7 +629,7 @@ class BookingController(http.Controller):
                         'duration': duration,
                         'sequence': line.sequence,
                         'tax_ids': line.product_id.taxes_id.ids if hasattr(line.product_id, 'taxes_id') else [],
-                        'product_type': line.product_id.type
+                        'product_type': line.product_id.type  # Tambahkan tipe produk (service atau product)
                     })
             
             return {
@@ -657,24 +659,38 @@ class BookingController(http.Controller):
                 total_duration = 0
                 total_price = 0
                 services_count = 0
+                products_count = 0  # Counter untuk produk fisik
                 services_list = []
+                products_list = []  # List untuk produk fisik
                 
                 for line in template.sale_order_template_line_ids:
-                    if not line.display_type and line.product_id and line.product_id.type == 'service':
-                        duration = line.service_duration or 0
+                    if not line.display_type and line.product_id:
                         price = line.product_id.list_price * line.product_uom_qty
                         
-                        total_duration += duration
-                        total_price += price
-                        services_count += 1
-                        
-                        # Add service to list
-                        services_list.append({
-                            'id': line.product_id.id,
-                            'name': line.product_id.name,
-                            'quantity': line.product_uom_qty,
-                            'duration': duration
-                        })
+                        if line.product_id.type == 'service':
+                            duration = line.service_duration or 0
+                            total_duration += duration
+                            total_price += price
+                            services_count += 1
+                            
+                            # Add service to list
+                            services_list.append({
+                                'id': line.product_id.id,
+                                'name': line.product_id.name,
+                                'quantity': line.product_uom_qty,
+                                'duration': duration
+                            })
+                        else:
+                            # Produk fisik
+                            total_price += price
+                            products_count += 1
+                            
+                            # Add product to list
+                            products_list.append({
+                                'id': line.product_id.id,
+                                'name': line.product_id.name,
+                                'quantity': line.product_uom_qty
+                            })
                 
                 result.append({
                     'id': template.id,
@@ -682,8 +698,10 @@ class BookingController(http.Controller):
                     'price': total_price,
                     'duration': total_duration,
                     'services_count': services_count,
+                    'products_count': products_count,  # Informasi jumlah produk fisik
                     'description': template.note or '',
-                    'services': services_list
+                    'services': services_list,
+                    'products': products_list  # List produk fisik
                 })
             
             return {'status': 'success', 'data': result}

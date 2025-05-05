@@ -6,6 +6,37 @@ from odoo.exceptions import ValidationError, AccessError, UserError
 import logging
 _logger = logging.getLogger(__name__)
 
+class CustomerSumberInfo(models.Model):
+    _name = 'customer.sumber.info'
+    _description = 'Customer Sumber Info'
+    _rec_name = 'partner_id'
+    
+    partner_id = fields.Many2one('res.partner', string='Customer', required=True, ondelete='cascade', index=True)
+    sumber = fields.Selection([
+        ('loyal', 'Loyal'),
+        ('fb_ads', 'FB Ads'),
+        ('referral', 'Referral'),
+        ('all_b2b', 'All B2B'),
+        ('ig_ads', 'IG Ads'),
+        ('google_maps', 'Google Maps'),
+        ('tiktok_ads', 'Tiktok Ads'),
+        ('ig_organic', 'IG Organic'),
+        ('beli_part', 'Beli Part'),
+        ('web_paid_ads', 'Web - Paid Ads'),
+        ('web_organic', 'Web - Organic'),
+        ('workshop', 'Workshop'),
+        ('relation', 'Relation'),
+        ('youtube', 'Youtube'),
+        ('tidak_dapat_info', 'Tidak Dapat Info'),
+    ], string="Sumber Info", required=True)
+    tanggal_daftar = fields.Date(string='Tanggal Pendaftaran', default=fields.Date.context_today)
+    notes = fields.Text(string='Catatan')
+    
+    _sql_constraints = [
+        ('partner_unique', 'unique(partner_id)', 'Customer sudah memiliki sumber info!')
+    ]
+
+
 
 class PartnerCategory(models.Model):
     _inherit = 'res.partner.category'
@@ -39,6 +70,55 @@ class ResPartner(models.Model):
     category_id = fields.Many2many('res.partner.category', column1='partner_id',
                                     column2='category_id', string='Tags', required=True)
     phone = fields.Char(unaccent=False, required=True)
+
+    # Tambahkan relasi one2one ke model baru
+    sumber_info_id = fields.One2many('customer.sumber.info', 'partner_id', string='Sumber Info')
+    
+    # Field untuk antarmuka pengguna (UI)
+    sumber_info_ui = fields.Selection([
+        ('loyal', 'Loyal'),
+        ('fb_ads', 'FB Ads'),
+        ('referral', 'Referral'),
+        ('all_b2b', 'All B2B'),
+        ('ig_ads', 'IG Ads'),
+        ('google_maps', 'Google Maps'),
+        ('tiktok_ads', 'Tiktok Ads'),
+        ('ig_organic', 'IG Organic'),
+        ('beli_part', 'Beli Part'),
+        ('web_paid_ads', 'Web - Paid Ads'),
+        ('web_organic', 'Web - Organic'),
+        ('workshop', 'Workshop'),
+        ('relation', 'Relation'),
+        ('youtube', 'Youtube'),
+        ('tidak_dapat_info', 'Tidak Dapat Info'),
+    ], string="Sumber Info", compute='_compute_sumber_info_ui', inverse='_inverse_sumber_info_ui', store=False)
+    
+    @api.depends('sumber_info_id.sumber')
+    def _compute_sumber_info_ui(self):
+        for partner in self:
+            if partner.sumber_info_id:
+                partner.sumber_info_ui = partner.sumber_info_id[0].sumber
+            else:
+                partner.sumber_info_ui = False
+    
+    def _inverse_sumber_info_ui(self):
+        for partner in self:
+            if partner.sumber_info_ui:
+                # Cek apakah sudah ada record
+                if partner.sumber_info_id:
+                    # Update record yang sudah ada
+                    partner.sumber_info_id[0].sumber = partner.sumber_info_ui
+                else:
+                    # Buat record baru
+                    self.env['customer.sumber.info'].create({
+                        'partner_id': partner.id,
+                        'sumber': partner.sumber_info_ui,
+                    })
+            elif partner.sumber_info_id:
+                # Hapus record jika field di-clear
+                partner.sumber_info_id.unlink()
+
+
 
     # def phone_get_sanitized_number(self, number_fname='phone', country_fname='country_id', force_format='E164'):
     #     """Override to handle context no_phone_validation"""
@@ -380,4 +460,3 @@ class PitcarMechanicNew(models.Model):
     _sql_constraints = [
         ('name_uniq', 'unique (name)', "Mechanic name already exists !"),
     ]
-

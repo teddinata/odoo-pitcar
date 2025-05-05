@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data>
-        <!-- Partner Sources -->
+        <!-- Partner Sources (yang sudah ada) -->
         <record id="view_partner_source_tree" model="ir.ui.view">
             <field name="name">res.partner.source.tree</field>
             <field name="model">res.partner.source</field>
@@ -41,6 +41,76 @@
             </field>
         </record>
 
+        <!-- Customer Sumber Info Views (baru) -->
+        <record id="customer_sumber_info_form_view" model="ir.ui.view">
+            <field name="name">customer.sumber.info.form</field>
+            <field name="model">customer.sumber.info</field>
+            <field name="arch" type="xml">
+                <form string="Sumber Info Customer">
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="partner_id" options="{'no_create': True}"/>
+                                <field name="sumber"/>
+                            </group>
+                            <group>
+                                <field name="tanggal_daftar"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Catatan">
+                                <field name="notes"/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+        
+        <record id="customer_sumber_info_tree_view" model="ir.ui.view">
+            <field name="name">customer.sumber.info.tree</field>
+            <field name="model">customer.sumber.info</field>
+            <field name="arch" type="xml">
+                <tree string="Sumber Info Customer">
+                    <field name="partner_id"/>
+                    <field name="sumber"/>
+                    <field name="tanggal_daftar"/>
+                </tree>
+            </field>
+        </record>
+        
+        <record id="customer_sumber_info_search_view" model="ir.ui.view">
+            <field name="name">customer.sumber.info.search</field>
+            <field name="model">customer.sumber.info</field>
+            <field name="arch" type="xml">
+                <search>
+                    <field name="partner_id"/>
+                    <field name="sumber"/>
+                    <filter string="Loyal" name="loyal" domain="[('sumber', '=', 'loyal')]"/>
+                    <filter string="FB Ads" name="fb_ads" domain="[('sumber', '=', 'fb_ads')]"/>
+                    <filter string="Referral" name="referral" domain="[('sumber', '=', 'referral')]"/>
+                    <!-- Tambahkan filter lainnya -->
+                    <group expand="1" string="Group By">
+                        <filter string="Sumber Info" name="group_sumber" context="{'group_by':'sumber'}"/>
+                        <filter string="Tanggal Daftar" name="group_tanggal" context="{'group_by':'tanggal_daftar'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+        
+        <!-- Action Customer Sumber Info -->
+        <record id="action_customer_sumber_info" model="ir.actions.act_window">
+            <field name="name">Sumber Info Customer</field>
+            <field name="res_model">customer.sumber.info</field>
+            <field name="view_mode">tree,form</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Tambahkan sumber info untuk customer baru
+                </p>
+            </field>
+        </record>
+
+        <!-- Partner Views dengan Sumber Info (gabungan) -->
         <record id="view_partner_tree" model="ir.ui.view">
             <field name="name">res.partner.tree</field>
             <field name="model">res.partner</field>
@@ -48,6 +118,9 @@
             <field name="arch" type="xml">
                 <xpath expr="//field[@name='phone']" position="before">
                     <field name="mobile"/>
+                </xpath>
+                <xpath expr="//field[@name='phone']" position="after">
+                    <field name="sumber_info_ui"/>
                 </xpath>
             </field>
         </record>
@@ -63,6 +136,22 @@
                 </xpath>
                 <xpath expr="//field[@name='category_id']" position="before">
                     <field name="source" options='{"no_open": True}'/>
+                    <field name="sumber_info_ui"/>
+                </xpath>
+            </field>
+        </record>
+        
+        <!-- Inherit Search Customer -->
+        <record id="view_partner_filter_with_sumber_info" model="ir.ui.view">
+            <field name="name">res.partner.filter.sumber.info</field>
+            <field name="model">res.partner</field>
+            <field name="inherit_id" ref="base.view_res_partner_filter"/>
+            <field name="arch" type="xml">
+                <xpath expr="//group" position="inside">
+                    <filter string="Sumber Info" name="group_sumber_info" context="{'group_by': 'sumber_info_ui'}"/>
+                </xpath>
+                <xpath expr="//field[@name='category_id']" position="after">
+                    <field name="sumber_info_ui"/>
                 </xpath>
             </field>
         </record>
@@ -97,6 +186,12 @@
                 </page>
             </field>
         </record>
+        
+        <!-- Menu Item untuk Sumber Info -->
+        <menuitem id="menu_customer_sumber_info"
+                  name="Sumber Info Customer"
+                  parent="contacts.menu_contacts"
+                  action="action_customer_sumber_info"
+                  sequence="20"/>
     </data>
 </odoo>
-    

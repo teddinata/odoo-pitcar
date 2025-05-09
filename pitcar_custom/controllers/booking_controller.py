@@ -392,6 +392,7 @@ class BookingController(http.Controller):
                 response_data = {
                     'booking_id': booking.id,
                     'booking_reference': booking.name,
+                    'unique_code': booking.unique_code,  # Tambahkan kode unik ke response
                     'booking_date': fields.Date.to_string(booking.booking_date),
                     'booking_time': booking.formatted_time,
                     'stall': booking.stall_id.name if booking.stall_id else 'Not Assigned',
@@ -1083,4 +1084,52 @@ class BookingController(http.Controller):
             }
         except Exception as e:
             _logger.error(f"Error in get_booking_metrics: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v1/booking/search', type='json', auth="public", methods=['POST'], csrf=False)
+    def search_booking(self, **kw):
+        """Mencari booking berdasarkan kode booking atau nomor plat"""
+        try:
+            booking_code = kw.get('booking_code')
+            
+            if not booking_code:
+                return {'status': 'error', 'message': 'Booking code is required'}
+            
+            # Bersihkan kode booking (hapus spasi, uppercase)
+            booking_code = booking_code.strip().upper()
+            
+            # Cari booking berdasarkan kode unik atau kode referensi
+            booking = request.env['pitcar.service.booking'].sudo().search([
+                '|',
+                ('unique_code', '=', booking_code),
+                ('name', '=', booking_code)
+            ], limit=1)
+            
+            if not booking:
+                return {'status': 'not_found', 'message': 'Booking not found'}
+            
+            # Prepare response data
+            response_data = {
+                'booking_id': booking.id,
+                'booking_reference': booking.name,
+                'unique_code': booking.unique_code,  # Tambahkan kode unik ke response
+                'booking_date': fields.Date.to_string(booking.booking_date),
+                'booking_time': booking.formatted_time,
+                'stall': booking.stall_id.name if booking.stall_id else 'Not Assigned',
+                'total_amount': booking.amount_total,
+                'customer_name': booking.partner_id.name,
+                'car_info': booking.partner_car_id.name,
+                'state': booking.state,
+                'plate_number': booking.partner_car_id.number_plate,
+                # Tambahkan QR Code untuk cetak tiket
+                'qr_code_data': booking.unique_code  # Gunakan kode unik untuk QR
+            }
+            
+            return {
+                'status': 'success',
+                'data': response_data
+            }
+                
+        except Exception as e:
+            _logger.error(f"Error in search_booking: {str(e)}")
             return {'status': 'error', 'message': str(e)}

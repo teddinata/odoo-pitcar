@@ -4,6 +4,8 @@ from odoo.exceptions import ValidationError
 from datetime import datetime, timedelta
 import pytz
 from odoo.tools import ormcache
+import random
+import string
 import logging
 
 # logger
@@ -37,6 +39,16 @@ class ServiceBooking(models.Model):
         readonly=True, 
         default=lambda self: _('New'),
         tracking=True
+    )
+
+    # Tambahkan field untuk kode booking unik
+    unique_code = fields.Char(
+        'Kode Booking', 
+        size=6, 
+        readonly=True, 
+        copy=False, 
+        index=True,
+        help='Kode unik 6 karakter untuk pencarian cepat'
     )
     
     partner_id = fields.Many2one(
@@ -151,7 +163,27 @@ class ServiceBooking(models.Model):
         if vals.get('name', _('New')) == _('New'):
             # Format: BOOK/YYYYMM/XXXX
             vals['name'] = self.env['ir.sequence'].next_by_code('pitcar.service.booking') or _('New')
+        
+        # Generate kode booking unik 6 karakter (huruf kapital dan angka)
+        if not vals.get('unique_code'):
+            # Function untuk generate kode unik
+            def generate_unique_code():
+                chars = string.ascii_uppercase + string.digits
+                return ''.join(random.choice(chars) for _ in range(6))
+            
+            # Pastikan kode unik tidak duplikat
+            unique_code = generate_unique_code()
+            while self.search_count([('unique_code', '=', unique_code)]) > 0:
+                unique_code = generate_unique_code()
+                
+            vals['unique_code'] = unique_code
+            
         return super().create(vals)
+    
+    # Tambahkan constraint untuk memastikan kode unik
+    _sql_constraints = [
+        ('unique_code_uniq', 'unique(unique_code)', 'Kode booking harus unik!')
+    ]
 
     @api.depends('booking_date')
     def _compute_date_stop(self):

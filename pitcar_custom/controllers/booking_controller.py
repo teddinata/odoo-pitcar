@@ -288,6 +288,10 @@ class BookingController(http.Controller):
                         pass
                 
                 plate_number = kw.get('plate_number').replace(" ", "").upper()
+
+                # Ambil parameter diskon booking online
+                is_online_booking = kw.get('is_online_booking', True)  # Default True untuk API web
+                online_discount = kw.get('online_discount', 10.0)  # Default 10%
                 
                 # Cek kendaraan
                 car = request.env['res.partner.car'].sudo().search([
@@ -350,6 +354,8 @@ class BookingController(http.Controller):
                     'stall_position': stall_position,
                     'notes': kw.get('notes', ''),
                     'state': 'draft',
+                    'is_online_booking': is_online_booking,
+                    'online_booking_discount': online_discount,
                     'booking_source': 'web',
                 }
                 
@@ -367,36 +373,80 @@ class BookingController(http.Controller):
                 # Jika ada template, gunakan template untuk mengisi booking_line_ids
                 if template_id and booking.sale_order_template_id:
                     booking._onchange_sale_order_template_id()
+                    
+                    # Terapkan diskon online ke semua line jika booking online
+                    if is_online_booking:
+                        for line in booking.booking_line_ids:
+                            # Simpan harga sebelum diskon
+                            price_before_discount = line.price_unit
+                            # Hitung harga setelah diskon
+                            discounted_price = price_before_discount * (1 - (online_discount / 100))
+                            
+                            # Update line dengan harga setelah diskon dan informasi diskon
+                            line.write({
+                                'price_before_discount': price_before_discount,
+                                'online_discount': online_discount,
+                                'discount': online_discount / 100,  # Simpan dengan format yang sudah ada (1.0 = 100%)
+                                'price_unit': discounted_price,
+                            })
+                    
                 elif service_ids:
                     # Add all product lines individually (both services and products)
                     for service_id in service_ids:
                         product = request.env['product.product'].sudo().browse(int(service_id))
                         if product.exists():
+                            # Harga asli dan harga setelah diskon
+                            price_before_discount = product.list_price
+                            final_price = price_before_discount
+                            
+                            # Terapkan diskon untuk booking online
+                            if is_online_booking:
+                                final_price = price_before_discount * (1 - (online_discount / 100))
+                            
                             line_vals = {
                                 'booking_id': booking.id,
                                 'product_id': product.id,
                                 'name': product.name,
                                 'quantity': 1,
-                                'price_unit': product.list_price,
+                                'price_unit': final_price,  # Gunakan harga setelah diskon
+                                'price_before_discount': price_before_discount,  # Simpan harga sebelum diskon
+                                'online_discount': online_discount if is_online_booking else 0.0,
+                                'discount': (online_discount / 100) if is_online_booking else 0.0,  # Format diskon yang ada
                                 'service_duration': getattr(product, 'service_duration', 0.0) if product.type == 'service' else 0.0,
                                 'tax_ids': [(6, 0, product.taxes_id.ids)],
                             }
                             request.env['pitcar.service.booking.line'].sudo().create(line_vals)
+                
                 # Force compute all fields to avoid cache issues
                 booking.invalidate_recordset()
                 
                 # Auto confirm booking
                 booking.sudo().action_confirm()
                 
+                # Hitung total amount sebelum dan sesudah diskon
+                total_before_discount = 0.0
+                total_after_discount = 0.0
+                
+                for line in booking.booking_line_ids:
+                    if hasattr(line, 'price_before_discount') and line.price_before_discount > 0:
+                        total_before_discount += line.price_before_discount * line.quantity
+                    else:
+                        total_before_discount += line.price_unit * line.quantity
+                    
+                    total_after_discount += line.price_unit * line.quantity
+                
                 # Prepare response data
                 response_data = {
                     'booking_id': booking.id,
                     'booking_reference': booking.name,
-                    'unique_code': booking.unique_code,  # Tambahkan kode unik ke response
+                    'unique_code': booking.unique_code,
                     'booking_date': fields.Date.to_string(booking.booking_date),
                     'booking_time': booking.formatted_time,
                     'stall': booking.stall_id.name if booking.stall_id else 'Not Assigned',
-                    'total_amount': booking.amount_total,
+                    'total_amount': total_after_discount,
+                    'original_amount': total_before_discount,
+                    'discount_amount': total_before_discount - total_after_discount,
+                    'discount_percentage': online_discount if is_online_booking else 0.0,
                     'customer_name': booking.partner_id.name,
                     'car_info': car.name,
                 }
@@ -1132,4 +1182,79 @@ class BookingController(http.Controller):
                 
         except Exception as e:
             _logger.error(f"Error in search_booking: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v1/booking/archive', type='json', auth="public", methods=['POST'], csrf=False)
+    def archive_booking(self, **kw):
+        """Archive booking API endpoint"""
+        try:
+            booking_id = kw.get('booking_id')
+            if not booking_id:
+                return {'status': 'error', 'message': 'Booking ID is required'}
+            
+            booking = request.env['pitcar.service.booking'].sudo().browse(int(booking_id))
+            if not booking.exists():
+                return {'status': 'error', 'message': 'Booking not found'}
+            
+            # Archive booking
+            booking.action_archive_booking()
+            
+            return {
+                'status': 'success',
+                'message': 'Booking archived successfully'
+            }
+        except Exception as e:
+            _logger.error(f"Error in archive_booking: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v1/booking/unarchive', type='json', auth="public", methods=['POST'], csrf=False)
+    def unarchive_booking(self, **kw):
+        """Unarchive booking API endpoint"""
+        try:
+            booking_id = kw.get('booking_id')
+            if not booking_id:
+                return {'status': 'error', 'message': 'Booking ID is required'}
+            
+            booking = request.env['pitcar.service.booking'].sudo().browse(int(booking_id))
+            if not booking.exists():
+                return {'status': 'error', 'message': 'Booking not found'}
+            
+            # Unarchive booking
+            booking.action_unarchive_booking()
+            
+            return {
+                'status': 'success',
+                'message': 'Booking unarchived successfully'
+            }
+        except Exception as e:
+            _logger.error(f"Error in unarchive_booking: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v1/booking/checkin', type='json', auth="public", methods=['POST'], csrf=False)
+    def checkin_booking(self, **kw):
+        """Check-in API endpoint for frontend"""
+        try:
+            unique_code = kw.get('unique_code')
+            if not unique_code:
+                return {'status': 'error', 'message': 'Booking code is required'}
+            
+            result = request.env['pitcar.service.booking'].sudo().process_frontend_checkin(unique_code)
+            return result
+        except Exception as e:
+            _logger.error(f"Error in checkin_booking: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v1/booking/dashboard', type='json', auth="public", methods=['POST'], csrf=False)
+    def get_booking_dashboard(self, **kw):
+        """Get dashboard data for frontend"""
+        try:
+            date = kw.get('date', fields.Date.today())
+            
+            result = request.env['pitcar.service.booking'].sudo().get_dashboard_data(date)
+            return {
+                'status': 'success',
+                'data': result
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_booking_dashboard: {str(e)}")
             return {'status': 'error', 'message': str(e)}

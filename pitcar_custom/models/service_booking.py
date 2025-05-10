@@ -185,6 +185,30 @@ class ServiceBooking(models.Model):
         ('unique_code_uniq', 'unique(unique_code)', 'Kode booking harus unik!')
     ]
 
+    # Di bagian definisi fields model pitcar.service.booking
+    is_online_booking = fields.Boolean(string='Online Booking', default=False, 
+        help='Booking dilakukan melalui aplikasi online')
+    online_booking_discount = fields.Float(string='Online Booking Discount (%)', default=10.0,
+        help='Persentase diskon untuk booking online')
+    total_before_discount = fields.Monetary(string='Total Before Discount',
+        compute='_compute_amount', store=True, readonly=True)
+    discount_amount = fields.Monetary(string='Discount Amount',
+        compute='_compute_amount', store=True, readonly=True)
+
+    # Perbarui fungsi compute amount untuk menghitung total sebelum dan sesudah diskon
+    @api.depends('booking_line_ids.price_subtotal', 'booking_line_ids.price_before_discount')
+    def _compute_amount(self):
+        for booking in self:
+            # Hitung total setelah diskon (yang sudah ada)
+            amount_total = sum(line.price_subtotal for line in booking.booking_line_ids)
+            
+            # Hitung total sebelum diskon
+            total_before_discount = sum(line.price_before_discount * line.quantity for line in booking.booking_line_ids)
+            
+            booking.amount_total = amount_total
+            booking.total_before_discount = total_before_discount
+            booking.discount_amount = total_before_discount - amount_total
+
     @api.depends('booking_date')
     def _compute_date_stop(self):
         for record in self:
@@ -237,6 +261,8 @@ class ServiceBooking(models.Model):
                 'is_booking': True,
                 'booking_id': self.id,
                 'origin': self.name,
+                # Tambahkan informasi terkait diskon booking online jika perlu
+                'is_online_booking': self.is_online_booking if hasattr(self, 'is_online_booking') else False,
             })
 
             # Convert booking lines dengan harga
@@ -251,12 +277,25 @@ class ServiceBooking(models.Model):
                     })
                     continue
 
-                # Handle product lines dengan diskon yang benar
-                # Kompensasi pembagian 100 yang dilakukan oleh Odoo
-                actual_discount = line.discount * 100 if line.discount else 0.0
+                # Inisialisasi discount
+                discount = 0.0
+                price_unit = line.price_unit
+
+                # Cek apakah ada online discount
+                if hasattr(line, 'online_discount') and line.online_discount > 0:
+                    # Jika kita memiliki price_before_discount dan online_discount, gunakan itu
+                    if hasattr(line, 'price_before_discount') and line.price_before_discount > 0:
+                        price_unit = line.price_before_discount  # Harga asli
+                        discount = line.online_discount  # Persentase diskon
+                    # Jika kita hanya memiliki price_unit yang sudah didiskon
+                    else:
+                        price_unit = line.price_unit  # Harga setelah diskon
+                        discount = 0.0  # Tidak ada diskon karena sudah diterapkan ke price_unit
+                else:
+                    # Gunakan diskon yang ada jika ada (backward compatibility)
+                    discount = line.discount * 100 if hasattr(line, 'discount') and line.discount else 0.0
                 
-                _logger.info(f"Original discount: {line.discount}")
-                _logger.info(f"Compensated discount: {actual_discount}")
+                _logger.info(f"Converting line: price_unit={price_unit}, discount={discount}")
 
                 line_values = {
                     'order_id': sale_order.id,
@@ -264,17 +303,15 @@ class ServiceBooking(models.Model):
                     'product_uom_qty': line.quantity,
                     'service_duration': line.service_duration,
                     'name': line.name,
-                    'price_unit': line.price_unit,
-                    'discount': actual_discount,  # Gunakan nilai yang sudah dikompensasi
+                    'price_unit': price_unit,  # Gunakan harga asli sebelum diskon
+                    'discount': discount,  # Gunakan diskon (baik dari online_discount atau dari line.discount)
                     'tax_id': [(6, 0, line.tax_ids.ids)],
                     'sequence': line.sequence,
                 }
                 
                 # Create sale order line dan log hasilnya
                 sale_line = self.env['sale.order.line'].create(line_values)
-                _logger.info("Created sale order line with discount: %s", sale_line.discount)
-                # new_line = self.env['sale.order.line'].create(line_values)
-                # _logger.info(f"Created sale order line with discount: {new_line.discount}")
+                _logger.info("Created sale order line with price_unit: %s, discount: %s", sale_line.price_unit, sale_line.discount)
 
             # Update booking status
             self.write({
@@ -726,6 +763,300 @@ class ServiceBooking(models.Model):
             # Log jumlah booking yang diarsipkan
             _logger.info(f"Berhasil mengarsipkan {len(old_bookings)} booking lama.")
 
+    def action_archive_booking(self):
+        """Mengarsipkan booking secara manual"""
+        self.ensure_one()
+        if self.state not in ['converted', 'cancelled']:
+            raise ValidationError(_('Only completed bookings can be archived'))
+        
+        return self.write({
+            'is_archived': True,
+            'completion_date': fields.Datetime.now() if not self.completion_date else self.completion_date
+        })
+
+    def action_unarchive_booking(self):
+        """Mengembalikan booking dari arsip"""
+        self.ensure_one()
+        return self.write({
+            'is_archived': False
+        })
+
+    # Tambahkan metode ini di kelas ServiceBooking untuk integrasi dengan frontend
+    @api.model
+    def get_frontend_booking_data(self, booking_id=None, unique_code=None):
+        """Mendapatkan data booking untuk tampilan frontend"""
+        domain = []
+        
+        if booking_id:
+            domain.append(('id', '=', int(booking_id)))
+        elif unique_code:
+            domain.append(('unique_code', '=', unique_code))
+        else:
+            return False
+        
+        booking = self.search(domain, limit=1)
+        if not booking:
+            return False
+        
+        # Format data untuk frontend
+        booking_data = {
+            'id': booking.id,
+            'name': booking.name,
+            'unique_code': booking.unique_code,
+            'date': fields.Date.to_string(booking.booking_date) if booking.booking_date else False,
+            'time': booking.formatted_time,
+            'customer': {
+                'id': booking.partner_id.id,
+                'name': booking.partner_id.name,
+                'phone': booking.partner_id.phone,
+                'email': booking.partner_id.email,
+            },
+            'car': {
+                'id': booking.partner_car_id.id,
+                'name': booking.partner_car_id.name,
+                'plate_number': booking.partner_car_id.number_plate,
+            },
+            'services': [],
+            'stall': booking.stall_id.name if booking.stall_id else 'Unassigned',
+            'stall_position': booking.stall_position,
+            'state': booking.state,
+            'amount_total': booking.amount_total,
+            'is_online_booking': booking.is_online_booking,
+            'queue_info': {
+                'is_arrived': booking.is_arrived,
+                'queue_number': booking.queue_number,
+                'display_queue_number': booking.display_queue_number,
+                'estimated_wait_minutes': booking.estimated_wait_minutes,
+            },
+        }
+        
+        # Tambahkan informasi service
+        for line in booking.booking_line_ids:
+            if not line.display_type and line.product_id:
+                booking_data['services'].append({
+                    'id': line.product_id.id,
+                    'name': line.name,
+                    'quantity': line.quantity,
+                    'price': line.price_unit,
+                    'duration': line.service_duration,
+                    'subtotal': line.price_subtotal,
+                })
+        
+        return booking_data
+
+    @api.model
+    def process_frontend_checkin(self, unique_code):
+        """Memproses checkin dari frontend"""
+        booking = self.search([('unique_code', '=', unique_code)], limit=1)
+        
+        if not booking:
+            return {'status': 'error', 'message': 'Booking not found'}
+        
+        if booking.state not in ['draft', 'confirmed']:
+            return {'status': 'error', 'message': 'Booking cannot be checked in'}
+        
+        if booking.is_arrived:
+            return {'status': 'warning', 'message': 'Already checked in', 'booking': self.get_frontend_booking_data(unique_code=unique_code)}
+        
+        # Auto confirm if in draft state
+        if booking.state == 'draft':
+            booking.action_confirm()
+        
+        # Update arrival info
+        booking.write({
+            'is_arrived': True,
+            'arrival_time': fields.Datetime.now(),
+        })
+        
+        # Calculate queue number if not set
+        if not booking.queue_number:
+            # Get today's confirmed/arrived bookings for the same stall
+            same_stall_bookings = self.search([
+                ('booking_date', '=', booking.booking_date),
+                ('stall_id', '=', booking.stall_id.id),
+                ('state', 'in', ['confirmed']),
+                ('is_arrived', '=', True),
+                ('id', '!=', booking.id)
+            ], order='arrival_time')
+            
+            # Set queue number based on existing bookings
+            booking.queue_number = len(same_stall_bookings) + 1
+            booking.display_queue_number = f"{booking.stall_id.code}-{booking.queue_number:02d}"
+            
+            # Calculate estimated wait time (15 mins per booking in queue)
+            booking.estimated_wait_minutes = len(same_stall_bookings) * 15
+            
+            # Calculate estimated service time
+            current_time = fields.Datetime.now()
+            wait_time = timedelta(minutes=booking.estimated_wait_minutes)
+            booking.estimated_service_time = current_time + wait_time
+        
+        return {
+            'status': 'success', 
+            'message': 'Check-in successful',
+            'booking': self.get_frontend_booking_data(unique_code=unique_code)
+        }
+
+    @api.model
+    def update_booking_from_frontend(self, booking_id, values):
+        """Update booking dari frontend app"""
+        booking = self.browse(int(booking_id))
+        
+        if not booking.exists():
+            return {'status': 'error', 'message': 'Booking not found'}
+        
+        try:
+            updateable_fields = [
+                'booking_date', 'booking_time', 'service_category', 
+                'service_subcategory', 'stall_id', 'stall_position',
+                'notes'
+            ]
+            
+            update_vals = {}
+            for field in updateable_fields:
+                if field in values:
+                    update_vals[field] = values[field]
+            
+            # Special case for stall_id - convert to int
+            if 'stall_id' in update_vals and update_vals['stall_id']:
+                update_vals['stall_id'] = int(update_vals['stall_id'])
+            
+            # Special case for date - convert to Date object
+            if 'booking_date' in update_vals and update_vals['booking_date']:
+                try:
+                    update_vals['booking_date'] = fields.Date.from_string(update_vals['booking_date'])
+                except ValueError:
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            
+            # Apply updates
+            booking.write(update_vals)
+            
+            # Handle service changes if provided
+            if 'service_ids' in values and values['service_ids']:
+                # Clear existing lines that are not section or note
+                booking.booking_line_ids.filtered(lambda l: not l.display_type).unlink()
+                
+                # Add new service lines
+                service_ids = values['service_ids']
+                for service_id in service_ids:
+                    product = self.env['product.product'].browse(int(service_id))
+                    if product.exists():
+                        self.env['pitcar.service.booking.line'].create({
+                            'booking_id': booking.id,
+                            'product_id': product.id,
+                            'name': product.name,
+                            'quantity': 1.0,
+                            'price_unit': product.list_price,
+                            'service_duration': product.service_duration if hasattr(product, 'service_duration') else 1.0,
+                            'tax_ids': [(6, 0, product.taxes_id.ids)],
+                        })
+            
+            return {
+                'status': 'success',
+                'message': 'Booking updated successfully',
+                'booking': self.get_frontend_booking_data(booking_id=booking.id)
+            }
+            
+        except Exception as e:
+            return {'status': 'error', 'message': str(e)}
+
+    @api.model
+    def get_dashboard_data(self, date=None):
+        """Mendapatkan data dashboard untuk frontend"""
+        if not date:
+            date = fields.Date.today()
+        else:
+            date = fields.Date.from_string(date)
+        
+        # Get bookings for the date
+        bookings = self.search([
+            ('booking_date', '=', date),
+            ('is_archived', '=', False)
+        ])
+        
+        # Count bookings by state
+        counts = {
+            'total': len(bookings),
+            'draft': len(bookings.filtered(lambda b: b.state == 'draft')),
+            'confirmed': len(bookings.filtered(lambda b: b.state == 'confirmed')),
+            'converted': len(bookings.filtered(lambda b: b.state == 'converted')),
+            'cancelled': len(bookings.filtered(lambda b: b.state == 'cancelled')),
+            'arrived': len(bookings.filtered(lambda b: b.is_arrived)),
+        }
+        
+        # Group bookings by stall
+        stalls_data = {}
+        for booking in bookings:
+            stall_key = booking.stall_id.id if booking.stall_id else 0
+            stall_name = booking.stall_id.name if booking.stall_id else 'Unassigned'
+            
+            if stall_key not in stalls_data:
+                stalls_data[stall_key] = {
+                    'id': stall_key,
+                    'name': stall_name,
+                    'count': 0,
+                    'bookings': []
+                }
+            
+            stalls_data[stall_key]['count'] += 1
+            stalls_data[stall_key]['bookings'].append({
+                'id': booking.id,
+                'name': booking.name,
+                'time': booking.formatted_time,
+                'customer': booking.partner_id.name,
+                'state': booking.state,
+                'is_arrived': booking.is_arrived,
+            })
+        
+        # Get all stalls for complete view
+        all_stalls = self.env['pitcar.service.stall'].search([])
+        for stall in all_stalls:
+            if stall.id not in stalls_data:
+                stalls_data[stall.id] = {
+                    'id': stall.id,
+                    'name': stall.name,
+                    'count': 0,
+                    'bookings': []
+                }
+        
+        # Calculate revenue and metrics
+        total_revenue = sum(booking.amount_total for booking in bookings.filtered(lambda b: b.state == 'converted'))
+        avg_booking_value = total_revenue / counts['converted'] if counts['converted'] else 0
+        
+        return {
+            'date': fields.Date.to_string(date),
+            'counts': counts,
+            'stalls': list(stalls_data.values()),
+            'metrics': {
+                'total_revenue': total_revenue,
+                'avg_booking_value': avg_booking_value,
+                'conversion_rate': (counts['converted'] / counts['total']) * 100 if counts['total'] else 0,
+                'arrival_rate': (counts['arrived'] / counts['confirmed']) * 100 if counts['confirmed'] else 0,
+            }
+        }
+
+    def action_archive_booking(self):
+        """Mengarsipkan booking secara manual"""
+        for record in self:
+            if record.state not in ['converted', 'cancelled']:
+                raise ValidationError(_('Only completed bookings can be archived'))
+            
+            record.write({
+                'is_archived': True,
+                'completion_date': fields.Datetime.now() if not record.completion_date else record.completion_date
+            })
+        
+        return True
+
+    def action_unarchive_booking(self):
+        """Mengembalikan booking dari arsip"""
+        for record in self:
+            record.write({
+                'is_archived': False
+            })
+        
+        return True
+
 # pitcar_custom/models/service_booking.py
 class ServiceBookingLine(models.Model):
     _name = 'pitcar.service.booking.line'
@@ -743,7 +1074,7 @@ class ServiceBookingLine(models.Model):
     product_id = fields.Many2one(
         'product.product', 
         string='Product/Service', 
-        domain=[('type', 'in', ['service', 'product'])],
+        # domain=[('type', 'in', ['service', 'product'])],
         required=False  # Ubah jadi False, kita akan gunakan @api.constrains
     )
     name = fields.Text(string='Description', required=True)
@@ -800,6 +1131,23 @@ class ServiceBookingLine(models.Model):
         store=True,
         string='Currency'
     )
+
+    # Di bagian definisi fields model pitcar.service.booking.line
+    price_before_discount = fields.Float(string='Price Before Discount', default=0.0,
+        help='Harga sebelum diskon booking online')
+    online_discount = fields.Float(string='Online Discount (%)', default=0.0,
+        help='Persentase diskon booking online yang diterapkan')
+
+    # Tambahkan fungsi untuk menghitung price_subtotal
+    @api.depends('quantity', 'price_unit')
+    def _compute_amount(self):
+        for line in self:
+            # Perhitungan price_subtotal (yang mungkin sudah ada)
+            line.price_subtotal = line.quantity * line.price_unit
+            
+            # Pastikan price_before_discount terisi walau hanya memanggil write()
+            if line.online_discount and not line.price_before_discount:
+                line.price_before_discount = line.price_unit / (1 - (line.online_discount / 100))
 
     @api.constrains('display_type', 'product_id', 'quantity')
     def _check_product_required(self):
@@ -872,6 +1220,14 @@ class ServiceBookingLine(models.Model):
                 'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),
                 'price_total': taxes['total_included']
             })
+
+    @api.model
+    def name_search(self, name='', args=None, operator='ilike', limit=100):
+        # Force refresh product cache before search
+        self.env['product.product'].flush()
+        self.env['product.product'].invalidate_cache()
+        
+        return super(ServiceBookingLine, self).name_search(name=name, args=args, operator=operator, limit=limit)
 
     @api.onchange('product_id')
     def _onchange_product_id(self):

@@ -1,27 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="view_pitcar_service_booking_tree" model="ir.ui.view">
-        <field name="name">pitcar.service.booking.tree</field>
-        <field name="model">pitcar.service.booking</field>
-        <field name="arch" type="xml">
-            <tree decoration-info="state == 'draft'" 
-                  decoration-success="state == 'confirmed'" 
-                  decoration-muted="state in ('converted', 'cancelled')">
-                <field name="name"/>
-                <field name="booking_date_display"/>
-                <field name="formatted_time"/>
-                <field name="partner_id"/>
-                <field name="partner_car_id"/>
-                <field name="service_category"/>
-                <field name="service_subcategory"/>
-                <field name="service_advisor_id" widget="many2many_tags"/>
-                <field name="amount_total" sum="Total" widget="monetary"/>
-                <field name="currency_id" invisible="1"/>
-                <field name="state"/>
-            </tree>
-        </field>
-    </record>
-
+    <!-- Form View untuk Service Booking -->
     <record id="view_pitcar_service_booking_form" model="ir.ui.view">
         <field name="name">pitcar.service.booking.form</field>
         <field name="model">pitcar.service.booking</field>
@@ -47,14 +26,36 @@
                             string="Cancel" 
                             type="object"
                             states="draft,confirmed"/>
+                    
+                    <!-- Archive/Unarchive Buttons -->
+                    <button name="action_archive_booking" 
+                            string="Archive Booking" 
+                            type="object" 
+                            class="btn btn-secondary" 
+                            attrs="{'invisible': ['|', ('is_archived', '=', True), ('state', 'not in', ['converted', 'cancelled'])]}"/>
+                    <button name="action_unarchive_booking" 
+                            string="Unarchive Booking" 
+                            type="object" 
+                            class="btn btn-secondary" 
+                            attrs="{'invisible': [('is_archived', '=', False)]}"/>
+                    
                     <field name="state" widget="statusbar" 
                           statusbar_visible="draft,confirmed,converted"/>
                 </header>
                 <sheet>
+                    <!-- Tampilkan banner jika diarsipkan -->
+                    <div class="alert alert-warning text-center" role="alert" 
+                         attrs="{'invisible': [('is_archived', '=', False)]}">
+                        This booking has been archived on <field name="completion_date" readonly="1" class="oe_inline"/>
+                    </div>
+                    
                     <div class="oe_title">
                         <h1>
                             <field name="name" readonly="1"/>
                         </h1>
+                        <h2 attrs="{'invisible': [('unique_code', '=', False)]}">
+                            <field name="unique_code" readonly="1" class="text-muted"/>
+                        </h2>
                     </div>
                     <group>
                         <group>
@@ -65,21 +66,63 @@
                             <field name="partner_car_id"/>
                             <field name="partner_car_odometer"/>
                             <field name="service_advisor_id" widget="many2many_tags"/>
-                            
-                             <!-- Add stall fields -->
                             <field name="stall_id" options="{'no_create': True}"/>
                             <field name="stall_position"/>
+                            <field name="is_archived" invisible="1"/>
                         </group>
                         <group>
                             <field name="formatted_create_date" string="Booking Created"/>
                             <field name="booking_date_display" attrs="{'invisible': [('booking_date_display', '=', False)]}"/>
                             <field name="booking_date" widget="date" />
                             <field name="booking_time" widget="float_time"/>
+                            <field name="booking_end_time" widget="float_time" readonly="1"/>
                             <field name="service_category"/>
                             <field name="service_subcategory"/>
                             <field name="currency_id" invisible="1"/>
+                            <field name="booking_source"/>
                         </group>
                     </group>
+                    
+                    <!-- Online Booking Information -->
+                    <group string="Online Booking Information" attrs="{'invisible': [('is_online_booking', '=', False)]}">
+                        <group>
+                            <field name="is_online_booking"/>
+                            <field name="online_booking_discount" widget="percentage"/>
+                            <field name="booking_link_token" readonly="1" attrs="{'invisible': [('booking_link_token', '=', False)]}"/>
+                        </group>
+                        <group>
+                            <field name="total_before_discount" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                            <field name="discount_amount" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Queue Information -->
+                    <group string="Queue Information" attrs="{'invisible': [('queue_number', '=', 0)]}">
+                        <group>
+                            <field name="queue_number"/>
+                            <field name="display_queue_number"/>
+                            <field name="is_arrived"/>
+                            <field name="arrival_time"/>
+                        </group>
+                        <group>
+                            <field name="estimated_wait_minutes" widget="integer"/>
+                            <field name="estimated_service_time"/>
+                            <field name="estimated_duration" widget="float_time"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Archive Information -->
+                    <group string="Archive Information" attrs="{'invisible': [('is_archived', '=', False)]}">
+                        <group>
+                            <field name="is_completed"/>
+                            <field name="completion_date"/>
+                        </group>
+                        <group>
+                            <field name="cancellation_reason" attrs="{'invisible': [('state', '!=', 'cancelled')]}"/>
+                            <field name="cancellation_notes" attrs="{'invisible': [('state', '!=', 'cancelled')]}"/>
+                        </group>
+                    </group>
+                    
                     <notebook>
                         <page string="Services" name="service_lines">
                             <field name="booking_line_ids" widget="section_and_note_one2many">
@@ -90,8 +133,9 @@
                                             <field name="product_id"/>
                                             <field name="quantity"/>
                                             <field name="service_duration" widget="float_time"/>
+                                            <field name="price_before_discount" widget="monetary" attrs="{'invisible': [('price_before_discount', '=', 0)]}"/>
                                             <field name="price_unit" widget="monetary"/>
-                                            <!-- <field name="discount" widget="percentage_discount"/> -->
+                                            <field name="online_discount" widget="percentage" attrs="{'invisible': [('online_discount', '=', 0)]}"/>
                                             <field name="discount" widget="percentage" options="{'currency_field': 'currency_id'}" force_save="1"/>
                                         </group>
                                         <group>
@@ -113,14 +157,20 @@
                                     <field name="display_type" invisible="1"/>
                                     <field name="product_id" 
                                         attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))],
-                                                'required': [('display_type', '=', False)]}"/>
+                                                'required': [('display_type', '=', False)]}" 
+                                        context="{'default_type': 'service', 'tree_view_ref': 'product.product_product_tree_view', 'search_default_filter_to_sell': 1}" 
+                                        options="{'no_create_edit': False, 'no_quick_create': False}"/>
                                     <field name="name" widget="section_and_note_text"/>
                                     <field name="quantity" 
                                         attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))],
                                                 'required': [('display_type', '=', False)]}"/>
                                     <field name="service_duration" widget="float_time"
                                         attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
+                                    <field name="price_before_discount" widget="monetary" optional="hide"
+                                        attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
                                     <field name="price_unit" widget="monetary" 
+                                        attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
+                                    <field name="online_discount" widget="percentage" optional="hide"
                                         attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
                                     <field name="discount" widget="percentage"
                                         attrs="{'invisible': [('display_type', 'in', ('line_section', 'line_note'))]}"/>
@@ -135,6 +185,10 @@
                             <group class="oe_subtotal_footer oe_right" colspan="2" name="booking_total">
                                 <field name="amount_untaxed" widget="monetary" options="{'currency_field': 'currency_id'}"/>
                                 <field name="amount_tax" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                <field name="total_before_discount" widget="monetary" options="{'currency_field': 'currency_id'}" 
+                                       attrs="{'invisible': [('is_online_booking', '=', False)]}"/>
+                                <field name="discount_amount" widget="monetary" options="{'currency_field': 'currency_id'}" 
+                                       attrs="{'invisible': [('is_online_booking', '=', False)]}"/>
                                 <div class="oe_subtotal_footer_separator oe_inline o_td_label">
                                     <label for="amount_total"/>
                                 </div>
@@ -156,24 +210,37 @@
         </field>
     </record>
 
-
-    <record id="view_pitcar_service_booking_calendar" model="ir.ui.view">
-        <field name="name">pitcar.service.booking.calendar</field>
+    <!-- Tree View untuk Service Booking dengan Archive Filter -->
+    <record id="view_pitcar_service_booking_tree" model="ir.ui.view">
+        <field name="name">pitcar.service.booking.tree</field>
         <field name="model">pitcar.service.booking</field>
         <field name="arch" type="xml">
-            <calendar string="Service Bookings" 
-                     date_start="booking_date" 
-                     color="service_category">
+            <tree decoration-info="state == 'draft'" 
+                  decoration-success="state == 'confirmed'" 
+                  decoration-muted="state in ('converted', 'cancelled')"
+                  decoration-it="is_archived == True">
                 <field name="name"/>
-                <field name="partner_id"/>
+                <field name="unique_code"/>
+                <field name="booking_date_display"/>
                 <field name="formatted_time"/>
+                <field name="partner_id"/>
+                <field name="partner_car_id"/>
                 <field name="service_category"/>
-            </calendar>
+                <field name="service_subcategory"/>
+                <field name="service_advisor_id" widget="many2many_tags"/>
+                <field name="stall_id"/>
+                <field name="is_online_booking" optional="hide"/>
+                <field name="booking_source" optional="hide"/>
+                <field name="amount_total" sum="Total" widget="monetary"/>
+                <field name="currency_id" invisible="1"/>
+                <field name="state"/>
+                <field name="is_archived" optional="show"/>
+                <field name="completion_date" optional="hide"/>
+            </tree>
         </field>
     </record>
 
-
-    <!-- Kanban View dengan Stall -->
+    <!-- Kanban View untuk Service Booking -->
     <record id="view_pitcar_service_booking_kanban_stall" model="ir.ui.view">
         <field name="name">pitcar.service.booking.kanban.stall</field>
         <field name="model">pitcar.service.booking</field>
@@ -182,6 +249,7 @@
                     class="o_kanban_small_column" 
                     records_draggable="1">
                 <field name="name"/>
+                <field name="unique_code"/>
                 <field name="partner_id"/>
                 <field name="partner_car_id"/>
                 <field name="booking_date_display"/>
@@ -194,6 +262,10 @@
                 <field name="state"/>
                 <field name="stall_position"/>
                 <field name="formatted_create_date"/>
+                <field name="is_online_booking"/>
+                <field name="booking_source"/>
+                <field name="is_arrived"/>
+                <field name="arrival_time"/>
                 
                 <progressbar field="state" 
                     colors='{"draft": "info", "confirmed": "success", "converted": "secondary", "cancelled": "danger"}'/>
@@ -208,7 +280,10 @@
                                     (record.state.raw_value == 'converted' ? '#e9ecef' : '#fff') }}; 
                                     border-bottom: 1px solid #dee2e6;">
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <strong class="h5 mb-0"><field name="name"/></strong>
+                                    <div class="d-flex flex-column">
+                                        <strong class="h5 mb-0"><field name="name"/></strong>
+                                        <small t-if="record.unique_code.raw_value" class="text-muted">Code: <field name="unique_code"/></small>
+                                    </div>
                                     <span t-attf-class="badge badge-pill px-3 py-2 {{ 
                                         record.state.raw_value == 'draft' and 'badge-info' or
                                         record.state.raw_value == 'confirmed' and 'badge-success' or
@@ -254,6 +329,13 @@
                                     </div>
                                 </div>
                                 
+                                <!-- Online Booking Badge -->
+                                <div t-if="record.is_online_booking.raw_value" 
+                                     class="d-flex align-items-center mb-2">
+                                    <i class="fa fa-globe me-2 text-success"></i>
+                                    <span class="badge badge-success">Online</span>
+                                </div>
+                                
                                 <!-- Service Advisor -->
                                 <div class="mt-2">
                                     <field name="service_advisor_id" widget="many2many_tags"/>
@@ -277,31 +359,7 @@
         </field>
     </record>
 
-    <!-- <record id="view_pitcar_stall_dashboard_action" model="ir.actions.act_window">
-        <field name="name">Stall Dashboard</field>
-        <field name="type">ir.actions.act_window</field>
-        <field name="res_model">pitcar.service.booking</field>
-        <field name="view_mode">kanban,form,calendar</field>
-        <field name="domain">[('booking_date', '=', context_today())]</field>
-        <field name="context">{
-            'search_default_group_stall_position': 1,
-            'kanban_view_ref': 'pitcar_custom.view_pitcar_service_booking_kanban_stall'
-        }</field>
-        <field name="view_ids" eval="[(5, 0, 0), 
-            (0, 0, {'view_mode': 'kanban', 'view_id': ref('view_pitcar_service_booking_kanban_stall')}),
-            (0, 0, {'view_mode': 'form', 'view_id': ref('view_pitcar_service_booking_form')}),
-            (0, 0, {'view_mode': 'calendar', 'view_id': ref('view_pitcar_service_booking_calendar')})
-        ]"/>
-        <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">
-                No service bookings scheduled for today
-            </p>
-            <p>
-                Create a new booking or schedule for another day
-            </p>
-        </field>
-    </record> -->
-
+    <!-- Wizard Form View untuk Linking Booking ke Sale Order -->
     <record id="view_booking_link_sale_order_wizard_form" model="ir.ui.view">
         <field name="name">booking.link.sale.order.wizard.form</field>
         <field name="model">booking.link.sale.order.wizard</field>
@@ -312,7 +370,6 @@
                     <field name="sale_order_id" options="{'no_create': True}"/>
                 </group>
                 <footer>
-                    <!-- <button name="action_link_sale_order"  -->
                     <button name="action_link_sale_order" 
                             string="Link to Sale Order" 
                             type="object" 
@@ -323,36 +380,18 @@
         </field>
     </record>
 
-
-    <!-- Update action window to set default grouping -->
-    <record id="action_pitcar_service_booking" model="ir.actions.act_window">
-        <field name="name">Service Bookings</field>
-        <field name="type">ir.actions.act_window</field>
-        <field name="res_model">pitcar.service.booking</field>
-        <field name="view_mode">kanban,tree,form,calendar</field>
-        <field name="search_view_id" ref="view_pitcar_service_booking_search"/>
-        <field name="context">{'group_by': 'stall_id'}</field>
-        <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">
-                Belum ada booking di stall
-            </p>
-            <p>
-                Drag and drop booking ke stall yang tersedia
-            </p>
-        </field>
-    </record>
-
-    <!-- Update search view untuk mendukung grouping -->
+    <!-- Search View untuk Service Booking dengan Archive Filter -->
     <record id="view_pitcar_service_booking_search" model="ir.ui.view">
         <field name="name">pitcar.service.booking.search</field>
         <field name="model">pitcar.service.booking</field>
         <field name="arch" type="xml">
             <search>
                 <field name="name"/>
+                <field name="unique_code"/>
                 <field name="partner_id"/>
                 <field name="partner_car_id"/>
                 <field name="service_advisor_id"/>
-                <field name="stall_id"/> <!-- Add stall_id search -->
+                <field name="stall_id"/>
                 
                 <!-- Basic filters -->
                 <!-- Filter waktu -->
@@ -373,68 +412,53 @@
                 <filter string="Converted" name="converted" domain="[('state','=','converted')]"/>
                 <filter string="Cancelled" name="cancelled" domain="[('state','=','cancelled')]"/>
                 
+                <!-- Archive Status -->
+                <separator/>
+                <filter string="Archived" name="archived" domain="[('is_archived','=',True)]"/>
+                <filter string="Not Archived" name="not_archived" domain="[('is_archived','=',False)]"/>
+                
+                <!-- Online Booking filters -->
+                <separator/>
+                <filter string="Online Booking" name="online_booking" domain="[('is_online_booking','=',True)]"/>
+                
                 <!-- Stall filters -->
                 <separator/>
                 <filter string="Show All Stalls" name="show_all_stalls" help="Show all stalls including empty ones"
                 context="{'group_by': 'stall_position'}" />
                 <filter string="Unassigned" name="unassigned_stall" domain="[('stall_position','=','unassigned')]"/>
-                <filter string="STALL 1" name="stall1" domain="[('stall_position','=','stall1')]"/>
-                <filter string="STALL 2" name="stall2" domain="[('stall_position','=','stall2')]"/>
-                <filter string="STALL 3" name="stall3" domain="[('stall_position','=','stall3')]"/>
-                <filter string="STALL 4" name="stall4" domain="[('stall_position','=','stall4')]"/>
-                <filter string="STALL 5" name="stall5" domain="[('stall_position','=','stall5')]"/>
-                <filter string="STALL 6" name="stall6" domain="[('stall_position','=','stall6')]"/>
-                <filter string="STALL 7" name="stall7" domain="[('stall_position','=','stall7')]"/>
-                <filter string="STALL 8" name="stall8" domain="[('stall_position','=','stall8')]"/>
-                <filter string="STALL 9" name="stall9" domain="[('stall_position','=','stall9')]"/>
-                <filter string="STALL 10" name="stall10" domain="[('stall_position','=','stall10')]"/>
                 
                 <!-- Group By options -->
                 <group expand="0" string="Group By">
                     <filter string="Booking Date" name="group_booking_date" context="{'group_by': 'booking_date'}"/>
                     <filter string="Status" name="status" context="{'group_by': 'state'}"/>
                     <filter string="Customer" name="customer" context="{'group_by': 'partner_id'}"/>
-                    <!-- <filter string="Stall Position" name="group_stall_position" context="{'group_by': 'stall_position'}"/> -->
                     <filter string="Physical Stall" name="group_stall_id" context="{'group_by': 'stall_id'}"/>
                     <filter string="Service Category" name="group_service_category" context="{'group_by': 'service_category'}"/>
+                    <filter string="Booking Source" name="group_booking_source" context="{'group_by': 'booking_source'}"/>
+                    <filter string="Archive Status" name="group_archive_status" context="{'group_by': 'is_archived'}"/>
                 </group>
             </search>
         </field>
     </record>
 
-     <!-- <record id="view_service_booking_form_inherit" model="ir.ui.view">
-        <field name="name">service.booking.form.inherit.stall</field>
-        <field name="model">pitcar.service.booking</field>
-        <field name="inherit_id" ref="view_pitcar_service_booking_form"/>
-        <field name="arch" type="xml">
-            <xpath expr="//field[@name='service_advisor_id']" position="after">
-                <field name="stall_position"/>
-            </xpath>
-        </field>
-    </record> -->
-
-    <record id="action_pitcar_stall_dashboard" model="ir.actions.act_window">
-        <field name="name">Stall Dashboard</field>
+    <!-- Define the missing action that's causing the error -->
+    <record id="action_pitcar_service_booking" model="ir.actions.act_window">
+        <field name="name">Service Bookings</field>
         <field name="type">ir.actions.act_window</field>
         <field name="res_model">pitcar.service.booking</field>
-        <field name="view_mode">kanban</field>
-        <field name="view_id" ref="view_pitcar_service_booking_kanban_stall"/>
-        <field name="domain">[('booking_date','=',context_today())]</field>
-        <field name="context">{
-            'search_default_group_stall_id': 1,
-            'default_group_by': 'stall_id',
-            'group_by': 'stall_id'
-        }</field>
+        <field name="view_mode">kanban,tree,form</field> <!-- Removed calendar view mode completely -->
+        <field name="context">{'search_default_not_archived': 1, 'search_default_today': 1}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
-                Belum ada booking di stall
+                No service bookings found
             </p>
             <p>
-                Drag and drop booking ke stall yang tersedia
+                Create a new service booking to get started
             </p>
         </field>
     </record>
 
+    <!-- Define action for stalls that's referenced but not defined -->
     <record id="action_pitcar_stall_list" model="ir.actions.act_window">
         <field name="name">Service Stalls</field>
         <field name="type">ir.actions.act_window</field>
@@ -442,29 +466,73 @@
         <field name="view_mode">tree,form</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
-                Create your first service stall
+                No service stalls found
+            </p>
+            <p>
+                Create service stalls to organize your service areas
             </p>
         </field>
     </record>
 
-    
-    <!-- Menu -->
-    <menuitem id="menu_pitcar_service_booking"
-            name="Service Bookings"
-            parent="sale.sale_menu_root"
-            action="action_pitcar_service_booking"
-            sequence="15"/>
+    <!-- Tambahkan action untuk melihat archived bookings -->
+    <record id="action_pitcar_service_booking_archived" model="ir.actions.act_window">
+        <field name="name">Archived Bookings</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">pitcar.service.booking</field>
+        <field name="view_mode">kanban,tree,form</field> <!-- Removed calendar view mode -->
+        <field name="context">{'search_default_archived': 1}</field>
+        <field name="domain">[('is_archived', '=', True)]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No archived bookings found
+            </p>
+            <p>
+                All archived bookings will appear here
+            </p>
+        </field>
+    </record>
 
-    <!-- <menuitem id="menu_pitcar_stall_dashboard"
-            name="Stall Dashboard"
-            parent="sale.sale_menu_root"
-            action="action_pitcar_stall_dashboard"
-            sequence="10"/> -->
+    <!-- Menu items - now they should reference properly defined actions -->
+    <menuitem id="menu_pitcar_service_booking_archived"
+              name="Archived Bookings"
+              parent="sale.sale_menu_root"
+              action="action_pitcar_service_booking_archived"
+              sequence="16"/>
+
+    <menuitem id="menu_pitcar_service_booking"
+              name="Service Bookings"
+              parent="sale.sale_menu_root"
+              action="action_pitcar_service_booking"
+              sequence="15"/>
 
     <menuitem id="menu_pitcar_stall_list"
-            name="Service Stalls"
-            parent="sale.menu_sale_config"
-            action="action_pitcar_stall_list"
-            sequence="20"/>
+              name="Service Stalls"
+              parent="sale.menu_sale_config"
+              action="action_pitcar_stall_list"
+              sequence="20"/>
 
+    <!-- Cron jobs untuk mengarsipkan booking lama dan membatalkan booking yang tidak hadir -->
+    <record id="ir_cron_archive_old_bookings" model="ir.cron">
+        <field name="name">Archive Old Bookings</field>
+        <field name="model_id" ref="model_pitcar_service_booking"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_archive_old_bookings()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="doall" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="ir_cron_update_booking_statuses" model="ir.cron">
+        <field name="name">Update Booking Statuses</field>
+        <field name="model_id" ref="model_pitcar_service_booking"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_update_booking_statuses()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="doall" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
 </odoo>

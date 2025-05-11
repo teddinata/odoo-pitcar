@@ -1106,13 +1106,14 @@ class ServiceBookingLine(models.Model):
     @api.depends('online_discount')
     def _compute_discount(self):
         for line in self:
-            # Konversi dari persentase (10.0) ke desimal (0.1)
-            line.discount = line.online_discount / 100.0
+            # Simpan keduanya sebagai persentase
+            line.discount = line.online_discount
 
     def _inverse_discount(self):
         for line in self:
-            # Konversi dari desimal (0.1) ke persentase (10.0)
-            line.online_discount = line.discount * 100.0
+            # Simpan keduanya sebagai persentase
+            line.online_discount = line.discount
+
 
     
     tax_ids = fields.Many2many(
@@ -1195,11 +1196,18 @@ class ServiceBookingLine(models.Model):
                 })
                 continue
 
-            # Gunakan field discount standar untuk perhitungan
+            # Karena discount sudah dalam format desimal (0.1 untuk 10%)
+            # JANGAN bagi dengan 100 lagi
+            # discount_factor = 1 - line.discount  # Hapus pembagian dengan 100
+
+            # Atau alternatif jika discount disimpan sebagai persentase (10.0)
+            # Karena discount dalam persentase (10.0 untuk 10%)
+            # discount_factor = 1 - (line.discount / 100.0)
             discount_factor = 1 - (line.discount / 100.0)
             
             # Hitung price setelah diskon
             price_after_discount = line.price_unit * discount_factor
+
             
             # Pastikan price_before_discount memiliki nilai
             line.price_before_discount = line.price_unit

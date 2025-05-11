@@ -266,6 +266,7 @@ class BookingController(http.Controller):
                 if not kw.get('service_ids') and not kw.get('template_id'):
                     return {'status': 'error', 'message': 'Either service_ids or template_id is required'}
                 
+                # BAGIAN 1: VALIDASI STALL
                 # Validasi stall exists
                 stall_id = int(kw.get('stall_id'))
                 stall = request.env['pitcar.service.stall'].sudo().browse(stall_id)
@@ -287,11 +288,12 @@ class BookingController(http.Controller):
                     except ValueError:
                         pass
                 
+                # BAGIAN 2: VALIDASI KENDARAAN DAN CUSTOMER
                 plate_number = kw.get('plate_number').replace(" ", "").upper()
 
-                # Ambil parameter diskon booking online
+                # Ambil parameter diskon booking online - KONSISTEN MENGGUNAKAN PERSENTASE
                 is_online_booking = kw.get('is_online_booking', True)  # Default True untuk API web
-                online_discount = kw.get('online_discount', 10.0)  # Default 10%
+                online_discount = kw.get('online_discount', 10.0)  # Default 10% - FORMAT PERSENTASE
                 
                 # Cek kendaraan
                 car = request.env['res.partner.car'].sudo().search([
@@ -341,7 +343,8 @@ class BookingController(http.Controller):
                         'engine_type': kw.get('engine_type', 'petrol'),
                     }
                     car = request.env['res.partner.car'].sudo().create(car_vals)
-                
+                    
+                # BAGIAN 3: PEMBUATAN BOOKING - DISKON HANDLING YANG DIKONSOLIDASI
                 # Create booking with appropriate stall_id and stall_position
                 booking_vals = {
                     'partner_id': car.partner_id.id,
@@ -355,7 +358,7 @@ class BookingController(http.Controller):
                     'notes': kw.get('notes', ''),
                     'state': 'draft',
                     'is_online_booking': is_online_booking,
-                    'online_booking_discount': online_discount,
+                    'online_booking_discount': online_discount,  # Simpan persentase diskon
                     'booking_source': 'web',
                 }
                 
@@ -368,50 +371,39 @@ class BookingController(http.Controller):
                     if template.exists():
                         booking_vals['sale_order_template_id'] = template.id
                 
+                # Buat booking tanpa lines dulu
                 booking = request.env['pitcar.service.booking'].sudo().create(booking_vals)
                 
+                # BAGIAN 4: PEMBUATAN BOOKING LINES DENGAN DISKON YANG KONSISTEN
                 # Jika ada template, gunakan template untuk mengisi booking_line_ids
                 if template_id and booking.sale_order_template_id:
+                    # Gunakan fungsi onchange untuk membuat lines dari template
                     booking._onchange_sale_order_template_id()
                     
                     # Terapkan diskon online ke semua line jika booking online
                     if is_online_booking:
                         for line in booking.booking_line_ids:
-                            # Simpan harga sebelum diskon
-                            price_before_discount = line.price_unit
-                            # Hitung harga setelah diskon
-                            discounted_price = price_before_discount * (1 - (online_discount / 100))
-                            
-                            # Update line dengan harga setelah diskon dan informasi diskon
-                            line.write({
-                                'price_before_discount': price_before_discount,
-                                'online_discount': online_discount,
-                                'discount': online_discount / 100,  # Simpan dengan format yang sudah ada (1.0 = 100%)
-                                'price_unit': discounted_price,
-                            })
-                    
+                            if not line.display_type:  # Abaikan section dan note
+                                # PERUBAHAN UTAMA: Hanya set online_discount, biarkan computed field bekerja
+                                line.write({
+                                    'online_discount': online_discount  # Simpan sebagai persentase (10.0 = 10%)
+                                    # price_before_discount akan terisi otomatis oleh compute
+                                    # price_subtotal akan dihitung ulang oleh _compute_amount
+                                })
+                        
                 elif service_ids:
                     # Add all product lines individually (both services and products)
                     for service_id in service_ids:
                         product = request.env['product.product'].sudo().browse(int(service_id))
                         if product.exists():
-                            # Harga asli dan harga setelah diskon
-                            price_before_discount = product.list_price
-                            final_price = price_before_discount
-                            
-                            # Terapkan diskon untuk booking online
-                            if is_online_booking:
-                                final_price = price_before_discount * (1 - (online_discount / 100))
-                            
+                            # PERUBAHAN UTAMA: Simpan harga asli di price_unit dan gunakan online_discount
                             line_vals = {
                                 'booking_id': booking.id,
                                 'product_id': product.id,
                                 'name': product.name,
                                 'quantity': 1,
-                                'price_unit': final_price,  # Gunakan harga setelah diskon
-                                'price_before_discount': price_before_discount,  # Simpan harga sebelum diskon
-                                'online_discount': online_discount if is_online_booking else 0.0,
-                                'discount': (online_discount / 100) if is_online_booking else 0.0,  # Format diskon yang ada
+                                'price_unit': product.list_price,  # Simpan harga ASLI di price_unit
+                                'online_discount': online_discount if is_online_booking else 0.0,  # Simpan diskon sebagai persentase
                                 'service_duration': getattr(product, 'service_duration', 0.0) if product.type == 'service' else 0.0,
                                 'tax_ids': [(6, 0, product.taxes_id.ids)],
                             }
@@ -423,19 +415,8 @@ class BookingController(http.Controller):
                 # Auto confirm booking
                 booking.sudo().action_confirm()
                 
-                # Hitung total amount sebelum dan sesudah diskon
-                total_before_discount = 0.0
-                total_after_discount = 0.0
-                
-                for line in booking.booking_line_ids:
-                    if hasattr(line, 'price_before_discount') and line.price_before_discount > 0:
-                        total_before_discount += line.price_before_discount * line.quantity
-                    else:
-                        total_before_discount += line.price_unit * line.quantity
-                    
-                    total_after_discount += line.price_unit * line.quantity
-                
-                # Prepare response data
+                # BAGIAN 5: PERHITUNGAN TOTAL UNTUK RESPONSE - GUNAKAN COMPUTED FIELDS
+                # Prepare response data - Gunakan computed fields yang sudah ada
                 response_data = {
                     'booking_id': booking.id,
                     'booking_reference': booking.name,
@@ -443,12 +424,13 @@ class BookingController(http.Controller):
                     'booking_date': fields.Date.to_string(booking.booking_date),
                     'booking_time': booking.formatted_time,
                     'stall': booking.stall_id.name if booking.stall_id else 'Not Assigned',
-                    'total_amount': total_after_discount,
-                    'original_amount': total_before_discount,
-                    'discount_amount': total_before_discount - total_after_discount,
+                    'total_amount': booking.amount_total,  # Gunakan computed field
+                    'original_amount': booking.total_before_discount,  # Gunakan computed field
+                    'discount_amount': booking.discount_amount,  # Gunakan computed field
                     'discount_percentage': online_discount if is_online_booking else 0.0,
                     'customer_name': booking.partner_id.name,
                     'car_info': car.name,
+                    'plate_number': car.number_plate,
                 }
                 
                 return {

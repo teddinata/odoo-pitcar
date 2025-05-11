@@ -199,7 +199,7 @@ class ServiceBooking(models.Model):
     @api.depends('booking_line_ids.price_subtotal', 'booking_line_ids.price_before_discount')
     def _compute_amount(self):
         for booking in self:
-            # Hitung total setelah diskon (yang sudah ada)
+            # Hitung total setelah diskon
             amount_total = sum(line.price_subtotal for line in booking.booking_line_ids)
             
             # Hitung total sebelum diskon
@@ -207,7 +207,12 @@ class ServiceBooking(models.Model):
             
             booking.amount_total = amount_total
             booking.total_before_discount = total_before_discount
-            booking.discount_amount = total_before_discount - amount_total
+            
+            # PERBAIKAN: Gunakan persentase diskon yang benar
+            if booking.is_online_booking:
+                booking.discount_amount = total_before_discount * (booking.online_booking_discount / 100.0)
+            else:
+                booking.discount_amount = total_before_discount - amount_total
 
     @api.depends('booking_date')
     def _compute_date_stop(self):

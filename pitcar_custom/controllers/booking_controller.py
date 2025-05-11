@@ -384,12 +384,11 @@ class BookingController(http.Controller):
                     if is_online_booking:
                         for line in booking.booking_line_ids:
                             if not line.display_type:  # Abaikan section dan note
-                                # PERUBAHAN UTAMA: Hanya set online_discount, biarkan computed field bekerja
+                                # MASALAH: Diskon mungkin tersimpan dalam desimal saat diteruskan
                                 line.write({
                                     'online_discount': online_discount,  # Simpan sebagai persentase (10.0 = 10%)
-                                    'discount': online_discount / 100.0
-                                    # price_before_discount akan terisi otomatis oleh compute
-                                    # price_subtotal akan dihitung ulang oleh _compute_amount
+                                    'discount': online_discount  # Pastikan discount juga tersimpan sebagai persentase
+                                    # Tidak perlu online_discount / 100.0
                                 })
                         
                 elif service_ids:

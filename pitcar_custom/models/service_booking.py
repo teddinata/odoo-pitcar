@@ -1133,21 +1133,20 @@ class ServiceBookingLine(models.Model):
     )
 
     # Di bagian definisi fields model pitcar.service.booking.line
-    price_before_discount = fields.Float(string='Price Before Discount', default=0.0,
-        help='Harga sebelum diskon booking online')
+    price_before_discount = fields.Float(
+        string='Price Before Discount',
+        compute='_compute_price_before_discount',
+        store=True,
+        help='Harga original sebelum diskon booking online'
+    )
+
+    @api.depends('price_unit')
+    def _compute_price_before_discount(self):
+        for line in self:
+            line.price_before_discount = line.price_unit
+
     online_discount = fields.Float(string='Online Discount (%)', default=0.0,
         help='Persentase diskon booking online yang diterapkan')
-
-    # Tambahkan fungsi untuk menghitung price_subtotal
-    @api.depends('quantity', 'price_unit')
-    def _compute_amount(self):
-        for line in self:
-            # Perhitungan price_subtotal (yang mungkin sudah ada)
-            line.price_subtotal = line.quantity * line.price_unit
-            
-            # Pastikan price_before_discount terisi walau hanya memanggil write()
-            if line.online_discount and not line.price_before_discount:
-                line.price_before_discount = line.price_unit / (1 - (line.online_discount / 100))
 
     @api.constrains('display_type', 'product_id', 'quantity')
     def _check_product_required(self):
@@ -1167,7 +1166,8 @@ class ServiceBookingLine(models.Model):
             self.service_duration = 0
             self.tax_ids = [(5, 0, 0)]  # Clear taxes
 
-    @api.depends('quantity', 'price_unit', 'tax_ids', 'discount')
+    # Tambahkan fungsi untuk menghitung price_subtotal
+    @api.depends('quantity', 'price_unit', 'tax_ids', 'online_discount')
     def _compute_amount(self):
         """Compute the amounts of the booking line."""
         for line in self:
@@ -1179,42 +1179,29 @@ class ServiceBookingLine(models.Model):
                 })
                 continue
 
+            # Gunakan online_discount (dalam persentase)
+            discount_factor = 1 - (line.online_discount / 100.0)
+            
             # Hitung price setelah diskon
-            price = line.price_unit * (1 - (line.discount / 100.0))  # Konversi diskon ke desimal
+            price_after_discount = line.price_unit * discount_factor
+            
+            # Pastikan price_before_discount memiliki nilai
+            if not line.price_before_discount:
+                line.price_before_discount = line.price_unit
             
             # Hitung subtotal
-            subtotal = line.quantity * price
+            subtotal = line.quantity * price_after_discount
 
             # Hitung pajak
             taxes = line.tax_ids.compute_all(
-                price,
+                price_after_discount,
                 line.booking_id.currency_id,
                 line.quantity,
                 product=line.product_id,
                 partner=line.booking_id.partner_id
             )
 
-            line.update({
-                'price_subtotal': taxes['total_excluded'],
-                'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),
-                'price_total': taxes['total_included']
-            })
-
-
-            # Hitung price setelah 
-            price = line.price_unit * (1 - line.discount)  # Hapus pembagian dengan 100
-            # Hitung subtotal sebelum pajak
-            subtotal = line.quantity * price
-
-            # Hitung pajak
-            taxes = line.tax_ids.compute_all(
-                price,  # Gunakan harga per unit yang sudah didiskon
-                line.booking_id.currency_id,
-                line.quantity,
-                product=line.product_id,
-                partner=line.booking_id.partner_id
-            )
-
+            # Lakukan update hanya sekali
             line.update({
                 'price_subtotal': taxes['total_excluded'],
                 'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),

@@ -387,7 +387,7 @@ class BookingController(http.Controller):
                                 # PERUBAHAN UTAMA: Hanya set online_discount, biarkan computed field bekerja
                                 line.write({
                                     'online_discount': online_discount,  # Simpan sebagai persentase (10.0 = 10%)
-                                    'discount': online_discount 
+                                    'discount': online_discount / 100.0
                                     # price_before_discount akan terisi otomatis oleh compute
                                     # price_subtotal akan dihitung ulang oleh _compute_amount
                                 })

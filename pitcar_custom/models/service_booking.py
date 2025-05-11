@@ -1106,11 +1106,13 @@ class ServiceBookingLine(models.Model):
     @api.depends('online_discount')
     def _compute_discount(self):
         for line in self:
-            line.discount = line.online_discount  # Salin nilai dari online_discount ke discount
+            # Konversi dari persentase (10.0) ke desimal (0.1)
+            line.discount = line.online_discount / 100.0
 
     def _inverse_discount(self):
         for line in self:
-            line.online_discount = line.discount  # Saat discount diubah, update online_discount
+            # Konversi dari desimal (0.1) ke persentase (10.0)
+            line.online_discount = line.discount * 100.0
 
     
     tax_ids = fields.Many2many(

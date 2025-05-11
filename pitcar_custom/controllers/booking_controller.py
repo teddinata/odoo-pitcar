@@ -386,7 +386,8 @@ class BookingController(http.Controller):
                             if not line.display_type:  # Abaikan section dan note
                                 # PERUBAHAN UTAMA: Hanya set online_discount, biarkan computed field bekerja
                                 line.write({
-                                    'online_discount': online_discount  # Simpan sebagai persentase (10.0 = 10%)
+                                    'online_discount': online_discount,  # Simpan sebagai persentase (10.0 = 10%)
+                                    'discount': online_discount 
                                     # price_before_discount akan terisi otomatis oleh compute
                                     # price_subtotal akan dihitung ulang oleh _compute_amount
                                 })
@@ -397,13 +398,24 @@ class BookingController(http.Controller):
                         product = request.env['product.product'].sudo().browse(int(service_id))
                         if product.exists():
                             # PERUBAHAN UTAMA: Simpan harga asli di price_unit dan gunakan online_discount
+                            # line_vals = {
+                            #     'booking_id': booking.id,
+                            #     'product_id': product.id,
+                            #     'name': product.name,
+                            #     'quantity': 1,
+                            #     'price_unit': product.list_price,  # Simpan harga ASLI di price_unit
+                            #     'online_discount': online_discount if is_online_booking else 0.0,  # Simpan diskon sebagai persentase
+                            #     'service_duration': getattr(product, 'service_duration', 0.0) if product.type == 'service' else 0.0,
+                            #     'tax_ids': [(6, 0, product.taxes_id.ids)],
+                            # }
                             line_vals = {
                                 'booking_id': booking.id,
                                 'product_id': product.id,
                                 'name': product.name,
                                 'quantity': 1,
-                                'price_unit': product.list_price,  # Simpan harga ASLI di price_unit
-                                'online_discount': online_discount if is_online_booking else 0.0,  # Simpan diskon sebagai persentase
+                                'price_unit': product.list_price,
+                                'online_discount': online_discount if is_online_booking else 0.0,
+                                'discount': online_discount if is_online_booking else 0.0,  # Isi juga field discount
                                 'service_duration': getattr(product, 'service_duration', 0.0) if product.type == 'service' else 0.0,
                                 'tax_ids': [(6, 0, product.taxes_id.ids)],
                             }

@@ -297,14 +297,15 @@ class ServiceBooking(models.Model):
                 
                 _logger.info(f"Converting line: price_unit={price_unit}, discount={discount}")
 
+                # Dalam fungsi action_convert_to_sale_order
                 line_values = {
                     'order_id': sale_order.id,
                     'product_id': line.product_id.id,
                     'product_uom_qty': line.quantity,
                     'service_duration': line.service_duration,
                     'name': line.name,
-                    'price_unit': price_unit,  # Gunakan harga asli sebelum diskon
-                    'discount': discount,  # Gunakan diskon (baik dari online_discount atau dari line.discount)
+                    'price_unit': line.price_unit,
+                    'discount': line.discount,  # Pastikan nilai diskon disalin
                     'tax_id': [(6, 0, line.tax_ids.ids)],
                     'sequence': line.sequence,
                 }
@@ -1095,9 +1096,22 @@ class ServiceBookingLine(models.Model):
     
     discount = fields.Float(
         string='Discount (%)',
-        digits=(16, 2),  # Ubah precision menjadi lebih spesifik
+        compute='_compute_discount',
+        inverse='_inverse_discount',
+        store=True,
+        digits=(16, 2),
         default=0.0
     )
+
+    @api.depends('online_discount')
+    def _compute_discount(self):
+        for line in self:
+            line.discount = line.online_discount  # Salin nilai dari online_discount ke discount
+
+    def _inverse_discount(self):
+        for line in self:
+            line.online_discount = line.discount  # Saat discount diubah, update online_discount
+
     
     tax_ids = fields.Many2many(
         'account.tax',
@@ -1167,7 +1181,7 @@ class ServiceBookingLine(models.Model):
             self.tax_ids = [(5, 0, 0)]  # Clear taxes
 
     # Tambahkan fungsi untuk menghitung price_subtotal
-    @api.depends('quantity', 'price_unit', 'tax_ids', 'online_discount')
+    @api.depends('quantity', 'price_unit', 'tax_ids', 'discount')
     def _compute_amount(self):
         """Compute the amounts of the booking line."""
         for line in self:
@@ -1179,19 +1193,15 @@ class ServiceBookingLine(models.Model):
                 })
                 continue
 
-            # Gunakan online_discount (dalam persentase)
-            discount_factor = 1 - (line.online_discount / 100.0)
+            # Gunakan field discount standar untuk perhitungan
+            discount_factor = 1 - (line.discount / 100.0)
             
             # Hitung price setelah diskon
             price_after_discount = line.price_unit * discount_factor
             
             # Pastikan price_before_discount memiliki nilai
-            if not line.price_before_discount:
-                line.price_before_discount = line.price_unit
+            line.price_before_discount = line.price_unit
             
-            # Hitung subtotal
-            subtotal = line.quantity * price_after_discount
-
             # Hitung pajak
             taxes = line.tax_ids.compute_all(
                 price_after_discount,
@@ -1201,7 +1211,6 @@ class ServiceBookingLine(models.Model):
                 partner=line.booking_id.partner_id
             )
 
-            # Lakukan update hanya sekali
             line.update({
                 'price_subtotal': taxes['total_excluded'],
                 'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),

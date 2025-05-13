@@ -51,3 +51,4 @@ from . import it_program
 from . import team_project_notification
 from . import team_project_automated_notification
 from . import booking_metrics
+from . import sale_order_template

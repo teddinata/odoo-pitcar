@@ -3883,3 +3883,188 @@ class LeadTimeAPIController(http.Controller):
             return 'in_progress'
         return 'completed'
 
+    # Tambahkan di LeadTimeAPIController
+    @http.route('/web/lead-time/stalls', type='json', auth='user', methods=['GET'])
+    def get_stalls(self):
+        """Get all stalls with their status"""
+        try:
+            stalls = request.env['pitcar.service.stall'].sudo().search([('active', '=', True)])
+            
+            result = []
+            for stall in stalls:
+                # Get active orders
+                active_orders = request.env['sale.order'].sudo().search([
+                    ('stall_id', '=', stall.id),
+                    ('controller_mulai_servis', '!=', False),
+                    ('controller_selesai', '=', False)
+                ], limit=1)
+                
+                # Get today's bookings
+                today = fields.Date.today()
+                bookings = request.env['pitcar.service.booking'].sudo().search([
+                    ('stall_id', '=', stall.id),
+                    ('booking_date', '=', today),
+                    ('state', 'not in', ['cancelled'])
+                ])
+                
+                # Format bookings
+                booking_data = []
+                for booking in bookings:
+                    start_hour = int(booking.booking_time)
+                    start_minute = int((booking.booking_time - start_hour) * 60)
+                    
+                    # Format times
+                    start_time = f"{start_hour:02d}:{start_minute:02d}"
+                    
+                    booking_data.append({
+                        'id': booking.id,
+                        'customer': booking.partner_id.name,
+                        'time': start_time,
+                        'state': booking.state
+                    })
+                
+                # Add stall info
+                stall_info = {
+                    'id': stall.id,
+                    'name': stall.name,
+                    'code': stall.code,
+                    'status': 'occupied' if active_orders else 'available',
+                    'bookings': booking_data
+                }
+                
+                # Add active order info if any
+                if active_orders:
+                    order = active_orders[0]
+                    
+                    # Get job stop status
+                    job_stop = None
+                    if order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai:
+                        job_stop = 'tunggu_part'
+                    elif order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai:
+                        job_stop = 'tunggu_konfirmasi'
+                    elif order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai:
+                        job_stop = 'istirahat'
+                    
+                    stall_info['current_order'] = {
+                        'id': order.id,
+                        'name': order.name,
+                        'customer': order.partner_id.name,
+                        'start_time': self._format_local_time(order.controller_mulai_servis),
+                        'job_stop': job_stop,
+                        'progress': order.lead_time_progress
+                    }
+                
+                result.append(stall_info)
+            
+            return {
+                'status': 'success',
+                'data': result
+            }
+        
+        except Exception as e:
+            _logger.error(f"Error in get_stalls: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    # Tambahkan metode ini di LeadTimeAPIController
+    @http.route('/web/lead-time/<int:sale_order_id>/stall', type='json', auth='user', methods=['POST', 'OPTIONS'])
+    def manage_stall(self, sale_order_id, **kw):
+        """Assign or change stall for a service order"""
+        try:
+            # Handle OPTIONS request for CORS
+            if request.httprequest.method == 'OPTIONS':
+                headers = {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                    'Access-Control-Allow-Credentials': 'true'
+                }
+                return Response(status=200, headers=headers)
+                
+            # Validate access
+            sale_order = self._validate_access(sale_order_id)
+            if not sale_order:
+                return {'status': 'error', 'message': 'Sale order not found'}
+                
+            # Get stall_id from params
+            stall_id = kw.get('stall_id')
+            notes = kw.get('notes', '')
+            
+            if not stall_id:
+                return {'status': 'error', 'message': 'Stall ID is required'}
+                
+            # Check if stall exists
+            stall = request.env['pitcar.service.stall'].sudo().browse(int(stall_id))
+            if not stall.exists():
+                return {'status': 'error', 'message': 'Stall not found'}
+                
+            # Check for conflicts
+            if not kw.get('force'):
+                conflicting_order = request.env['sale.order'].sudo().search([
+                    ('stall_id', '=', stall.id),
+                    ('controller_mulai_servis', '!=', False),
+                    ('controller_selesai', '=', False),
+                    ('id', '!=', sale_order.id)
+                ], limit=1)
+                
+                if conflicting_order:
+                    return {
+                        'status': 'warning',
+                        'message': f'Stall already assigned to another order: {conflicting_order.name}',
+                        'data': {
+                            'conflicting_order': {
+                                'id': conflicting_order.id,
+                                'name': conflicting_order.name
+                            }
+                        }
+                    }
+            
+            # End current stall assignment if any
+            if sale_order.stall_id:
+                history = request.env['pitcar.stall.history'].sudo().search([
+                    ('sale_order_id', '=', sale_order.id),
+                    ('stall_id', '=', sale_order.stall_id.id),
+                    ('end_time', '=', False)
+                ], limit=1)
+                
+                if history:
+                    history.write({'end_time': fields.Datetime.now()})
+            
+            # Assign new stall
+            sale_order.write({'stall_id': stall.id})
+            
+            # Create new history entry
+            request.env['pitcar.stall.history'].sudo().create({
+                'sale_order_id': sale_order.id,
+                'stall_id': stall.id,
+                'start_time': fields.Datetime.now(),
+                'notes': notes
+            })
+            
+            # Log to chatter
+            current_time = fields.Datetime.now()
+            formatted_time = self._format_local_datetime(current_time)
+            
+            body = f"""
+            <p><strong>Stall Assigned</strong></p>
+            <ul>
+                <li>Stall: {stall.name}</li>
+                <li>Assigned by: {request.env.user.name}</li>
+                <li>Time: {formatted_time}</li>
+                <li>Notes: {notes}</li>
+            </ul>
+            """
+            sale_order.message_post(body=body, message_type='notification')
+            
+            return {
+                'status': 'success',
+                'message': f'Stall assigned successfully',
+                'data': {
+                    'order_id': sale_order.id,
+                    'stall_id': stall.id,
+                    'stall_name': stall.name
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in manage_stall: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

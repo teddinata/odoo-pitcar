@@ -68,6 +68,10 @@ class BookingLinkSaleOrderWizard(models.TransientModel):
                 'origin': booking.name,
                 'sale_order_template_id': booking.sale_order_template_id.id
             }
+            
+            # PERBAIKAN 1: Transfer hanya stall_id ke sale order
+            if booking.stall_id:
+                sale_order_vals['stall_id'] = booking.stall_id.id
 
             # Update sale order with all booking data
             sale_order.write(sale_order_vals)
@@ -98,12 +102,22 @@ class BookingLinkSaleOrderWizard(models.TransientModel):
                             'service_duration': line.service_duration,
                             'name': line.name,
                             'price_unit': line.price_unit,
-                            'discount': float(line.discount) * 100 if line.discount else 0.0,  # Konversi diskon
+                            # PERBAIKAN 2: Tidak perlu mengalikan diskon dengan 100
+                            'discount': line.discount if line.discount else 0.0,  # Tidak perlu dikalikan 100
                             'tax_id': [(6, 0, line.tax_ids.ids)],
                             'sequence': line.sequence,
                         }
                         self.env['sale.order.line'].create(vals)
                         existing_products.add(line.product_id.id)
+
+            # Create stall history if stall is assigned
+            if booking.stall_id:
+                self.env['pitcar.stall.history'].create({
+                    'sale_order_id': sale_order.id,
+                    'stall_id': booking.stall_id.id,
+                    'start_time': fields.Datetime.now(),
+                    'notes': f'Assigned from booking link: {booking.name}'
+                })
 
             # Mark booking as converted
             booking.write({
@@ -119,6 +133,7 @@ class BookingLinkSaleOrderWizard(models.TransientModel):
                 <li>Customer: {booking.partner_id.name}</li>
                 <li>Car: {booking.partner_car_id.display_name}</li>
                 <li>Queue Number: {sale_order.display_queue_number or 'Not assigned'}</li>
+                <li>Stall: {booking.stall_id.name if booking.stall_id else 'Not assigned'}</li>
                 <li>Linked by: {self.env.user.name}</li>
                 <li>Link Time: {fields.Datetime.now()}</li>
             </ul>

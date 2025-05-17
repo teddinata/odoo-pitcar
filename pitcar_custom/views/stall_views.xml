@@ -1,0 +1,291 @@
+<odoo>
+    <data>
+        <!-- Stall Form View -->
+        <record id="view_pitcar_service_stall_form" model="ir.ui.view">
+            <field name="name">pitcar.service.stall.form</field>
+            <field name="model">pitcar.service.stall</field>
+            <field name="arch" type="xml">
+                <form string="Service Stall">
+                    <sheet>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="name" placeholder="Stall Name"/>
+                            </h1>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="code"/>
+                                <field name="active"/>
+                                <field name="is_quick_service"/>
+                                <field name="max_capacity"/>
+                            </group>
+                            <group>
+                                <field name="status"/>
+                                <field name="is_occupied"/>
+                                <field name="daily_utilization" widget="percentage"/>
+                                <field name="available_from"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Mechanics" name="mechanics">
+                                <field name="mechanic_ids" widget="many2many_tags"/>
+                            </page>
+                            <page string="Active Orders" name="active_orders">
+                                <field name="active_order_ids" readonly="1">
+                                    <tree>
+                                        <field name="name"/>
+                                        <field name="partner_id"/>
+                                        <field name="partner_car_id"/>
+                                        <field name="controller_mulai_servis"/>
+                                        <field name="lead_time_progress" widget="progressbar"/>
+                                    </tree>
+                                </field>
+                            </page>
+                            <page string="Today's Bookings" name="bookings">
+                                <field name="booking_ids" domain="[('booking_date', '=', context_today())]" readonly="1">
+                                    <tree>
+                                        <field name="name"/>
+                                        <field name="partner_id"/>
+                                        <field name="booking_time" widget="float_time"/>
+                                        <field name="state"/>
+                                    </tree>
+                                </field>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+        
+        <!-- Stall Tree View -->
+        <record id="view_pitcar_service_stall_tree" model="ir.ui.view">
+            <field name="name">pitcar.service.stall.tree</field>
+            <field name="model">pitcar.service.stall</field>
+            <field name="arch" type="xml">
+                <tree string="Service Stalls" decoration-success="status=='available'" decoration-warning="status=='scheduled'" decoration-danger="status=='occupied'">
+                    <field name="name"/>
+                    <field name="code"/>
+                    <field name="status"/>
+                    <field name="current_order_id"/>
+                    <field name="daily_utilization" widget="percentage"/>
+                    <field name="active"/>
+                </tree>
+            </field>
+        </record>
+        
+        <!-- Stall Kanban View -->
+        <record id="view_pitcar_service_stall_kanban" model="ir.ui.view">
+            <field name="name">pitcar.service.stall.kanban</field>
+            <field name="model">pitcar.service.stall</field>
+            <field name="arch" type="xml">
+                <kanban class="o_kanban_mobile" default_group_by="status">
+                    <field name="name"/>
+                    <field name="code"/>
+                    <field name="status"/>
+                    <field name="is_occupied"/>
+                    <field name="current_order_id"/>
+                    <field name="daily_utilization"/>
+                    <templates>
+                        <t t-name="kanban-box">
+                            <div t-attf-class="oe_kanban_global_click">
+                                <div class="oe_kanban_details">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="name"/>
+                                    </strong>
+                                    <div class="o_kanban_tags_section">
+                                        <span t-if="record.status.raw_value == 'available'" class="badge badge-success">Available</span>
+                                        <span t-if="record.status.raw_value == 'occupied'" class="badge badge-danger">Occupied</span>
+                                        <span t-if="record.status.raw_value == 'scheduled'" class="badge badge-warning">Scheduled</span>
+                                        <span t-if="record.status.raw_value == 'maintenance'" class="badge badge-dark">Maintenance</span>
+                                    </div>
+                                    <ul>
+                                        <li t-if="record.is_occupied.raw_value">
+                                            <strong>Current Order:</strong> <field name="current_order_id"/>
+                                        </li>
+                                        <li>
+                                            <strong>Utilization:</strong> <field name="daily_utilization" widget="percentage"/>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </t>
+                    </templates>
+                </kanban>
+            </field>
+        </record>
+        
+        <!-- Stall Search View -->
+        <record id="view_pitcar_service_stall_search" model="ir.ui.view">
+            <field name="name">pitcar.service.stall.search</field>
+            <field name="model">pitcar.service.stall</field>
+            <field name="arch" type="xml">
+                <search string="Search Stalls">
+                    <field name="name"/>
+                    <field name="code"/>
+                    <field name="mechanic_ids"/>
+                    <filter string="Available" name="available" domain="[('status', '=', 'available')]"/>
+                    <filter string="Occupied" name="occupied" domain="[('status', '=', 'occupied')]"/>
+                    <filter string="Scheduled" name="scheduled" domain="[('status', '=', 'scheduled')]"/>
+                    <filter string="Quick Service" name="quick_service" domain="[('is_quick_service', '=', True)]"/>
+                    <group expand="0" string="Group By">
+                        <filter name="group_by_status" string="Status" context="{'group_by': 'status'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+        
+        <!-- Stall Action Window -->
+        <record id="action_pitcar_service_stall" model="ir.actions.act_window">
+            <field name="name">Service Stalls</field>
+            <field name="res_model">pitcar.service.stall</field>
+            <field name="view_mode">kanban,tree,form</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Create your first service stall
+                </p>
+                <p>
+                    Service stalls are physical locations where services are performed.
+                </p>
+            </field>
+        </record>
+        
+        <!-- Stall History Tree View -->
+        <record id="view_pitcar_stall_history_tree" model="ir.ui.view">
+            <field name="name">pitcar.stall.history.tree</field>
+            <field name="model">pitcar.stall.history</field>
+            <field name="arch" type="xml">
+                <tree string="Stall History" default_order="start_time desc">
+                    <field name="sale_order_id"/>
+                    <field name="stall_id"/>
+                    <field name="start_time"/>
+                    <field name="end_time"/>
+                    <field name="duration" widget="float_time"/>
+                    <field name="user_id"/>
+                    <field name="notes"/>
+                </tree>
+            </field>
+        </record>
+        
+        <!-- Stall History Form View -->
+        <record id="view_pitcar_stall_history_form" model="ir.ui.view">
+            <field name="name">pitcar.stall.history.form</field>
+            <field name="model">pitcar.stall.history</field>
+            <field name="arch" type="xml">
+                <form string="Stall History">
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="sale_order_id"/>
+                                <field name="stall_id"/>
+                                <field name="user_id"/>
+                            </group>
+                            <group>
+                                <field name="start_time"/>
+                                <field name="end_time"/>
+                                <field name="duration" widget="float_time"/>
+                            </group>
+                        </group>
+                        <group string="Notes">
+                            <field name="notes" nolabel="1"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+        
+        <!-- Stall KPI Tree View -->
+        <record id="view_pitcar_stall_kpi_tree" model="ir.ui.view">
+            <field name="name">pitcar.stall.kpi.tree</field>
+            <field name="model">pitcar.stall.kpi</field>
+            <field name="arch" type="xml">
+                <tree string="Stall KPI" default_order="date desc, stall_id">
+                    <field name="date"/>
+                    <field name="stall_id"/>
+                    <field name="total_orders"/>
+                    <field name="completed_orders"/>
+                    <field name="completion_rate" widget="percentage"/>
+                    <field name="avg_service_time" widget="float_time"/>
+                    <field name="avg_waiting_time" widget="float_time"/>
+                    <field name="utilization_rate" widget="percentage"/>
+                </tree>
+            </field>
+        </record>
+        
+        <!-- Stall KPI Form View -->
+        <record id="view_pitcar_stall_kpi_form" model="ir.ui.view">
+            <field name="name">pitcar.stall.kpi.form</field>
+            <field name="model">pitcar.stall.kpi</field>
+            <field name="arch" type="xml">
+                <form string="Stall KPI">
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="date"/>
+                                <field name="stall_id"/>
+                                <field name="total_orders"/>
+                                <field name="completed_orders"/>
+                            </group>
+                            <group>
+                                <field name="completion_rate" widget="percentage"/>
+                                <field name="avg_service_time" widget="float_time"/>
+                                <field name="avg_waiting_time" widget="float_time"/>
+                                <field name="utilization_rate" widget="percentage"/>
+                            </group>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+        
+        <!-- Stall KPI Graph View -->
+        <record id="view_pitcar_stall_kpi_graph" model="ir.ui.view">
+            <field name="name">pitcar.stall.kpi.graph</field>
+            <field name="model">pitcar.stall.kpi</field>
+            <field name="arch" type="xml">
+                <graph string="Stall KPI" sample="1">
+                    <field name="stall_id"/>
+                    <field name="date" interval="day"/>
+                    <field name="utilization_rate" type="measure"/>
+                </graph>
+            </field>
+        </record>
+        
+        <!-- Stall KPI Pivot View -->
+        <record id="view_pitcar_stall_kpi_pivot" model="ir.ui.view">
+            <field name="name">pitcar.stall.kpi.pivot</field>
+            <field name="model">pitcar.stall.kpi</field>
+            <field name="arch" type="xml">
+                <pivot string="Stall KPI Analysis" display_quantity="true" sample="1">
+                    <field name="stall_id" type="row"/>
+                    <field name="date" interval="day" type="col"/>
+                    <field name="utilization_rate" type="measure"/>
+                    <field name="total_orders" type="measure"/>
+                    <field name="completion_rate" type="measure"/>
+                </pivot>
+            </field>
+        </record>
+        
+        <!-- Stall KPI Action Window -->
+        <record id="action_pitcar_stall_kpi" model="ir.actions.act_window">
+            <field name="name">Stall KPI</field>
+            <field name="res_model">pitcar.stall.kpi</field>
+            <field name="view_mode">tree,form,graph,pivot</field>
+            <field name="context">{'search_default_today': 1}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    No stall KPI data yet
+                </p>
+                <p>
+                    KPI data is generated daily for stall performance tracking.
+                </p>
+            </field>
+        </record>
+        
+        <!-- Menu for stall kpi -->
+        <menuitem id="menu_pitcar_stall_kpi"
+            name="Stall KPI"
+            parent="sale.menu_sale_config"
+            action="action_pitcar_stall_kpi"
+            sequence="40"/>
+    </data>
+</odoo>

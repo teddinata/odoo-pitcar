@@ -82,6 +82,26 @@
             parent="menu_kpi_monitoring_root"
             sequence="1"/>
 
+    <!-- Buat submenu baru "Stall" di bawah menu KPI Monitoring -->
+    <menuitem id="menu_stall_root"
+            name="Stall"
+            parent="menu_kpi_monitoring_root"
+            sequence="3"/>
+
+    <!-- Service Stalls menu -->
+    <menuitem id="menu_pitcar_service_stall"
+            name="Service Stalls"
+            parent="menu_stall_root"
+            action="action_pitcar_service_stall"
+            sequence="1"/>
+
+    <!-- Stall KPI menu -->
+    <menuitem id="menu_pitcar_stall_kpi"
+            name="Stall KPI"
+            parent="menu_stall_root"
+            action="action_pitcar_stall_kpi"
+            sequence="2"/>
+
     <menuitem id="menu_service_advisor_overview"
             name="Overview Statistics"
             parent="menu_service_advisor_root"

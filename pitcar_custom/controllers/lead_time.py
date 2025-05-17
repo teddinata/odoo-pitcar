@@ -3884,10 +3884,20 @@ class LeadTimeAPIController(http.Controller):
         return 'completed'
 
     # Tambahkan di LeadTimeAPIController
-    @http.route('/web/lead-time/stalls', type='json', auth='user', methods=['GET'])
-    def get_stalls(self):
-        """Get all stalls with their status"""
+    @http.route('/web/lead-time/stalls', type='json', auth='user', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    def get_stalls(self, **kw):
+        """Mendapatkan daftar stall dengan statusnya"""
         try:
+            # Handle OPTIONS request for CORS
+            if request.httprequest.method == 'OPTIONS':
+                headers = {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                    'Access-Control-Allow-Credentials': 'true'
+                }
+                return Response(status=200, headers=headers)
+                
             stalls = request.env['pitcar.service.stall'].sudo().search([('active', '=', True)])
             
             result = []

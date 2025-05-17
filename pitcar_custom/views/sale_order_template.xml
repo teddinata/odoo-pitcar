@@ -37,18 +37,18 @@
                             <field name="is_booking_template"/>
                             <field name="booking_category" attrs="{'invisible': [('is_booking_template', '=', False)]}"/>
                             <field name="booking_image" widget="image" attrs="{'invisible': [('is_booking_template', '=', False)]}"/>
+                            <field name="booking_description" />
                         </group>
-                        <group string="Booking Description" attrs="{'invisible': [('is_booking_template', '=', False)]}">
-                            <field name="booking_description" nolabel="1" widget="html"/>
-                        </group>
+                        <!-- <group string="Booking Description" attrs="{'invisible': [('is_booking_template', '=', False)]}">
+                        </group> -->
                     </page>
                 </notebook>
             </xpath>
             
             <!-- Tambahkan field pada template line -->
             <xpath expr="//field[@name='sale_order_template_line_ids']/tree" position="inside">
-                <field name="service_duration"/>
-                <field name="price_unit"/>
+                <!-- <field name="service_duration"/>
+                <field name="price_unit"/> -->
                 <field name="is_required"/>
             </xpath>
             

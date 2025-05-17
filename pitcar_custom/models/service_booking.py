@@ -1,7 +1,7 @@
 # pitcar_custom/models/service_booking.py
 from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import pytz
 from odoo.tools import ormcache
 import random
@@ -202,17 +202,32 @@ class ServiceBooking(models.Model):
             # Hitung total setelah diskon
             amount_total = sum(line.price_subtotal for line in booking.booking_line_ids)
             
-            # Hitung total sebelum diskon
-            total_before_discount = sum(line.price_before_discount * line.quantity for line in booking.booking_line_ids)
+            # Hitung total sebelum diskon, hanya untuk produk service
+            total_before_discount = sum(
+                line.price_before_discount * line.quantity 
+                for line in booking.booking_line_ids 
+                if line.product_id and line.product_id.type == 'service'
+            )
+            
+            # Total untuk produk non-service
+            total_non_service = sum(
+                line.price_unit * line.quantity
+                for line in booking.booking_line_ids
+                if line.product_id and line.product_id.type != 'service'
+            )
             
             booking.amount_total = amount_total
-            booking.total_before_discount = total_before_discount
+            booking.total_before_discount = total_before_discount + total_non_service
             
-            # PERBAIKAN: Gunakan persentase diskon yang benar
+            # PERBAIKAN: Hitung diskon hanya untuk produk service
             if booking.is_online_booking:
                 booking.discount_amount = total_before_discount * (booking.online_booking_discount / 100.0)
             else:
-                booking.discount_amount = total_before_discount - amount_total
+                booking.discount_amount = total_before_discount - sum(
+                    line.price_subtotal 
+                    for line in booking.booking_line_ids 
+                    if line.product_id and line.product_id.type == 'service'
+                )
 
     @api.depends('booking_date')
     def _compute_date_stop(self):
@@ -247,6 +262,7 @@ class ServiceBooking(models.Model):
             }
         }
 
+    # Integrasikan dengan action_convert_to_sale_order di model pitcar.service.booking
     def action_convert_to_sale_order(self):
         self.ensure_one()
         if self.state not in ['confirmed', 'arrived']:
@@ -266,11 +282,20 @@ class ServiceBooking(models.Model):
                 'is_booking': True,
                 'booking_id': self.id,
                 'origin': self.name,
-                # Tambahkan informasi terkait diskon booking online jika perlu
+                'stall_id': self.stall_id.id if self.stall_id else False,
                 'is_online_booking': self.is_online_booking if hasattr(self, 'is_online_booking') else False,
             })
 
-            # Convert booking lines dengan harga
+            # Create stall history if stall is assigned
+            if self.stall_id:
+                self.env['pitcar.stall.history'].create({
+                    'sale_order_id': sale_order.id,
+                    'stall_id': self.stall_id.id,
+                    'start_time': fields.Datetime.now(),
+                    'notes': 'Assigned from booking conversion'
+                })
+
+            # Convert booking lines
             for line in self.booking_line_ids:
                 if line.display_type:
                     # Handle section dan note
@@ -286,8 +311,8 @@ class ServiceBooking(models.Model):
                 discount = 0.0
                 price_unit = line.price_unit
 
-                # Cek apakah ada online discount
-                if hasattr(line, 'online_discount') and line.online_discount > 0:
+                # Cek apakah line adalah produk service dan ada online discount
+                if line.product_id.type == 'service' and hasattr(line, 'online_discount') and line.online_discount > 0:
                     # Jika kita memiliki price_before_discount dan online_discount, gunakan itu
                     if hasattr(line, 'price_before_discount') and line.price_before_discount > 0:
                         price_unit = line.price_before_discount  # Harga asli
@@ -297,8 +322,8 @@ class ServiceBooking(models.Model):
                         price_unit = line.price_unit  # Harga setelah diskon
                         discount = 0.0  # Tidak ada diskon karena sudah diterapkan ke price_unit
                 else:
-                    # Gunakan diskon yang ada jika ada (backward compatibility)
-                    discount = line.discount * 100 if hasattr(line, 'discount') and line.discount else 0.0
+                    # Untuk non-service, tidak ada diskon
+                    discount = 0.0
                 
                 _logger.info(f"Converting line: price_unit={price_unit}, discount={discount}")
 
@@ -532,6 +557,14 @@ class ServiceBooking(models.Model):
             # Add service duration if it's a service product
             if line.product_id.type == 'service':
                 line_values['service_duration'] = line.service_duration
+                # Jika booking online, berikan diskon hanya untuk produk service
+                if self.is_online_booking:
+                    line_values['online_discount'] = self.online_booking_discount
+                    line_values['discount'] = self.online_booking_discount
+            else:
+                # Untuk produk selain service, tidak ada diskon
+                line_values['online_discount'] = 0.0
+                line_values['discount'] = 0.0
 
             # Get price dan taxes
             if line.product_id:
@@ -1288,11 +1321,137 @@ class PitcarServiceStall(models.Model):
         default=1,
         help='Maximum number of cars that can be serviced simultaneously'
     )
-    current_booking_id = fields.Many2one('pitcar.service.booking', 'Current Booking')
-    next_available_time = fields.Datetime('Next Available Time', compute='_compute_next_available')
     
-    # One2many untuk booking
-    booking_ids = fields.One2many('pitcar.service.booking', 'stall_id', string='Bookings')
+    # Added fields for stall utilization
+    active_order_ids = fields.One2many(
+        'sale.order',
+        'stall_id',
+        string='Active Orders',
+        domain=[('controller_mulai_servis', '!=', False), ('controller_selesai', '=', False)]
+    )
+    is_occupied = fields.Boolean(
+        string='Is Occupied',
+        compute='_compute_stall_status',
+        store=True
+    )
+    current_order_id = fields.Many2one(
+        'sale.order',
+        string='Current Order',
+        compute='_compute_stall_status',
+        store=True
+    )
+    daily_utilization = fields.Float(
+        string='Daily Utilization (%)',
+        compute='_compute_daily_utilization',
+        store=True
+    )
+    
+    # New field for booking integration
+    booking_ids = fields.One2many(
+        'pitcar.service.booking',
+        'stall_id',
+        string='Stall Bookings'
+    )
+    
+    # Stall availability status
+    status = fields.Selection([
+        ('available', 'Available'),
+        ('occupied', 'Occupied'),
+        ('scheduled', 'Scheduled'),
+        ('maintenance', 'Maintenance')
+    ], compute='_compute_stall_status', string='Status', store=True)
+    
+    # Available from time
+    available_from = fields.Datetime(
+        string='Available From',
+        compute='_compute_stall_status',
+        store=True
+    )
+    
+    @api.depends('active_order_ids')
+    def _compute_stall_status(self):
+        now = fields.Datetime.now()
+        
+        for stall in self:
+            active_orders = stall.active_order_ids.filtered(
+                lambda o: o.controller_mulai_servis and not o.controller_selesai
+            )
+            
+            stall.is_occupied = bool(active_orders)
+            
+            if active_orders:
+                stall.current_order_id = active_orders[0].id
+                stall.status = 'occupied'
+                
+                # Check for expected completion time
+                if active_orders[0].controller_estimasi_selesai:
+                    stall.available_from = active_orders[0].controller_estimasi_selesai
+                else:
+                    # Default to 2 hours from service start if no estimation
+                    default_duration = 2.0  # 2 hours default
+                    stall.available_from = active_orders[0].controller_mulai_servis + timedelta(hours=default_duration)
+            else:
+                stall.current_order_id = False
+                
+                # Check if there are upcoming bookings for today
+                today = fields.Date.today()
+                upcoming_bookings = self.env['pitcar.service.booking'].search([
+                    ('stall_id', '=', stall.id),
+                    ('booking_date', '=', today),
+                    ('state', 'not in', ['cancelled', 'converted']),
+                    ('booking_time', '>=', now.hour + now.minute / 60.0)
+                ], order='booking_time', limit=1)
+                
+                if upcoming_bookings:
+                    stall.status = 'scheduled'
+                    
+                    # Set available from after the booking
+                    booking_hour = int(upcoming_bookings.booking_time)
+                    booking_minute = int((upcoming_bookings.booking_time - booking_hour) * 60)
+                    booking_duration = upcoming_bookings.estimated_duration or 1.0
+                    
+                    booking_start = datetime.combine(today, time(booking_hour, booking_minute))
+                    stall.available_from = booking_start + timedelta(hours=booking_duration)
+                else:
+                    stall.status = 'available'
+                    stall.available_from = now
+    
+    @api.depends('active_order_ids')
+    def _compute_daily_utilization(self):
+        today = fields.Date.today()
+        
+        for stall in self:
+            # Get completed orders for today
+            completed_orders = self.env['sale.order'].search([
+                ('stall_id', '=', stall.id),
+                ('controller_mulai_servis', '>=', datetime.combine(today, time(0, 0))),
+                ('controller_mulai_servis', '<', datetime.combine(today + timedelta(days=1), time(0, 0))),
+                ('controller_selesai', '!=', False)
+            ])
+            
+            # Get active orders
+            active_orders = stall.active_order_ids
+            
+            # Calculate total minutes utilized
+            total_minutes = 0
+            
+            # Add minutes from completed orders
+            for order in completed_orders:
+                if order.controller_mulai_servis and order.controller_selesai:
+                    duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 60
+                    total_minutes += min(duration, 540)  # Cap at 9 hours (540 minutes)
+            
+            # Add minutes from active orders (estimate)
+            for order in active_orders:
+                if order.controller_mulai_servis:
+                    # Use current time as end time for active orders
+                    now = fields.Datetime.now()
+                    duration = (now - order.controller_mulai_servis).total_seconds() / 60
+                    total_minutes += min(duration, 540)  # Cap at 9 hours
+            
+            # Calculate utilization percentage (9 working hours = 540 minutes)
+            stall.daily_utilization = (total_minutes / 540) * 100
+
     
     @api.depends('booking_ids', 'booking_ids.state', 'booking_ids.booking_date', 'booking_ids.booking_time')
     def _compute_next_available(self):
@@ -1320,3 +1479,101 @@ class PitcarServiceStall(models.Model):
                 stall.next_available_time = end_datetime
             else:
                 stall.next_available_time = now
+
+    # Tambahkan di model pitcar.service.stall
+    def _calculate_daily_kpi(self):
+        """Schedule action untuk menghitung KPI stall harian"""
+        today = fields.Date.today()
+        yesterday = today - timedelta(days=1)
+        
+        # Get all stalls
+        stalls = self.search([])
+        
+        for stall in stalls:
+            # Get orders from yesterday
+            orders = self.env['sale.order'].search([
+                ('stall_id', '=', stall.id),
+                '|',
+                '&', ('controller_mulai_servis', '>=', datetime.combine(yesterday, time(0, 0))),
+                    ('controller_mulai_servis', '<', datetime.combine(today, time(0, 0))),
+                '&', ('controller_selesai', '>=', datetime.combine(yesterday, time(0, 0))),
+                    ('controller_selesai', '<', datetime.combine(today, time(0, 0)))
+            ])
+            
+            # Calculate metrics
+            total_orders = len(orders)
+            completed_orders = len(orders.filtered(lambda o: o.controller_selesai))
+            
+            if total_orders > 0:
+                completion_rate = (completed_orders / total_orders) * 100
+            else:
+                completion_rate = 0
+            
+            # Calculate service times
+            service_times = []
+            waiting_times = []
+            
+            for order in orders:
+                if order.controller_mulai_servis and order.controller_selesai:
+                    service_time = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                    service_times.append(service_time)
+                
+                if order.sa_jam_masuk and order.controller_mulai_servis:
+                    waiting_time = (order.controller_mulai_servis - order.sa_jam_masuk).total_seconds() / 3600
+                    waiting_times.append(waiting_time)
+            
+            avg_service_time = sum(service_times) / len(service_times) if service_times else 0
+            avg_waiting_time = sum(waiting_times) / len(waiting_times) if waiting_times else 0
+            
+            # Create KPI record
+            self.env['pitcar.stall.kpi'].create({
+                'date': yesterday,
+                'stall_id': stall.id,
+                'total_orders': total_orders,
+                'completed_orders': completed_orders,
+                'completion_rate': completion_rate,
+                'avg_service_time': avg_service_time,
+                'avg_waiting_time': avg_waiting_time
+            })
+        
+        return True
+
+class PitcarStallHistory(models.Model):
+    _name = 'pitcar.stall.history'
+    _description = 'Stall Assignment History'
+    _order = 'start_time desc'
+
+    sale_order_id = fields.Many2one('sale.order', string='Sale Order', required=True, ondelete='cascade')
+    stall_id = fields.Many2one('pitcar.service.stall', string='Stall', required=True)
+    start_time = fields.Datetime('Start Time', required=True)
+    end_time = fields.Datetime('End Time')
+    duration = fields.Float('Duration (hours)', compute='_compute_duration', store=True)
+    user_id = fields.Many2one('res.users', string='Assigned By', default=lambda self: self.env.user.id)
+    notes = fields.Text('Notes')
+
+    @api.depends('start_time', 'end_time')
+    def _compute_duration(self):
+        for record in self:
+            if record.start_time and record.end_time and record.end_time > record.start_time:
+                delta = record.end_time - record.start_time
+                record.duration = delta.total_seconds() / 3600
+            else:
+                record.duration = 0
+
+class PitcarStallKPI(models.Model):
+    _name = 'pitcar.stall.kpi'
+    _description = 'Stall KPI Metrics'
+    _order = 'date desc, stall_id'
+    
+    date = fields.Date('Date', required=True, index=True)
+    stall_id = fields.Many2one('pitcar.service.stall', string='Stall', required=True, index=True)
+    total_orders = fields.Integer('Total Orders', default=0)
+    completed_orders = fields.Integer('Completed Orders', default=0)
+    completion_rate = fields.Float('Completion Rate (%)', digits=(5, 2))
+    avg_service_time = fields.Float('Avg Service Time (hours)', digits=(5, 2))
+    avg_waiting_time = fields.Float('Avg Waiting Time (hours)', digits=(5, 2))
+    utilization_rate = fields.Float('Utilization Rate (%)', digits=(5, 2))
+    
+    _sql_constraints = [
+        ('unique_stall_date', 'UNIQUE(stall_id, date)', 'KPI record for this stall and date already exists')
+    ]

@@ -1207,6 +1207,47 @@ class SaleOrder(models.Model):
             
             record.controller_mulai_servis = utc_dt
 
+            # Check stall assignment
+            if not record.stall_id:
+                # Auto assign stall jika berasal dari booking
+                if record.booking_id and record.booking_id.stall_id:
+                    record.stall_id = record.booking_id.stall_id.id
+                    # Create stall history entry
+                    self.env['pitcar.stall.history'].create({
+                        'sale_order_id': record.id,
+                        'stall_id': record.booking_id.stall_id.id,
+                        'start_time': utc_dt,
+                        'notes': 'Auto assigned from booking'
+                    })
+                else:
+                    # Tampilkan warning bahwa belum ada stall
+                    return {
+                        'type': 'ir.actions.client',
+                        'tag': 'display_notification',
+                        'params': {
+                            'title': _('Perhatian'),
+                            'message': _('Servis dimulai tanpa alokasi stall. Harap alokasikan stall untuk service order ini.'),
+                            'sticky': True,
+                            'type': 'warning',
+                            'next': {
+                                'type': 'ir.actions.act_window',
+                                'name': _('Pilih Stall'),
+                                'res_model': 'assign.stall.wizard',
+                                'view_mode': 'form',
+                                'target': 'new',
+                                'context': {'default_sale_order_id': record.id}
+                            }
+                        }
+                    }
+            else:
+                # Jika stall sudah ada, create history entry
+                self.env['pitcar.stall.history'].create({
+                    'sale_order_id': record.id,
+                    'stall_id': record.stall_id.id,
+                    'start_time': utc_dt,
+                    'notes': 'Assigned at service start'
+                })
+
             # Format waktu untuk tampilan di chatter
             formatted_time = local_dt.strftime('%Y-%m-%d %H:%M:%S')
             
@@ -1216,6 +1257,7 @@ class SaleOrder(models.Model):
             <ul>
                 <li>Dicatat oleh: {self.env.user.name}</li>
                 <li>Waktu catat: {formatted_time} WIB</li>
+                <li>Stall: {record.stall_id.name if record.stall_id else 'Belum dialokasikan'}</li>
             </ul>
             """
             self.message_post(body=body, message_type='notification')
@@ -1306,15 +1348,29 @@ class SaleOrder(models.Model):
             utc_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
             
             record.controller_selesai = utc_dt
-
+            
+            # Update stall history jika ada
+            if record.stall_id:
+                history = self.env['pitcar.stall.history'].search([
+                    ('sale_order_id', '=', record.id),
+                    ('stall_id', '=', record.stall_id.id),
+                    ('end_time', '=', False)
+                ], limit=1)
+                
+                if history:
+                    history.end_time = utc_dt
+            
+            # Log di chatter
             body = f"""
             <p><strong>Servis selesai</strong></p>
             <ul>
                 <li>Dicatat oleh: {self.env.user.name}</li>
-                <li> Waktu catat:{local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
+                <li>Waktu catat: {local_dt.strftime('%Y-%m-%d %H:%M:%S')} WIB</li>
+                <li>Stall: {record.stall_id.name if record.stall_id else 'Tidak dialokasikan'}</li>
             </ul>
             """
             self.message_post(body=body, message_type='notification')
+
 
 
     @api.depends('sa_jam_masuk', 'sa_mulai_penerimaan', 'sa_cetak_pkb',
@@ -3207,3 +3263,95 @@ class SaleOrder(models.Model):
         for order in self:
             order.has_mentor_request = bool(order.mentor_request_ids)
             order.mentor_request_count = len(order.mentor_request_ids)
+
+    # STALL INTEGRATION
+    # Tambahkan di model sale.order setelah fields yang ada
+    stall_id = fields.Many2one(
+        'pitcar.service.stall', 
+        string='Service Stall',
+        tracking=True,
+        index=True,
+        help="Stall tempat service dilakukan"
+    )
+
+    # Fields terkait stall untuk reporting
+    stall_code = fields.Char(related='stall_id.code', string='Stall Code', readonly=True, store=True)
+    stall_name = fields.Char(related='stall_id.name', string='Stall Name', readonly=True, store=True)
+
+    # Field untuk menunjukkan history stall
+    stall_history_ids = fields.One2many(
+        'pitcar.stall.history',
+        'sale_order_id',
+        string='Stall History',
+        readonly=True
+    )
+
+    # Tambahkan action di SaleOrder
+    def action_assign_stall(self):
+        """Open wizard to assign stall"""
+        self.ensure_one()
+        return {
+            'name': _('Assign Stall'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'assign.stall.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_sale_order_id': self.id}
+        }
+
+    def action_view_stall_history(self):
+        """View stall assignment history"""
+        self.ensure_one()
+        return {
+            'name': _('Stall History'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'pitcar.stall.history',
+            'view_mode': 'tree,form',
+            'domain': [('sale_order_id', '=', self.id)],
+            'context': {'default_sale_order_id': self.id}
+        }
+
+    def action_release_stall(self):
+        """Release currently assigned stall"""
+        self.ensure_one()
+        
+        if not self.stall_id:
+            raise UserError(_("No stall assigned to release"))
+        
+        # Close current assignment in history
+        history = self.env['pitcar.stall.history'].search([
+            ('sale_order_id', '=', self.id),
+            ('stall_id', '=', self.stall_id.id),
+            ('end_time', '=', False)
+        ], limit=1)
+        
+        if history:
+            history.end_time = fields.Datetime.now()
+        
+        # Save old stall info for message
+        old_stall_name = self.stall_id.name
+        
+        # Release stall
+        self.stall_id = False
+        
+        # Log in chatter
+        body = f"""
+        <p><strong>Stall Released</strong></p>
+        <ul>
+            <li>Stall: {old_stall_name}</li>
+            <li>Released by: {self.env.user.name}</li>
+            <li>Time: {fields.Datetime.now()}</li>
+        </ul>
+        """
+        self.message_post(body=body, message_type='notification')
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Success'),
+                'message': _(f"Stall {old_stall_name} released successfully"),
+                'sticky': False,
+                'type': 'success'
+            }
+        }

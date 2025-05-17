@@ -1176,6 +1176,18 @@
             </field>
         </record>
 
+        <record id="view_order_form_inherit_stall_field" model="ir.ui.view">
+            <field name="name">sale.order.form.inherit.stall.field</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_form"/>
+            <field name="arch" type="xml">
+                <!-- Add stall field below mechanic field -->
+                <xpath expr="//field[@name='car_mechanic_id_new']" position="after">
+                    <field name="stall_id" options="{'no_create': True}"/>
+                </xpath>
+            </field>
+        </record>
+
         <record id="view_sale_order_lead_time_gantt" model="ir.ui.view">
             <field name="name">sale.order.lead.time.gantt</field>
             <field name="model">sale.order</field>

@@ -89,6 +89,7 @@
         'views/res_partner_car.xml',
         'views/res_partner.xml',
         'views/sale_order.xml',
+        'views/stall_views.xml',
         'views/sale_order_template.xml',
         'views/service_booking_views.xml',
         'views/stock_picking.xml',

@@ -18,4 +18,46 @@
             </xpath>
         </field>
     </record>
+
+    <!-- views/sale_order_template_views.xml -->
+    <record id="pitcar_sale_order_template_form_view" model="ir.ui.view">
+        <field name="name">pitcar.sale.order.template.form</field>
+        <field name="model">sale.order.template</field>
+        <field name="inherit_id" ref="sale_management.sale_order_template_view_form"/>
+        <field name="arch" type="xml">
+             <!-- Cari lokasi yang tepat untuk tombol -->
+            <!-- Biasanya, kita bisa menambahkan tombol di dekat field name atau di bagian atas form -->
+            <field name="name" position="after">
+                <button name="action_update_prices" string="Update Prices from Products" type="object" class="oe_highlight"/>
+            </field>
+            <xpath expr="//sheet" position="inside">
+                <notebook>
+                    <page string="Booking Settings" name="booking_settings">
+                        <group>
+                            <field name="is_booking_template"/>
+                            <field name="booking_category" attrs="{'invisible': [('is_booking_template', '=', False)]}"/>
+                            <field name="booking_image" widget="image" attrs="{'invisible': [('is_booking_template', '=', False)]}"/>
+                            <field name="booking_description" />
+                        </group>
+                        <!-- <group string="Booking Description" attrs="{'invisible': [('is_booking_template', '=', False)]}">
+                        </group> -->
+                    </page>
+                </notebook>
+            </xpath>
+            
+            <!-- Tambahkan field pada template line -->
+            <xpath expr="//field[@name='sale_order_template_line_ids']/tree" position="inside">
+                <!-- <field name="service_duration"/>
+                <field name="price_unit"/> -->
+                <field name="is_required"/>
+            </xpath>
+            
+            <!-- Tambahkan field pada form line -->
+            <xpath expr="//field[@name='sale_order_template_line_ids']/form//field[@name='product_uom_qty']" position="after">
+                <field name="service_duration" attrs="{'invisible': [('display_type', '!=', False)]}"/>
+                <field name="price_unit" attrs="{'invisible': [('display_type', '!=', False)]}"/>
+                <field name="is_required" attrs="{'invisible': [('display_type', '!=', False)]}"/>
+            </xpath>
+        </field>
+    </record>
 </odoo>

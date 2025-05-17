@@ -380,41 +380,32 @@ class BookingController(http.Controller):
                     # Gunakan fungsi onchange untuk membuat lines dari template
                     booking._onchange_sale_order_template_id()
                     
-                    # Terapkan diskon online ke semua line jika booking online
+                    # Terapkan diskon online hanya untuk produk service
                     if is_online_booking:
                         for line in booking.booking_line_ids:
-                            if not line.display_type:  # Abaikan section dan note
-                                # MASALAH: Diskon mungkin tersimpan dalam desimal saat diteruskan
+                            if not line.display_type and line.product_id.type == 'service':  # Tambahkan check tipe
                                 line.write({
-                                    'online_discount': online_discount,  # Simpan sebagai persentase (10.0 = 10%)
-                                    'discount': online_discount  # Pastikan discount juga tersimpan sebagai persentase
-                                    # Tidak perlu online_discount / 100.0
+                                    'online_discount': online_discount,
+                                    'discount': online_discount
                                 })
                         
                 elif service_ids:
-                    # Add all product lines individually (both services and products)
+                    # Add all product lines individually
                     for service_id in service_ids:
                         product = request.env['product.product'].sudo().browse(int(service_id))
                         if product.exists():
-                            # PERUBAHAN UTAMA: Simpan harga asli di price_unit dan gunakan online_discount
-                            # line_vals = {
-                            #     'booking_id': booking.id,
-                            #     'product_id': product.id,
-                            #     'name': product.name,
-                            #     'quantity': 1,
-                            #     'price_unit': product.list_price,  # Simpan harga ASLI di price_unit
-                            #     'online_discount': online_discount if is_online_booking else 0.0,  # Simpan diskon sebagai persentase
-                            #     'service_duration': getattr(product, 'service_duration', 0.0) if product.type == 'service' else 0.0,
-                            #     'tax_ids': [(6, 0, product.taxes_id.ids)],
-                            # }
+                            # PERUBAHAN: Hanya berikan diskon untuk produk bertipe service
+                            apply_discount = is_online_booking and product.type == 'service'
+                            discount_value = online_discount if apply_discount else 0.0
+                            
                             line_vals = {
                                 'booking_id': booking.id,
                                 'product_id': product.id,
                                 'name': product.name,
                                 'quantity': 1,
                                 'price_unit': product.list_price,
-                                'online_discount': online_discount if is_online_booking else 0.0,
-                                'discount': online_discount if is_online_booking else 0.0,  # Isi juga field discount
+                                'online_discount': discount_value,
+                                'discount': discount_value,
                                 'service_duration': getattr(product, 'service_duration', 0.0) if product.type == 'service' else 0.0,
                                 'tax_ids': [(6, 0, product.taxes_id.ids)],
                             }
@@ -643,59 +634,122 @@ class BookingController(http.Controller):
             
             for line in template.sale_order_template_line_ids:
                 if line.display_type:
-                    # Handle section and note lines
+                    # Untuk section dan note
                     lines.append({
                         'display_type': line.display_type,
                         'name': line.name,
                         'sequence': line.sequence
                     })
-                elif line.product_id:
-                    # Calculate price with tax
-                    unit_price = line.product_id.list_price
-                    line_price = unit_price * line.product_uom_qty
+                    continue
+
+                if not line.product_id:
+                    continue
+                
+                # PERUBAHAN: Gunakan price_unit dari template jika ada
+                unit_price = line.price_unit or line.product_id.list_price
+                line_price = unit_price * line.product_uom_qty
+                
+                # Add service duration if it's a service product
+                duration = 0
+                if line.product_id.type == 'service':
+                    duration = line.service_duration or 0
+                    total_duration += duration * line.product_uom_qty
+                
+                # Tambahkan total price untuk semua produk (termasuk service dan product)
+                total_price += line_price
+                
+                # Buat item line dengan struktur yang sama seperti aslinya
+                line_item = {
+                    'product_id': line.product_id.id,
+                    'name': line.name or line.product_id.name,
+                    'quantity': line.product_uom_qty,
+                    'price_unit': unit_price,
+                    'price_subtotal': line_price,
+                    'duration': duration,
+                    'sequence': line.sequence,
+                    'tax_ids': line.product_id.taxes_id.ids if hasattr(line.product_id, 'taxes_id') else [],
+                    'product_type': line.product_id.type
+                }
+                
+                # BARU: Tambahkan field baru tanpa mengubah struktur dasar
+                if hasattr(line, 'is_required'):
+                    line_item['is_required'] = line.is_required
                     
-                    # Add service duration for services
-                    duration = line.service_duration if hasattr(line, 'service_duration') and line.product_id.type == 'service' else 0
-                    
-                    if line.product_id.type == 'service':
-                        total_duration += duration * line.product_uom_qty
-                    
-                    # Tambahkan total price untuk semua produk (termasuk service dan product)
-                    total_price += line_price
-                    
-                    # Handle product lines - tambahkan product_type untuk dikenali di frontend
-                    lines.append({
-                        'product_id': line.product_id.id,
-                        'name': line.name or line.product_id.name,
-                        'quantity': line.product_uom_qty,
-                        'price_unit': unit_price,
-                        'price_subtotal': line_price,
-                        'duration': duration,
-                        'sequence': line.sequence,
-                        'tax_ids': line.product_id.taxes_id.ids if hasattr(line.product_id, 'taxes_id') else [],
-                        'product_type': line.product_id.type  # Tambahkan tipe produk (service atau product)
-                    })
+                lines.append(line_item)
             
+            # Buat hasil dengan struktur yang sama dengan API asli
+            result = {
+                'id': template.id,
+                'name': template.name,
+                'note': template.note,
+                'lines': lines,
+                'total_duration': total_duration,
+                'total_price': total_price
+            }
+            
+            # BARU: Tambahkan field baru tanpa mengubah struktur dasar
+            if hasattr(template, 'booking_description') and template.booking_description:
+                result['booking_description'] = template.booking_description
+                
+            if hasattr(template, 'booking_category') and template.booking_category:
+                result['category'] = template.booking_category
+                
+            if hasattr(template, 'booking_image') and template.booking_image:
+                result['thumbnail_url'] = f'/web/image/sale.order.template/{template.id}/booking_image'
+                
             return {
                 'status': 'success',
-                'data': {
-                    'id': template.id,
-                    'name': template.name,
-                    'note': template.note,
-                    'lines': lines,
-                    'total_duration': total_duration,
-                    'total_price': total_price
-                }
+                'data': result
             }
         except Exception as e:
             _logger.error(f"Error in get_template_details: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v1/booking/get-template-categories', type='json', auth="public", methods=['POST'], csrf=False)
+    def get_template_categories(self, **kw):
+        """Mendapatkan daftar kategori template yang tersedia"""
+        try:
+            # Ambil kategori unik dari template yang ada
+            templates = request.env['sale.order.template'].sudo().search([
+                ('is_booking_template', '=', True),
+                ('booking_category', '!=', False)
+            ])
+            
+            categories = {}
+            for template in templates:
+                if template.booking_category not in categories:
+                    categories[template.booking_category] = {
+                        'code': template.booking_category,
+                        'name': dict(template._fields['booking_category'].selection).get(template.booking_category, ''),
+                        'count': 1
+                    }
+                else:
+                    categories[template.booking_category]['count'] += 1
+            
+            return {
+                'status': 'success',
+                'data': list(categories.values())
+            }
+        except Exception as e:
+            _logger.error(f"Error in get_template_categories: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/v1/booking/get-templates', type='json', auth="public", methods=['POST'], csrf=False)
     def get_templates(self, **kw):
         """Mendapatkan daftar template paket layanan"""
         try:
-            templates = request.env['sale.order.template'].sudo().search([])
+            # BARU: Tambahkan filter kategori jika diminta, tapi tetap tampilkan semua template secara default
+            domain = [('is_booking_template', '=', True)]  # Pastikan hanya template aktif
+            
+            # BARU: Jika explicitly filter untuk booking templates
+            if kw.get('booking_only', False):
+                domain.append(('is_booking_template', '=', True))
+                
+            # BARU: Filter kategori jika diminta
+            if kw.get('category'):
+                domain.append(('booking_category', '=', kw.get('category')))
+                
+            templates = request.env['sale.order.template'].sudo().search(domain)
             
             result = []
             for template in templates:
@@ -707,47 +761,79 @@ class BookingController(http.Controller):
                 services_list = []
                 products_list = []  # List untuk produk fisik
                 
+                # SAMA SEPERTI KODE ASLI: Loop melalui semua line
                 for line in template.sale_order_template_line_ids:
                     if not line.display_type and line.product_id:
-                        price = line.product_id.list_price * line.product_uom_qty
+                        # PERUBAHAN: Prioritaskan price_unit dari template jika ada
+                        unit_price = line.price_unit or line.product_id.list_price
+                        price = unit_price * line.product_uom_qty
                         
                         if line.product_id.type == 'service':
+                            # PERUBAHAN: Gunakan service_duration dari template line
                             duration = line.service_duration or 0
-                            total_duration += duration
+                            total_duration += duration * line.product_uom_qty
                             total_price += price
                             services_count += 1
                             
-                            # Add service to list
-                            services_list.append({
+                            # Tambah service ke list - SAMA STRUKTUR SEPERTI ASLINYA
+                            service_item = {
                                 'id': line.product_id.id,
                                 'name': line.product_id.name,
                                 'quantity': line.product_uom_qty,
                                 'duration': duration
-                            })
+                            }
+                            
+                            # BARU: Tambahkan field baru sebagai properti opsional
+                            if hasattr(line, 'is_required'):
+                                service_item['is_required'] = line.is_required
+                                
+                            services_list.append(service_item)
                         else:
                             # Produk fisik
                             total_price += price
                             products_count += 1
                             
-                            # Add product to list
-                            products_list.append({
+                            # Tambah product ke list - SAMA STRUKTUR SEPERTI ASLINYA
+                            product_item = {
                                 'id': line.product_id.id,
                                 'name': line.product_id.name,
                                 'quantity': line.product_uom_qty
-                            })
+                            }
+                            
+                            # BARU: Tambahkan field baru sebagai properti opsional
+                            if hasattr(line, 'is_required'):
+                                product_item['is_required'] = line.is_required
+                                
+                            products_list.append(product_item)
                 
-                result.append({
+                # Buat hasil dengan struktur yang sama dengan API asli
+                template_data = {
                     'id': template.id,
                     'name': template.name,
                     'price': total_price,
                     'duration': total_duration,
                     'services_count': services_count,
-                    'products_count': products_count,  # Informasi jumlah produk fisik
+                    'products_count': products_count,
                     'description': template.note or '',
                     'services': services_list,
-                    'products': products_list  # List produk fisik
-                })
-            
+                    'products': products_list
+                }
+                
+                # BARU: Tambahkan field baru tanpa mengubah struktur dasar
+                if hasattr(template, 'booking_category') and template.booking_category:
+                    template_data['category'] = template.booking_category
+                    
+                if hasattr(template, 'booking_description') and template.booking_description:
+                    template_data['booking_description'] = template.booking_description
+                    
+                if hasattr(template, 'booking_image') and template.booking_image:
+                    template_data['thumbnail_url'] = f'/web/image/sale.order.template/{template.id}/booking_image'
+                    
+                if hasattr(template, 'is_booking_template'):
+                    template_data['is_booking_template'] = template.is_booking_template
+                
+                result.append(template_data)
+                
             return {'status': 'success', 'data': result}
         except Exception as e:
             _logger.error(f"Error in get_templates: {str(e)}")

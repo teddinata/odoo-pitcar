@@ -415,6 +415,9 @@ class LeadTimeAPIController(http.Controller):
                     'catatan': order.lead_time_catatan or '-',
                     'estimasi_mulai': format_timestamp(order.controller_estimasi_mulai),
                     'estimasi_selesai': format_timestamp(order.controller_estimasi_selesai),
+                    'stall_id': order.stall_id.id if order.stall_id else None,
+                    'stall_name': order.stall_id.name if order.stall_id else None,
+                    'stall_position': order.stall_position if hasattr(order, 'stall_position') else None,
                     'mekanik': order.generated_mechanic_team or '-',
                     'service_advisor': ', '.join(order.service_advisor_id.mapped('name')) if order.service_advisor_id else '-',
                     'service': {

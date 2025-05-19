@@ -5,16 +5,18 @@
         <field name="model">sale.order.template</field>
         <field name="inherit_id" ref="sale_management.sale_order_template_view_form"/>
         <field name="arch" type="xml">
-            <!-- Tambahkan service_duration dan price_unit ke tampilan tree -->
+            <!-- Tambahkan service_duration, price_unit, dan discount ke tampilan tree -->
             <xpath expr="//field[@name='sale_order_template_line_ids']/tree//field[@name='product_id']" position="after">
                 <field name="service_duration" widget="float_time" force_save="1"/>
                 <field name="price_unit" widget="monetary"/>
+                <field name="discount" widget="percentage"/>
             </xpath>
-            
-            <!-- Tambahkan service_duration dan price_unit ke tampilan form -->
+                        
+            <!-- Tambahkan service_duration, price_unit, dan discount ke tampilan form -->
             <xpath expr="//field[@name='sale_order_template_line_ids']/form//field[@name='product_id']" position="after">
                 <field name="service_duration" widget="float_time" force_save="1"/>
                 <field name="price_unit" widget="monetary"/>
+                <field name="discount" widget="integer"/>
             </xpath>
         </field>
     </record>
@@ -49,8 +51,14 @@
             <xpath expr="//field[@name='sale_order_template_line_ids']/tree" position="inside">
                 <!-- <field name="service_duration"/>
                 <field name="price_unit"/> -->
+                <!-- <field name="discount" widget="integer"/> -->
                 <field name="is_required"/>
             </xpath>
+
+            <!-- Tambahkan discount pada form line -->
+            <!-- <xpath expr="//field[@name='sale_order_template_line_ids']/form//field[@name='price_unit']" position="after">
+                <field name="discount" widget="percentage" attrs="{'invisible': [('display_type', '!=', False)]}"/>
+            </xpath> -->
             
             <!-- Tambahkan field pada form line -->
             <xpath expr="//field[@name='sale_order_template_line_ids']/form//field[@name='product_uom_qty']" position="after">

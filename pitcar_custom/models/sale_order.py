@@ -242,6 +242,7 @@ class SaleOrder(models.Model):
                 'product_uom_qty': line.product_uom_qty,
                 'product_uom': line.product_uom_id.id,
                 'display_type': line.display_type,
+                'discount': line.discount,  # Tambahkan diskon disini
             }
 
             # Add service duration if it's a service product
@@ -251,7 +252,7 @@ class SaleOrder(models.Model):
             # Get price
             if line.product_id:
                 line_values.update({
-                    'price_unit': line.product_id.list_price,
+                    'price_unit': line.price_unit or line.product_id.list_price,
                 })
 
             lines_data.append((0, 0, line_values))

@@ -16,6 +16,14 @@ class SaleOrderTemplateLine(models.Model):
         digits='Product Price',
         help='Harga satuan untuk produk dalam template quotation'
     )
+
+    # Tambahkan field discount
+    discount = fields.Float(
+        string='Diskon (%)',
+        digits='Discount',
+        default=0.0,
+        help='Diskon dalam persentase'
+    )
     
     # Tambahkan flag untuk menandai apakah line ini penting/wajib
     is_required = fields.Boolean(

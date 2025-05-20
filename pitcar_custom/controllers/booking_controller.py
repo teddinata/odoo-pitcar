@@ -1340,33 +1340,36 @@ class BookingController(http.Controller):
         
     @http.route('/web/v1/booking/stall-utilization', type='json', auth="public", methods=['POST'], csrf=False)
     def get_stall_utilization(self, **kw):
-        """Mendapatkan data utilization stall (pemanfaatan stall)"""
+        """Enhanced stall utilization data with deeper metrics"""
         try:
             date_from = kw.get('date_from', fields.Date.today())
             date_to = kw.get('date_to', fields.Date.today())
             
-            # Ambil semua stall aktif
+            # Fetch all active stalls
             stalls = request.env['pitcar.service.stall'].sudo().search([('active', '=', True)])
             
-            # Definisikan jam operasional bengkel (dalam float)
+            # Define shop working hours
             working_hours_start = 8.0  # 08:00
             working_hours_end = 17.0   # 17:00
-            working_hours_per_day = working_hours_end - working_hours_start  # 9 jam
+            working_hours_per_day = working_hours_end - working_hours_start  # 9 hours
             
-            # Hitung jumlah hari dalam rentang tanggal
+            # Calculate date range details
             start_date = fields.Date.from_string(date_from)
             end_date = fields.Date.from_string(date_to)
             days_count = (end_date - start_date).days + 1
             
-            # Total jam kerja yang tersedia untuk semua stall dalam periode
+            # Total available hours for all stalls during period
             total_available_hours = len(stalls) * working_hours_per_day * days_count
             
-            # Untuk setiap stall, hitung jam yang terpakai (booking)
+            # Enhanced stall stats with more metrics
             stall_stats = []
             total_utilized_hours = 0
+            total_bookings = 0
+            highest_utilization = 0
+            most_efficient_stall = None
             
             for stall in stalls:
-                # Ambil semua booking yang confirmed/converted untuk stall ini dalam rentang tanggal
+                # Get confirmed/converted bookings for this stall in date range
                 bookings = request.env['pitcar.service.booking'].sudo().search([
                     ('stall_id', '=', stall.id),
                     ('booking_date', '>=', date_from),
@@ -1374,71 +1377,178 @@ class BookingController(http.Controller):
                     ('state', 'in', ['confirmed', 'converted']),
                 ])
                 
-                # Hitung total jam digunakan
+                # Calculate stats
                 stall_utilized_hours = 0
                 booking_count = 0
+                completed_count = 0
+                avg_service_time = 0
+                service_times = []
+                peak_hour_usage = {}  # Track usage by hour
                 
                 for booking in bookings:
+                    booking_count += 1
+                    total_bookings += 1
+                    
+                    # Track if booking was completed (converted to SO)
+                    if booking.state == 'converted':
+                        completed_count += 1
+                    
+                    # Calculate service duration
                     duration = booking.booking_end_time - booking.booking_time
                     if duration > 0:
                         stall_utilized_hours += duration
-                        booking_count += 1
+                        service_times.append(duration)
+                    
+                    # Track hourly distribution
+                    start_hour = int(booking.booking_time)
+                    end_hour = int(booking.booking_end_time)
+                    
+                    # Add partial hours to peak tracking
+                    for hour in range(start_hour, end_hour + 1):
+                        if 8 <= hour <= 17:  # Only count during working hours
+                            if hour not in peak_hour_usage:
+                                peak_hour_usage[hour] = 0
+                            
+                            # Add partial or full hour
+                            if hour == start_hour and hour == end_hour:
+                                # Booking starts and ends in same hour
+                                peak_hour_usage[hour] += booking.booking_end_time - booking.booking_time
+                            elif hour == start_hour:
+                                # First partial hour
+                                peak_hour_usage[hour] += (hour + 1) - booking.booking_time
+                            elif hour == end_hour:
+                                # Last partial hour
+                                peak_hour_usage[hour] += booking.booking_end_time - hour
+                            else:
+                                # Full hour in between
+                                peak_hour_usage[hour] += 1.0
                 
-                # Hitung jam yang tersedia untuk stall ini selama periode
+                # Calculate average service time
+                if service_times:
+                    avg_service_time = sum(service_times) / len(service_times)
+                
+                # Determine peak hour for this stall
+                peak_hour = max(peak_hour_usage.items(), key=lambda x: x[1])[0] if peak_hour_usage else None
+                peak_utilization = max(peak_hour_usage.values()) if peak_hour_usage else 0
+                
+                # Calculate stall-specific available hours
                 stall_available_hours = working_hours_per_day * days_count
                 
-                # Hitung pemanfaatan stall
+                # Calculate utilization rate
                 utilization_rate = (stall_utilized_hours / stall_available_hours) * 100 if stall_available_hours > 0 else 0
                 
+                # Check if this is the most efficient stall
+                if utilization_rate > highest_utilization:
+                    highest_utilization = utilization_rate
+                    most_efficient_stall = {
+                        'stall_id': stall.id,
+                        'stall_name': stall.name,
+                        'utilization_rate': utilization_rate
+                    }
+                
+                # Format for display
                 stall_stats.append({
                     'stall_id': stall.id,
                     'stall_name': stall.name,
                     'utilized_hours': stall_utilized_hours,
                     'available_hours': stall_available_hours,
                     'utilization_rate': round(utilization_rate, 2),
-                    'booking_count': booking_count
+                    'booking_count': booking_count,
+                    'completed_count': completed_count,
+                    'completion_rate': round((completed_count / booking_count) * 100, 2) if booking_count > 0 else 0,
+                    'avg_service_time': avg_service_time,
+                    'peak_hour': peak_hour,
+                    'peak_utilization': peak_utilization,
+                    'hourly_usage': peak_hour_usage
                 })
                 
                 total_utilized_hours += stall_utilized_hours
             
-            # Hitung tingkat pemanfaatan keseluruhan
+            # Calculate overall utilization rate
             overall_utilization_rate = (total_utilized_hours / total_available_hours) * 100 if total_available_hours > 0 else 0
             
-            # Data untuk grafik harian (opsional)
+            # Daily utilization trend
             daily_stats = []
             current_date = start_date
             while current_date <= end_date:
                 date_str = fields.Date.to_string(current_date)
                 
-                # Hitung pemanfaatan untuk tanggal ini
+                # Calculate hours used on this date across all stalls
                 day_utilized_hours = 0
+                day_bookings = 0
+                stall_usage = {}  # Track usage by stall for this day
                 
                 for stall in stalls:
+                    stall_usage[stall.id] = 0
+                    
                     bookings = request.env['pitcar.service.booking'].sudo().search([
                         ('stall_id', '=', stall.id),
                         ('booking_date', '=', date_str),
                         ('state', 'in', ['confirmed', 'converted']),
                     ])
                     
+                    stall_hours = 0
                     for booking in bookings:
                         duration = booking.booking_end_time - booking.booking_time
                         if duration > 0:
+                            stall_hours += duration
                             day_utilized_hours += duration
+                        day_bookings += 1
+                    
+                    stall_usage[stall.id] = stall_hours
                 
-                # Total jam tersedia pada hari ini
+                # Calculate daily utilization rate
                 day_available_hours = len(stalls) * working_hours_per_day
-                
-                # Tingkat pemanfaatan pada hari ini
                 day_utilization_rate = (day_utilized_hours / day_available_hours) * 100 if day_available_hours > 0 else 0
+                
+                # Find most used stall for this day
+                most_used_stall = None
+                if stall_usage:
+                    stall_id = max(stall_usage.items(), key=lambda x: x[1])[0]
+                    stall = request.env['pitcar.service.stall'].sudo().browse(stall_id)
+                    if stall.exists():
+                        most_used_stall = {
+                            'stall_id': stall.id,
+                            'stall_name': stall.name,
+                            'hours': stall_usage[stall.id]
+                        }
                 
                 daily_stats.append({
                     'date': date_str,
                     'utilized_hours': day_utilized_hours,
                     'available_hours': day_available_hours,
-                    'utilization_rate': round(day_utilization_rate, 2)
+                    'utilization_rate': round(day_utilization_rate, 2),
+                    'booking_count': day_bookings,
+                    'most_used_stall': most_used_stall,
+                    'stall_breakdown': stall_usage
                 })
                 
                 current_date += timedelta(days=1)
+            
+            # Get mechanic assignment data
+            mechanic_stats = []
+            mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+            
+            for mechanic in mechanics:
+                # Count bookings where this mechanic was assigned via stall
+                mechanic_stalls = stalls.filtered(lambda s: mechanic.id in s.mechanic_ids.ids)
+                mechanic_bookings = request.env['pitcar.service.booking'].sudo().search_count([
+                    ('stall_id', 'in', mechanic_stalls.ids),
+                    ('booking_date', '>=', date_from),
+                    ('booking_date', '<=', date_to),
+                    ('state', 'in', ['confirmed', 'converted']),
+                ])
+                
+                if mechanic_bookings > 0:
+                    mechanic_stats.append({
+                        'mechanic_id': mechanic.id,
+                        'name': mechanic.name,
+                        'bookings': mechanic_bookings,
+                        'assigned_stalls': [{
+                            'stall_id': stall.id,
+                            'stall_name': stall.name
+                        } for stall in mechanic_stalls]
+                    })
             
             return {
                 'status': 'success',
@@ -1446,11 +1556,14 @@ class BookingController(http.Controller):
                     'overall_utilization_rate': round(overall_utilization_rate, 2),
                     'total_utilized_hours': total_utilized_hours,
                     'total_available_hours': total_available_hours,
+                    'total_bookings': total_bookings,
+                    'most_efficient_stall': most_efficient_stall,
                     'stall_stats': stall_stats,
-                    'daily_stats': daily_stats
+                    'daily_stats': daily_stats,
+                    'mechanic_stats': mechanic_stats
                 }
             }
-                
+                    
         except Exception as e:
             _logger.error(f"Error in get_stall_utilization: {str(e)}")
             return {'status': 'error', 'message': str(e)}

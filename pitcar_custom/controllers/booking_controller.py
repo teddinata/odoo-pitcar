@@ -1,7 +1,7 @@
 from odoo import http, fields
 from odoo.http import request
 import logging
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 import psycopg2  # Tambahkan import ini
 import math
 
@@ -1369,63 +1369,102 @@ class BookingController(http.Controller):
             most_efficient_stall = None
             
             for stall in stalls:
-                # Get confirmed/converted bookings for this stall in date range
-                bookings = request.env['pitcar.service.booking'].sudo().search([
+                # Get ALL bookings for this stall in date range (regardless of state)
+                all_bookings = request.env['pitcar.service.booking'].sudo().search([
                     ('stall_id', '=', stall.id),
                     ('booking_date', '>=', date_from),
                     ('booking_date', '<=', date_to),
-                    ('state', 'in', ['confirmed', 'converted']),
+                ])
+                
+                # Get confirmed/converted bookings for utilization calculation
+                active_bookings = all_bookings.filtered(lambda b: b.state in ['confirmed', 'converted'])
+                
+                # Get active sale orders using this stall
+                active_orders = request.env['sale.order'].sudo().search([
+                    ('stall_id', '=', stall.id),
+                    ('controller_mulai_servis', '>=', datetime.combine(start_date, time(0, 0))),
+                    ('controller_mulai_servis', '<', datetime.combine(end_date + timedelta(days=1), time(0, 0))),
                 ])
                 
                 # Calculate stats
                 stall_utilized_hours = 0
-                booking_count = 0
-                completed_count = 0
-                avg_service_time = 0
+                booking_count = len(all_bookings)
+                booking_status = {
+                    'total': booking_count,
+                    'draft': len(all_bookings.filtered(lambda b: b.state == 'draft')),
+                    'confirmed': len(all_bookings.filtered(lambda b: b.state == 'confirmed')),
+                    'converted': len(all_bookings.filtered(lambda b: b.state == 'converted')),
+                    'cancelled': len(all_bookings.filtered(lambda b: b.state == 'cancelled')),
+                    'archived': len(all_bookings.filtered(lambda b: b.is_archived)),
+                    'not_archived': len(all_bookings.filtered(lambda b: not b.is_archived))
+                }
+                
+                completed_count = len(all_bookings.filtered(lambda b: b.state == 'converted'))
                 service_times = []
                 peak_hour_usage = {}  # Track usage by hour
                 
-                for booking in bookings:
-                    booking_count += 1
-                    total_bookings += 1
-                    
-                    # Track if booking was completed (converted to SO)
-                    if booking.state == 'converted':
-                        completed_count += 1
-                    
-                    # Calculate service duration
-                    duration = booking.booking_end_time - booking.booking_time
-                    if duration > 0:
+                # Calculate hours from bookings
+                for booking in active_bookings:
+                    # Calculate service duration from booking
+                    if booking.booking_time and booking.booking_end_time and booking.booking_end_time > booking.booking_time:
+                        duration = booking.booking_end_time - booking.booking_time
                         stall_utilized_hours += duration
                         service_times.append(duration)
-                    
-                    # Track hourly distribution
-                    start_hour = int(booking.booking_time)
-                    end_hour = int(booking.booking_end_time)
-                    
-                    # Add partial hours to peak tracking
-                    for hour in range(start_hour, end_hour + 1):
-                        if 8 <= hour <= 17:  # Only count during working hours
-                            if hour not in peak_hour_usage:
-                                peak_hour_usage[hour] = 0
-                            
-                            # Add partial or full hour
-                            if hour == start_hour and hour == end_hour:
-                                # Booking starts and ends in same hour
-                                peak_hour_usage[hour] += booking.booking_end_time - booking.booking_time
-                            elif hour == start_hour:
-                                # First partial hour
-                                peak_hour_usage[hour] += (hour + 1) - booking.booking_time
-                            elif hour == end_hour:
-                                # Last partial hour
-                                peak_hour_usage[hour] += booking.booking_end_time - hour
+                        
+                        # Track hourly distribution
+                        start_hour = int(booking.booking_time)
+                        end_hour = int(booking.booking_end_time)
+                        
+                        # Update peak hour tracking
+                        for hour in range(start_hour, end_hour + 1):
+                            if 8 <= hour <= 17:  # Only count during working hours
+                                if hour not in peak_hour_usage:
+                                    peak_hour_usage[hour] = 0
+                                
+                                # Add partial or full hour
+                                if hour == start_hour and hour == end_hour:
+                                    peak_hour_usage[hour] += booking.booking_end_time - booking.booking_time
+                                elif hour == start_hour:
+                                    peak_hour_usage[hour] += (hour + 1) - booking.booking_time
+                                elif hour == end_hour:
+                                    peak_hour_usage[hour] += booking.booking_end_time - hour
+                                else:
+                                    peak_hour_usage[hour] += 1.0
+                
+                # Calculate hours from sale orders
+                for order in active_orders:
+                    if order.controller_mulai_servis:
+                        end_time = order.controller_selesai or fields.Datetime.now()
+                        if end_time > order.controller_mulai_servis:
+                            # Calculate hours while accounting for job stops
+                            if hasattr(order, 'lead_time_servis') and order.lead_time_servis:
+                                stall_utilized_hours += order.lead_time_servis
                             else:
-                                # Full hour in between
-                                peak_hour_usage[hour] += 1.0
+                                # Basic calculation if lead_time_servis is not available
+                                duration_hours = (end_time - order.controller_mulai_servis).total_seconds() / 3600
+                                stall_utilized_hours += duration_hours
+                
+                # Get current active orders for this stall
+                current_orders = request.env['sale.order'].sudo().search([
+                    ('stall_id', '=', stall.id),
+                    ('controller_mulai_servis', '!=', False),
+                    ('controller_selesai', '=', False)
+                ])
+                
+                active_order_details = []
+                for order in current_orders:
+                    active_order_details.append({
+                        'id': order.id,
+                        'name': order.name,
+                        'customer': order.partner_id.name,
+                        'start_time': fields.Datetime.to_string(order.controller_mulai_servis),
+                        'elapsed_hours': (fields.Datetime.now() - order.controller_mulai_servis).total_seconds() / 3600,
+                        'is_booking': order.is_booking,
+                        'origin_booking_id': order.booking_id.id if order.booking_id else False
+                    })
                 
                 # Calculate average service time
-                if service_times:
-                    avg_service_time = sum(service_times) / len(service_times)
+                avg_service_time = sum(service_times) / len(service_times) if service_times else 0
                 
                 # Determine peak hour for this stall
                 peak_hour = max(peak_hour_usage.items(), key=lambda x: x[1])[0] if peak_hour_usage else None
@@ -1436,6 +1475,10 @@ class BookingController(http.Controller):
                 
                 # Calculate utilization rate
                 utilization_rate = (stall_utilized_hours / stall_available_hours) * 100 if stall_available_hours > 0 else 0
+                
+                # Update totals
+                total_utilized_hours += stall_utilized_hours
+                total_bookings += booking_count
                 
                 # Check if this is the most efficient stall
                 if utilization_rate > highest_utilization:
@@ -1454,15 +1497,15 @@ class BookingController(http.Controller):
                     'available_hours': stall_available_hours,
                     'utilization_rate': round(utilization_rate, 2),
                     'booking_count': booking_count,
+                    'booking_status': booking_status,
                     'completed_count': completed_count,
                     'completion_rate': round((completed_count / booking_count) * 100, 2) if booking_count > 0 else 0,
                     'avg_service_time': avg_service_time,
                     'peak_hour': peak_hour,
                     'peak_utilization': peak_utilization,
-                    'hourly_usage': peak_hour_usage
+                    'hourly_usage': peak_hour_usage,
+                    'current_orders': active_order_details
                 })
-                
-                total_utilized_hours += stall_utilized_hours
             
             # Calculate overall utilization rate
             overall_utilization_rate = (total_utilized_hours / total_available_hours) * 100 if total_available_hours > 0 else 0

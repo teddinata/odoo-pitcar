@@ -263,6 +263,105 @@ class ServiceBooking(models.Model):
         }
 
     # Integrasikan dengan action_convert_to_sale_order di model pitcar.service.booking
+    # def action_convert_to_sale_order(self):
+    #     self.ensure_one()
+    #     if self.state not in ['confirmed', 'arrived']:
+    #         raise ValidationError(_('Only confirmed or arrived bookings can be converted to sale orders'))
+            
+    #     if self.sale_order_id:
+    #         raise ValidationError(_('This booking has already been converted to a sale order'))
+
+    #     try:
+    #         sale_order = self.env['sale.order'].create({
+    #             'partner_id': self.partner_id.id,
+    #             'partner_car_id': self.partner_car_id.id,
+    #             'service_advisor_id': [(6, 0, self.service_advisor_id.ids)],
+    #             'partner_car_odometer': self.partner_car_odometer,
+    #             'service_category': self.service_category,
+    #             'service_subcategory': self.service_subcategory,
+    #             'is_booking': True,
+    #             'booking_id': self.id,
+    #             'origin': self.name,
+    #             'stall_id': self.stall_id.id if self.stall_id else False,
+    #             'is_online_booking': self.is_online_booking if hasattr(self, 'is_online_booking') else False,
+    #         })
+
+    #         # Create stall history if stall is assigned
+    #         if self.stall_id:
+    #             self.env['pitcar.stall.history'].create({
+    #                 'sale_order_id': sale_order.id,
+    #                 'stall_id': self.stall_id.id,
+    #                 'start_time': fields.Datetime.now(),
+    #                 'notes': 'Assigned from booking conversion'
+    #             })
+
+    #         # Convert booking lines
+    #         for line in self.booking_line_ids:
+    #             if line.display_type:
+    #                 # Handle section dan note
+    #                 self.env['sale.order.line'].create({
+    #                     'order_id': sale_order.id,
+    #                     'display_type': line.display_type,
+    #                     'name': line.name,
+    #                     'sequence': line.sequence,
+    #                 })
+    #                 continue
+
+    #             # Inisialisasi discount
+    #             discount = 0.0
+    #             price_unit = line.price_unit
+
+    #             # Cek apakah line adalah produk service dan ada online discount
+    #             if line.product_id.type == 'service' and hasattr(line, 'online_discount') and line.online_discount > 0:
+    #                 # Jika kita memiliki price_before_discount dan online_discount, gunakan itu
+    #                 if hasattr(line, 'price_before_discount') and line.price_before_discount > 0:
+    #                     price_unit = line.price_before_discount  # Harga asli
+    #                     discount = line.online_discount  # Persentase diskon
+    #                 # Jika kita hanya memiliki price_unit yang sudah didiskon
+    #                 else:
+    #                     price_unit = line.price_unit  # Harga setelah diskon
+    #                     discount = 0.0  # Tidak ada diskon karena sudah diterapkan ke price_unit
+    #             else:
+    #                 # Untuk non-service, tidak ada diskon
+    #                 discount = 0.0
+                
+    #             _logger.info(f"Converting line: price_unit={price_unit}, discount={discount}")
+
+    #             # Dalam fungsi action_convert_to_sale_order
+    #             line_values = {
+    #                 'order_id': sale_order.id,
+    #                 'product_id': line.product_id.id,
+    #                 'product_uom_qty': line.quantity,
+    #                 'service_duration': line.service_duration,
+    #                 'name': line.name,
+    #                 'price_unit': line.price_unit,
+    #                 'discount': line.discount,  # Pastikan nilai diskon disalin
+    #                 'tax_id': [(6, 0, line.tax_ids.ids)],
+    #                 'sequence': line.sequence,
+    #             }
+                
+    #             # Create sale order line dan log hasilnya
+    #             sale_line = self.env['sale.order.line'].create(line_values)
+    #             _logger.info("Created sale order line with price_unit: %s, discount: %s", sale_line.price_unit, sale_line.discount)
+
+    #         # Update booking status
+    #         self.write({
+    #             'state': 'converted',
+    #             'sale_order_id': sale_order.id
+    #         })
+
+    #         return {
+    #             'type': 'ir.actions.act_window',
+    #             'name': 'Sale Order',
+    #             'res_model': 'sale.order',
+    #             'res_id': sale_order.id,
+    #             'view_mode': 'form',
+    #             'target': 'current',
+    #         }
+
+    #     except Exception as e:
+    #         raise ValidationError(_('Error converting booking to sale order: %s') % str(e))
+
     def action_convert_to_sale_order(self):
         self.ensure_one()
         if self.state not in ['confirmed', 'arrived']:
@@ -272,6 +371,7 @@ class ServiceBooking(models.Model):
             raise ValidationError(_('This booking has already been converted to a sale order'))
 
         try:
+            # Buat sale order
             sale_order = self.env['sale.order'].create({
                 'partner_id': self.partner_id.id,
                 'partner_car_id': self.partner_car_id.id,
@@ -307,42 +407,21 @@ class ServiceBooking(models.Model):
                     })
                     continue
 
-                # Inisialisasi discount
-                discount = 0.0
-                price_unit = line.price_unit
-
-                # Cek apakah line adalah produk service dan ada online discount
-                if line.product_id.type == 'service' and hasattr(line, 'online_discount') and line.online_discount > 0:
-                    # Jika kita memiliki price_before_discount dan online_discount, gunakan itu
-                    if hasattr(line, 'price_before_discount') and line.price_before_discount > 0:
-                        price_unit = line.price_before_discount  # Harga asli
-                        discount = line.online_discount  # Persentase diskon
-                    # Jika kita hanya memiliki price_unit yang sudah didiskon
-                    else:
-                        price_unit = line.price_unit  # Harga setelah diskon
-                        discount = 0.0  # Tidak ada diskon karena sudah diterapkan ke price_unit
-                else:
-                    # Untuk non-service, tidak ada diskon
-                    discount = 0.0
-                
-                _logger.info(f"Converting line: price_unit={price_unit}, discount={discount}")
-
                 # Dalam fungsi action_convert_to_sale_order
                 line_values = {
                     'order_id': sale_order.id,
                     'product_id': line.product_id.id,
                     'product_uom_qty': line.quantity,
-                    'service_duration': line.service_duration,
+                    'service_duration': line.service_duration if hasattr(line, 'service_duration') else 0.0,
                     'name': line.name,
                     'price_unit': line.price_unit,
-                    'discount': line.discount,  # Pastikan nilai diskon disalin
+                    'discount': line.discount,  # Salin diskon dari booking line
                     'tax_id': [(6, 0, line.tax_ids.ids)],
                     'sequence': line.sequence,
                 }
                 
-                # Create sale order line dan log hasilnya
-                sale_line = self.env['sale.order.line'].create(line_values)
-                _logger.info("Created sale order line with price_unit: %s, discount: %s", sale_line.price_unit, sale_line.discount)
+                # Create sale order line
+                self.env['sale.order.line'].create(line_values)
 
             # Update booking status
             self.write({
@@ -559,17 +638,22 @@ class ServiceBooking(models.Model):
                 line_values['service_duration'] = line.service_duration
                 # Jika booking online, berikan diskon hanya untuk produk service
                 if self.is_online_booking:
-                    line_values['online_discount'] = self.online_booking_discount
-                    line_values['discount'] = self.online_booking_discount
+                    # Jika sudah ada diskon dari template, gunakan yang lebih besar
+                    line_values['discount'] = max(line.discount, self.online_booking_discount)
+                    line_values['online_discount'] = max(line.discount, self.online_booking_discount)
+                else:
+                    # Jika tidak online booking, gunakan diskon dari template
+                    line_values['discount'] = line.discount
+                    line_values['online_discount'] = 0.0
             else:
-                # Untuk produk selain service, tidak ada diskon
+                # Untuk produk selain service, salin diskon dari template jika ada
+                line_values['discount'] = line.discount
                 line_values['online_discount'] = 0.0
-                line_values['discount'] = 0.0
 
             # Get price dan taxes
             if line.product_id:
                 line_values.update({
-                    'price_unit': line.product_id.list_price,
+                    'price_unit': line.price_unit or line.product_id.list_price,
                     'tax_ids': [(6, 0, line.product_id.taxes_id.filtered(
                         lambda t: t.company_id == self.company_id
                     ).ids)],
@@ -583,6 +667,7 @@ class ServiceBooking(models.Model):
 
         if self.sale_order_template_id.note:
             self.notes = self.sale_order_template_id.note
+
 
     def _compute_template_line_values(self, line):
         """Inherit untuk menambahkan service duration dari template"""
@@ -1234,18 +1319,11 @@ class ServiceBookingLine(models.Model):
                 })
                 continue
 
-            # Karena discount sudah dalam format desimal (0.1 untuk 10%)
-            # JANGAN bagi dengan 100 lagi
-            # discount_factor = 1 - line.discount  # Hapus pembagian dengan 100
-
-            # Atau alternatif jika discount disimpan sebagai persentase (10.0)
             # Karena discount dalam persentase (10.0 untuk 10%)
-            # discount_factor = 1 - (line.discount / 100.0)
             discount_factor = 1 - (line.discount / 100.0)
             
             # Hitung price setelah diskon
             price_after_discount = line.price_unit * discount_factor
-
             
             # Pastikan price_before_discount memiliki nilai
             line.price_before_discount = line.price_unit
@@ -1282,12 +1360,19 @@ class ServiceBookingLine(models.Model):
         values = {
             'name': self.product_id.get_product_multiline_description_sale(),
             'price_unit': self.product_id.list_price,
-            'discount': 0.0,  # Reset discount saat product berubah
             'service_duration': self.product_id.service_duration if self.product_id.type == 'service' else 0.0,
             'tax_ids': [(6, 0, self.product_id.taxes_id.filtered(
                 lambda t: t.company_id == self.booking_id.company_id
             ).ids)]
         }
+        
+        # Cek jika ada diskon online dan produk adalah service
+        if self.booking_id.is_online_booking and self.product_id.type == 'service':
+            values['discount'] = self.booking_id.online_booking_discount
+            values['online_discount'] = self.booking_id.online_booking_discount
+        else:
+            values['discount'] = 0.0
+            values['online_discount'] = 0.0
             
         self.update(values)
 

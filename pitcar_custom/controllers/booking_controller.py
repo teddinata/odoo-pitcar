@@ -1,7 +1,7 @@
 from odoo import http, fields
 from odoo.http import request
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import psycopg2  # Tambahkan import ini
 import math
 
@@ -1337,3 +1337,399 @@ class BookingController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_booking_dashboard: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v1/booking/stall-utilization', type='json', auth="public", methods=['POST'], csrf=False)
+    def get_stall_utilization(self, **kw):
+        """Mendapatkan data utilization stall (pemanfaatan stall)"""
+        try:
+            date_from = kw.get('date_from', fields.Date.today())
+            date_to = kw.get('date_to', fields.Date.today())
+            
+            # Ambil semua stall aktif
+            stalls = request.env['pitcar.service.stall'].sudo().search([('active', '=', True)])
+            
+            # Definisikan jam operasional bengkel (dalam float)
+            working_hours_start = 8.0  # 08:00
+            working_hours_end = 17.0   # 17:00
+            working_hours_per_day = working_hours_end - working_hours_start  # 9 jam
+            
+            # Hitung jumlah hari dalam rentang tanggal
+            start_date = fields.Date.from_string(date_from)
+            end_date = fields.Date.from_string(date_to)
+            days_count = (end_date - start_date).days + 1
+            
+            # Total jam kerja yang tersedia untuk semua stall dalam periode
+            total_available_hours = len(stalls) * working_hours_per_day * days_count
+            
+            # Untuk setiap stall, hitung jam yang terpakai (booking)
+            stall_stats = []
+            total_utilized_hours = 0
+            
+            for stall in stalls:
+                # Ambil semua booking yang confirmed/converted untuk stall ini dalam rentang tanggal
+                bookings = request.env['pitcar.service.booking'].sudo().search([
+                    ('stall_id', '=', stall.id),
+                    ('booking_date', '>=', date_from),
+                    ('booking_date', '<=', date_to),
+                    ('state', 'in', ['confirmed', 'converted']),
+                ])
+                
+                # Hitung total jam digunakan
+                stall_utilized_hours = 0
+                booking_count = 0
+                
+                for booking in bookings:
+                    duration = booking.booking_end_time - booking.booking_time
+                    if duration > 0:
+                        stall_utilized_hours += duration
+                        booking_count += 1
+                
+                # Hitung jam yang tersedia untuk stall ini selama periode
+                stall_available_hours = working_hours_per_day * days_count
+                
+                # Hitung pemanfaatan stall
+                utilization_rate = (stall_utilized_hours / stall_available_hours) * 100 if stall_available_hours > 0 else 0
+                
+                stall_stats.append({
+                    'stall_id': stall.id,
+                    'stall_name': stall.name,
+                    'utilized_hours': stall_utilized_hours,
+                    'available_hours': stall_available_hours,
+                    'utilization_rate': round(utilization_rate, 2),
+                    'booking_count': booking_count
+                })
+                
+                total_utilized_hours += stall_utilized_hours
+            
+            # Hitung tingkat pemanfaatan keseluruhan
+            overall_utilization_rate = (total_utilized_hours / total_available_hours) * 100 if total_available_hours > 0 else 0
+            
+            # Data untuk grafik harian (opsional)
+            daily_stats = []
+            current_date = start_date
+            while current_date <= end_date:
+                date_str = fields.Date.to_string(current_date)
+                
+                # Hitung pemanfaatan untuk tanggal ini
+                day_utilized_hours = 0
+                
+                for stall in stalls:
+                    bookings = request.env['pitcar.service.booking'].sudo().search([
+                        ('stall_id', '=', stall.id),
+                        ('booking_date', '=', date_str),
+                        ('state', 'in', ['confirmed', 'converted']),
+                    ])
+                    
+                    for booking in bookings:
+                        duration = booking.booking_end_time - booking.booking_time
+                        if duration > 0:
+                            day_utilized_hours += duration
+                
+                # Total jam tersedia pada hari ini
+                day_available_hours = len(stalls) * working_hours_per_day
+                
+                # Tingkat pemanfaatan pada hari ini
+                day_utilization_rate = (day_utilized_hours / day_available_hours) * 100 if day_available_hours > 0 else 0
+                
+                daily_stats.append({
+                    'date': date_str,
+                    'utilized_hours': day_utilized_hours,
+                    'available_hours': day_available_hours,
+                    'utilization_rate': round(day_utilization_rate, 2)
+                })
+                
+                current_date += timedelta(days=1)
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'overall_utilization_rate': round(overall_utilization_rate, 2),
+                    'total_utilized_hours': total_utilized_hours,
+                    'total_available_hours': total_available_hours,
+                    'stall_stats': stall_stats,
+                    'daily_stats': daily_stats
+                }
+            }
+                
+        except Exception as e:
+            _logger.error(f"Error in get_stall_utilization: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/v1/booking/statistics', type='json', auth="public", methods=['POST'], csrf=False)
+    def get_booking_statistics(self, **kw):
+        """Mendapatkan statistik booking lengkap untuk dashboard"""
+        try:
+            # Handle filter parameter
+            start_date = kw.get('start_date', fields.Date.today())
+            end_date = kw.get('end_date', fields.Date.today())
+            month = kw.get('month', False)
+            year = kw.get('year', False)
+            
+            # Jika menggunakan filter bulan
+            if month and year:
+                # Convert month/year to date range
+                month = int(month)
+                year = int(year)
+                
+                # Get first and last day of month
+                start_date = fields.Date.to_string(date(year, month, 1))
+                
+                # Get last day of month
+                if month == 12:
+                    last_day = date(year + 1, 1, 1) - timedelta(days=1)
+                else:
+                    last_day = date(year, month + 1, 1) - timedelta(days=1)
+                    
+                end_date = fields.Date.to_string(last_day)
+            
+            # Domain untuk filtering booking
+            domain = [
+                ('booking_date', '>=', start_date),
+                ('booking_date', '<=', end_date),
+            ]
+            
+            # Current time
+            current_time = fields.Datetime.now()
+            
+            # 1. Overall Statistics
+            # Total bookings
+            total_bookings = request.env['pitcar.service.booking'].sudo().search_count(domain)
+            
+            # Bookings by state
+            bookings_by_state = {}
+            states = ['draft', 'confirmed', 'converted', 'cancelled']
+            for state in states:
+                count = request.env['pitcar.service.booking'].sudo().search_count(domain + [('state', '=', state)])
+                bookings_by_state[state] = count
+            
+            # Active bookings (confirmed not yet converted)
+            active_bookings = bookings_by_state.get('confirmed', 0)
+            
+            # Completed bookings (converted)
+            completed_bookings = bookings_by_state.get('converted', 0)
+            
+            # Completion rate
+            completion_rate = (completed_bookings / total_bookings * 100) if total_bookings > 0 else 0
+            
+            # 2. Hourly distribution
+            hourly_distribution = {}
+            for hour in range(7, 19):  # 7:00 - 18:59
+                hourly_distribution[hour] = {
+                    'starts': 0,  # Booking starts at this hour
+                    'completions': 0  # Booking completions at this hour
+                }
+            
+            # Get all bookings
+            bookings = request.env['pitcar.service.booking'].sudo().search(domain)
+            
+            # Populate hourly distribution
+            for booking in bookings:
+                # Booking start hour
+                start_hour = int(booking.booking_time)
+                if 7 <= start_hour <= 18:
+                    hourly_distribution[start_hour]['starts'] += 1
+                
+                # Booking end hour (for completions - assume booking.booking_end_time exists)
+                if booking.state in ['confirmed', 'converted'] and hasattr(booking, 'booking_end_time'):
+                    end_hour = int(booking.booking_end_time)
+                    if 7 <= end_hour <= 18:
+                        hourly_distribution[end_hour]['completions'] += 1
+            
+            # 3. Service Category/Subcategory Statistics
+            service_category = {
+                'maintenance': 0,
+                'repair': 0,
+                'uncategorized': 0
+            }
+            
+            service_subcategory = {
+                'tune_up': 0,
+                'tune_up_addition': 0,
+                'periodic_service': 0,
+                'periodic_service_addition': 0,
+                'general_repair': 0,
+                'oil_change': 0,
+                'uncategorized': 0
+            }
+            
+            # Count by category/subcategory
+            for booking in bookings:
+                # Category
+                category = booking.service_category or 'uncategorized'
+                if category in service_category:
+                    service_category[category] += 1
+                else:
+                    service_category['uncategorized'] += 1
+                
+                # Subcategory
+                subcategory = booking.service_subcategory or 'uncategorized'
+                if subcategory in service_subcategory:
+                    service_subcategory[subcategory] += 1
+                else:
+                    service_subcategory['uncategorized'] += 1
+            
+            # 4. Daily Flat Rate Trend
+            # Define date range
+            start_date_obj = fields.Date.from_string(start_date)
+            end_date_obj = fields.Date.from_string(end_date)
+            
+            # Prepare daily stats
+            daily_flat_rates = []
+            
+            current_date = start_date_obj
+            while current_date <= end_date_obj:
+                date_str = fields.Date.to_string(current_date)
+                
+                # Get bookings for this date
+                day_bookings = request.env['pitcar.service.booking'].sudo().search([
+                    ('booking_date', '=', date_str),
+                    ('state', 'in', ['confirmed', 'converted'])
+                ])
+                
+                # Calculate total flat rate for the day
+                total_flat_rate = 0
+                for booking in day_bookings:
+                    # If flat_rate exists in booking, use it
+                    if hasattr(booking, 'flat_rate'):
+                        total_flat_rate += booking.flat_rate or 0
+                    # Otherwise calculate from booking_end_time - booking_time
+                    elif hasattr(booking, 'booking_end_time') and hasattr(booking, 'booking_time'):
+                        duration = booking.booking_end_time - booking.booking_time
+                        if duration > 0:
+                            total_flat_rate += duration
+                
+                # Function to format duration
+                def format_flat_rate(minutes):
+                    if not minutes:
+                        return '0j 0m'
+                    
+                    hours = int(minutes)
+                    mins = int((minutes - hours) * 60)
+                    
+                    if mins == 0:
+                        return f"{hours}j"
+                    return f"{hours}j {mins}m"
+                
+                # Add to daily stats
+                daily_flat_rates.append({
+                    'date': date_str,
+                    'flat_rate': total_flat_rate,
+                    'flat_rate_formatted': format_flat_rate(total_flat_rate),
+                    'order_count': len(day_bookings)
+                })
+                
+                current_date += timedelta(days=1)
+            
+            # 5. Staff Statistics
+            # Get active mechanics and advisors
+            mechanics_active = request.env['hr.employee'].sudo().search_count([
+                ('job_id.name', 'ilike', 'mechanic'),
+                ('active', '=', True)
+            ])
+            
+            advisors_active = request.env['hr.employee'].sudo().search_count([
+                ('job_id.name', 'ilike', 'advisor'),
+                ('active', '=', True)
+            ])
+            
+            # 6. Flat Rate Statistics
+            # Get flat rate efficiency if available
+            flat_rate_efficiency = 0
+            try:
+                # Assuming there's a method to calculate flat rate efficiency
+                # If not available, use a placeholder or skip
+                flat_rate_efficiency = 100.0  # Placeholder
+            except:
+                flat_rate_efficiency = 0
+            
+            # Get mechanic flat rates if available
+            mechanic_flat_rates = []
+            try:
+                employees = request.env['hr.employee'].sudo().search([
+                    ('job_id.name', 'ilike', 'mechanic'),
+                    ('active', '=', True)
+                ])
+                
+                for employee in employees:
+                    # Calculate flat rate for this mechanic
+                    # This is simplified - implement actual calculation based on your model
+                    mechanic_bookings = request.env['pitcar.service.booking'].sudo().search([
+                        ('booking_date', '>=', start_date),
+                        ('booking_date', '<=', end_date),
+                        ('state', 'in', ['confirmed', 'converted']),
+                        # Assuming there's a mechanic_id field in booking
+                        ('mechanic_id', '=', employee.id)
+                    ])
+                    
+                    mechanic_flat_rate = 0
+                    order_count = len(mechanic_bookings)
+                    
+                    for booking in mechanic_bookings:
+                        # If flat_rate exists in booking, use it
+                        if hasattr(booking, 'flat_rate'):
+                            mechanic_flat_rate += booking.flat_rate or 0
+                        # Otherwise calculate from booking_end_time - booking_time
+                        elif hasattr(booking, 'booking_end_time') and hasattr(booking, 'booking_time'):
+                            duration = booking.booking_end_time - booking.booking_time
+                            if duration > 0:
+                                mechanic_flat_rate += duration
+                    
+                    # Only add if the mechanic has bookings
+                    if order_count > 0:
+                        mechanic_flat_rates.append({
+                            'mechanic_id': employee.id,
+                            'name': employee.name,
+                            'flat_rate': mechanic_flat_rate,
+                            'flat_rate_formatted': format_flat_rate(mechanic_flat_rate),
+                            'order_count': order_count
+                        })
+            except Exception as e:
+                _logger.error(f"Error calculating mechanic flat rates: {str(e)}")
+            
+            # Calculate total flat rate
+            total_flat_rate = sum(m['flat_rate'] for m in mechanic_flat_rates)
+            
+            # Calculate average flat rate per mechanic
+            avg_flat_rate_per_mechanic = total_flat_rate / len(mechanic_flat_rates) if mechanic_flat_rates else 0
+            
+            # Create flat rate stats
+            flat_rate_stats = {
+                'flat_rate_efficiency': flat_rate_efficiency,
+                'total_flat_rate': total_flat_rate,
+                'formatted': {
+                    'total_flat_rate': format_flat_rate(total_flat_rate),
+                    'avg_flat_rate_per_mechanic': format_flat_rate(avg_flat_rate_per_mechanic)
+                },
+                'total_orders': completed_bookings,
+                'mechanic_flat_rates': mechanic_flat_rates,
+                'daily_flat_rates': daily_flat_rates
+            }
+            
+            # 7. Compile all statistics
+            booking_stats = {
+                'current_time': fields.Datetime.to_string(current_time),
+                'overall': {
+                    'total_orders': total_bookings,
+                    'active_orders': active_bookings,
+                    'completed_orders': completed_bookings,
+                    'completion_rate': completion_rate,
+                    'status_breakdown': bookings_by_state
+                },
+                'hourly_distribution': hourly_distribution,
+                'service_category': service_category,
+                'service_subcategory': service_subcategory,
+                'staff': {
+                    'mechanics': {'active': mechanics_active},
+                    'advisors': {'active': advisors_active}
+                },
+                'flat_rate': flat_rate_stats
+            }
+            
+            return {
+                'status': 'success',
+                'data': booking_stats
+            }
+                
+        except Exception as e:
+            _logger.error(f"Error in get_booking_statistics: {str(e)}")
+            return self._handle_error("Failed to get booking statistics", str(e))

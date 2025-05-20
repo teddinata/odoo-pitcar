@@ -5,18 +5,22 @@
         <field name="model">sale.order.template</field>
         <field name="inherit_id" ref="sale_management.sale_order_template_view_form"/>
         <field name="arch" type="xml">
-            <!-- Tambahkan service_duration, price_unit, dan discount ke tampilan tree -->
+            <!-- Tambahkan service_duration, price_unit, discount, dan subtotal ke tampilan tree -->
             <xpath expr="//field[@name='sale_order_template_line_ids']/tree//field[@name='product_id']" position="after">
                 <field name="service_duration" widget="float_time" force_save="1"/>
                 <field name="price_unit" widget="monetary"/>
-                <field name="discount" widget="percentage"/>
+                <field name="discount" widget="integer"/>
+                <field name="price_subtotal" widget="monetary" sum="Total" optional="show"/>
+                <field name="is_required"/>
             </xpath>
                         
-            <!-- Tambahkan service_duration, price_unit, dan discount ke tampilan form -->
+            <!-- Tambahkan service_duration, price_unit, discount, dan subtotal ke tampilan form -->
             <xpath expr="//field[@name='sale_order_template_line_ids']/form//field[@name='product_id']" position="after">
                 <field name="service_duration" widget="float_time" force_save="1"/>
                 <field name="price_unit" widget="monetary"/>
                 <field name="discount" widget="integer"/>
+                <field name="price_subtotal" widget="monetary" readonly="1"/>
+                <field name="is_required" attrs="{'invisible': [('display_type', '!=', False)]}"/>
             </xpath>
         </field>
     </record>
@@ -41,30 +45,21 @@
                             <field name="booking_image" widget="image" attrs="{'invisible': [('is_booking_template', '=', False)]}"/>
                             <field name="booking_description" />
                         </group>
-                        <!-- <group string="Booking Description" attrs="{'invisible': [('is_booking_template', '=', False)]}">
-                        </group> -->
                     </page>
                 </notebook>
             </xpath>
             
-            <!-- Tambahkan field pada template line -->
-            <xpath expr="//field[@name='sale_order_template_line_ids']/tree" position="inside">
-                <!-- <field name="service_duration"/>
-                <field name="price_unit"/> -->
-                <!-- <field name="discount" widget="integer"/> -->
-                <field name="is_required"/>
-            </xpath>
-
-            <!-- Tambahkan discount pada form line -->
-            <!-- <xpath expr="//field[@name='sale_order_template_line_ids']/form//field[@name='price_unit']" position="after">
-                <field name="discount" widget="percentage" attrs="{'invisible': [('display_type', '!=', False)]}"/>
-            </xpath> -->
+            <!-- Menghapus xpath template_line tree dan form yang redundan -->
             
             <!-- Tambahkan field pada form line -->
-            <xpath expr="//field[@name='sale_order_template_line_ids']/form//field[@name='product_uom_qty']" position="after">
-                <field name="service_duration" attrs="{'invisible': [('display_type', '!=', False)]}"/>
-                <field name="price_unit" attrs="{'invisible': [('display_type', '!=', False)]}"/>
-                <field name="is_required" attrs="{'invisible': [('display_type', '!=', False)]}"/>
+            <xpath expr="//field[@name='sale_order_template_line_ids']" position="after">
+                <group class="oe_subtotal_footer oe_right" colspan="2" name="template_total">
+                    <field name="currency_id" invisible="1"/>
+                    <div class="oe_subtotal_footer_separator oe_inline">
+                        <label for="total_amount"/>
+                    </div>
+                    <field name="total_amount" nolabel="1" class="oe_subtotal_footer_separator" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                </group>
             </xpath>
         </field>
     </record>

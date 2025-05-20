@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta, date, time
 import psycopg2  # Tambahkan import ini
 import math
+import pytz
 
 _logger = logging.getLogger(__name__)
 
@@ -1340,7 +1341,7 @@ class BookingController(http.Controller):
         
     @http.route('/web/v1/booking/stall-utilization', type='json', auth="public", methods=['POST'], csrf=False)
     def get_stall_utilization(self, **kw):
-        """Enhanced stall utilization data with deeper metrics"""
+        """Enhanced stall utilization metrics for monitoring all stall activity (booking and non-booking)"""
         try:
             date_from = kw.get('date_from', fields.Date.today())
             date_to = kw.get('date_to', fields.Date.today())
@@ -1368,6 +1369,9 @@ class BookingController(http.Controller):
             highest_utilization = 0
             most_efficient_stall = None
             
+            # Current time for calculations
+            now = fields.Datetime.now()
+            
             for stall in stalls:
                 # Get ALL bookings for this stall in date range (regardless of state)
                 all_bookings = request.env['pitcar.service.booking'].sudo().search([
@@ -1376,99 +1380,114 @@ class BookingController(http.Controller):
                     ('booking_date', '<=', date_to),
                 ])
                 
-                # Get confirmed/converted bookings for utilization calculation
-                active_bookings = all_bookings.filtered(lambda b: b.state in ['confirmed', 'converted'])
-                
-                # Get active sale orders using this stall
-                active_orders = request.env['sale.order'].sudo().search([
+                # Get sale orders using this stall (both from booking and direct creation)
+                all_sale_orders = request.env['sale.order'].sudo().search([
                     ('stall_id', '=', stall.id),
-                    ('controller_mulai_servis', '>=', datetime.combine(start_date, time(0, 0))),
-                    ('controller_mulai_servis', '<', datetime.combine(end_date + timedelta(days=1), time(0, 0))),
+                    '|', 
+                    '&', ('controller_mulai_servis', '>=', datetime.combine(start_date, time(0, 0))),
+                        ('controller_mulai_servis', '<', datetime.combine(end_date + timedelta(days=1), time(0, 0))),
+                    '&', ('controller_selesai', '>=', datetime.combine(start_date, time(0, 0))),
+                        ('controller_selesai', '<', datetime.combine(end_date + timedelta(days=1), time(0, 0)))
                 ])
+                
+                # Get completed sale orders (with start and end times for this stall)
+                completed_sale_orders = all_sale_orders.filtered(
+                    lambda o: o.controller_mulai_servis and o.controller_selesai
+                )
+
+                # Get active (in-progress) sale orders
+                active_sale_orders = all_sale_orders.filtered(
+                    lambda o: o.controller_mulai_servis and not o.controller_selesai
+                )
                 
                 # Calculate stats
                 stall_utilized_hours = 0
                 booking_count = len(all_bookings)
-                booking_status = {
-                    'total': booking_count,
-                    'draft': len(all_bookings.filtered(lambda b: b.state == 'draft')),
-                    'confirmed': len(all_bookings.filtered(lambda b: b.state == 'confirmed')),
-                    'converted': len(all_bookings.filtered(lambda b: b.state == 'converted')),
-                    'cancelled': len(all_bookings.filtered(lambda b: b.state == 'cancelled')),
-                    'archived': len(all_bookings.filtered(lambda b: b.is_archived)),
-                    'not_archived': len(all_bookings.filtered(lambda b: not b.is_archived))
-                }
+                completed_count = len(completed_sale_orders)
                 
-                completed_count = len(all_bookings.filtered(lambda b: b.state == 'converted'))
+                # Calculate avg service time from completed orders
                 service_times = []
-                peak_hour_usage = {}  # Track usage by hour
+                for order in completed_sale_orders:
+                    service_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                    
+                    # Only consider reasonable durations (exclude outliers/errors)
+                    if 0 < service_duration < 24:  # reasonable range for service
+                        service_times.append(service_duration)
+                        stall_utilized_hours += service_duration
                 
-                # Calculate hours from bookings
-                for booking in active_bookings:
-                    # Calculate service duration from booking
-                    if booking.booking_time and booking.booking_end_time and booking.booking_end_time > booking.booking_time:
-                        duration = booking.booking_end_time - booking.booking_time
-                        stall_utilized_hours += duration
-                        service_times.append(duration)
-                        
-                        # Track hourly distribution
-                        start_hour = int(booking.booking_time)
-                        end_hour = int(booking.booking_end_time)
-                        
-                        # Update peak hour tracking
-                        for hour in range(start_hour, end_hour + 1):
-                            if 8 <= hour <= 17:  # Only count during working hours
-                                if hour not in peak_hour_usage:
-                                    peak_hour_usage[hour] = 0
-                                
-                                # Add partial or full hour
-                                if hour == start_hour and hour == end_hour:
-                                    peak_hour_usage[hour] += booking.booking_end_time - booking.booking_time
-                                elif hour == start_hour:
-                                    peak_hour_usage[hour] += (hour + 1) - booking.booking_time
-                                elif hour == end_hour:
-                                    peak_hour_usage[hour] += booking.booking_end_time - hour
-                                else:
-                                    peak_hour_usage[hour] += 1.0
+                # Add time from active orders (still in progress)
+                for order in active_sale_orders:
+                    elapsed_time = (now - order.controller_mulai_servis).total_seconds() / 3600
+                    
+                    # Cap at reasonable value and add to utilized hours
+                    if 0 < elapsed_time < 24:  # reasonable range
+                        stall_utilized_hours += elapsed_time
                 
-                # Calculate hours from sale orders
-                for order in active_orders:
+                # Calculate hourly usage - this is critical for peak hour analysis
+                hourly_usage = {str(hour): 0 for hour in range(8, 18)}  # 8:00 to 17:59
+                
+                # Process completed orders for hourly usage
+                for order in all_sale_orders:
                     if order.controller_mulai_servis:
-                        end_time = order.controller_selesai or fields.Datetime.now()
-                        if end_time > order.controller_mulai_servis:
-                            # Calculate hours while accounting for job stops
-                            if hasattr(order, 'lead_time_servis') and order.lead_time_servis:
-                                stall_utilized_hours += order.lead_time_servis
-                            else:
-                                # Basic calculation if lead_time_servis is not available
-                                duration_hours = (end_time - order.controller_mulai_servis).total_seconds() / 3600
-                                stall_utilized_hours += duration_hours
+                        # Convert to user timezone for accurate hour calculation
+                        tz = pytz.timezone('Asia/Jakarta')
+                        local_start = pytz.UTC.localize(order.controller_mulai_servis).astimezone(tz)
+                        
+                        # Determine end time (either completion or current time)
+                        end_time = order.controller_selesai or now
+                        local_end = pytz.UTC.localize(end_time).astimezone(tz)
+                        
+                        # Handle multi-day services
+                        current_time = local_start
+                        while current_time.date() <= local_end.date():
+                            # Only process during working hours
+                            day_start = max(local_start if current_time.date() == local_start.date() else 
+                                        current_time.replace(hour=8, minute=0, second=0),
+                                        current_time.replace(hour=8, minute=0, second=0))
+                            
+                            day_end = min(local_end if current_time.date() == local_end.date() else 
+                                        current_time.replace(hour=17, minute=59, second=59),
+                                        current_time.replace(hour=17, minute=59, second=59))
+                            
+                            # Process each hour of service
+                            if day_end > day_start:
+                                hour_time = day_start
+                                while hour_time.hour < day_end.hour or (hour_time.hour == day_end.hour and hour_time.minute <= day_end.minute):
+                                    hour_key = str(hour_time.hour)
+                                    
+                                    # Calculate fraction of hour utilized
+                                    if hour_time.hour == day_start.hour and hour_time.hour == day_end.hour:
+                                        # Both start and end in same hour
+                                        fraction = (day_end - day_start).total_seconds() / 3600
+                                    elif hour_time.hour == day_start.hour:
+                                        # Start hour
+                                        next_hour = hour_time.replace(minute=0, second=0) + timedelta(hours=1)
+                                        fraction = (next_hour - day_start).total_seconds() / 3600
+                                    elif hour_time.hour == day_end.hour:
+                                        # End hour
+                                        fraction = (day_end - hour_time.replace(minute=0, second=0)).total_seconds() / 3600
+                                    else:
+                                        # Full hour
+                                        fraction = 1.0
+                                    
+                                    # Add to hourly usage
+                                    if 8 <= hour_time.hour < 18:  # Working hours
+                                        hourly_usage[hour_key] = hourly_usage.get(hour_key, 0) + fraction
+                                    
+                                    # Move to next hour
+                                    hour_time = hour_time.replace(minute=0, second=0) + timedelta(hours=1)
+                            
+                            # Move to next day
+                            current_time = current_time.replace(hour=0, minute=0, second=0) + timedelta(days=1)
                 
-                # Get current active orders for this stall
-                current_orders = request.env['sale.order'].sudo().search([
-                    ('stall_id', '=', stall.id),
-                    ('controller_mulai_servis', '!=', False),
-                    ('controller_selesai', '=', False)
-                ])
+                # Determine peak hour
+                peak_hour = None
+                peak_utilization = 0
                 
-                active_order_details = []
-                for order in current_orders:
-                    active_order_details.append({
-                        'id': order.id,
-                        'name': order.name,
-                        'customer': order.partner_id.name,
-                        'start_time': fields.Datetime.to_string(order.controller_mulai_servis),
-                        'elapsed_hours': (fields.Datetime.now() - order.controller_mulai_servis).total_seconds() / 3600,
-                        'is_booking': order.is_booking,
-                        'origin_booking_id': order.booking_id.id if order.booking_id else False
-                    })
-                
-                # Calculate average service time
-                avg_service_time = sum(service_times) / len(service_times) if service_times else 0
-                
-                # Determine peak hour for this stall
-                peak_hour = max(peak_hour_usage.items(), key=lambda x: x[1])[0] if peak_hour_usage else None
-                peak_utilization = max(peak_hour_usage.values()) if peak_hour_usage else 0
+                for hour, usage in hourly_usage.items():
+                    if usage > peak_utilization:
+                        peak_utilization = usage
+                        peak_hour = int(hour)
                 
                 # Calculate stall-specific available hours
                 stall_available_hours = working_hours_per_day * days_count
@@ -1476,9 +1495,11 @@ class BookingController(http.Controller):
                 # Calculate utilization rate
                 utilization_rate = (stall_utilized_hours / stall_available_hours) * 100 if stall_available_hours > 0 else 0
                 
-                # Update totals
-                total_utilized_hours += stall_utilized_hours
-                total_bookings += booking_count
+                # Calculate completion rate
+                completion_rate = (completed_count / booking_count * 100) if booking_count > 0 else 0
+                
+                # Calculate average service time
+                avg_service_time = sum(service_times) / len(service_times) if service_times else 0
                 
                 # Check if this is the most efficient stall
                 if utilization_rate > highest_utilization:
@@ -1489,7 +1510,40 @@ class BookingController(http.Controller):
                         'utilization_rate': utilization_rate
                     }
                 
-                # Format for display
+                # Get current active orders for this stall
+                current_orders = []
+                for order in active_sale_orders:
+                    elapsed_hours = (now - order.controller_mulai_servis).total_seconds() / 3600
+                    
+                    current_orders.append({
+                        'id': order.id,
+                        'name': order.name,
+                        'customer': order.partner_id.name,
+                        'start_time': fields.Datetime.to_string(order.controller_mulai_servis),
+                        'elapsed_hours': elapsed_hours,
+                        'is_booking': order.is_booking,
+                        'origin_booking_id': order.booking_id.id if order.booking_id else False,
+                        'estimated_end_time': fields.Datetime.to_string(order.controller_estimasi_selesai) if order.controller_estimasi_selesai else False,
+                        'estimated_duration': order.total_service_duration if hasattr(order, 'total_service_duration') else 0,
+                        'status': self._get_order_status_code(order)
+                    })
+                
+                # Get booking statistics
+                booking_status = {
+                    'total': booking_count,
+                    'draft': len(all_bookings.filtered(lambda b: b.state == 'draft')),
+                    'confirmed': len(all_bookings.filtered(lambda b: b.state == 'confirmed')),
+                    'converted': len(all_bookings.filtered(lambda b: b.state == 'converted')),
+                    'cancelled': len(all_bookings.filtered(lambda b: b.state == 'cancelled')),
+                    'archived': len(all_bookings.filtered(lambda b: b.is_archived)),
+                    'not_archived': len(all_bookings.filtered(lambda b: not b.is_archived))
+                }
+                
+                # Add to total counts
+                total_utilized_hours += stall_utilized_hours
+                total_bookings += booking_count
+                
+                # Format for display with improved metrics
                 stall_stats.append({
                     'stall_id': stall.id,
                     'stall_name': stall.name,
@@ -1498,100 +1552,25 @@ class BookingController(http.Controller):
                     'utilization_rate': round(utilization_rate, 2),
                     'booking_count': booking_count,
                     'booking_status': booking_status,
+                    'sale_order_count': len(all_sale_orders),
                     'completed_count': completed_count,
-                    'completion_rate': round((completed_count / booking_count) * 100, 2) if booking_count > 0 else 0,
-                    'avg_service_time': avg_service_time,
+                    'completion_rate': round(completion_rate, 2),
+                    'avg_service_time': round(avg_service_time, 2),
                     'peak_hour': peak_hour,
-                    'peak_utilization': peak_utilization,
-                    'hourly_usage': peak_hour_usage,
-                    'current_orders': active_order_details
+                    'peak_utilization': round(peak_utilization, 2),
+                    'hourly_usage': hourly_usage,
+                    'current_orders': current_orders,
+                    'service_efficiency': self._calculate_service_efficiency(completed_sale_orders)
                 })
             
             # Calculate overall utilization rate
             overall_utilization_rate = (total_utilized_hours / total_available_hours) * 100 if total_available_hours > 0 else 0
             
-            # Daily utilization trend
-            daily_stats = []
-            current_date = start_date
-            while current_date <= end_date:
-                date_str = fields.Date.to_string(current_date)
-                
-                # Calculate hours used on this date across all stalls
-                day_utilized_hours = 0
-                day_bookings = 0
-                stall_usage = {}  # Track usage by stall for this day
-                
-                for stall in stalls:
-                    stall_usage[stall.id] = 0
-                    
-                    bookings = request.env['pitcar.service.booking'].sudo().search([
-                        ('stall_id', '=', stall.id),
-                        ('booking_date', '=', date_str),
-                        ('state', 'in', ['confirmed', 'converted']),
-                    ])
-                    
-                    stall_hours = 0
-                    for booking in bookings:
-                        duration = booking.booking_end_time - booking.booking_time
-                        if duration > 0:
-                            stall_hours += duration
-                            day_utilized_hours += duration
-                        day_bookings += 1
-                    
-                    stall_usage[stall.id] = stall_hours
-                
-                # Calculate daily utilization rate
-                day_available_hours = len(stalls) * working_hours_per_day
-                day_utilization_rate = (day_utilized_hours / day_available_hours) * 100 if day_available_hours > 0 else 0
-                
-                # Find most used stall for this day
-                most_used_stall = None
-                if stall_usage:
-                    stall_id = max(stall_usage.items(), key=lambda x: x[1])[0]
-                    stall = request.env['pitcar.service.stall'].sudo().browse(stall_id)
-                    if stall.exists():
-                        most_used_stall = {
-                            'stall_id': stall.id,
-                            'stall_name': stall.name,
-                            'hours': stall_usage[stall.id]
-                        }
-                
-                daily_stats.append({
-                    'date': date_str,
-                    'utilized_hours': day_utilized_hours,
-                    'available_hours': day_available_hours,
-                    'utilization_rate': round(day_utilization_rate, 2),
-                    'booking_count': day_bookings,
-                    'most_used_stall': most_used_stall,
-                    'stall_breakdown': stall_usage
-                })
-                
-                current_date += timedelta(days=1)
+            # Calculate daily statistics
+            daily_stats = self._calculate_daily_stats(start_date, end_date, stalls)
             
-            # Get mechanic assignment data
-            mechanic_stats = []
-            mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
-            
-            for mechanic in mechanics:
-                # Count bookings where this mechanic was assigned via stall
-                mechanic_stalls = stalls.filtered(lambda s: mechanic.id in s.mechanic_ids.ids)
-                mechanic_bookings = request.env['pitcar.service.booking'].sudo().search_count([
-                    ('stall_id', 'in', mechanic_stalls.ids),
-                    ('booking_date', '>=', date_from),
-                    ('booking_date', '<=', date_to),
-                    ('state', 'in', ['confirmed', 'converted']),
-                ])
-                
-                if mechanic_bookings > 0:
-                    mechanic_stats.append({
-                        'mechanic_id': mechanic.id,
-                        'name': mechanic.name,
-                        'bookings': mechanic_bookings,
-                        'assigned_stalls': [{
-                            'stall_id': stall.id,
-                            'stall_name': stall.name
-                        } for stall in mechanic_stalls]
-                    })
+            # Calculate mechanic statistics 
+            mechanic_stats = self._calculate_mechanic_stats(start_date, end_date)
             
             return {
                 'status': 'success',
@@ -1610,6 +1589,241 @@ class BookingController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_stall_utilization: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    def _get_order_status_code(self, order):
+        """Helper method to get order status code"""
+        if order.controller_selesai:
+            return 'completed'
+        elif order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai:
+            return 'tunggu_part'
+        elif order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai:
+            return 'tunggu_konfirmasi'
+        elif order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai:
+            return 'istirahat'
+        elif order.controller_mulai_servis:
+            return 'in_progress'
+        else:
+            return 'not_started'
+
+    def _calculate_service_efficiency(self, completed_orders):
+        """Calculate service efficiency metrics"""
+        if not completed_orders:
+            return {
+                'avg_efficiency': 0,
+                'on_time_percentage': 0,
+                'delayed_percentage': 0
+            }
+        
+        total_orders = len(completed_orders)
+        on_time_orders = 0
+        efficiency_values = []
+        
+        for order in completed_orders:
+            # Check if order has both actual and estimated times
+            if order.controller_mulai_servis and order.controller_selesai and order.controller_estimasi_selesai:
+                actual_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                
+                # Calculate if service completed on time
+                if order.controller_selesai <= order.controller_estimasi_selesai:
+                    on_time_orders += 1
+                
+                # Calculate efficiency if order has total_service_duration
+                if hasattr(order, 'total_service_duration') and order.total_service_duration:
+                    efficiency = (order.total_service_duration / actual_duration * 100) if actual_duration > 0 else 0
+                    efficiency_values.append(min(efficiency, 100))  # Cap at 100% efficiency
+        
+        # Calculate metrics
+        avg_efficiency = sum(efficiency_values) / len(efficiency_values) if efficiency_values else 0
+        on_time_percentage = (on_time_orders / total_orders * 100) if total_orders > 0 else 0
+        
+        return {
+            'avg_efficiency': round(avg_efficiency, 2),
+            'on_time_percentage': round(on_time_percentage, 2),
+            'delayed_percentage': round(100 - on_time_percentage, 2)
+        }
+
+    def _calculate_daily_stats(self, start_date, end_date, stalls):
+        """Calculate detailed daily statistics for all stalls"""
+        daily_stats = []
+        current_date = start_date
+        
+        while current_date <= end_date:
+            # Set date range for this day
+            day_start = datetime.combine(current_date, time(0, 0))
+            day_end = datetime.combine(current_date, time(23, 59, 59))
+            
+            # Initialize stats for this day
+            day_utilized_hours = 0
+            day_bookings = 0
+            stall_usage = {str(stall.id): 0 for stall in stalls}
+            
+            # Track most used stall for this day
+            most_used_stall = None
+            max_stall_hours = 0
+            
+            for stall in stalls:
+                # Get sale orders active on this day for this stall
+                day_orders = request.env['sale.order'].sudo().search([
+                    ('stall_id', '=', stall.id),
+                    '|',
+                    '&', ('controller_mulai_servis', '>=', day_start),
+                        ('controller_mulai_servis', '<=', day_end),
+                    '&', ('controller_selesai', '>=', day_start),
+                        ('controller_selesai', '<=', day_end)
+                ])
+                
+                # Get bookings for this day and stall
+                day_stall_bookings = request.env['pitcar.service.booking'].sudo().search([
+                    ('stall_id', '=', stall.id),
+                    ('booking_date', '=', current_date)
+                ])
+                
+                # Track booking count
+                day_bookings += len(day_stall_bookings)
+                
+                # Calculate utilized hours for this stall on this day
+                stall_hours = 0
+                
+                for order in day_orders:
+                    # Calculate hours used by this order on this day
+                    if order.controller_mulai_servis and order.controller_selesai:
+                        # Order completed - calculate overlapping hours with this day
+                        start_time = max(day_start, order.controller_mulai_servis)
+                        end_time = min(day_end, order.controller_selesai)
+                        
+                        if end_time > start_time:
+                            # Calculate working hours (8:00-17:00) within this period
+                            work_start = max(start_time, datetime.combine(current_date, time(8, 0)))
+                            work_end = min(end_time, datetime.combine(current_date, time(17, 0)))
+                            
+                            if work_end > work_start:
+                                duration = (work_end - work_start).total_seconds() / 3600
+                                stall_hours += duration
+                    
+                    elif order.controller_mulai_servis and not order.controller_selesai:
+                        # Order in progress - calculate hours from start until end of day or working hours
+                        if order.controller_mulai_servis.date() == current_date:
+                            start_time = max(order.controller_mulai_servis, datetime.combine(current_date, time(8, 0)))
+                            end_time = min(day_end, datetime.combine(current_date, time(17, 0)))
+                            
+                            if end_time > start_time:
+                                duration = (end_time - start_time).total_seconds() / 3600
+                                stall_hours += duration
+                
+                # Update stall usage for this day
+                stall_usage[str(stall.id)] = stall_hours
+                day_utilized_hours += stall_hours
+                
+                # Check if this stall is most used today
+                if stall_hours > max_stall_hours:
+                    max_stall_hours = stall_hours
+                    most_used_stall = {
+                        'stall_id': stall.id,
+                        'stall_name': stall.name,
+                        'hours': stall_hours
+                    }
+            
+            # Calculate daily utilization rate (9 hours per stall)
+            day_available_hours = len(stalls) * 9  # 9 working hours per day
+            day_utilization_rate = (day_utilized_hours / day_available_hours) * 100 if day_available_hours > 0 else 0
+            
+            # Default most_used_stall if no activity
+            if not most_used_stall and stalls:
+                most_used_stall = {
+                    'stall_id': stalls[0].id,
+                    'stall_name': stalls[0].name,
+                    'hours': 0
+                }
+            
+            # Add daily stats
+            daily_stats.append({
+                'date': fields.Date.to_string(current_date),
+                'utilized_hours': day_utilized_hours,
+                'available_hours': day_available_hours,
+                'utilization_rate': round(day_utilization_rate, 2),
+                'booking_count': day_bookings,
+                'most_used_stall': most_used_stall,
+                'stall_breakdown': stall_usage
+            })
+            
+            # Move to next day
+            current_date += timedelta(days=1)
+        
+        return daily_stats
+
+    def _calculate_mechanic_stats(self, start_date, end_date):
+        """Calculate mechanic statistics based on stall assignments"""
+        mechanic_stats = []
+        mechanics = request.env['pitcar.mechanic.new'].sudo().search([])
+        
+        for mechanic in mechanics:
+            # Get stalls where mechanic is assigned
+            mechanic_stalls = request.env['pitcar.service.stall'].sudo().search([
+                ('mechanic_ids', 'in', [mechanic.id])
+            ])
+            
+            # Get sale orders from these stalls in date range
+            orders = request.env['sale.order'].sudo().search([
+                ('stall_id', 'in', mechanic_stalls.ids),
+                '|',
+                '&', ('controller_mulai_servis', '>=', datetime.combine(start_date, time(0, 0))),
+                    ('controller_mulai_servis', '<', datetime.combine(end_date + timedelta(days=1), time(0, 0))),
+                '&', ('controller_selesai', '>=', datetime.combine(start_date, time(0, 0))),
+                    ('controller_selesai', '<', datetime.combine(end_date + timedelta(days=1), time(0, 0)))
+            ])
+            
+            # Get orders directly assigned to this mechanic
+            direct_orders = request.env['sale.order'].sudo().search([
+                ('car_mechanic_id_new', 'in', [mechanic.id]),
+                '|',
+                '&', ('controller_mulai_servis', '>=', datetime.combine(start_date, time(0, 0))),
+                    ('controller_mulai_servis', '<', datetime.combine(end_date + timedelta(days=1), time(0, 0))),
+                '&', ('controller_selesai', '>=', datetime.combine(start_date, time(0, 0))),
+                    ('controller_selesai', '<', datetime.combine(end_date + timedelta(days=1), time(0, 0)))
+            ])
+            
+            # Combine orders without duplicates
+            all_orders = orders | direct_orders
+            completed_orders = all_orders.filtered(lambda o: o.controller_selesai)
+            
+            # Skip if no orders
+            if not all_orders:
+                continue
+            
+            # Calculate service hours and efficiency
+            total_service_hours = 0
+            service_efficiency = []
+            
+            for order in completed_orders:
+                actual_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                
+                # Calculate service hours
+                if 0 < actual_duration < 24:  # reasonable limit
+                    total_service_hours += actual_duration
+                    
+                    # Calculate efficiency if estimated duration exists
+                    if hasattr(order, 'total_service_duration') and order.total_service_duration:
+                        efficiency = (order.total_service_duration / actual_duration * 100) if actual_duration > 0 else 0
+                        service_efficiency.append(min(efficiency, 100))  # Cap at 100%
+            
+            # Calculate average service efficiency
+            avg_efficiency = sum(service_efficiency) / len(service_efficiency) if service_efficiency else 0
+            
+            # Add mechanic stats
+            mechanic_stats.append({
+                'mechanic_id': mechanic.id,
+                'name': mechanic.name,
+                'total_orders': len(all_orders),
+                'completed_orders': len(completed_orders),
+                'total_service_hours': round(total_service_hours, 2),
+                'avg_efficiency': round(avg_efficiency, 2),
+                'assigned_stalls': [{
+                    'stall_id': stall.id,
+                    'stall_name': stall.name
+                } for stall in mechanic_stalls]
+            })
+        
+        return mechanic_stats
         
     @http.route('/web/v1/booking/statistics', type='json', auth="public", methods=['POST'], csrf=False)
     def get_booking_statistics(self, **kw):

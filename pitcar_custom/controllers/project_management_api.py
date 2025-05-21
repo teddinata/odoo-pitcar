@@ -3688,6 +3688,13 @@ class TeamProjectAPI(http.Controller):
                 
             # Create order string for sorting
             order = f"{sort_field} {sort_order}"
+
+             # Get optional task sort parameters
+            task_sort_field = kw.get('task_sort_field', 'priority')  # Default sort by priority
+            task_sort_order = kw.get('task_sort_order', 'desc')     # Default desc order for priority (highest first)
+            
+            # Generate sort string for tasks
+            task_sort = f"{task_sort_field} {task_sort_order}, sequence, id"
                 
             # Get projects and their tasks
             projects = request.env['team.project'].sudo().search(project_domain, order=order)
@@ -3696,11 +3703,21 @@ class TeamProjectAPI(http.Controller):
             timeline_data = []
             
             # Add project timeline data
+             # Add project timeline data
             for project in projects:
-                # Get tasks with planned dates
+                # Get tasks with planned dates - sort by start date, then end date
                 tasks_with_dates = project.task_ids.filtered(
                     lambda t: t.planned_date_start and t.planned_date_end and t.state not in ['cancelled']
-                )
+                ).sorted(lambda t: (
+                    # First sort by start date (ascending)
+                    t.planned_date_start,
+                    # Then by end date (ascending) 
+                    t.planned_date_end,
+                    # Then by priority as secondary criteria (descending) 
+                    -int(t.priority or "0"),
+                    # Finally by ID as fallback
+                    t.id
+                ))
                 
                 project_data = {
                     'id': project.id,

@@ -3648,16 +3648,28 @@ class TeamProjectAPI(http.Controller):
     def get_dashboard_timeline(self, **kw):
         """Get project timeline data for Gantt chart."""
         try:
-            # Get optional department filter
+            # Get optional filters
             department_id = kw.get('department_id') and int(kw['department_id'])
+            state = kw.get('state')  # Add state filter
+            
+            # Get sorting parameters
+            sort_field = kw.get('sort_field', 'date_start')
+            sort_order = kw.get('sort_order', 'desc')
             
             # Build domain for projects
             project_domain = [('state', 'not in', ['cancelled'])]
             if department_id:
                 project_domain.append(('department_id', '=', department_id))
+            
+            # Add state filter if present
+            if state:
+                project_domain.append(('state', '=', state))
+                
+            # Build order string for sorting
+            order = f"{sort_field} {sort_order}"
                 
             # Get projects and their tasks
-            projects = request.env['team.project'].sudo().search(project_domain, order='date_start')
+            projects = request.env['team.project'].sudo().search(project_domain, order=order)
             
             timeline_data = []
             

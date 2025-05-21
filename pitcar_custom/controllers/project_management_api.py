@@ -490,10 +490,18 @@ class TeamProjectAPI(http.Controller):
             archived_count = self._check_and_archive_expired_projects()
             
             domain = []
-            
+        
             # Filter departemen (ubah untuk multi-department)
-            if kw.get('department_id'):
+            if kw.get('department_ids'):
+                department_ids = kw['department_ids'] if isinstance(kw['department_ids'], list) else json.loads(kw['department_ids'])
+                domain.append(('department_ids', 'in', department_ids))
+            elif kw.get('department_id'):  # Backward compatibility
                 domain.append(('department_ids', 'in', [int(kw['department_id'])]))
+            
+            # Filter specific project by ID
+            if kw.get('project_id'):
+                domain.append(('id', '=', int(kw['project_id'])))
+
             
             # Filter project_type
             if kw.get('project_type'):
@@ -3649,27 +3657,41 @@ class TeamProjectAPI(http.Controller):
         """Get project timeline data for Gantt chart."""
         try:
             # Get optional filters
-            department_id = kw.get('department_id') and int(kw['department_id'])
-            state = kw.get('state')  # Add state filter
+            department_ids = kw.get('department_ids', [])
+            if not isinstance(department_ids, list):
+                department_ids = [department_ids]
             
-            # Get sorting parameters
+            # For backward compatibility
+            department_id = kw.get('department_id')
+            if department_id and not department_ids:
+                department_ids.append(int(department_id))
+                
+            state = kw.get('state')
+            project_id = kw.get('project_id') and int(kw['project_id'])
             sort_field = kw.get('sort_field', 'date_start')
-            sort_order = kw.get('sort_order', 'desc')
+            sort_order = kw.get('sort_order', 'asc')
             
             # Build domain for projects
             project_domain = [('state', 'not in', ['cancelled'])]
-            if department_id:
-                project_domain.append(('department_id', '=', department_id))
             
-            # Add state filter if present
+            if department_ids:
+                # Filter non-empty values and convert to integers
+                department_ids = [int(d) for d in department_ids if d]
+                if department_ids:
+                    project_domain.append(('department_ids', 'in', department_ids))
+            
             if state:
                 project_domain.append(('state', '=', state))
                 
-            # Build order string for sorting
+            if project_id:
+                project_domain.append(('id', '=', project_id))
+                
+            # Create order string for sorting
             order = f"{sort_field} {sort_order}"
                 
             # Get projects and their tasks
             projects = request.env['team.project'].sudo().search(project_domain, order=order)
+
             
             timeline_data = []
             

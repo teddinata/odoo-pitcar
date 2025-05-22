@@ -615,7 +615,11 @@ class TeamProjectAPI(http.Controller):
         try:
             operation = kw.get('operation', 'create')
 
-            if operation == 'list':
+             # TAMBAHKAN OPERATION BARU UNTUK GANTT
+            if operation == 'gantt_list':
+                return self._get_tasks_for_gantt(kw)
+
+            elif operation == 'list':
                 # Build domain filter
                 domain = []
                 
@@ -983,6 +987,174 @@ class TeamProjectAPI(http.Controller):
 
         except Exception as e:
             _logger.error(f"Error in manage_tasks: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    def _get_tasks_for_gantt(self, kw):
+        """
+        Method baru untuk mendapatkan data tasks dalam format Gantt chart
+        Mirip dengan get_dashboard_timeline tapi untuk tasks
+        """
+        try:
+            # Build domain filter (reuse logic dari operation 'list')
+            domain = []
+            
+            # Filter project
+            if kw.get('project_id'):
+                domain.append(('project_id', '=', int(kw['project_id'])))
+            
+            # Filter department - sesuaikan dengan format projects
+            if kw.get('department_ids'):
+                department_ids = kw['department_ids'] if isinstance(kw['department_ids'], list) else [int(kw['department_ids'])]
+                # Gunakan project.department_ids karena task tidak punya department_ids langsung
+                domain.append(('project_id.department_ids', 'in', department_ids))
+            elif kw.get('department_id'):  # Backward compatibility
+                domain.append(('project_id.department_ids', 'in', [int(kw['department_id'])]))
+            
+            # Filter status
+            if kw.get('state'):
+                domain.append(('state', '=', kw['state']))
+            
+            # Filter assigned to
+            if kw.get('assigned_to'):
+                assigned_to = kw['assigned_to']
+                if isinstance(assigned_to, str) and assigned_to.startswith('['):
+                    try:
+                        assigned_to = json.loads(assigned_to)
+                    except Exception:
+                        assigned_to = [int(assigned_to)]
+                if not isinstance(assigned_to, list):
+                    assigned_to = [int(assigned_to)]
+                domain.append(('assigned_to', 'in', assigned_to))
+            
+            # Filter prioritas
+            if kw.get('priority'):
+                domain.append(('priority', '=', kw['priority']))
+            
+            # Filter pencarian
+            if kw.get('search'):
+                domain.append('|')
+                domain.append(('name', 'ilike', kw['search']))
+                domain.append(('description', 'ilike', kw['search']))
+            
+            # PENTING: Filter tanggal untuk timeline - sama seperti project timeline
+            date_start = kw.get('date_start')
+            date_end = kw.get('date_end')
+            
+            if date_start and date_end:
+                # Filter tasks yang overlap dengan timeline range
+                domain.extend([
+                    '|',
+                    '|',
+                    # Task mulai dalam range
+                    '&', ('planned_date_start', '>=', date_start), ('planned_date_start', '<=', date_end),
+                    # Task selesai dalam range  
+                    '&', ('planned_date_end', '>=', date_start), ('planned_date_end', '<=', date_end),
+                    # Task span keseluruhan range
+                    '&', ('planned_date_start', '<=', date_start), ('planned_date_end', '>=', date_end)
+                ])
+            
+            # Hanya ambil task yang memiliki tanggal planning (seperti project timeline)
+            domain.append(('planned_date_start', '!=', False))
+            domain.append(('planned_date_end', '!=', False))
+            
+            # Exclude cancelled tasks
+            domain.append(('state', 'not in', ['cancelled']))
+            
+            # TIDAK ADA PAGINATION untuk Gantt - ambil semua data
+            sort_field = kw.get('sort_field', 'priority')
+            sort_order = kw.get('sort_order', 'desc')
+            
+            # Validasi sort field
+            allowed_sort_fields = ['priority', 'planned_date_start', 'planned_date_end', 'name', 'state']
+            if sort_field not in allowed_sort_fields:
+                sort_field = 'priority'
+                
+            if sort_order not in ['asc', 'desc']:
+                sort_order = 'desc'
+            
+            # Order yang comprehensive untuk Gantt
+            order = f"{sort_field} {sort_order}, planned_date_start asc, id"
+            
+            _logger.info(f"Gantt tasks domain: {domain}")
+            _logger.info(f"Gantt tasks order: {order}")
+            
+            # Ambil tasks tanpa limit
+            tasks = request.env['team.project.task'].sudo().search(domain, order=order)
+            
+            _logger.info(f"Found {len(tasks)} tasks for Gantt timeline")
+            
+            # Transform ke format timeline (sama seperti project timeline)
+            timeline_data = []
+            
+            for task in tasks:
+                # Skip task tanpa tanggal planning
+                if not task.planned_date_start or not task.planned_date_end:
+                    continue
+                    
+                task_data = {
+                    'id': task.id,
+                    'name': task.name,
+                    'type': 'task',  # Untuk membedakan dengan project
+                    'start': fields.Datetime.to_string(task.planned_date_start),
+                    'end': fields.Datetime.to_string(task.planned_date_end),
+                    'progress': task.progress,
+                    'state': task.state,
+                    'priority': task.priority,
+                    'dependencies': [],
+                    'children': [],  # Tasks tidak punya children
+                    'expanded': False,  # Tasks tidak bisa di-expand
+                    'style': {
+                        'base': {
+                            'fill': self._get_state_color(task.state),
+                            'stroke': '#555555'
+                        }
+                    },
+                    # Data tambahan untuk enhanced display
+                    'project': {
+                        'id': task.project_id.id,
+                        'name': task.project_id.name,
+                        'department': {
+                            'id': task.project_id.department_ids[0].id if task.project_id.department_ids else None,
+                            'name': task.project_id.department_ids[0].name if task.project_id.department_ids else None
+                        }
+                    } if task.project_id else None,
+                    'assigned_to': [
+                        {
+                            'id': user.id,
+                            'name': user.name,
+                            'is_current_user': user.id == request.env.user.id
+                        }
+                        for user in task.assigned_to
+                    ] if task.assigned_to else [],
+                    'description': task.description or '',
+                    'hours': {
+                        'planned': task.planned_hours if hasattr(task, 'planned_hours') else 0,
+                        'effective': task.effective_hours if hasattr(task, 'effective_hours') else 0
+                    },
+                    'dates': {
+                        'planned_start': fields.Datetime.to_string(task.planned_date_start),
+                        'planned_end': fields.Datetime.to_string(task.planned_date_end)
+                    }
+                }
+                
+                # Add task dependencies (sama seperti project timeline)
+                if hasattr(task, 'depends_on_ids') and task.depends_on_ids:
+                    for dep in task.depends_on_ids:
+                        task_data['dependencies'].append(f"task_{dep.id}")
+                
+                timeline_data.append(task_data)
+            
+            return {
+                'status': 'success',
+                'data': timeline_data,
+                'count': len(timeline_data),
+                'message': f'Successfully loaded {len(timeline_data)} tasks for Gantt timeline'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in _get_tasks_for_gantt: {str(e)}")
+            import traceback
+            _logger.error(traceback.format_exc())
             return {'status': 'error', 'message': str(e)}
         
     @http.route('/web/v2/team/projects/toggle_archive', type='json', auth='user', methods=['POST'], csrf=False)

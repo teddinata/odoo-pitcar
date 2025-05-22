@@ -991,30 +991,25 @@ class TeamProjectAPI(http.Controller):
         
     def _get_tasks_for_gantt(self, kw):
         """
-        Method baru untuk mendapatkan data tasks dalam format Gantt chart
-        Mirip dengan get_dashboard_timeline tapi untuk tasks
+        Method untuk mendapatkan data tasks dalam format Gantt chart
+        KONSISTEN dengan operation 'list' - tidak ada logic berbeda
         """
         try:
-            # Build domain filter (reuse logic dari operation 'list')
+            # Build domain filter - SAMA PERSIS dengan operation 'list'
             domain = []
             
-            # Filter project
+            # Apply SEMUA filter yang sama dengan list operation
             if kw.get('project_id'):
                 domain.append(('project_id', '=', int(kw['project_id'])))
             
-            # Filter department - sesuaikan dengan format projects
+            # Department filter - pastikan konsisten
             if kw.get('department_ids'):
                 department_ids = kw['department_ids'] if isinstance(kw['department_ids'], list) else [int(kw['department_ids'])]
-                # Gunakan project.department_ids karena task tidak punya department_ids langsung
                 domain.append(('project_id.department_ids', 'in', department_ids))
-            elif kw.get('department_id'):  # Backward compatibility
+            elif kw.get('department_id'):
                 domain.append(('project_id.department_ids', 'in', [int(kw['department_id'])]))
             
-            # Filter status
-            if kw.get('state'):
-                domain.append(('state', '=', kw['state']))
-            
-            # Filter assigned to
+            # Assigned to filter
             if kw.get('assigned_to'):
                 assigned_to = kw['assigned_to']
                 if isinstance(assigned_to, str) and assigned_to.startswith('['):
@@ -1026,23 +1021,70 @@ class TeamProjectAPI(http.Controller):
                     assigned_to = [int(assigned_to)]
                 domain.append(('assigned_to', 'in', assigned_to))
             
-            # Filter prioritas
+            # Status filter
+            if kw.get('state'):
+                domain.append(('state', '=', kw['state']))
+            
+            # Type filter
+            if kw.get('type_id'):
+                domain.append(('type_id', '=', int(kw['type_id'])))
+            
+            # Priority filter
             if kw.get('priority'):
                 domain.append(('priority', '=', kw['priority']))
             
-            # Filter pencarian
+            # Search filter
             if kw.get('search'):
                 domain.append('|')
                 domain.append(('name', 'ilike', kw['search']))
                 domain.append(('description', 'ilike', kw['search']))
             
-            # PENTING: Filter tanggal untuk timeline - sama seperti project timeline
-            date_start = kw.get('date_start')
-            date_end = kw.get('date_end')
+            # Progress filters
+            if kw.get('progress_min'):
+                domain.append(('progress', '>=', float(kw['progress_min'])))
+            if kw.get('progress_max'):
+                domain.append(('progress', '<=', float(kw['progress_max'])))
+            
+            # My tasks filter
+            if kw.get('my_tasks') == 'true':
+                domain.append(('assigned_to', 'in', [request.env.user.employee_id.id]))
+            
+            # Overdue filter
+            if kw.get('is_overdue') == 'true':
+                today = fields.Date.today()
+                domain.append(('planned_date_end', '<', today))
+                domain.append(('state', 'not in', ['done', 'cancelled']))
+            
+            # Dependencies filter
+            if kw.get('has_dependencies') == 'true':
+                domain.append(('depends_on_ids', '!=', False))
+            elif kw.get('has_dependencies') == 'false':
+                domain.append(('depends_on_ids', '=', False))
+            
+            # Blocked filter
+            if kw.get('is_blocked') == 'true':
+                domain.append(('blocked_by_id', '!=', False))
+            elif kw.get('is_blocked') == 'false':
+                domain.append(('blocked_by_id', '=', False))
+            
+            # Recent activity filter
+            if kw.get('recent_days'):
+                days = int(kw['recent_days'])
+                date_limit = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+                domain.append('|')
+                domain.append(('create_date', '>=', date_limit))
+                domain.append(('write_date', '>=', date_limit))
+            
+            # Date filters untuk timeline
+            # PENTING: Gunakan parameter yang konsisten
+            date_start = kw.get('date_start') or kw.get('due_date_from')
+            date_end = kw.get('date_end') or kw.get('due_date_to')
             
             if date_start and date_end:
                 # Filter tasks yang overlap dengan timeline range
+                # ATAU yang berada dalam range
                 domain.extend([
+                    '|',
                     '|',
                     '|',
                     # Task mulai dalam range
@@ -1050,105 +1092,81 @@ class TeamProjectAPI(http.Controller):
                     # Task selesai dalam range  
                     '&', ('planned_date_end', '>=', date_start), ('planned_date_end', '<=', date_end),
                     # Task span keseluruhan range
-                    '&', ('planned_date_start', '<=', date_start), ('planned_date_end', '>=', date_end)
+                    '&', ('planned_date_start', '<=', date_start), ('planned_date_end', '>=', date_end),
+                    # Task yang hanya punya salah satu tanggal dalam range
+                    '&', ('planned_date_start', '=', False), '&', ('planned_date_end', '>=', date_start), ('planned_date_end', '<=', date_end)
                 ])
+            elif date_start:
+                domain.append('|')
+                domain.append(('planned_date_start', '>=', date_start))
+                domain.append(('planned_date_end', '>=', date_start))
+            elif date_end:
+                domain.append('|')
+                domain.append(('planned_date_start', '<=', date_end))
+                domain.append(('planned_date_end', '<=', date_end))
             
-            # Hanya ambil task yang memiliki tanggal planning (seperti project timeline)
+            # PENTING: Untuk Gantt, ambil tasks yang punya minimal satu tanggal
+            # Jangan terlalu ketat - biarkan frontend yang filter
+            domain.append('|')
             domain.append(('planned_date_start', '!=', False))
             domain.append(('planned_date_end', '!=', False))
             
-            # Exclude cancelled tasks
+            # Exclude cancelled tasks (konsisten dengan list)
             domain.append(('state', 'not in', ['cancelled']))
             
-            # TIDAK ADA PAGINATION untuk Gantt - ambil semua data
+            # Active filter - sama dengan list operation
+            include_archived = kw.get('include_archived', False)
+            if isinstance(include_archived, str):
+                include_archived = include_archived.lower() in ('true', '1', 'yes')
+            
+            if not include_archived:
+                domain.append(('active', '=', True))
+            else:
+                domain.append('|')
+                domain.append(('active', '=', True))
+                domain.append(('active', '=', False))
+            
+            # Sorting - konsisten dengan list operation
             sort_field = kw.get('sort_field', 'priority')
             sort_order = kw.get('sort_order', 'desc')
             
-            # Validasi sort field
-            allowed_sort_fields = ['priority', 'planned_date_start', 'planned_date_end', 'name', 'state']
+            allowed_sort_fields = ['priority', 'planned_date_start', 'planned_date_end', 'name', 'state', 'progress']
             if sort_field not in allowed_sort_fields:
                 sort_field = 'priority'
                 
             if sort_order not in ['asc', 'desc']:
                 sort_order = 'desc'
             
-            # Order yang comprehensive untuk Gantt
             order = f"{sort_field} {sort_order}, planned_date_start asc, id"
             
             _logger.info(f"Gantt tasks domain: {domain}")
             _logger.info(f"Gantt tasks order: {order}")
             
-            # Ambil tasks tanpa limit
+            # Ambil tasks tanpa limit untuk Gantt
             tasks = request.env['team.project.task'].sudo().search(domain, order=order)
             
             _logger.info(f"Found {len(tasks)} tasks for Gantt timeline")
             
-            # Transform ke format timeline (sama seperti project timeline)
-            timeline_data = []
-            
+            # Transform ke format yang konsisten dengan list operation
+            task_data = []
             for task in tasks:
-                # Skip task tanpa tanggal planning
-                if not task.planned_date_start or not task.planned_date_end:
-                    continue
+                try:
+                    # Gunakan fungsi yang sama dengan list operation
+                    task_item = self._prepare_task_data(task)
                     
-                task_data = {
-                    'id': task.id,
-                    'name': task.name,
-                    'type': 'task',  # Untuk membedakan dengan project
-                    'start': fields.Datetime.to_string(task.planned_date_start),
-                    'end': fields.Datetime.to_string(task.planned_date_end),
-                    'progress': task.progress,
-                    'state': task.state,
-                    'priority': task.priority,
-                    'dependencies': [],
-                    'children': [],  # Tasks tidak punya children
-                    'expanded': False,  # Tasks tidak bisa di-expand
-                    'style': {
-                        'base': {
-                            'fill': self._get_state_color(task.state),
-                            'stroke': '#555555'
-                        }
-                    },
-                    # Data tambahan untuk enhanced display
-                    'project': {
-                        'id': task.project_id.id,
-                        'name': task.project_id.name,
-                        'department': {
-                            'id': task.project_id.department_ids[0].id if task.project_id.department_ids else None,
-                            'name': task.project_id.department_ids[0].name if task.project_id.department_ids else None
-                        }
-                    } if task.project_id else None,
-                    'assigned_to': [
-                        {
-                            'id': user.id,
-                            'name': user.name,
-                            'is_current_user': user.id == request.env.user.id
-                        }
-                        for user in task.assigned_to
-                    ] if task.assigned_to else [],
-                    'description': task.description or '',
-                    'hours': {
-                        'planned': task.planned_hours if hasattr(task, 'planned_hours') else 0,
-                        'effective': task.effective_hours if hasattr(task, 'effective_hours') else 0
-                    },
-                    'dates': {
-                        'planned_start': fields.Datetime.to_string(task.planned_date_start),
-                        'planned_end': fields.Datetime.to_string(task.planned_date_end)
-                    }
-                }
-                
-                # Add task dependencies (sama seperti project timeline)
-                if hasattr(task, 'depends_on_ids') and task.depends_on_ids:
-                    for dep in task.depends_on_ids:
-                        task_data['dependencies'].append(f"task_{dep.id}")
-                
-                timeline_data.append(task_data)
+                    # Tambahkan field khusus untuk Gantt jika diperlukan
+                    task_item['type'] = 'task'  # Untuk membedakan dengan project
+                    
+                    task_data.append(task_item)
+                except Exception as e:
+                    _logger.error(f"Error preparing task data for Gantt: {str(e)}")
+                    continue
             
             return {
                 'status': 'success',
-                'data': timeline_data,
-                'count': len(timeline_data),
-                'message': f'Successfully loaded {len(timeline_data)} tasks for Gantt timeline'
+                'data': task_data,
+                'count': len(task_data),
+                'message': f'Successfully loaded {len(task_data)} tasks for Gantt timeline'
             }
             
         except Exception as e:
@@ -1497,106 +1515,225 @@ class TeamProjectAPI(http.Controller):
 
         return project_data
 
+    # def _prepare_task_data(self, task, include_attachments=False):
+    #     """Menyiapkan data tugas untuk respons API dengan error handling."""
+    #     try:
+    #         # Initialize an empty dictionary for task data
+    #         task_data = {
+    #             'id': task.id,
+    #             'name': task.name,
+    #             'priority': task.priority
+    #         }
+
+    #         # You need to add the active field here
+    #         task_data['active'] = task.active if hasattr(task, 'active') else True
+            
+    #         # Add project info if available
+    #         if hasattr(task, 'project_id') and task.project_id:
+    #             task_data['project'] = {
+    #                 'id': task.project_id.id,
+    #                 'name': task.project_id.name
+    #             }
+    #         else:
+    #             task_data['project'] = None
+            
+    #         # Add type info if available
+    #         if hasattr(task, 'type_id') and task.type_id:
+    #             task_data['type'] = {
+    #                 'id': task.type_id.id,
+    #                 'name': task.type_id.name
+    #             }
+    #         else:
+    #             task_data['type'] = None
+            
+    #         # Add assigned_to info if available
+    #         task_data['assigned_to'] = []
+    #         if hasattr(task, 'assigned_to') and task.assigned_to:
+    #             for person in task.assigned_to:
+    #                 task_data['assigned_to'].append({
+    #                     'id': person.id,
+    #                     'name': person.name
+    #                 })
+            
+    #         # Add reviewer info if available
+    #         task_data['reviewer'] = None
+    #         if hasattr(task, 'reviewer_id') and task.reviewer_id:
+    #             task_data['reviewer'] = {
+    #                 'id': task.reviewer_id.id,
+    #                 'name': task.reviewer_id.name
+    #             }
+            
+    #         # Add dates info
+    #         task_data['dates'] = {
+    #             'planned_start': self._format_datetime_jakarta(task.planned_date_start) if hasattr(task, 'planned_date_start') and task.planned_date_start else False,
+    #             'planned_end': self._format_datetime_jakarta(task.planned_date_end) if hasattr(task, 'planned_date_end') and task.planned_date_end else False,
+    #             'actual_start': self._format_datetime_jakarta(task.actual_date_start) if hasattr(task, 'actual_date_start') and task.actual_date_start else False,
+    #             'actual_end': self._format_datetime_jakarta(task.actual_date_end) if hasattr(task, 'actual_date_end') and task.actual_date_end else False
+    #         }
+            
+    #         # Add hours info
+    #         task_data['hours'] = {
+    #             'planned': task.planned_hours if hasattr(task, 'planned_hours') else 0,
+    #             'actual': task.actual_hours if hasattr(task, 'actual_hours') else 0
+    #         }
+            
+    #         # Add other fields
+    #         task_data['state'] = task.state if hasattr(task, 'state') else 'draft'
+    #         task_data['progress'] = task.progress if hasattr(task, 'progress') else 0
+    #         task_data['description'] = task.description if hasattr(task, 'description') else ''
+    #         task_data['checklist_progress'] = task.checklist_progress if hasattr(task, 'checklist_progress') else 0
+            
+    #         # Tambahkan data attachment jika diminta
+    #         if include_attachments and hasattr(task, 'attachment_ids'):
+    #             task_data['attachment_count'] = len(task.attachment_ids)
+                
+    #             # Jika diminta detail attachment
+    #             task_data['attachments'] = []
+    #             for attachment in task.attachment_ids:
+    #                 task_data['attachments'].append({
+    #                     'id': attachment.id,
+    #                     'name': attachment.name,
+    #                     'mimetype': attachment.mimetype if hasattr(attachment, 'mimetype') else 'application/octet-stream',
+    #                     'size': attachment.file_size if hasattr(attachment, 'file_size') else 0,
+    #                     'url': f'/web/content/{attachment.id}?download=true',
+    #                     'is_image': attachment.mimetype.startswith('image/') if hasattr(attachment, 'mimetype') and attachment.mimetype else False,
+    #                     'create_date': fields.Datetime.to_string(attachment.create_date),
+    #                     'create_uid': {
+    #                         'id': attachment.create_uid.id,
+    #                         'name': attachment.create_uid.name
+    #                     }
+    #                 })
+            
+    #         # Kembali seluruh data tugas
+    #         return task_data
+        
+    #     except Exception as e:
+    #         import traceback
+    #         _logger.error(f"Error in _prepare_task_data: {str(e)}\n{traceback.format_exc()}")
+    #         # Return minimal data untuk menghindari kegagalan total
+    #         return {
+    #             'id': task.id,
+    #             'name': task.name or "Unknown",
+    #             'error': str(e)
+    #         }
+
     def _prepare_task_data(self, task, include_attachments=False):
-        """Menyiapkan data tugas untuk respons API dengan error handling."""
+        """
+        Prepare task data dengan format yang konsisten untuk SEMUA view
+        Tidak ada perbedaan antara list dan gantt_list
+        """
         try:
-            # Initialize an empty dictionary for task data
+            # Safely get dates
+            planned_start = None
+            planned_end = None
+            
+            if task.planned_date_start:
+                planned_start = fields.Datetime.to_string(task.planned_date_start)
+            if task.planned_date_end:
+                planned_end = fields.Datetime.to_string(task.planned_date_end)
+            
+            # Base task data - KONSISTEN untuk semua operation
             task_data = {
                 'id': task.id,
-                'name': task.name,
-                'priority': task.priority
-            }
-
-            # You need to add the active field here
-            task_data['active'] = task.active if hasattr(task, 'active') else True
-            
-            # Add project info if available
-            if hasattr(task, 'project_id') and task.project_id:
-                task_data['project'] = {
+                'name': task.name or '',
+                'description': task.description or '',
+                'state': task.state or 'draft',
+                'priority': task.priority or '1',
+                'progress': task.progress or 0,
+                'sequence': task.sequence or 0,
+                'active': task.active if hasattr(task, 'active') else True,
+                
+                # Project info
+                'project': {
                     'id': task.project_id.id,
-                    'name': task.project_id.name
-                }
-            else:
-                task_data['project'] = None
-            
-            # Add type info if available
-            if hasattr(task, 'type_id') and task.type_id:
-                task_data['type'] = {
+                    'name': task.project_id.name,
+                    'department': {
+                        'id': task.project_id.department_ids[0].id if task.project_id.department_ids else None,
+                        'name': task.project_id.department_ids[0].name if task.project_id.department_ids else None
+                    }
+                } if task.project_id else None,
+                
+                # Assigned users
+                'assigned_to': [
+                    {
+                        'id': user.id,
+                        'name': user.name,
+                        'email': user.email if hasattr(user, 'email') else '',
+                        'is_current_user': user.id == request.env.user.id
+                    }
+                    for user in task.assigned_to
+                ] if task.assigned_to else [],
+                
+                # Dates - berbagai format untuk compatibility dengan frontend
+                'dates': {
+                    'planned_start': planned_start,
+                    'planned_end': planned_end
+                },
+                'start': planned_start,      # Alias untuk Gantt chart
+                'end': planned_end,          # Alias untuk Gantt chart
+                'startDate': planned_start,  # Alias lain
+                'endDate': planned_end,      # Alias lain
+                
+                # Hours
+                'hours': {
+                    'planned': task.planned_hours if hasattr(task, 'planned_hours') else 0,
+                    'effective': task.effective_hours if hasattr(task, 'effective_hours') else 0
+                },
+                
+                # Additional fields
+                'type': {
                     'id': task.type_id.id,
                     'name': task.type_id.name
-                }
-            else:
-                task_data['type'] = None
-            
-            # Add assigned_to info if available
-            task_data['assigned_to'] = []
-            if hasattr(task, 'assigned_to') and task.assigned_to:
-                for person in task.assigned_to:
-                    task_data['assigned_to'].append({
-                        'id': person.id,
-                        'name': person.name
-                    })
-            
-            # Add reviewer info if available
-            task_data['reviewer'] = None
-            if hasattr(task, 'reviewer_id') and task.reviewer_id:
-                task_data['reviewer'] = {
+                } if hasattr(task, 'type_id') and task.type_id else None,
+                
+                'reviewer': {
                     'id': task.reviewer_id.id,
                     'name': task.reviewer_id.name
-                }
-            
-            # Add dates info
-            task_data['dates'] = {
-                'planned_start': self._format_datetime_jakarta(task.planned_date_start) if hasattr(task, 'planned_date_start') and task.planned_date_start else False,
-                'planned_end': self._format_datetime_jakarta(task.planned_date_end) if hasattr(task, 'planned_date_end') and task.planned_date_end else False,
-                'actual_start': self._format_datetime_jakarta(task.actual_date_start) if hasattr(task, 'actual_date_start') and task.actual_date_start else False,
-                'actual_end': self._format_datetime_jakarta(task.actual_date_end) if hasattr(task, 'actual_date_end') and task.actual_date_end else False
-            }
-            
-            # Add hours info
-            task_data['hours'] = {
-                'planned': task.planned_hours if hasattr(task, 'planned_hours') else 0,
-                'actual': task.actual_hours if hasattr(task, 'actual_hours') else 0
-            }
-            
-            # Add other fields
-            task_data['state'] = task.state if hasattr(task, 'state') else 'draft'
-            task_data['progress'] = task.progress if hasattr(task, 'progress') else 0
-            task_data['description'] = task.description if hasattr(task, 'description') else ''
-            task_data['checklist_progress'] = task.checklist_progress if hasattr(task, 'checklist_progress') else 0
-            
-            # Tambahkan data attachment jika diminta
-            if include_attachments and hasattr(task, 'attachment_ids'):
-                task_data['attachment_count'] = len(task.attachment_ids)
+                } if hasattr(task, 'reviewer_id') and task.reviewer_id else None,
                 
-                # Jika diminta detail attachment
-                task_data['attachments'] = []
-                for attachment in task.attachment_ids:
-                    task_data['attachments'].append({
-                        'id': attachment.id,
-                        'name': attachment.name,
-                        'mimetype': attachment.mimetype if hasattr(attachment, 'mimetype') else 'application/octet-stream',
-                        'size': attachment.file_size if hasattr(attachment, 'file_size') else 0,
-                        'url': f'/web/content/{attachment.id}?download=true',
-                        'is_image': attachment.mimetype.startswith('image/') if hasattr(attachment, 'mimetype') and attachment.mimetype else False,
-                        'create_date': fields.Datetime.to_string(attachment.create_date),
-                        'create_uid': {
-                            'id': attachment.create_uid.id,
-                            'name': attachment.create_uid.name
-                        }
-                    })
+                # Dependencies
+                'depends_on': [
+                    {
+                        'id': dep.id,
+                        'name': dep.name
+                    }
+                    for dep in task.depends_on_ids
+                ] if hasattr(task, 'depends_on_ids') and task.depends_on_ids else [],
+                
+                'blocked_by': {
+                    'id': task.blocked_by_id.id,
+                    'name': task.blocked_by_id.name
+                } if hasattr(task, 'blocked_by_id') and task.blocked_by_id else None,
+                
+                # Timestamps
+                'create_date': fields.Datetime.to_string(task.create_date) if task.create_date else None,
+                'write_date': fields.Datetime.to_string(task.write_date) if task.write_date else None,
+            }
             
-            # Kembali seluruh data tugas
+            # Include attachments if requested
+            if include_attachments and hasattr(task, 'attachment_ids'):
+                task_data['attachments'] = [
+                    {
+                        'id': att.id,
+                        'name': att.name,
+                        'file_size': att.file_size,
+                        'mimetype': att.mimetype,
+                        'url': f'/web/content/{att.id}?download=true'
+                    }
+                    for att in task.attachment_ids
+                ]
+            
             return task_data
-        
+            
         except Exception as e:
-            import traceback
-            _logger.error(f"Error in _prepare_task_data: {str(e)}\n{traceback.format_exc()}")
-            # Return minimal data untuk menghindari kegagalan total
+            _logger.error(f"Error preparing task data for task {task.id}: {str(e)}")
+            # Return minimal data to prevent complete failure
             return {
                 'id': task.id,
-                'name': task.name or "Unknown",
-                'error': str(e)
+                'name': task.name or 'Unnamed Task',
+                'state': task.state or 'draft',
+                'progress': task.progress or 0,
+                'error': f'Error preparing data: {str(e)}'
             }
 
     def _prepare_message_data(self, message):

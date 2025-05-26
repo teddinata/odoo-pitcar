@@ -184,10 +184,96 @@ class ContentManagementAPI(http.Controller):
                 'result': {'status': 'error', 'message': f'Error deleting project: {str(e)}'},
                 'id': data.get('id')
             }
+
+    @http.route('/web/v2/content/dashboard/timeline', type='json', auth='user', methods=['POST'], csrf=False)
+    def content_dashboard_timeline(self, **kw):
+        """Get timeline data for content projects (Gantt Chart)"""
+        try:
+            domain = []
+            
+            # Add date filters
+            if kw.get('date_start'):
+                domain.append(('date_start', '<=', kw['date_end'] or kw['date_start']))
+            if kw.get('date_end'):
+                domain.append(('date_end', '>=', kw['date_start'] or kw['date_end']))
+                
+            # Add state filter
+            if kw.get('state'):
+                domain.append(('state', '=', kw['state']))
+                
+            # Add project manager filter  
+            if kw.get('project_manager_id'):
+                domain.append(('project_manager_id', '=', int(kw['project_manager_id'])))
+                
+            # Add specific project filter
+            if kw.get('project_id'):
+                domain.append(('id', '=', int(kw['project_id'])))
+
+            # Get projects with sorting
+            sort_field = kw.get('sort_field', 'date_start')
+            sort_order = kw.get('sort_order', 'asc')
+            
+            projects = request.env['content.project'].sudo().search(
+                domain, 
+                order=f'{sort_field} {sort_order}'
+            )
+            
+            timeline_data = []
+            
+            for project in projects:
+                # Calculate project progress
+                total_tasks = len(project.task_ids)
+                completed_tasks = len(project.task_ids.filtered(lambda t: t.state == 'done'))
+                progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+                
+                project_data = {
+                    'id': project.id,
+                    'name': project.name,
+                    'type': 'project',
+                    'start': project.date_start.strftime('%Y-%m-%d') if project.date_start else None,
+                    'end': project.date_end.strftime('%Y-%m-%d') if project.date_end else None,
+                    'progress': progress,
+                    'state': project.state,
+                    'children': []  # Tasks will be added here
+                }
+                
+                # Add tasks as children
+                for task in project.task_ids:
+                    task_data = {
+                        'id': task.id,
+                        'name': task.name,
+                        'type': 'task',
+                        'start': task.planned_date_start.strftime('%Y-%m-%d') if task.planned_date_start else project.date_start.strftime('%Y-%m-%d') if project.date_start else None,
+                        'end': task.planned_date_end.strftime('%Y-%m-%d') if task.planned_date_end else project.date_end.strftime('%Y-%m-%d') if project.date_end else None,
+                        'progress': task.progress or 0,
+                        'state': task.state,
+                        'assigned_to': [
+                            {
+                                'id': user.id,
+                                'name': user.name
+                            } for user in task.assigned_to
+                        ] if task.assigned_to else []
+                    }
+                    project_data['children'].append(task_data)
+                
+                timeline_data.append(project_data)
+            
+            return {
+                'status': 'success',
+                'data': timeline_data
+            }
+            
+        except Exception as e:
+            _logger.error('Error in content_dashboard_timeline: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error fetching timeline data: {str(e)}'
+            }
+
         
     @http.route('/web/v2/content/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
     def get_projects(self, **kw):
-        """Get list of projects with optional filters"""
+        """Get list of projects with enhanced filters and pagination"""
         try:
             domain = []
             
@@ -201,12 +287,39 @@ class ContentManagementAPI(http.Controller):
             if kw.get('date_end'):
                 domain.append(('date_end', '<=', kw['date_end']))
                 
-            # Get projects
-            projects = request.env['content.project'].sudo().search(domain)
+            # Pagination
+            page = kw.get('page', 1)
+            limit = kw.get('limit', 12)
+            offset = (page - 1) * limit
+            
+            # Sorting
+            sort_field = kw.get('sort_field', 'date_start')
+            sort_order = kw.get('sort_order', 'desc')
+            order = f'{sort_field} {sort_order}'
+            
+            # Get total count
+            total_count = request.env['content.project'].sudo().search_count(domain)
+            
+            # Get projects with pagination
+            projects = request.env['content.project'].sudo().search(
+                domain, 
+                limit=limit, 
+                offset=offset, 
+                order=order
+            )
+            
+            # Calculate pagination info
+            total_pages = (total_count + limit - 1) // limit
             
             return {
                 'status': 'success',
-                'data': [self._prepare_project_data(project) for project in projects]
+                'data': [self._prepare_project_data(project) for project in projects],
+                'pagination': {
+                    'page': page,
+                    'limit': limit,
+                    'total': total_count,
+                    'total_pages': total_pages
+                }
             }
             
         except Exception as e:
@@ -634,68 +747,31 @@ class ContentManagementAPI(http.Controller):
           return {'status': 'error', 'message': 'An error occurred'}
 
     def _prepare_project_data(self, project):
-        """Helper method to prepare project data"""
-        tasks_data = []
-        for task in project.task_ids:
-            task_data = {
-                'id': task.id,
-                'name': task.name,
-                'type': task.content_type,  # Tetap gunakan 'type' untuk kompatibilitas
-                'content_type': task.content_type,  # Tambahkan juga 'content_type'
-                'state': task.state,
-                'progress': task.progress,
-                'revision_count': task.revision_count,
-                'dates': {
-                    'planned_start': task.planned_date_start,
-                    'planned_end': task.planned_date_end,
-                    'actual_start': task.actual_date_start,
-                    'actual_end': task.actual_date_end
-                },
-                'hours': {
-                    'planned': task.planned_hours,
-                    'actual': task.actual_hours
-                },
-                'assigned_to': [{
-                    'id': member.id,
-                    'name': member.name,
-                    'position': member.job_id.name if member.job_id else ''
-                } for member in task.assigned_to],
-                'reviewer': {
-                    'id': task.reviewer_id.id,
-                    'name': task.reviewer_id.name,
-                    'position': task.reviewer_id.job_id.name if task.reviewer_id.job_id else ''
-                } if task.reviewer_id else None,
-                'description': task.description
-            }
-            tasks_data.append(task_data)
+        """Enhanced project data preparation"""
+        # Calculate progress based on tasks
+        total_tasks = len(project.task_ids)
+        completed_tasks = len(project.task_ids.filtered(lambda t: t.state == 'done'))
+        progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
         
         return {
             'id': project.id,
             'name': project.name,
-            'code': project.code,
-            'dates': {
-                'start': project.date_start,
-                'end': project.date_end
-            },
-            'team': {
-                'manager': {
-                    'id': project.project_manager_id.id,
-                    'name': project.project_manager_id.name,
-                    'position': project.project_manager_id.job_id.name,
-                },
-                'members': [{
-                    'id': member.id,
-                    'name': member.name,
-                    'position': member.job_id.name,
-                } for member in project.team_ids]
-            },
-            'content_plan': {
-                'video_count': project.planned_video_count,
-                'design_count': project.planned_design_count
-            },
-            'progress': project.progress,
+            'description': project.description or '',
             'state': project.state,
-            'tasks': tasks_data
+            'date_start': project.date_start.strftime('%Y-%m-%d') if project.date_start else None,
+            'date_end': project.date_end.strftime('%Y-%m-%d') if project.date_end else None,
+            'project_manager_id': project.project_manager_id.id if project.project_manager_id else None,
+            'project_manager_name': project.project_manager_id.name if project.project_manager_id else '',
+            'planned_video_count': project.planned_video_count or 0,
+            'planned_design_count': project.planned_design_count or 0,
+            'actual_video_count': len(project.task_ids.filtered(lambda t: t.content_type == 'video')),
+            'actual_design_count': len(project.task_ids.filtered(lambda t: t.content_type == 'design')),
+            'progress': progress,
+            'task_count': total_tasks,
+            'completed_task_count': completed_tasks,
+            'team_ids': [team.id for team in project.team_ids] if project.team_ids else [],
+            'team_names': [team.name for team in project.team_ids] if project.team_ids else [],
+            'active': getattr(project, 'active', True)  # Assuming there's an active field
         }
 
     def _prepare_task_data(self, task):

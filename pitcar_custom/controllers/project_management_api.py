@@ -616,152 +616,11 @@ class TeamProjectAPI(http.Controller):
             operation = kw.get('operation', 'create')
 
              # TAMBAHKAN OPERATION BARU UNTUK GANTT
-            if operation == 'gantt_list':
-                return self._get_tasks_for_gantt(kw)
+            if operation == 'list':
+                return self._unified_get_tasks(kw, for_gantt=False)
 
-            elif operation == 'list':
-                # Build domain filter
-                domain = []
-                
-                # Tangani setiap parameter dengan aman
-                try:
-                    if kw.get('project_id'):
-                        domain.append(('project_id', '=', int(kw['project_id'])))
-                    if kw.get('department_id'):
-                        domain.append(('department_id', '=', int(kw['department_id'])))
-                    if kw.get('type_id'):
-                        domain.append(('type_id', '=', int(kw['type_id'])))
-                    if kw.get('assigned_to'):
-                        # Pastikan assigned_to diproses dengan benar
-                        assigned_to = kw['assigned_to']
-                        # Jika string, coba parse sebagai JSON jika berisi array
-                        if isinstance(assigned_to, str) and assigned_to.startswith('['):
-                            try:
-                                assigned_to = json.loads(assigned_to)
-                            except Exception:
-                                assigned_to = [int(assigned_to)]
-                        # Jika bukan list, konversi ke list
-                        if not isinstance(assigned_to, list):
-                            assigned_to = [int(assigned_to)]
-                        domain.append(('assigned_to', 'in', assigned_to))
-                    # Filter status
-                    if kw.get('state'):
-                        domain.append(('state', '=', kw['state']))
-                    
-                    # Filter tipe task
-                    if kw.get('type_id'):
-                        domain.append(('type_id', '=', int(kw['type_id'])))
-                    
-                    # Filter prioritas
-                    if kw.get('priority'):
-                        domain.append(('priority', '=', kw['priority']))
-
-                     # Add this block to handle archived tasks filtering
-                    # Check if include_archived parameter is provided
-                    include_archived = kw.get('include_archived', False)
-                    # Convert string to boolean if needed
-                    if isinstance(include_archived, str):
-                        include_archived = include_archived.lower() in ('true', '1', 'yes')
-                    
-                    # Add active filter based on include_archived parameter
-                    if not include_archived:
-                        # Only show active tasks
-                        domain.append(('active', '=', True))
-                    else:
-                        # Show both active and archived tasks
-                        domain.append('|')
-                        domain.append(('active', '=', True))
-                        domain.append(('active', '=', False))
-
-                    
-                    # Filter rentang tanggal due date
-                    if kw.get('due_date_from'):
-                        domain.append(('planned_date_end', '>=', kw['due_date_from']))
-                    if kw.get('due_date_to'):
-                        domain.append(('planned_date_end', '<=', kw['due_date_to']))
-                    
-                    # Filter task overdue
-                    if kw.get('is_overdue') == 'true':
-                        today = fields.Date.today()
-                        domain.append(('planned_date_end', '<', today))
-                        domain.append(('state', 'not in', ['done', 'cancelled']))
-                    
-                    # Filter progress
-                    if kw.get('progress_min'):
-                        domain.append(('progress', '>=', float(kw['progress_min'])))
-                    if kw.get('progress_max'):
-                        domain.append(('progress', '<=', float(kw['progress_max'])))
-                    
-                    # Filter berdasarkan tag/label (jika model memiliki field tag_ids)
-                    if kw.get('tag_ids'):
-                        tag_ids = kw['tag_ids'] if isinstance(kw['tag_ids'], list) else json.loads(kw['tag_ids'])
-                        domain.append(('tag_ids', 'in', tag_ids))
-                    
-                    # Filter "my tasks" - tasks untuk user saat ini
-                    if kw.get('my_tasks') == 'true':
-                        domain.append(('assigned_to', 'in', [request.env.user.employee_id.id]))
-                    
-                    # Filter task baru/diupdate dalam X hari terakhir
-                    if kw.get('recent_days'):
-                        days = int(kw['recent_days'])
-                        date_limit = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-                        domain.append('|')
-                        domain.append(('create_date', '>=', date_limit))
-                        domain.append(('write_date', '>=', date_limit))
-                    
-                    # Filter dependency
-                    if kw.get('has_dependencies') == 'true':
-                        domain.append(('depends_on_ids', '!=', False))
-                    elif kw.get('has_dependencies') == 'false':
-                        domain.append(('depends_on_ids', '=', False))
-                    
-                    # Filter blocked
-                    if kw.get('is_blocked') == 'true':
-                        domain.append(('blocked_by_id', '!=', False))
-                    elif kw.get('is_blocked') == 'false':
-                        domain.append(('blocked_by_id', '=', False))
-                        
-                    # Filter nama task (search)
-                    if kw.get('search'):
-                        domain.append('|')
-                        domain.append(('name', 'ilike', kw['search']))
-                        domain.append(('description', 'ilike', kw['search']))
-
-                    # Pada function manage_tasks di TeamProjectAPI saat operation 'list'
-                    if 'sort_field' in kw and 'sort_order' in kw:
-                        allowed_sort_fields = ['name', 'priority', 'state', 'progress', 'planned_date_end']
-                        sort_field = kw.get('sort_field')
-                        if sort_field not in allowed_sort_fields:
-                            sort_field = 'priority'  # Default jika field tidak valid
-                            
-                        sort_order = kw.get('sort_order')
-                        if sort_order not in ['asc', 'desc']:
-                            sort_order = 'desc'  # Default jika order tidak valid
-                            
-                        order = f"{sort_field} {sort_order}"
-                    else:
-                        order = "priority desc, sequence, id desc"  # Sesuai _order di model
-
-                    tasks = request.env['team.project.task'].sudo().search(domain, order=order)
-                    
-                    # Buat task data dengan error handling
-                    task_data = []
-                    for task in tasks:
-                        try:
-                            task_data.append(self._prepare_task_data(task))
-                        except Exception as e:
-                            _logger.error(f"Error preparing task data: {str(e)}")
-                            # Skip task yang error atau tambahkan data minimal
-                            continue
-                            
-                    # Return formatted task data
-                    return {
-                        'status': 'success',
-                        'data': task_data
-                    }
-                except Exception as e:
-                    _logger.error(f"Error in list operation: {str(e)}")
-                    return {'status': 'error', 'message': str(e)}
+            elif operation == 'gantt_list':
+                return self._unified_get_tasks(kw, for_gantt=True)
 
             elif operation == 'read':
                 try:
@@ -991,25 +850,40 @@ class TeamProjectAPI(http.Controller):
         
     def _get_tasks_for_gantt(self, kw):
         """
-        Method untuk mendapatkan data tasks dalam format Gantt chart
-        KONSISTEN dengan operation 'list' - tidak ada logic berbeda
+        PERBAIKAN: Method untuk Gantt yang KONSISTEN dengan operation 'list'
+        Tidak ada logic berbeda - gunakan filter yang sama persis
         """
         try:
-            # Build domain filter - SAMA PERSIS dengan operation 'list'
+            # STEP 1: Gunakan fungsi yang sama dengan list operation
+            return self._unified_get_tasks(kw, for_gantt=True)
+            
+        except Exception as e:
+            _logger.error(f"Error in _get_tasks_for_gantt: {str(e)}")
+            import traceback
+            _logger.error(traceback.format_exc())
+            return {'status': 'error', 'message': str(e)}
+
+    def _unified_get_tasks(self, kw, for_gantt=False):
+        """
+        PERBAIKAN: Unified function untuk list dan gantt operation
+        Memastikan filter yang sama dan hasil yang konsisten
+        """
+        try:
+            # Build domain filter - SAMA PERSIS untuk list dan gantt
             domain = []
             
-            # Apply SEMUA filter yang sama dengan list operation
+            # STEP 1: Apply basic filters
             if kw.get('project_id'):
                 domain.append(('project_id', '=', int(kw['project_id'])))
             
-            # Department filter - pastikan konsisten
+            # Department filter - KONSISTEN
             if kw.get('department_ids'):
                 department_ids = kw['department_ids'] if isinstance(kw['department_ids'], list) else [int(kw['department_ids'])]
                 domain.append(('project_id.department_ids', 'in', department_ids))
             elif kw.get('department_id'):
                 domain.append(('project_id.department_ids', 'in', [int(kw['department_id'])]))
             
-            # Assigned to filter
+            # Assigned to filter - KONSISTEN
             if kw.get('assigned_to'):
                 assigned_to = kw['assigned_to']
                 if isinstance(assigned_to, str) and assigned_to.startswith('['):
@@ -1021,53 +895,53 @@ class TeamProjectAPI(http.Controller):
                     assigned_to = [int(assigned_to)]
                 domain.append(('assigned_to', 'in', assigned_to))
             
-            # Status filter
+            # Status filter - KONSISTEN
             if kw.get('state'):
                 domain.append(('state', '=', kw['state']))
             
-            # Type filter
+            # Type filter - KONSISTEN
             if kw.get('type_id'):
                 domain.append(('type_id', '=', int(kw['type_id'])))
             
-            # Priority filter
+            # Priority filter - KONSISTEN
             if kw.get('priority'):
                 domain.append(('priority', '=', kw['priority']))
             
-            # Search filter
+            # Search filter - KONSISTEN
             if kw.get('search'):
                 domain.append('|')
                 domain.append(('name', 'ilike', kw['search']))
                 domain.append(('description', 'ilike', kw['search']))
             
-            # Progress filters
+            # Progress filters - KONSISTEN
             if kw.get('progress_min'):
                 domain.append(('progress', '>=', float(kw['progress_min'])))
             if kw.get('progress_max'):
                 domain.append(('progress', '<=', float(kw['progress_max'])))
             
-            # My tasks filter
+            # My tasks filter - KONSISTEN
             if kw.get('my_tasks') == 'true':
                 domain.append(('assigned_to', 'in', [request.env.user.employee_id.id]))
             
-            # Overdue filter
+            # Overdue filter - KONSISTEN
             if kw.get('is_overdue') == 'true':
                 today = fields.Date.today()
                 domain.append(('planned_date_end', '<', today))
                 domain.append(('state', 'not in', ['done', 'cancelled']))
             
-            # Dependencies filter
+            # Dependencies filter - KONSISTEN
             if kw.get('has_dependencies') == 'true':
                 domain.append(('depends_on_ids', '!=', False))
             elif kw.get('has_dependencies') == 'false':
                 domain.append(('depends_on_ids', '=', False))
             
-            # Blocked filter
+            # Blocked filter - KONSISTEN
             if kw.get('is_blocked') == 'true':
                 domain.append(('blocked_by_id', '!=', False))
             elif kw.get('is_blocked') == 'false':
                 domain.append(('blocked_by_id', '=', False))
             
-            # Recent activity filter
+            # Recent activity filter - KONSISTEN
             if kw.get('recent_days'):
                 days = int(kw['recent_days'])
                 date_limit = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
@@ -1075,46 +949,49 @@ class TeamProjectAPI(http.Controller):
                 domain.append(('create_date', '>=', date_limit))
                 domain.append(('write_date', '>=', date_limit))
             
-            # Date filters untuk timeline
-            # PENTING: Gunakan parameter yang konsisten
+            # STEP 2: Date filters - PERBAIKAN UTAMA DI SINI
+            # Gunakan parameter yang KONSISTEN untuk kedua operation
             date_start = kw.get('date_start') or kw.get('due_date_from')
             date_end = kw.get('date_end') or kw.get('due_date_to')
             
-            if date_start and date_end:
-                # Filter tasks yang overlap dengan timeline range
-                # ATAU yang berada dalam range
-                domain.extend([
-                    '|',
-                    '|',
-                    '|',
-                    # Task mulai dalam range
-                    '&', ('planned_date_start', '>=', date_start), ('planned_date_start', '<=', date_end),
-                    # Task selesai dalam range  
-                    '&', ('planned_date_end', '>=', date_start), ('planned_date_end', '<=', date_end),
-                    # Task span keseluruhan range
-                    '&', ('planned_date_start', '<=', date_start), ('planned_date_end', '>=', date_end),
-                    # Task yang hanya punya salah satu tanggal dalam range
-                    '&', ('planned_date_start', '=', False), '&', ('planned_date_end', '>=', date_start), ('planned_date_end', '<=', date_end)
-                ])
-            elif date_start:
+            # PERBAIKAN: Simplified date filter logic
+            if date_start or date_end:
+                date_conditions = []
+                
+                if date_start and date_end:
+                    # Tasks yang overlap dengan range
+                    date_conditions.extend([
+                        # Task yang mulai dalam range
+                        '&', ('planned_date_start', '>=', date_start), ('planned_date_start', '<=', date_end),
+                        # Task yang selesai dalam range
+                        '&', ('planned_date_end', '>=', date_start), ('planned_date_end', '<=', date_end),
+                        # Task yang span keseluruhan range
+                        '&', ('planned_date_start', '<=', date_start), ('planned_date_end', '>=', date_end)
+                    ])
+                    
+                    # Add OR conditions
+                    for i in range(len(date_conditions) // 3 - 1):
+                        domain.append('|')
+                    
+                    domain.extend(date_conditions)
+                    
+                elif date_start:
+                    domain.append('|')
+                    domain.append(('planned_date_start', '>=', date_start))
+                    domain.append(('planned_date_end', '>=', date_start))
+                elif date_end:
+                    domain.append('|')
+                    domain.append(('planned_date_start', '<=', date_end))
+                    domain.append(('planned_date_end', '<=', date_end))
+            
+            # STEP 3: Gantt-specific filters
+            if for_gantt:
+                # Untuk Gantt, hanya ambil tasks yang punya minimal satu tanggal
                 domain.append('|')
-                domain.append(('planned_date_start', '>=', date_start))
-                domain.append(('planned_date_end', '>=', date_start))
-            elif date_end:
-                domain.append('|')
-                domain.append(('planned_date_start', '<=', date_end))
-                domain.append(('planned_date_end', '<=', date_end))
+                domain.append(('planned_date_start', '!=', False))
+                domain.append(('planned_date_end', '!=', False))
             
-            # PENTING: Untuk Gantt, ambil tasks yang punya minimal satu tanggal
-            # Jangan terlalu ketat - biarkan frontend yang filter
-            domain.append('|')
-            domain.append(('planned_date_start', '!=', False))
-            domain.append(('planned_date_end', '!=', False))
-            
-            # Exclude cancelled tasks (konsisten dengan list)
-            domain.append(('state', 'not in', ['cancelled']))
-            
-            # Active filter - sama dengan list operation
+            # Active filter - KONSISTEN
             include_archived = kw.get('include_archived', False)
             if isinstance(include_archived, str):
                 include_archived = include_archived.lower() in ('true', '1', 'yes')
@@ -1126,7 +1003,7 @@ class TeamProjectAPI(http.Controller):
                 domain.append(('active', '=', True))
                 domain.append(('active', '=', False))
             
-            # Sorting - konsisten dengan list operation
+            # STEP 4: Sorting - KONSISTEN
             sort_field = kw.get('sort_field', 'priority')
             sort_order = kw.get('sort_order', 'desc')
             
@@ -1137,43 +1014,81 @@ class TeamProjectAPI(http.Controller):
             if sort_order not in ['asc', 'desc']:
                 sort_order = 'desc'
             
-            order = f"{sort_field} {sort_order}, planned_date_start asc, id"
+            # Enhanced sorting untuk Gantt
+            if for_gantt:
+                order = f"{sort_field} {sort_order}, planned_date_start asc nulls last, planned_date_end asc nulls last, id"
+            else:
+                order = f"{sort_field} {sort_order}, sequence, id desc"
             
-            _logger.info(f"Gantt tasks domain: {domain}")
-            _logger.info(f"Gantt tasks order: {order}")
+            # STEP 5: Execute query
+            _logger.info(f"{'Gantt' if for_gantt else 'List'} tasks domain: {domain}")
+            _logger.info(f"{'Gantt' if for_gantt else 'List'} tasks order: {order}")
             
-            # Ambil tasks tanpa limit untuk Gantt
-            tasks = request.env['team.project.task'].sudo().search(domain, order=order)
+            # Pagination - hanya untuk list operation
+            limit = None if for_gantt else int(kw.get('limit', 20))
+            offset = None if for_gantt else (int(kw.get('page', 1)) - 1) * limit
             
-            _logger.info(f"Found {len(tasks)} tasks for Gantt timeline")
+            tasks = request.env['team.project.task'].sudo().search(
+                domain, 
+                order=order,
+                limit=limit,
+                offset=offset
+            )
             
-            # Transform ke format yang konsisten dengan list operation
+            _logger.info(f"Found {len(tasks)} tasks for {'Gantt' if for_gantt else 'List'}")
+            
+            # STEP 6: Transform data - SAMA untuk kedua operation
             task_data = []
             for task in tasks:
                 try:
-                    # Gunakan fungsi yang sama dengan list operation
                     task_item = self._prepare_task_data(task)
                     
-                    # Tambahkan field khusus untuk Gantt jika diperlukan
-                    task_item['type'] = 'task'  # Untuk membedakan dengan project
+                    # Add metadata untuk Gantt
+                    if for_gantt:
+                        task_item['type'] = 'task'
+                        
+                        # Add enhanced date info untuk timeline sorting
+                        if task.planned_date_start:
+                            task_item['start'] = fields.Datetime.to_string(task.planned_date_start)
+                            task_item['startDate'] = fields.Datetime.to_string(task.planned_date_start)
+                        
+                        if task.planned_date_end:
+                            task_item['end'] = fields.Datetime.to_string(task.planned_date_end)
+                            task_item['endDate'] = fields.Datetime.to_string(task.planned_date_end)
                     
                     task_data.append(task_item)
                 except Exception as e:
-                    _logger.error(f"Error preparing task data for Gantt: {str(e)}")
+                    _logger.error(f"Error preparing task data: {str(e)}")
                     continue
             
-            return {
+            # STEP 7: Build response
+            response = {
                 'status': 'success',
                 'data': task_data,
-                'count': len(task_data),
-                'message': f'Successfully loaded {len(task_data)} tasks for Gantt timeline'
+                'count': len(task_data)
             }
             
+            # Add pagination info untuk list operation
+            if not for_gantt:
+                total = request.env['team.project.task'].sudo().search_count(domain)
+                page = int(kw.get('page', 1))
+                limit = int(kw.get('limit', 20))
+                
+                response['pagination'] = {
+                    'page': page,
+                    'limit': limit,
+                    'total': total,
+                    'total_pages': (total + limit - 1) // limit if limit > 0 else 1
+                }
+            
+            return response
+            
         except Exception as e:
-            _logger.error(f"Error in _get_tasks_for_gantt: {str(e)}")
+            _logger.error(f"Error in _unified_get_tasks: {str(e)}")
             import traceback
             _logger.error(traceback.format_exc())
             return {'status': 'error', 'message': str(e)}
+
         
     @http.route('/web/v2/team/projects/toggle_archive', type='json', auth='user', methods=['POST'], csrf=False)
     def toggle_project_archive(self, **kw):
@@ -1618,110 +1533,109 @@ class TeamProjectAPI(http.Controller):
     #         }
 
     def _prepare_task_data(self, task, include_attachments=False):
-        """
-        Prepare task data dengan format yang konsisten untuk SEMUA view
-        Tidak ada perbedaan antara list dan gantt_list
-        """
+        """PERBAIKAN: Enhanced task data preparation with consistency."""
         try:
-            # Safely get dates
-            planned_start = None
-            planned_end = None
-            
-            if task.planned_date_start:
-                planned_start = fields.Datetime.to_string(task.planned_date_start)
-            if task.planned_date_end:
-                planned_end = fields.Datetime.to_string(task.planned_date_end)
-            
-            # Base task data - KONSISTEN untuk semua operation
+            # Base task data
             task_data = {
                 'id': task.id,
-                'name': task.name or '',
+                'name': task.name,
                 'description': task.description or '',
-                'state': task.state or 'draft',
-                'priority': task.priority or '1',
+                'state': task.state,
+                'priority': task.priority,
                 'progress': task.progress or 0,
                 'sequence': task.sequence or 0,
-                'active': task.active if hasattr(task, 'active') else True,
-                
-                # Project info
-                'project': {
-                    'id': task.project_id.id,
-                    'name': task.project_id.name,
-                    'department': {
-                        'id': task.project_id.department_ids[0].id if task.project_id.department_ids else None,
-                        'name': task.project_id.department_ids[0].name if task.project_id.department_ids else None
-                    }
-                } if task.project_id else None,
-                
-                # Assigned users
-                'assigned_to': [
-                    {
-                        'id': user.id,
-                        'name': user.name,
-                        'email': user.email if hasattr(user, 'email') else '',
-                        'is_current_user': user.id == request.env.user.id
-                    }
-                    for user in task.assigned_to
-                ] if task.assigned_to else [],
-                
-                # Dates - berbagai format untuk compatibility dengan frontend
-                'dates': {
-                    'planned_start': planned_start,
-                    'planned_end': planned_end
-                },
-                'start': planned_start,      # Alias untuk Gantt chart
-                'end': planned_end,          # Alias untuk Gantt chart
-                'startDate': planned_start,  # Alias lain
-                'endDate': planned_end,      # Alias lain
-                
-                # Hours
-                'hours': {
-                    'planned': task.planned_hours if hasattr(task, 'planned_hours') else 0,
-                    'effective': task.effective_hours if hasattr(task, 'effective_hours') else 0
-                },
-                
-                # Additional fields
-                'type': {
-                    'id': task.type_id.id,
-                    'name': task.type_id.name
-                } if hasattr(task, 'type_id') and task.type_id else None,
-                
-                'reviewer': {
-                    'id': task.reviewer_id.id,
-                    'name': task.reviewer_id.name
-                } if hasattr(task, 'reviewer_id') and task.reviewer_id else None,
-                
-                # Dependencies
-                'depends_on': [
-                    {
-                        'id': dep.id,
-                        'name': dep.name
-                    }
-                    for dep in task.depends_on_ids
-                ] if hasattr(task, 'depends_on_ids') and task.depends_on_ids else [],
-                
-                'blocked_by': {
-                    'id': task.blocked_by_id.id,
-                    'name': task.blocked_by_id.name
-                } if hasattr(task, 'blocked_by_id') and task.blocked_by_id else None,
-                
-                # Timestamps
-                'create_date': fields.Datetime.to_string(task.create_date) if task.create_date else None,
-                'write_date': fields.Datetime.to_string(task.write_date) if task.write_date else None,
+                'active': task.active,
+                'create_date': fields.Datetime.to_string(task.create_date),
+                'write_date': fields.Datetime.to_string(task.write_date),
             }
             
-            # Include attachments if requested
+            # Project information
+            if task.project_id:
+                task_data['project'] = {
+                    'id': task.project_id.id,
+                    'name': task.project_id.name,
+                    'code': task.project_id.code or '',
+                    'state': task.project_id.state,
+                }
+            
+            # Assigned users
+            task_data['assigned_to'] = []
+            for user in task.assigned_to:
+                task_data['assigned_to'].append({
+                    'id': user.id,
+                    'name': user.name,
+                    'email': user.work_email or '',
+                })
+            
+            # Date information - KONSISTEN untuk semua operation
+            task_data['dates'] = {}
+            if task.planned_date_start:
+                task_data['dates']['planned_start'] = fields.Datetime.to_string(task.planned_date_start)
+            if task.planned_date_end:
+                task_data['dates']['planned_end'] = fields.Datetime.to_string(task.planned_date_end)
+            if task.actual_date_start:
+                task_data['dates']['actual_start'] = fields.Datetime.to_string(task.actual_date_start)
+            if task.actual_date_end:
+                task_data['dates']['actual_end'] = fields.Datetime.to_string(task.actual_date_end)
+            
+            # Hours information
+            task_data['hours'] = {
+                'planned': task.planned_hours or 0,
+                'actual': task.actual_hours or 0,
+                'remaining': max(0, (task.planned_hours or 0) - (task.actual_hours or 0))
+            }
+            
+            # Type information
+            if task.type_id:
+                task_data['type'] = {
+                    'id': task.type_id.id,
+                    'name': task.type_id.name
+                }
+            
+            # Reviewer information
+            if task.reviewer_id:
+                task_data['reviewer'] = {
+                    'id': task.reviewer_id.id,
+                    'name': task.reviewer_id.name
+                }
+            
+            # Dependencies
+            task_data['depends_on'] = []
+            for dep_task in task.depends_on_ids:
+                task_data['depends_on'].append({
+                    'id': dep_task.id,
+                    'name': dep_task.name
+                })
+            
+            # Blocked by
+            if task.blocked_by_id:
+                task_data['blocked_by'] = {
+                    'id': task.blocked_by_id.id,
+                    'name': task.blocked_by_id.name
+                }
+            
+            # Attachments (if requested)
             if include_attachments and hasattr(task, 'attachment_ids'):
-                task_data['attachments'] = [
-                    {
-                        'id': att.id,
-                        'name': att.name,
-                        'file_size': att.file_size,
-                        'mimetype': att.mimetype,
-                        'url': f'/web/content/{att.id}?download=true'
-                    }
-                    for att in task.attachment_ids
-                ]
+                task_data['attachments'] = []
+                for attachment in task.attachment_ids:
+                    task_data['attachments'].append({
+                        'id': attachment.id,
+                        'name': attachment.name,
+                        'mimetype': attachment.mimetype,
+                        'size': attachment.file_size,
+                        'url': f'/web/content/{attachment.id}?download=true',
+                        'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False
+                    })
+            
+            # Additional computed fields
+            today = fields.Date.today()
+            if task.planned_date_end:
+                task_data['is_overdue'] = task.planned_date_end.date() < today and task.state not in ['done', 'cancelled']
+            else:
+                task_data['is_overdue'] = False
+            
+            task_data['has_dependencies'] = len(task.depends_on_ids) > 0
+            task_data['is_blocked'] = bool(task.blocked_by_id)
             
             return task_data
             
@@ -1732,8 +1646,9 @@ class TeamProjectAPI(http.Controller):
                 'id': task.id,
                 'name': task.name or 'Unnamed Task',
                 'state': task.state or 'draft',
+                'priority': task.priority or '1',
                 'progress': task.progress or 0,
-                'error': f'Error preparing data: {str(e)}'
+                'error': f'Data preparation error: {str(e)}'
             }
 
     def _prepare_message_data(self, message):

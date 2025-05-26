@@ -1004,6 +1004,7 @@ class TeamProjectAPI(http.Controller):
                 domain.append(('active', '=', False))
             
             # STEP 4: Sorting - KONSISTEN
+            # STEP 4: Sorting - FIXED untuk Odoo compatibility
             sort_field = kw.get('sort_field', 'priority')
             sort_order = kw.get('sort_order', 'desc')
             
@@ -1014,25 +1015,20 @@ class TeamProjectAPI(http.Controller):
             if sort_order not in ['asc', 'desc']:
                 sort_order = 'desc'
             
-            # Enhanced sorting untuk Gantt
+            # FIXED: Enhanced sorting untuk Gantt tanpa 'nulls last'
             if for_gantt:
-                order = f"{sort_field} {sort_order}, planned_date_start asc nulls last, planned_date_end asc nulls last, id"
+                # Odoo tidak support 'nulls last', gunakan order yang simple
+                # Prioritas: sort_field -> planned_date_start -> planned_date_end -> id
+                order = f"{sort_field} {sort_order}, planned_date_start asc, planned_date_end asc, id"
             else:
+                # Untuk list operation, gunakan order biasa
                 order = f"{sort_field} {sort_order}, sequence, id desc"
             
-            # STEP 5: Execute query
-            _logger.info(f"{'Gantt' if for_gantt else 'List'} tasks domain: {domain}")
-            _logger.info(f"{'Gantt' if for_gantt else 'List'} tasks order: {order}")
-            
-            # Pagination - hanya untuk list operation
-            limit = None if for_gantt else int(kw.get('limit', 20))
-            offset = None if for_gantt else (int(kw.get('page', 1)) - 1) * limit
-            
+            # STEP 5: Execute query - TANPA PAGINATION untuk task view
             tasks = request.env['team.project.task'].sudo().search(
                 domain, 
-                order=order,
-                limit=limit,
-                offset=offset
+                order=order
+                # REMOVED: limit dan offset - ambil semua tasks
             )
             
             _logger.info(f"Found {len(tasks)} tasks for {'Gantt' if for_gantt else 'List'}")
@@ -1061,25 +1057,16 @@ class TeamProjectAPI(http.Controller):
                     _logger.error(f"Error preparing task data: {str(e)}")
                     continue
             
-            # STEP 7: Build response
+            # STEP 7: Build response - TANPA PAGINATION
             response = {
                 'status': 'success',
                 'data': task_data,
-                'count': len(task_data)
+                'count': len(task_data),
+                'message': f'Successfully loaded {len(task_data)} tasks'
             }
             
-            # Add pagination info untuk list operation
-            if not for_gantt:
-                total = request.env['team.project.task'].sudo().search_count(domain)
-                page = int(kw.get('page', 1))
-                limit = int(kw.get('limit', 20))
-                
-                response['pagination'] = {
-                    'page': page,
-                    'limit': limit,
-                    'total': total,
-                    'total_pages': (total + limit - 1) // limit if limit > 0 else 1
-                }
+            # REMOVED: Tidak ada pagination info untuk task view
+            # Task view menampilkan semua tasks sekaligus
             
             return response
             

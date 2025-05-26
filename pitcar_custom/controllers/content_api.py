@@ -270,7 +270,7 @@ class ContentManagementAPI(http.Controller):
                 'message': f'Error fetching timeline data: {str(e)}'
             }
 
-        
+    # Upgrade existing get_projects method untuk support pagination dan filters yang lebih lengkap
     @http.route('/web/v2/content/projects/list', type='json', auth='user', methods=['POST'], csrf=False)
     def get_projects(self, **kw):
         """Get list of projects with enhanced filters and pagination"""
@@ -328,6 +328,43 @@ class ContentManagementAPI(http.Controller):
                 'status': 'error',
                 'message': f'Error fetching projects: {str(e)}'
             }
+
+    def _prepare_project_data(self, project):
+        """Enhanced project data preparation"""
+        # Calculate progress based on tasks
+        total_tasks = len(project.task_ids)
+        completed_tasks = len(project.task_ids.filtered(lambda t: t.state == 'done'))
+        progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        
+        # Calculate video and design counts
+        video_tasks = project.task_ids.filtered(lambda t: t.content_type == 'video')
+        design_tasks = project.task_ids.filtered(lambda t: t.content_type == 'design')
+        
+        return {
+            'id': project.id,
+            'name': project.name,
+            'description': project.description or '',
+            'state': project.state,
+            'date_start': project.date_start.strftime('%Y-%m-%d') if project.date_start else None,
+            'date_end': project.date_end.strftime('%Y-%m-%d') if project.date_end else None,
+            'project_manager_id': project.project_manager_id.id if project.project_manager_id else None,
+            'project_manager_name': project.project_manager_id.name if project.project_manager_id else '',
+            'planned_video_count': project.planned_video_count or 0,
+            'planned_design_count': project.planned_design_count or 0,
+            'actual_video_count': len(video_tasks),
+            'actual_design_count': len(design_tasks),
+            'progress': progress,
+            'task_count': total_tasks,
+            'completed_task_count': completed_tasks,
+            'team_ids': [team.id for team in project.team_ids] if project.team_ids else [],
+            'team_names': [team.name for team in project.team_ids] if project.team_ids else [],
+            'active': getattr(project, 'active', True),
+            # Add compatibility fields for ProjectCard component
+            'video_count': len(video_tasks),
+            'design_count': len(design_tasks),
+            'total_count': total_tasks,
+            'completed_count': completed_tasks
+        }
 
     @http.route('/web/v2/content/projects/<int:project_id>', type='json', auth='user', methods=['POST'], csrf=False)
     def get_project_detail(self, project_id, **kw):
@@ -746,33 +783,6 @@ class ContentManagementAPI(http.Controller):
           _logger.error('Error: %s', e)
           return {'status': 'error', 'message': 'An error occurred'}
 
-    def _prepare_project_data(self, project):
-        """Enhanced project data preparation"""
-        # Calculate progress based on tasks
-        total_tasks = len(project.task_ids)
-        completed_tasks = len(project.task_ids.filtered(lambda t: t.state == 'done'))
-        progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
-        
-        return {
-            'id': project.id,
-            'name': project.name,
-            'description': project.description or '',
-            'state': project.state,
-            'date_start': project.date_start.strftime('%Y-%m-%d') if project.date_start else None,
-            'date_end': project.date_end.strftime('%Y-%m-%d') if project.date_end else None,
-            'project_manager_id': project.project_manager_id.id if project.project_manager_id else None,
-            'project_manager_name': project.project_manager_id.name if project.project_manager_id else '',
-            'planned_video_count': project.planned_video_count or 0,
-            'planned_design_count': project.planned_design_count or 0,
-            'actual_video_count': len(project.task_ids.filtered(lambda t: t.content_type == 'video')),
-            'actual_design_count': len(project.task_ids.filtered(lambda t: t.content_type == 'design')),
-            'progress': progress,
-            'task_count': total_tasks,
-            'completed_task_count': completed_tasks,
-            'team_ids': [team.id for team in project.team_ids] if project.team_ids else [],
-            'team_names': [team.name for team in project.team_ids] if project.team_ids else [],
-            'active': getattr(project, 'active', True)  # Assuming there's an active field
-        }
 
     def _prepare_task_data(self, task):
         """Helper method to prepare task data"""

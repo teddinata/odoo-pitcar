@@ -164,7 +164,7 @@ pitcar_custom.access_customer_sumber_info_user,access_customer_sumber_info_user,
 pitcar_custom.access_customer_sumber_info_manager,access_customer_sumber_info_manager,pitcar_custom.model_customer_sumber_info,base.group_system,1,1,1,1
 pitcar_custom.access_customer_sumber_info_salesman,access_customer_sumber_info_salesman,pitcar_custom.model_customer_sumber_info,sales_team.group_sale_salesman,1,1,1,0
 pitcar_custom.access_customer_sumber_info_public,access_customer_sumber_info_public,pitcar_custom.model_customer_sumber_info,base.group_public,1,0,0,0
-pitcar_custom.access_pitcar_stall_history_user,pitcar.stall.history.user,pitcar_custom.model_pitcar_stall_history,base.group_user,1,0,0,0
+pitcar_custom.access_pitcar_stall_history_user,pitcar.stall.history.user,pitcar_custom.model_pitcar_stall_history,base.group_user,1,1,1,1
 pitcar_custom.access_pitcar_stall_history_manager,pitcar.stall.history.manager,pitcar_custom.model_pitcar_stall_history,base.group_system,1,1,1,1
 pitcar_custom.access_pitcar_stall_kpi_user,pitcar.stall.kpi.user,pitcar_custom.model_pitcar_stall_kpi,base.group_user,1,0,0,0
 pitcar_custom.access_pitcar_stall_kpi_manager,pitcar.stall.kpi.manager,pitcar_custom.model_pitcar_stall_kpi,base.group_system,1,1,1,1

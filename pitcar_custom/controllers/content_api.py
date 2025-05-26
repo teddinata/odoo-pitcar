@@ -366,6 +366,105 @@ class ContentManagementAPI(http.Controller):
             'completed_count': completed_tasks
         }
 
+     # ADD THIS NEW METHOD FOR TASKS TIMELINE
+    @http.route('/web/v2/content/tasks/timeline', type='json', auth='user', methods=['POST'], csrf=False)
+    def content_tasks_timeline(self, **kw):
+        """Get timeline data for content tasks (Gantt Chart)"""
+        try:
+            domain = []
+            
+            # Add date filters
+            if kw.get('date_start'):
+                domain.append('|')
+                domain.append(('planned_date_start', '<=', kw['date_end'] or kw['date_start']))
+                domain.append(('planned_date_end', '>=', kw['date_start'] or kw['date_end']))
+            if kw.get('date_end'):
+                domain.append('|')
+                domain.append(('planned_date_start', '<=', kw['date_end']))
+                domain.append(('planned_date_end', '>=', kw['date_start'] or kw['date_end']))
+                
+            # Add filters
+            if kw.get('state'):
+                domain.append(('state', '=', kw['state']))
+            if kw.get('content_type'):
+                domain.append(('content_type', '=', kw['content_type']))
+            if kw.get('project_id'):
+                domain.append(('project_id', '=', int(kw['project_id'])))
+            if kw.get('assigned_to'):
+                domain.append(('assigned_to', 'in', [int(kw['assigned_to'])]))
+
+            # Get tasks with sorting
+            sort_field = kw.get('sort_field', 'planned_date_start')
+            sort_order = kw.get('sort_order', 'asc')
+            
+            tasks = request.env['content.task'].sudo().search(
+                domain, 
+                order=f'{sort_field} {sort_order}'
+            )
+            
+            # Group tasks by project for better timeline visualization
+            projects_dict = {}
+            
+            for task in tasks:
+                project = task.project_id
+                if not project:
+                    continue
+                    
+                if project.id not in projects_dict:
+                    projects_dict[project.id] = {
+                        'id': project.id,
+                        'name': project.name,
+                        'type': 'project',
+                        'start': project.date_start.strftime('%Y-%m-%d') if project.date_start else None,
+                        'end': project.date_end.strftime('%Y-%m-%d') if project.date_end else None,
+                        'progress': 0,  # Will calculate below
+                        'state': getattr(project, 'state', 'draft'),
+                        'project_manager_name': project.project_manager_id.name if project.project_manager_id else '',
+                        'children': []
+                    }
+                
+                # Add task to project
+                task_data = {
+                    'id': task.id,
+                    'name': task.name,
+                    'type': 'task',
+                    'start': task.planned_date_start.strftime('%Y-%m-%d') if task.planned_date_start else None,
+                    'end': task.planned_date_end.strftime('%Y-%m-%d') if task.planned_date_end else None,
+                    'progress': getattr(task, 'progress', 0) or 0,
+                    'state': getattr(task, 'state', 'draft'),
+                    'content_type': getattr(task, 'content_type', 'other'),
+                    'project_name': project.name,
+                    'assigned_to': [
+                        {
+                            'id': user.id,
+                            'name': user.name
+                        } for user in (task.assigned_to if hasattr(task, 'assigned_to') else [])
+                    ]
+                }
+                projects_dict[project.id]['children'].append(task_data)
+            
+            # Calculate project progress based on tasks
+            timeline_data = []
+            for project_data in projects_dict.values():
+                if project_data['children']:
+                    total_tasks = len(project_data['children'])
+                    completed_tasks = len([t for t in project_data['children'] if t['state'] == 'done'])
+                    project_data['progress'] = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+                
+                timeline_data.append(project_data)
+            
+            return {
+                'status': 'success',
+                'data': timeline_data
+            }
+            
+        except Exception as e:
+            _logger.error('Error in content_tasks_timeline: %s', str(e))
+            return {
+                'status': 'error',
+                'message': f'Error fetching tasks timeline data: {str(e)}'
+            }
+
     @http.route('/web/v2/content/projects/<int:project_id>', type='json', auth='user', methods=['POST'], csrf=False)
     def get_project_detail(self, project_id, **kw):
         """Get detailed information of a specific project"""

@@ -301,6 +301,93 @@
             </field>
         </record>
 
+        <!-- Update SALE ORDER TABLE VIEW -->
+        <record id="sale_order_tree_view_inherit_additional_fields" model="ir.ui.view">
+            <field name="name">sale.order.tree.inherit.additional.fields</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale_order_tree_view_inherit"/>
+            <field name="arch" type="xml">
+                <!-- Tambahkan kolom baru setelah service_advisor_id -->
+                <xpath expr="//field[@name='service_advisor_id']" position="after">
+                    <!-- Stall -->
+                    <field name="stall_id" optional="hide" string="Service Stall"/>
+                    
+                    <!-- Car Year -->
+                    <field name="partner_car_year" optional="hide" string="Car Year"/>
+                    
+                    <!-- Customer Source -->
+                    <field name="customer_sumber_info" optional="hide" string="Customer Source"/>
+                    
+                    <!-- Customer Tags -->
+                    <field name="customer_tags_display" optional="hide" string="Customer Tags"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- Update QUOTATION TABLE VIEW -->
+        <record id="sale_order_view_quotation_tree_inherit_additional_fields" model="ir.ui.view">
+            <field name="name">sale.order.view.quotation.tree.inherit.additional.fields</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale_order_view_quotation_tree_inherit"/>
+            <field name="arch" type="xml">
+                <!-- Tambahkan kolom baru setelah service_advisor_id -->
+                <xpath expr="//field[@name='service_advisor_id']" position="after">
+                    <!-- Stall -->
+                    <field name="stall_id" optional="hide" string="Service Stall"/>
+                    
+                    <!-- Car Year -->
+                    <field name="partner_car_year" optional="hide" string="Car Year"/>
+                    
+                    <!-- Customer Source -->
+                    <field name="customer_sumber_info" optional="hide" string="Customer Source"/>
+                    
+                    <!-- Customer Tags -->
+                    <field name="customer_tags_display" optional="hide" string="Customer Tags"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- Update SALE ORDER FORM VIEW -->
+        <record id="sale_order_form_view_inherit_additional_info" model="ir.ui.view">
+            <field name="name">sale.order.form.inherit.additional.info</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="view_order_form_inherit_service_advisor"/>
+            <field name="arch" type="xml">
+                <!-- Tambahkan setelah stall_id yang sudah ada -->
+                <xpath expr="//field[@name='stall_id']" position="after">
+                    <!-- Car Year -->
+                    <field name="partner_car_year" readonly="1" attrs="{'invisible': [('partner_car_year', '=', False)]}"/>
+                    
+                    <!-- Customer Source -->
+                    <field name="customer_sumber_info" readonly="1" attrs="{'invisible': [('customer_sumber_info', '=', False)]}"/>
+                    
+                    <!-- Customer Tags -->
+                    <field name="customer_tags" widget="many2many_tags" readonly="1" attrs="{'invisible': [('customer_tags', '=', [])]}"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- Update FILTER untuk pencarian (opsional) -->
+        <record id="sale_order_filter_inherit_additional_search" model="ir.ui.view">
+            <field name="name">sale.order.filter.inherit.additional.search</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale_order_filter_inherit"/>
+            <field name="arch" type="xml">
+                <!-- Tambahkan field pencarian -->
+                <xpath expr="//field[@name='overall_lead_time']" position="after">
+                    <field name="stall_id" string="Service Stall"/>
+                    <field name="customer_sumber_info" string="Customer Source"/>
+                    <field name="partner_car_year" string="Car Year"/>
+                </xpath>
+
+                <!-- Tambahkan group by (opsional) -->
+                <xpath expr="//filter[@name='group_is_overnight']" position="after">
+                    <filter string="Service Stall" name="group_stall" context="{'group_by': 'stall_id'}"/>
+                    <filter string="Customer Source" name="group_customer_source" context="{'group_by': 'customer_sumber_info'}"/>
+                </xpath>
+            </field>
+        </record>
+
         <!-- FILTER SALE ORDER -->
         <record id="sale_order_filter_inherit" model="ir.ui.view">
             <field name="name">sale.order.filter.inherit</field>

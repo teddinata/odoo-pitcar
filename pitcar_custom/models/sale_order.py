@@ -130,6 +130,7 @@ class SaleOrder(models.Model):
         string="Car Year",
         related="partner_car_id.year",
         store=True,
+        help="Tahun pembuatan mobil customer"
     )
     partner_car_odometer = fields.Float(
         string="Odometer",
@@ -3356,3 +3357,70 @@ class SaleOrder(models.Model):
                 'type': 'success'
             }
         }
+    
+    # 3. FIELD SUMBER INFO CUSTOMER (relasi dengan customer)
+    customer_sumber_info = fields.Selection([
+        ('loyal', 'Loyal'),
+        ('fb_ads', 'FB Ads'),
+        ('referral', 'Referral'),
+        ('all_b2b', 'All B2B'),
+        ('ig_ads', 'IG Ads'),
+        ('google_maps', 'Google Maps'),
+        ('tiktok_ads', 'Tiktok Ads'),
+        ('ig_organic', 'IG Organic'),
+        ('beli_part', 'Beli Part'),
+        ('web_paid_ads', 'Web - Paid Ads'),
+        ('web_organic', 'Web - Organic'),
+        ('workshop', 'Workshop'),
+        ('relation', 'Relation'),
+        ('youtube', 'Youtube'),
+        ('tidak_dapat_info', 'Tidak Dapat Info'),
+    ], 
+    string="Customer Source", 
+    compute='_compute_customer_sumber_info',
+    store=True,
+    readonly=True,
+    help="Sumber informasi customer"
+    )
+
+    customer_tags = fields.Many2many(
+        'res.partner.category',
+        string="Customer Tags",
+        compute='_compute_customer_tags',
+        store=True,
+        readonly=True,
+        help="Tags customer"
+    )
+
+    # Field untuk display tags sebagai text
+    customer_tags_display = fields.Char(
+        string="Customer Tags Text",
+        compute='_compute_customer_tags_display',
+        store=True
+    )
+
+        # COMPUTE METHODS
+    @api.depends('partner_id', 'partner_id.sumber_info_id')
+    def _compute_customer_sumber_info(self):
+        for order in self:
+            if order.partner_id and order.partner_id.sumber_info_id:
+                order.customer_sumber_info = order.partner_id.sumber_info_id[0].sumber
+            else:
+                order.customer_sumber_info = False
+
+    @api.depends('partner_id', 'partner_id.category_id')
+    def _compute_customer_tags(self):
+        for order in self:
+            if order.partner_id and order.partner_id.category_id:
+                order.customer_tags = [(6, 0, order.partner_id.category_id.ids)]
+            else:
+                order.customer_tags = [(5, 0, 0)]
+
+    @api.depends('customer_tags')
+    def _compute_customer_tags_display(self):
+        for order in self:
+            if order.customer_tags:
+                order.customer_tags_display = ', '.join(order.customer_tags.mapped('name'))
+            else:
+                order.customer_tags_display = ''
+    

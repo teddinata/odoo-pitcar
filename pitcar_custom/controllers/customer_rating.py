@@ -2048,31 +2048,17 @@ Tim Pitcar"""
     # Tambahkan method ini ke dalam class CustomerRatingAPI
     @route('/web/reminder/long-term/dashboard', type='json', auth='public', methods=['POST'])
     def get_long_term_reminder_dashboard(self, **kwargs):
-        """Get dashboard for 3 months and 6 months reminders"""
+        """Get dashboard for 3 months and 6 months reminders with improved flagging"""
         try:
             # Parse parameters
             page = int(kwargs.get('page', 1))
             limit = int(kwargs.get('limit', 10))
-            reminder_type = kwargs.get('reminder_type', 'all')  # 'all', '3_months', '6_months'
+            reminder_type = kwargs.get('reminder_type', 'all')
             date_range = kwargs.get('date_range', 'all')
             search = kwargs.get('search', '').strip()
-            status_filter = kwargs.get('status_filter', 'all')  # 'all', 'pending', 'sent', 'responded'
+            status_filter = kwargs.get('status_filter', 'all')
             custom_date_start = kwargs.get('date_start')
             custom_date_end = kwargs.get('date_end')
-
-            # Validate limit
-            if limit not in [10, 25, 50]:
-                limit = 10
-
-            _logger.info(f"""
-            Long-term reminder dashboard parameters:
-            - Page: {page}
-            - Limit: {limit}
-            - Reminder Type: {reminder_type}
-            - Date Range: {date_range}
-            - Search: {search}
-            - Status: {status_filter}
-            """)
 
             SaleOrder = request.env['sale.order'].sudo()
             tz = pytz.timezone('Asia/Jakarta')
@@ -2088,17 +2074,17 @@ Tim Pitcar"""
                 ('date_completed', '!=', False)
             ]
 
-            # Build domains for different reminder types
+            # Build domains for pending reminders with better filtering
             pending_3m_domain = base_domain + [
                 ('date_completed', '>=', three_months_ago.strftime('%Y-%m-%d 00:00:00')),
                 ('date_completed', '<=', three_months_ago.strftime('%Y-%m-%d 23:59:59')),
-                ('reminder_3_months', '!=', 'yes')
+                ('reminder_3_months', '!=', 'yes')  # Belum dikirim
             ]
 
             pending_6m_domain = base_domain + [
                 ('date_completed', '>=', six_months_ago.strftime('%Y-%m-%d 00:00:00')),
                 ('date_completed', '<=', six_months_ago.strftime('%Y-%m-%d 23:59:59')),
-                ('reminder_6_months', '!=', 'yes')
+                ('reminder_6_months', '!=', 'yes')  # Belum dikirim
             ]
 
             # History domain for filtering
@@ -2115,7 +2101,6 @@ Tim Pitcar"""
                         ('date_completed', '<=', date_end.strftime('%Y-%m-%d 23:59:59'))
                     ])
                 except ValueError as e:
-                    _logger.error(f"Invalid date format: {str(e)}")
                     return {'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}
             elif date_range and date_range != 'all':
                 if date_range == 'today':
@@ -2141,21 +2126,24 @@ Tim Pitcar"""
                 history_domain.append(('reminder_3_months', '=', 'yes'))
             elif reminder_type == '6_months':
                 history_domain.append(('reminder_6_months', '=', 'yes'))
-            elif reminder_type != 'all':
-                # If both types needed
-                history_domain.extend(['|', 
-                    ('reminder_3_months', '=', 'yes'),
-                    ('reminder_6_months', '=', 'yes')
-                ])
 
-            # Apply status filter
-            if status_filter == 'sent':
-                history_domain.extend(['|',
-                    ('reminder_3_months', '=', 'yes'),
-                    ('reminder_6_months', '=', 'yes')
+            # Apply status filter with improved logic
+            if status_filter == 'pending':
+                # Show orders yang belum dikirim reminder sama sekali
+                history_domain.extend(['&',
+                    ('reminder_3_months', '!=', 'yes'),
+                    ('reminder_6_months', '!=', 'yes')
+                ])
+            elif status_filter == 'sent':
+                # Show orders yang sudah dikirim tapi belum ada response
+                history_domain.extend(['|', '|',
+                    '&', ('reminder_3_months', '=', 'yes'), ('is_response_3_months', '!=', 'yes'),
+                    '&', ('reminder_6_months', '=', 'yes'), ('is_response_6_months', '!=', 'yes'),
+                    '&', ('reminder_3_months', '=', 'yes'), ('reminder_6_months', '=', 'yes')
                 ])
             elif status_filter == 'responded':
-                history_domain.extend(['|', '|',
+                # Show orders yang sudah ada response atau booking
+                history_domain.extend(['|', '|', '|',
                     ('is_response_3_months', '=', 'yes'),
                     ('is_response_6_months', '=', 'yes'),
                     ('is_booking_3_months', '=', 'yes'),
@@ -2172,8 +2160,6 @@ Tim Pitcar"""
                 ]
                 history_domain = ['&'] + history_domain + search_domain
 
-            _logger.info(f"Final history domain: {history_domain}")
-
             # Get total count for pagination
             total_count = SaleOrder.search_count(history_domain)
             total_pages = ceil(total_count / limit)
@@ -2187,54 +2173,70 @@ Tim Pitcar"""
                 offset=offset
             )
 
-            # Get pending reminders
+            # Get pending reminders with improved data structure
             pending_3m_orders = SaleOrder.search(pending_3m_domain)
             pending_6m_orders = SaleOrder.search(pending_6m_domain)
 
-            # Calculate statistics
-            total_3m_sent = SaleOrder.search_count([('reminder_3_months', '=', 'yes')])
-            total_6m_sent = SaleOrder.search_count([('reminder_6_months', '=', 'yes')])
-            total_3m_responses = SaleOrder.search_count([('is_response_3_months', '=', 'yes')])
-            total_6m_responses = SaleOrder.search_count([('is_response_6_months', '=', 'yes')])
-            total_3m_bookings = SaleOrder.search_count([('is_booking_3_months', '=', 'yes')])
-            total_6m_bookings = SaleOrder.search_count([('is_booking_6_months', '=', 'yes')])
+            # Helper function to determine reminder status
+            def get_reminder_status(order, reminder_type):
+                """Determine the current status of a reminder"""
+                if reminder_type == '3_months':
+                    if order.is_booking_3_months == 'yes':
+                        return 'booked'
+                    elif order.is_response_3_months == 'yes':
+                        return 'responded'
+                    elif order.reminder_3_months == 'yes':
+                        return 'sent'
+                    else:
+                        return 'pending'
+                else:  # 6_months
+                    if order.is_booking_6_months == 'yes':
+                        return 'booked'
+                    elif order.is_response_6_months == 'yes':
+                        return 'responded'
+                    elif order.reminder_6_months == 'yes':
+                        return 'sent'
+                    else:
+                        return 'pending'
 
-            result = {
-                'pending_reminders': {
-                    '3_months': [{
-                        'id': order.id,
-                        'name': order.name,
-                        'customer_name': order.partner_id.name,
-                        'customer_phone': order.partner_id.mobile or order.partner_id.phone,
-                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
-                        'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
-                        'next_reminder_date': order.next_follow_up_3_months.strftime('%Y-%m-%d') if order.next_follow_up_3_months else '',
-                        'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],
-                        'whatsapp_link': self._generate_long_term_whatsapp_link(order, '3_months'),
-                        'reminder_type': '3_months'
-                    } for order in pending_3m_orders],
-                    
-                    '6_months': [{
-                        'id': order.id,
-                        'name': order.name,
-                        'customer_name': order.partner_id.name,
-                        'customer_phone': order.partner_id.mobile or order.partner_id.phone,
-                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
-                        'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
-                        'next_reminder_date': order.next_follow_up_6_months.strftime('%Y-%m-%d') if order.next_follow_up_6_months else '',
-                        'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],
-                        'whatsapp_link': self._generate_long_term_whatsapp_link(order, '6_months'),
-                        'reminder_type': '6_months'
-                    } for order in pending_6m_orders]
-                },
+            # Enhanced pending reminders data structure
+            def format_pending_reminder(order, reminder_type):
+                """Format pending reminder with enhanced status info"""
+                days_since_service = (today - order.date_completed.date()).days if order.date_completed else 0
+                target_days = 90 if reminder_type == '3_months' else 180
+                is_overdue = days_since_service > target_days + 7  # 7 days grace period
                 
-                'reminder_history': [{
+                return {
                     'id': order.id,
                     'name': order.name,
                     'customer_name': order.partner_id.name,
                     'customer_phone': order.partner_id.mobile or order.partner_id.phone,
                     'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
                     'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
+                    'next_reminder_date': order.next_follow_up_3_months.strftime('%Y-%m-%d') if reminder_type == '3_months' and order.next_follow_up_3_months else 
+                                    order.next_follow_up_6_months.strftime('%Y-%m-%d') if reminder_type == '6_months' and order.next_follow_up_6_months else '',
+                    'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],
+                    'whatsapp_link': self._generate_long_term_whatsapp_link(order, reminder_type),
+                    'reminder_type': reminder_type,
+                    'status': 'pending',  # Status untuk pending selalu pending
+                    'days_since_service': days_since_service,
+                    'target_days': target_days,
+                    'is_overdue': is_overdue,
+                    'priority': 'high' if is_overdue else 'medium' if days_since_service >= target_days else 'low'
+                }
+
+            # Enhanced history data structure
+            def format_history_order(order):
+                """Format history order with complete status information"""
+                return {
+                    'id': order.id,
+                    'name': order.name,
+                    'customer_name': order.partner_id.name,
+                    'customer_phone': order.partner_id.mobile or order.partner_id.phone,
+                    'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                    'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
+                    
+                    # Enhanced 3 months reminder info
                     'reminder_3_months': {
                         'sent': order.reminder_3_months == 'yes',
                         'date_sent': order.date_follow_up_3_months.strftime('%Y-%m-%d') if order.date_follow_up_3_months else None,
@@ -2243,8 +2245,12 @@ Tim Pitcar"""
                         'has_booking': order.is_booking_3_months == 'yes',
                         'booking_date': order.booking_date_3_months.strftime('%Y-%m-%d') if order.booking_date_3_months else None,
                         'categories': [cat.name for cat in order.category_3_months],
-                        'no_reminder_reason': order.no_reminder_reason_3_months
+                        'no_reminder_reason': order.no_reminder_reason_3_months,
+                        'status': get_reminder_status(order, '3_months'),
+                        'next_due_date': order.next_follow_up_3_months.strftime('%Y-%m-%d') if order.next_follow_up_3_months else None
                     },
+                    
+                    # Enhanced 6 months reminder info
                     'reminder_6_months': {
                         'sent': order.reminder_6_months == 'yes',
                         'date_sent': order.date_follow_up_6_months.strftime('%Y-%m-%d') if order.date_follow_up_6_months else None,
@@ -2253,12 +2259,44 @@ Tim Pitcar"""
                         'has_booking': order.is_booking_6_months == 'yes',
                         'booking_date': order.booking_date_6_months.strftime('%Y-%m-%d') if order.booking_date_6_months else None,
                         'categories': [cat.name for cat in order.category_6_months],
-                        'no_reminder_reason': order.no_reminder_reason_6_months
+                        'no_reminder_reason': order.no_reminder_reason_6_months,
+                        'status': get_reminder_status(order, '6_months'),
+                        'next_due_date': order.next_follow_up_6_months.strftime('%Y-%m-%d') if order.next_follow_up_6_months else None
                     },
+                    
                     'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],
                     'whatsapp_3m_link': self._generate_long_term_whatsapp_link(order, '3_months'),
-                    'whatsapp_6m_link': self._generate_long_term_whatsapp_link(order, '6_months')
-                } for order in history_orders],
+                    'whatsapp_6m_link': self._generate_long_term_whatsapp_link(order, '6_months'),
+                    
+                    # Overall status for the order
+                    'overall_status': self._get_overall_reminder_status(order)
+                }
+
+            # Calculate enhanced statistics
+            total_3m_sent = SaleOrder.search_count([('reminder_3_months', '=', 'yes')])
+            total_6m_sent = SaleOrder.search_count([('reminder_6_months', '=', 'yes')])
+            total_3m_responses = SaleOrder.search_count([('is_response_3_months', '=', 'yes')])
+            total_6m_responses = SaleOrder.search_count([('is_response_6_months', '=', 'yes')])
+            total_3m_bookings = SaleOrder.search_count([('is_booking_3_months', '=', 'yes')])
+            total_6m_bookings = SaleOrder.search_count([('is_booking_6_months', '=', 'yes')])
+
+            # Additional statistics
+            overdue_3m = SaleOrder.search_count([
+                ('date_completed', '<=', (today - timedelta(days=97)).strftime('%Y-%m-%d')),
+                ('reminder_3_months', '!=', 'yes')
+            ])
+            overdue_6m = SaleOrder.search_count([
+                ('date_completed', '<=', (today - timedelta(days=187)).strftime('%Y-%m-%d')),
+                ('reminder_6_months', '!=', 'yes')
+            ])
+
+            result = {
+                'pending_reminders': {
+                    '3_months': [format_pending_reminder(order, '3_months') for order in pending_3m_orders],
+                    '6_months': [format_pending_reminder(order, '6_months') for order in pending_6m_orders]
+                },
+                
+                'reminder_history': [format_history_order(order) for order in history_orders],
 
                 'pagination': {
                     'total_records': total_count,
@@ -2270,6 +2308,8 @@ Tim Pitcar"""
                 'statistics': {
                     'pending_3_months': len(pending_3m_orders),
                     'pending_6_months': len(pending_6m_orders),
+                    'overdue_3_months': overdue_3m,
+                    'overdue_6_months': overdue_6m,
                     'total_3m_sent': total_3m_sent,
                     'total_6m_sent': total_6m_sent,
                     'total_3m_responses': total_3m_responses,
@@ -2279,7 +2319,22 @@ Tim Pitcar"""
                     'response_rate_3m': round((total_3m_responses / total_3m_sent * 100) if total_3m_sent > 0 else 0, 2),
                     'response_rate_6m': round((total_6m_responses / total_6m_sent * 100) if total_6m_sent > 0 else 0, 2),
                     'booking_rate_3m': round((total_3m_bookings / total_3m_sent * 100) if total_3m_sent > 0 else 0, 2),
-                    'booking_rate_6m': round((total_6m_bookings / total_6m_sent * 100) if total_6m_sent > 0 else 0, 2)
+                    'booking_rate_6m': round((total_6m_bookings / total_6m_sent * 100) if total_6m_sent > 0 else 0, 2),
+                    'conversion_rate_3m': round((total_3m_bookings / total_3m_responses * 100) if total_3m_responses > 0 else 0, 2),
+                    'conversion_rate_6m': round((total_6m_bookings / total_6m_responses * 100) if total_6m_responses > 0 else 0, 2)
+                },
+
+                # Meta information
+                'meta': {
+                    'filters_applied': {
+                        'reminder_type': reminder_type,
+                        'status_filter': status_filter,
+                        'date_range': date_range,
+                        'search': search,
+                        'has_custom_dates': bool(custom_date_start and custom_date_end)
+                    },
+                    'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'timezone': 'Asia/Jakarta'
                 }
             }
 
@@ -2288,6 +2343,37 @@ Tim Pitcar"""
         except Exception as e:
             _logger.error(f"Error in get_long_term_reminder_dashboard: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    def _get_overall_reminder_status(self, order):
+        """Get overall status for an order considering both 3m and 6m reminders"""
+        status_3m = 'pending'
+        status_6m = 'pending'
+        
+        # Check 3 months status
+        if order.is_booking_3_months == 'yes':
+            status_3m = 'booked'
+        elif order.is_response_3_months == 'yes':
+            status_3m = 'responded'
+        elif order.reminder_3_months == 'yes':
+            status_3m = 'sent'
+        
+        # Check 6 months status
+        if order.is_booking_6_months == 'yes':
+            status_6m = 'booked'
+        elif order.is_response_6_months == 'yes':
+            status_6m = 'responded'
+        elif order.reminder_6_months == 'yes':
+            status_6m = 'sent'
+        
+        # Determine overall status (prioritize the highest engagement)
+        if status_3m == 'booked' or status_6m == 'booked':
+            return 'booked'
+        elif status_3m == 'responded' or status_6m == 'responded':
+            return 'responded'
+        elif status_3m == 'sent' or status_6m == 'sent':
+            return 'sent'
+        else:
+            return 'pending'
 
     def _get_long_term_whatsapp_template(self, database, order, reminder_type):
         """Get WhatsApp message template for long-term reminders"""

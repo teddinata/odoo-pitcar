@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
+        <!-- GUNAKAN VIEWS YANG SUDAH ADA DI MODUL CUSTOM -->
+        
         <record id="view_invoice_tree_inherit" model="ir.ui.view">
             <field name="name">view.invoice.tree.inherit</field>
             <field name="model">account.move</field>
@@ -12,7 +14,6 @@
                     <field name="car_mechanic_id" optional="hide"/>
                     <field name="car_arrival_time" optional="hide"/>
                 </xpath>
-                
             </field>
         </record>
 
@@ -46,12 +47,18 @@
             </field>
         </record>
 
-        <!-- ACCOUNT MOVE FORM -->
+        <!-- ACCOUNT MOVE FORM - TAMBAH VENDOR DI JOURNAL ITEMS TABLE -->
         <record id="account_move_form_view_inherit" model="ir.ui.view">
             <field name="name">account.move.form.inherit</field>
             <field name="model">account.move</field>
             <field name="inherit_id" ref="account.view_move_form"/>
             <field name="arch" type="xml">
+                <!-- TAMBAH KOLOM VENDOR DI JOURNAL ITEMS TABLE -->
+                <xpath expr="//field[@name='line_ids']//field[@name='partner_id']" position="after">
+                    <field name="vendor_id" optional="show"/>
+                </xpath>
+                
+                <!-- TETAP PERTAHANKAN FIELD EXISTING -->
                 <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="partner_car_id" widget="many2one" options='{"always_reload": True}'/>
                     <field name="partner_car_odometer"/>
@@ -62,7 +69,62 @@
             </field>
         </record>
 
-        <!-- Extend account.move form -->
+        <!-- TAMBAH VENDOR DI JOURNAL ITEMS TREE VIEW TERPISAH -->
+        <record id="view_move_line_form_inherit_vendor" model="ir.ui.view">
+            <field name="name">account.move.line.form.inherit.vendor</field>
+            <field name="model">account.move.line</field>
+            <field name="inherit_id" ref="account.view_move_line_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="vendor_id"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- SEARCH VIEW UNTUK JOURNAL ITEMS -->
+        <record id="view_account_move_line_filter_inherit_vendor" model="ir.ui.view">
+            <field name="name">account.move.line.filter.inherit.vendor</field>
+            <field name="model">account.move.line</field>
+            <field name="inherit_id" ref="account.view_account_move_line_filter"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="vendor_id" string="Vendor"/>
+                </xpath>
+                <xpath expr="//group" position="inside">
+                    <filter string="Vendor" name="group_vendor" context="{'group_by': 'vendor_id'}"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- TAMBAH KOLOM VENDOR DI JOURNAL ENTRIES LIST VIEW -->
+        <record id="view_journal_entries_tree_inherit_vendor" model="ir.ui.view">
+            <field name="name">view.journal.entries.tree.inherit.vendor</field>
+            <field name="model">account.move</field>
+            <field name="inherit_id" ref="account.view_move_tree"/>
+            <field name="arch" type="xml">
+                <!-- Tambah kolom vendor setelah partner -->
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="vendor_id" optional="hide" string="Vendor"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- TAMBAH SEARCH VENDOR DI JOURNAL ENTRIES -->
+        <record id="view_journal_entries_filter_inherit_vendor" model="ir.ui.view">
+            <field name="name">view.journal.entries.filter.inherit.vendor</field>
+            <field name="model">account.move</field>
+            <field name="inherit_id" ref="account.view_account_move_filter"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="vendor_id" string="Vendor"/>
+                </xpath>
+                <xpath expr="//group" position="inside">
+                    <filter string="Vendor" name="group_vendor_je" context="{'group_by': 'vendor_id'}"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- Extend account.move form untuk audit (EXISTING) -->
         <record id="view_move_form_audit_inherit" model="ir.ui.view">
             <field name="name">account.move.form.audit</field>
             <field name="model">account.move</field>
@@ -80,20 +142,19 @@
             </field>
         </record>
 
-        <!-- Extend account.move search -->
+        <!-- Extend account.move search untuk audit dan vendor LINES -->
         <record id="view_account_move_filter_audit" model="ir.ui.view">
             <field name="name">account.move.select.audit</field>
             <field name="model">account.move</field>
             <field name="inherit_id" ref="account.view_account_move_filter"/>
             <field name="arch" type="xml">
-                <!-- Ubah xpath untuk mencari lokasi yang tepat -->
                 <filter name="posted" position="after">
                     <separator/>
                     <filter string="Selisih Audit" name="stock_audit" domain="[('is_stock_audit', '=', True)]"/>
                     <filter string="Selisih Audit Part" name="audit_part" domain="[('is_stock_audit', '=', True), ('audit_type', '=', 'part')]"/>
                     <filter string="Selisih Audit Tool" name="audit_tool" domain="[('is_stock_audit', '=', True), ('audit_type', '=', 'tool')]"/>
                 </filter>
-                <!-- Tambahkan juga di group by -->
+                
                 <filter name="status" position="after">
                     <filter string="Tipe Audit" name="group_audit_type" 
                             domain="[('is_stock_audit', '=', True)]" 
@@ -102,7 +163,7 @@
             </field>
         </record>
 
-        <!-- Add server action untuk membuat journal audit -->
+        <!-- Server actions dan menu (EXISTING) -->
         <record id="action_create_audit_entry" model="ir.actions.server">
             <field name="name">Create Stock Audit Entry</field>
             <field name="model_id" ref="account.model_account_move"/>

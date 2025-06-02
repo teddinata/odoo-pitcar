@@ -67,6 +67,18 @@ class AccountMove(models.Model):
         help="Record the time when the car arrived."
     )
 
+    # TAMBAHAN FIELD VENDOR DI HEADER - UNTUK LIST VIEW
+    vendor_id = fields.Many2one(
+        'res.partner', 
+        string='Vendor',
+        domain="[]",  # Tidak ada domain restriction, sama seperti partner
+        help="Primary Vendor/Supplier for this journal entry",
+        tracking=True,
+        index=True,
+        compute='_compute_vendor_from_lines',
+        store=True,
+    )
+
     is_stock_audit = fields.Boolean(
         'Is Stock Audit',
         help='Centang jika jurnal ini untuk pencatatan selisih audit'
@@ -88,6 +100,13 @@ class AccountMove(models.Model):
         compute='_compute_is_within_tolerance',
         store=True
     )
+
+    @api.depends('line_ids.vendor_id')
+    def _compute_vendor_from_lines(self):
+        """Compute vendor from journal lines - ambil vendor pertama yang ada"""
+        for move in self:
+            vendor_line = move.line_ids.filtered('vendor_id')
+            move.vendor_id = vendor_line[0].vendor_id if vendor_line else False
 
     @api.onchange('is_stock_audit')
     def _onchange_is_stock_audit(self):
@@ -169,3 +188,41 @@ class AccountMove(models.Model):
                 move.invoice_origin_sale_id = sale_order.id
             else:
                 move.invoice_origin_sale_id = False
+
+
+# TAMBAHAN MODEL UNTUK ACCOUNT MOVE LINE - FIELD VENDOR DI JOURNAL ITEMS
+class AccountMoveLine(models.Model):
+    _inherit = 'account.move.line'
+
+    vendor_id = fields.Many2one(
+        'res.partner', 
+        string='Vendor',
+        domain="[]",  # Tidak ada domain restriction, sama seperti partner
+        help="Vendor/Supplier for this journal item",
+        tracking=True,
+        index=True,
+    )
+
+    @api.onchange('partner_id')
+    def _onchange_partner_id_vendor_line(self):
+        """Auto-copy partner to vendor field (user bisa ubah manual jika perlu)"""
+        if self.partner_id:
+            self.vendor_id = self.partner_id
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Override create to trigger header vendor computation"""
+        lines = super().create(vals_list)
+        # Trigger recompute vendor di header
+        moves = lines.mapped('move_id')
+        moves._compute_vendor_from_lines()
+        return lines
+
+    def write(self, vals):
+        """Override write to trigger header vendor computation"""
+        result = super().write(vals)
+        if 'vendor_id' in vals:
+            # Trigger recompute vendor di header
+            moves = self.mapped('move_id')
+            moves._compute_vendor_from_lines()
+        return result

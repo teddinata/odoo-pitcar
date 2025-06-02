@@ -2043,3 +2043,558 @@ Tim Pitcar"""
                 'status': 'error',
                 'message': str(e)
             }
+        
+    # REMINDER 3 BULAN & 6 BULAN
+    # Tambahkan method ini ke dalam class CustomerRatingAPI
+    @route('/web/reminder/long-term/dashboard', type='json', auth='public', methods=['POST'])
+    def get_long_term_reminder_dashboard(self, **kwargs):
+        """Get dashboard for 3 months and 6 months reminders"""
+        try:
+            # Parse parameters
+            page = int(kwargs.get('page', 1))
+            limit = int(kwargs.get('limit', 10))
+            reminder_type = kwargs.get('reminder_type', 'all')  # 'all', '3_months', '6_months'
+            date_range = kwargs.get('date_range', 'all')
+            search = kwargs.get('search', '').strip()
+            status_filter = kwargs.get('status_filter', 'all')  # 'all', 'pending', 'sent', 'responded'
+            custom_date_start = kwargs.get('date_start')
+            custom_date_end = kwargs.get('date_end')
+
+            # Validate limit
+            if limit not in [10, 25, 50]:
+                limit = 10
+
+            _logger.info(f"""
+            Long-term reminder dashboard parameters:
+            - Page: {page}
+            - Limit: {limit}
+            - Reminder Type: {reminder_type}
+            - Date Range: {date_range}
+            - Search: {search}
+            - Status: {status_filter}
+            """)
+
+            SaleOrder = request.env['sale.order'].sudo()
+            tz = pytz.timezone('Asia/Jakarta')
+            today = datetime.now(tz).date()
+
+            # Calculate target dates for reminders
+            three_months_ago = today - timedelta(days=90)
+            six_months_ago = today - timedelta(days=180)
+
+            # Base domain for orders
+            base_domain = [
+                ('state', 'in', ['sale', 'done']),
+                ('date_completed', '!=', False)
+            ]
+
+            # Build domains for different reminder types
+            pending_3m_domain = base_domain + [
+                ('date_completed', '>=', three_months_ago.strftime('%Y-%m-%d 00:00:00')),
+                ('date_completed', '<=', three_months_ago.strftime('%Y-%m-%d 23:59:59')),
+                ('reminder_3_months', '!=', 'yes')
+            ]
+
+            pending_6m_domain = base_domain + [
+                ('date_completed', '>=', six_months_ago.strftime('%Y-%m-%d 00:00:00')),
+                ('date_completed', '<=', six_months_ago.strftime('%Y-%m-%d 23:59:59')),
+                ('reminder_6_months', '!=', 'yes')
+            ]
+
+            # History domain for filtering
+            history_domain = base_domain.copy()
+
+            # Apply date filtering for history
+            if custom_date_start and custom_date_end:
+                try:
+                    date_start = datetime.strptime(custom_date_start, '%Y-%m-%d').date()
+                    date_end = datetime.strptime(custom_date_end, '%Y-%m-%d').date()
+                    
+                    history_domain.extend([
+                        ('date_completed', '>=', date_start.strftime('%Y-%m-%d 00:00:00')),
+                        ('date_completed', '<=', date_end.strftime('%Y-%m-%d 23:59:59'))
+                    ])
+                except ValueError as e:
+                    _logger.error(f"Invalid date format: {str(e)}")
+                    return {'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}
+            elif date_range and date_range != 'all':
+                if date_range == 'today':
+                    date_start = today
+                    date_end = today
+                elif date_range == 'week':
+                    date_start = today - timedelta(days=today.weekday())
+                    date_end = today
+                elif date_range == 'month':
+                    date_start = today.replace(day=1)
+                    date_end = today
+                elif date_range == 'year':
+                    date_start = today.replace(month=1, day=1)
+                    date_end = today
+
+                history_domain.extend([
+                    ('date_completed', '>=', date_start.strftime('%Y-%m-%d 00:00:00')),
+                    ('date_completed', '<=', date_end.strftime('%Y-%m-%d 23:59:59'))
+                ])
+
+            # Apply reminder type filter
+            if reminder_type == '3_months':
+                history_domain.append(('reminder_3_months', '=', 'yes'))
+            elif reminder_type == '6_months':
+                history_domain.append(('reminder_6_months', '=', 'yes'))
+            elif reminder_type != 'all':
+                # If both types needed
+                history_domain.extend(['|', 
+                    ('reminder_3_months', '=', 'yes'),
+                    ('reminder_6_months', '=', 'yes')
+                ])
+
+            # Apply status filter
+            if status_filter == 'sent':
+                history_domain.extend(['|',
+                    ('reminder_3_months', '=', 'yes'),
+                    ('reminder_6_months', '=', 'yes')
+                ])
+            elif status_filter == 'responded':
+                history_domain.extend(['|', '|',
+                    ('is_response_3_months', '=', 'yes'),
+                    ('is_response_6_months', '=', 'yes'),
+                    ('is_booking_3_months', '=', 'yes'),
+                    ('is_booking_6_months', '=', 'yes')
+                ])
+
+            # Apply search filter
+            if search:
+                search_domain = ['|', '|', '|',
+                    ('name', 'ilike', search),
+                    ('partner_id.name', 'ilike', search),
+                    ('partner_car_id.number_plate', 'ilike', search),
+                    ('partner_id.mobile', 'ilike', search)
+                ]
+                history_domain = ['&'] + history_domain + search_domain
+
+            _logger.info(f"Final history domain: {history_domain}")
+
+            # Get total count for pagination
+            total_count = SaleOrder.search_count(history_domain)
+            total_pages = ceil(total_count / limit)
+            offset = (page - 1) * limit
+
+            # Get paginated records
+            history_orders = SaleOrder.search(
+                history_domain,
+                order='date_completed desc',
+                limit=limit,
+                offset=offset
+            )
+
+            # Get pending reminders
+            pending_3m_orders = SaleOrder.search(pending_3m_domain)
+            pending_6m_orders = SaleOrder.search(pending_6m_domain)
+
+            # Calculate statistics
+            total_3m_sent = SaleOrder.search_count([('reminder_3_months', '=', 'yes')])
+            total_6m_sent = SaleOrder.search_count([('reminder_6_months', '=', 'yes')])
+            total_3m_responses = SaleOrder.search_count([('is_response_3_months', '=', 'yes')])
+            total_6m_responses = SaleOrder.search_count([('is_response_6_months', '=', 'yes')])
+            total_3m_bookings = SaleOrder.search_count([('is_booking_3_months', '=', 'yes')])
+            total_6m_bookings = SaleOrder.search_count([('is_booking_6_months', '=', 'yes')])
+
+            result = {
+                'pending_reminders': {
+                    '3_months': [{
+                        'id': order.id,
+                        'name': order.name,
+                        'customer_name': order.partner_id.name,
+                        'customer_phone': order.partner_id.mobile or order.partner_id.phone,
+                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                        'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
+                        'next_reminder_date': order.next_follow_up_3_months.strftime('%Y-%m-%d') if order.next_follow_up_3_months else '',
+                        'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],
+                        'whatsapp_link': self._generate_long_term_whatsapp_link(order, '3_months'),
+                        'reminder_type': '3_months'
+                    } for order in pending_3m_orders],
+                    
+                    '6_months': [{
+                        'id': order.id,
+                        'name': order.name,
+                        'customer_name': order.partner_id.name,
+                        'customer_phone': order.partner_id.mobile or order.partner_id.phone,
+                        'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                        'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
+                        'next_reminder_date': order.next_follow_up_6_months.strftime('%Y-%m-%d') if order.next_follow_up_6_months else '',
+                        'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],
+                        'whatsapp_link': self._generate_long_term_whatsapp_link(order, '6_months'),
+                        'reminder_type': '6_months'
+                    } for order in pending_6m_orders]
+                },
+                
+                'reminder_history': [{
+                    'id': order.id,
+                    'name': order.name,
+                    'customer_name': order.partner_id.name,
+                    'customer_phone': order.partner_id.mobile or order.partner_id.phone,
+                    'plate_number': order.partner_car_id.number_plate if order.partner_car_id else '',
+                    'completion_date': order.date_completed.strftime('%Y-%m-%d %H:%M:%S') if order.date_completed else '',
+                    'reminder_3_months': {
+                        'sent': order.reminder_3_months == 'yes',
+                        'date_sent': order.date_follow_up_3_months.strftime('%Y-%m-%d') if order.date_follow_up_3_months else None,
+                        'has_response': order.is_response_3_months == 'yes',
+                        'feedback': order.feedback_3_months,
+                        'has_booking': order.is_booking_3_months == 'yes',
+                        'booking_date': order.booking_date_3_months.strftime('%Y-%m-%d') if order.booking_date_3_months else None,
+                        'categories': [cat.name for cat in order.category_3_months],
+                        'no_reminder_reason': order.no_reminder_reason_3_months
+                    },
+                    'reminder_6_months': {
+                        'sent': order.reminder_6_months == 'yes',
+                        'date_sent': order.date_follow_up_6_months.strftime('%Y-%m-%d') if order.date_follow_up_6_months else None,
+                        'has_response': order.is_response_6_months == 'yes',
+                        'feedback': order.feedback_6_months,
+                        'has_booking': order.is_booking_6_months == 'yes',
+                        'booking_date': order.booking_date_6_months.strftime('%Y-%m-%d') if order.booking_date_6_months else None,
+                        'categories': [cat.name for cat in order.category_6_months],
+                        'no_reminder_reason': order.no_reminder_reason_6_months
+                    },
+                    'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],
+                    'whatsapp_3m_link': self._generate_long_term_whatsapp_link(order, '3_months'),
+                    'whatsapp_6m_link': self._generate_long_term_whatsapp_link(order, '6_months')
+                } for order in history_orders],
+
+                'pagination': {
+                    'total_records': total_count,
+                    'total_pages': total_pages,
+                    'current_page': page,
+                    'limit': limit
+                },
+
+                'statistics': {
+                    'pending_3_months': len(pending_3m_orders),
+                    'pending_6_months': len(pending_6m_orders),
+                    'total_3m_sent': total_3m_sent,
+                    'total_6m_sent': total_6m_sent,
+                    'total_3m_responses': total_3m_responses,
+                    'total_6m_responses': total_6m_responses,
+                    'total_3m_bookings': total_3m_bookings,
+                    'total_6m_bookings': total_6m_bookings,
+                    'response_rate_3m': round((total_3m_responses / total_3m_sent * 100) if total_3m_sent > 0 else 0, 2),
+                    'response_rate_6m': round((total_6m_responses / total_6m_sent * 100) if total_6m_sent > 0 else 0, 2),
+                    'booking_rate_3m': round((total_3m_bookings / total_3m_sent * 100) if total_3m_sent > 0 else 0, 2),
+                    'booking_rate_6m': round((total_6m_bookings / total_6m_sent * 100) if total_6m_sent > 0 else 0, 2)
+                }
+            }
+
+            return {'status': 'success', 'data': result}
+
+        except Exception as e:
+            _logger.error(f"Error in get_long_term_reminder_dashboard: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    def _get_long_term_whatsapp_template(self, database, order, reminder_type):
+        """Get WhatsApp message template for long-term reminders"""
+        # Get SA names
+        sa_names = ""
+        if order.service_advisor_id:
+            sa_names = ", ".join([sa.user_id.name for sa in order.service_advisor_id if sa.user_id])
+            if not sa_names:
+                sa_names = "Tim Pitcar"
+
+        # Calculate months since service
+        if order.date_completed:
+            months_since = 3 if reminder_type == '3_months' else 6
+            service_date = order.date_completed.strftime('%d %B %Y')
+        else:
+            months_since = 3 if reminder_type == '3_months' else 6
+            service_date = "beberapa waktu lalu"
+
+        templates = {
+            'pitcar1': {
+                '3_months': f"""Rutin servis jangan sampai lupa,
+    Oli dan filter harus diganti.
+    Sudah {months_since} bulan sejak terakhir servis di Pitcar,
+    Yuk booking lagi untuk performa optimal!
+
+    Hai, *{order.partner_id.name}*!
+    Saya {sa_names} dari Pitcar. 
+
+    Mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} sudah {months_since} bulan sejak servis terakhir pada {service_date}.
+
+    Saatnya servis rutin untuk menjaga performa optimal kendaraan Anda:
+    🔧 Ganti oli mesin
+    🔩 Cek filter udara & oli
+    ⚙️ Tune up mesin
+    🔍 Inspeksi menyeluruh
+
+    Dapatkan diskon spesial untuk pelanggan setia! Hubungi kami untuk booking.
+
+    Terima kasih atas kepercayaan Anda kepada Pitcar!
+
+    Best regards,
+    Tim Pitcar""",
+
+                '6_months': f"""Setengah tahun sudah berlalu,
+    Mobil butuh perawatan menyeluruh.
+    Jangan sampai ada yang terlewatkan,
+    Yuk servis di Pitcar sekarang!
+
+    Hai, *{order.partner_id.name}*!
+    Saya {sa_names} dari Pitcar.
+
+    Sudah {months_since} bulan sejak mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} terakhir servis di Pitcar ({service_date}).
+
+    Saatnya perawatan menyeluruh untuk performa maksimal:
+    🔧 Servis mesin komprehensif
+    🔩 Ganti oli & semua filter
+    ⚙️ Tune up lengkap
+    🔍 Cek sistem kelistrikan
+    🛞 Inspeksi ban & rem
+    ❄️ Service AC
+
+    Dapatkan paket hemat untuk perawatan 6 bulanan! 
+
+    Terima kasih atas kepercayaan Anda kepada Pitcar!
+
+    Best regards,
+    Tim Pitcar"""
+            },
+
+            'pitcar.bodyrepair': {
+                '3_months': f"""Cat mobil perlu dirawat rutin,
+    Poles dan wax jangan diabaikan.
+    Sudah {months_since} bulan sejak perbaikan,
+    Yuk cek kondisi cat kendaraan!
+
+    Hai, *{order.partner_id.name}*!
+    Saya Wylda dari Pitcar Body Repair.
+
+    Mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} sudah {months_since} bulan sejak perbaikan terakhir pada {service_date}.
+
+    Saatnya perawatan berkala untuk menjaga kualitas cat:
+    ✨ Poles dan wax premium
+    🧽 Deep cleaning body
+    🔍 Inspeksi hasil perbaikan
+    🛡️ Perlindungan cat tambahan
+
+    *Info Kontak:*
+    📱 WhatsApp: [Nomor Body Repair]
+    📍 Lokasi: [Alamat Body Repair]
+
+    Terima kasih atas kepercayaan Anda!
+
+    Best regards,
+    Tim Pitcar Body Repair""",
+
+                '6_months': f"""Setengah tahun sudah berlalu,
+    Cat mobil butuh perawatan khusus.
+    Jaga investasi kendaraan Anda,
+    Dengan perawatan terbaik dari kami!
+
+    Hai, *{order.partner_id.name}*!
+    Saya Wylda dari Pitcar Body Repair.
+
+    Sudah {months_since} bulan sejak mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} diperbaiki di Pitcar Body Repair ({service_date}).
+
+    Saatnya perawatan menyeluruh untuk menjaga kualitas:
+    ✨ Full body treatment
+    🧽 Paint protection coating
+    🔍 Inspeksi menyeluruh
+    🛡️ Touch-up jika diperlukan
+    🚗 Interior detailing
+
+    Garansi pengecatan masih berlaku!
+
+    Best regards,
+    Tim Pitcar Body Repair"""
+            }
+        }
+
+        # Default template
+        default_template = templates['pitcar1'][reminder_type]
+
+        return templates.get(database.lower(), {}).get(reminder_type, default_template)
+
+    def _generate_long_term_whatsapp_link(self, order, reminder_type):
+        """Generate WhatsApp link for long-term reminders"""
+        try:
+            # Check for phone number
+            phone = order.partner_id.mobile or order.partner_id.phone
+            if not phone:
+                return None
+                
+            # Clean phone number
+            clean_phone = ''.join(filter(str.isdigit, phone))
+            if clean_phone.startswith('0'):
+                clean_phone = '62' + clean_phone[1:]
+            elif not clean_phone.startswith('62'):
+                clean_phone = '62' + clean_phone
+
+            # Get current database name
+            database = request.env.cr.dbname.strip()
+            
+            # Get message template
+            message = self._get_long_term_whatsapp_template(database, order, reminder_type)
+
+            return f"https://wa.me/{clean_phone}?text={urllib.parse.quote(message)}"
+            
+        except Exception as e:
+            _logger.error(f"Error generating long-term WhatsApp link: {str(e)}")
+            return None
+
+    @route('/web/reminder/long-term/mark-sent', type='json', auth='public', methods=['POST'])
+    def mark_long_term_reminders_sent(self, **kwargs):
+        """Mark long-term reminders as sent"""
+        try:
+            order_ids = kwargs.get('order_ids', [])
+            reminder_type = kwargs.get('reminder_type')  # '3_months' or '6_months'
+            
+            _logger.info(f"Marking long-term reminders sent: {order_ids}, type: {reminder_type}")
+
+            if not order_ids:
+                return {'status': 'error', 'message': 'Order IDs are required'}
+
+            if not reminder_type or reminder_type not in ['3_months', '6_months']:
+                return {'status': 'error', 'message': 'Valid reminder_type (3_months or 6_months) is required'}
+
+            SaleOrder = request.env['sale.order'].sudo()
+            orders = SaleOrder.browse(order_ids)
+
+            if not orders.exists():
+                return {'status': 'error', 'message': 'No valid orders found'}
+
+            # Set current time
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            current_date = now.date()
+            
+            # Update orders based on reminder type
+            update_vals = {}
+            
+            if reminder_type == '3_months':
+                update_vals = {
+                    'reminder_3_months': 'yes',
+                    'date_follow_up_3_months': current_date
+                }
+            elif reminder_type == '6_months':
+                update_vals = {
+                    'reminder_6_months': 'yes',
+                    'date_follow_up_6_months': current_date
+                }
+
+            for order in orders:
+                order.write(update_vals)
+
+            return {
+                'status': 'success',
+                'message': f'{len(orders)} {reminder_type.replace("_", " ")} reminder(s) marked as sent',
+                'data': {
+                    'updated_orders': order_ids,
+                    'reminder_type': reminder_type,
+                    'reminder_date': current_date.strftime('%Y-%m-%d')
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in mark_long_term_reminders_sent: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @route('/web/reminder/long-term/update-response', type='json', auth='public', methods=['POST'])
+    def update_long_term_response(self, **kwargs):
+        """Update response for long-term reminders"""
+        try:
+            order_id = kwargs.get('order_id')
+            reminder_type = kwargs.get('reminder_type')  # '3_months' or '6_months'
+            response_data = kwargs.get('response_data', {})
+            
+            _logger.info(f"Updating long-term response: order_id={order_id}, type={reminder_type}, data={response_data}")
+
+            if not order_id:
+                return {'status': 'error', 'message': 'Order ID is required'}
+
+            if not reminder_type or reminder_type not in ['3_months', '6_months']:
+                return {'status': 'error', 'message': 'Valid reminder_type is required'}
+
+            SaleOrder = request.env['sale.order'].sudo()
+            order = SaleOrder.browse(int(order_id))
+
+            if not order.exists():
+                return {'status': 'error', 'message': 'Order not found'}
+
+            # Prepare update values based on reminder type
+            update_vals = {}
+            
+            if reminder_type == '3_months':
+                update_vals.update({
+                    'is_response_3_months': response_data.get('has_response', 'no'),
+                    'feedback_3_months': response_data.get('feedback', ''),
+                    'is_booking_3_months': response_data.get('has_booking', 'no'),
+                    'no_reminder_reason_3_months': response_data.get('no_reminder_reason', '')
+                })
+                
+                # Handle booking date
+                if response_data.get('booking_date'):
+                    try:
+                        booking_date = datetime.strptime(response_data['booking_date'], '%Y-%m-%d').date()
+                        update_vals['booking_date_3_months'] = booking_date
+                    except ValueError:
+                        pass
+                        
+                # Handle categories
+                if response_data.get('category_ids'):
+                    update_vals['category_3_months'] = [(6, 0, response_data['category_ids'])]
+                    
+            elif reminder_type == '6_months':
+                update_vals.update({
+                    'is_response_6_months': response_data.get('has_response', 'no'),
+                    'feedback_6_months': response_data.get('feedback', ''),
+                    'is_booking_6_months': response_data.get('has_booking', 'no'),
+                    'no_reminder_reason_6_months': response_data.get('no_reminder_reason', '')
+                })
+                
+                # Handle booking date
+                if response_data.get('booking_date'):
+                    try:
+                        booking_date = datetime.strptime(response_data['booking_date'], '%Y-%m-%d').date()
+                        update_vals['booking_date_6_months'] = booking_date
+                    except ValueError:
+                        pass
+                        
+                # Handle categories
+                if response_data.get('category_ids'):
+                    update_vals['category_6_months'] = [(6, 0, response_data['category_ids'])]
+
+            order.write(update_vals)
+
+            return {
+                'status': 'success',
+                'message': f'{reminder_type.replace("_", " ")} response updated successfully',
+                'data': {
+                    'order_id': order_id,
+                    'reminder_type': reminder_type,
+                    'updated_fields': list(update_vals.keys())
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in update_long_term_response: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @route('/web/reminder/feedback-categories', type='json', auth='public', methods=['POST'])
+    def get_feedback_categories(self, **kwargs):
+        """Get available feedback categories for reminders"""
+        try:
+            FeedbackClassification = request.env['feedback.classification'].sudo()
+            categories = FeedbackClassification.search([])
+            
+            result = [{
+                'id': cat.id,
+                'name': cat.name,
+                'description': getattr(cat, 'description', '')
+            } for cat in categories]
+            
+            return {
+                'status': 'success',
+                'data': result
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in get_feedback_categories: {str(e)}")
+            return {'status': 'error', 'message': str(e)}

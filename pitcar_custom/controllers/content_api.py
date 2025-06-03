@@ -330,7 +330,7 @@ class ContentManagementAPI(http.Controller):
             }
 
     def _prepare_project_data(self, project):
-        """Enhanced project data preparation"""
+        """Enhanced project data preparation with tasks included"""
         # Calculate progress based on tasks
         total_tasks = len(project.task_ids)
         completed_tasks = len(project.task_ids.filtered(lambda t: t.state == 'done'))
@@ -340,26 +340,106 @@ class ContentManagementAPI(http.Controller):
         video_tasks = project.task_ids.filtered(lambda t: t.content_type == 'video')
         design_tasks = project.task_ids.filtered(lambda t: t.content_type == 'design')
         
+        # Prepare tasks data
+        tasks_data = []
+        for task in project.task_ids:
+            task_data = {
+                'id': task.id,
+                'name': task.name,
+                'content_type': task.content_type or 'other',
+                'state': task.state,
+                'progress': task.progress or 0,
+                'assigned_to': [{
+                    'id': member.id,
+                    'name': member.name,
+                    'position': member.job_id.name if member.job_id else '',
+                } for member in task.assigned_to] if task.assigned_to else [],
+                'reviewer': {
+                    'id': task.reviewer_id.id,
+                    'name': task.reviewer_id.name,
+                    'position': task.reviewer_id.job_id.name if task.reviewer_id.job_id else '',
+                } if task.reviewer_id else None,
+                'dates': {
+                    'planned_start': task.planned_date_start.strftime('%Y-%m-%d') if task.planned_date_start else None,
+                    'planned_end': task.planned_date_end.strftime('%Y-%m-%d') if task.planned_date_end else None,
+                    'actual_start': task.actual_date_start.strftime('%Y-%m-%d') if task.actual_date_start else None,
+                    'actual_end': task.actual_date_end.strftime('%Y-%m-%d') if task.actual_date_end else None
+                },
+                'hours': {
+                    'planned': task.planned_hours or 0,
+                    'actual': task.actual_hours or 0
+                },
+                'revisions': {
+                    'count': task.revision_count or 0,
+                    'excessive': task.has_excessive_revisions or False,
+                    'history': [{
+                        'number': rev.revision_number,
+                        'requested_by': rev.requested_by.name if rev.requested_by else '',
+                        'date': rev.date_requested.strftime('%Y-%m-%d') if rev.date_requested else None,
+                        'feedback': rev.feedback or '',
+                        'points': rev.revision_points or ''
+                    } for rev in task.revision_ids] if hasattr(task, 'revision_ids') else []
+                },
+                'description': getattr(task, 'description', '') or ''
+            }
+            tasks_data.append(task_data)
+        
+        # Sort tasks by creation date (newest first)
+        tasks_data.sort(key=lambda x: x['id'], reverse=True)
+        
         return {
             'id': project.id,
             'name': project.name,
+            'code': getattr(project, 'code', f'PROJ-{project.id:04d}'),
             'description': project.description or '',
             'state': project.state,
-            'date_start': project.date_start.strftime('%Y-%m-%d') if project.date_start else None,
-            'date_end': project.date_end.strftime('%Y-%m-%d') if project.date_end else None,
+            'progress': round(progress, 1),
+            'dates': {
+                'start': project.date_start.strftime('%Y-%m-%d') if project.date_start else None,
+                'end': project.date_end.strftime('%Y-%m-%d') if project.date_end else None
+            },
+            'team': {
+                'manager': {
+                    'id': project.project_manager_id.id,
+                    'name': project.project_manager_id.name,
+                    'position': project.project_manager_id.job_id.name if project.project_manager_id and project.project_manager_id.job_id else ''
+                } if project.project_manager_id else None,
+                'members': [{
+                    'id': member.id,
+                    'name': member.name,
+                    'position': member.job_id.name if member.job_id else ''
+                } for member in project.team_ids] if project.team_ids else []
+            },
+            'content_plan': {
+                'video_count': project.planned_video_count or 0,
+                'design_count': project.planned_design_count or 0,
+                'total_count': (project.planned_video_count or 0) + (project.planned_design_count or 0)
+            },
+            'tasks': tasks_data,
+            'metrics': {
+                'total_tasks': total_tasks,
+                'completed_tasks': completed_tasks,
+                'completion_rate': round(progress, 1),
+                'video_completed': len(video_tasks.filtered(lambda t: t.state == 'done')),
+                'design_completed': len(design_tasks.filtered(lambda t: t.state == 'done')),
+                'pending_tasks': total_tasks - completed_tasks,
+                'overdue_tasks': len(project.task_ids.filtered(
+                    lambda t: t.state != 'done' and t.planned_date_end and 
+                    fields.Datetime.now() > t.planned_date_end
+                ))
+            },
+            # Legacy compatibility fields
             'project_manager_id': project.project_manager_id.id if project.project_manager_id else None,
             'project_manager_name': project.project_manager_id.name if project.project_manager_id else '',
             'planned_video_count': project.planned_video_count or 0,
             'planned_design_count': project.planned_design_count or 0,
             'actual_video_count': len(video_tasks),
             'actual_design_count': len(design_tasks),
-            'progress': progress,
             'task_count': total_tasks,
             'completed_task_count': completed_tasks,
             'team_ids': [team.id for team in project.team_ids] if project.team_ids else [],
             'team_names': [team.name for team in project.team_ids] if project.team_ids else [],
             'active': getattr(project, 'active', True),
-            # Add compatibility fields for ProjectCard component
             'video_count': len(video_tasks),
             'design_count': len(design_tasks),
             'total_count': total_tasks,
@@ -561,7 +641,7 @@ class ContentManagementAPI(http.Controller):
             }
 
     def _update_task_status(self, data):
-        """Helper method to update task status"""
+        """Enhanced helper method to update task status with project data return"""
         if not data.get('task_id') or not data.get('new_status'):
             return {'status': 'error', 'message': 'Missing task_id or new_status'}
 
@@ -609,7 +689,7 @@ class ContentManagementAPI(http.Controller):
                         (f"Deadline: {data['deadline']}" if data.get('deadline') else ""),
                     message_type='notification'
                 )
-    
+
             if data['new_status'] == 'in_progress' and not task.actual_date_start:
                 update_values['actual_date_start'] = fields.Datetime.now()
                 update_values['progress'] = 30.0
@@ -621,10 +701,20 @@ class ContentManagementAPI(http.Controller):
                 update_values['progress'] = 100.0
 
             task.write(update_values)
-            return {
+            
+            # Prepare response with updated task data
+            result = {
                 'status': 'success',
                 'data': self._prepare_task_data(task)
             }
+            
+            # ENHANCEMENT: Also return updated project data if needed
+            if data.get('return_project_data', False):
+                project = task.project_id
+                if project:
+                    result['project_data'] = self._prepare_project_data(project)
+            
+            return result
 
         except Exception as e:
             return {

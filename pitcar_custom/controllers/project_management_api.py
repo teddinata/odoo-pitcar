@@ -1741,7 +1741,7 @@ class TeamProjectAPI(http.Controller):
             _logger.error(f"Error getting read status: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    def _prepare_message_data(self, message):
+    def _prepare_message_data(self, message, include_read_details=False):
         """Enhanced message data preparation with read status"""
         current_employee_id = request.env.user.employee_id.id if request.env.user.employee_id else False
         
@@ -1767,7 +1767,6 @@ class TeamProjectAPI(http.Controller):
         }
         
         # Add detailed read status if requested
-        include_read_details = kw.get('include_read_details', False)
         if include_read_details:
             message_data['read_details'] = message.get_read_status_details()
         
@@ -3019,9 +3018,64 @@ class TeamProjectAPI(http.Controller):
             _logger.error(f"Error in get_departments_with_tasks: {str(e)}")
             return {'status': 'error', 'message': str(e)}
         
+    # @http.route('/web/v2/team/messages', type='json', auth='user', methods=['POST'], csrf=False)
+    # def get_group_messages(self, **kw):
+    #     """Mengambil pesan-pesan dari grup kolaborasi."""
+    #     try:
+    #         group_id = kw.get('group_id')
+    #         if not group_id:
+    #             return {'status': 'error', 'message': 'Missing group_id'}
+                    
+    #         # Limit dan offset opsional untuk pagination
+    #         limit = int(kw.get('limit', 50))
+    #         offset = int(kw.get('offset', 0))
+            
+    #         # Flag untuk menyertakan attachment
+    #         include_attachments = kw.get('include_attachments', True)
+            
+    #         # Ambil pesan-pesan dari grup
+    #         domain = [('group_id', '=', int(group_id))]
+    #         messages = request.env['team.project.message'].sudo().search(
+    #             domain, limit=limit, offset=offset, order='date desc'
+    #         )
+            
+    #         # Siapkan data pesan dengan attachment
+    #         message_data = []
+    #         for message in messages:
+    #             msg_data = self._prepare_message_data(message)
+                
+    #             # Tambahkan data attachment jika diminta
+    #             if include_attachments and message.attachment_ids:
+    #                 msg_data['attachments'] = []
+    #                 for attachment in message.attachment_ids:
+    #                     msg_data['attachments'].append({
+    #                         'id': attachment.id,
+    #                         'name': attachment.name,
+    #                         'mimetype': attachment.mimetype,
+    #                         'size': attachment.file_size,
+    #                         'url': f'/web/content/{attachment.id}?download=true',
+    #                         'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
+    #                         'create_date': fields.Datetime.to_string(attachment.create_date),
+    #                         'create_uid': {
+    #                             'id': attachment.create_uid.id,
+    #                             'name': attachment.create_uid.name
+    #                         }
+    #                     })
+                
+    #             message_data.append(msg_data)
+            
+    #         return {
+    #             'status': 'success',
+    #             'data': message_data,
+    #             'total': request.env['team.project.message'].sudo().search_count(domain)
+    #         }
+    #     except Exception as e:
+    #         _logger.error(f"Error in get_group_messages: {str(e)}")
+    #         return {'status': 'error', 'message': str(e)}
+
     @http.route('/web/v2/team/messages', type='json', auth='user', methods=['POST'], csrf=False)
     def get_group_messages(self, **kw):
-        """Mengambil pesan-pesan dari grup kolaborasi."""
+        """Mengambil pesan-pesan dari grup kolaborasi dengan read status."""
         try:
             group_id = kw.get('group_id')
             if not group_id:
@@ -3031,8 +3085,9 @@ class TeamProjectAPI(http.Controller):
             limit = int(kw.get('limit', 50))
             offset = int(kw.get('offset', 0))
             
-            # Flag untuk menyertakan attachment
+            # Flag untuk menyertakan attachment dan read details
             include_attachments = kw.get('include_attachments', True)
+            include_read_details = kw.get('include_read_details', False)
             
             # Ambil pesan-pesan dari grup
             domain = [('group_id', '=', int(group_id))]
@@ -3040,29 +3095,10 @@ class TeamProjectAPI(http.Controller):
                 domain, limit=limit, offset=offset, order='date desc'
             )
             
-            # Siapkan data pesan dengan attachment
+            # Siapkan data pesan dengan read status
             message_data = []
             for message in messages:
-                msg_data = self._prepare_message_data(message)
-                
-                # Tambahkan data attachment jika diminta
-                if include_attachments and message.attachment_ids:
-                    msg_data['attachments'] = []
-                    for attachment in message.attachment_ids:
-                        msg_data['attachments'].append({
-                            'id': attachment.id,
-                            'name': attachment.name,
-                            'mimetype': attachment.mimetype,
-                            'size': attachment.file_size,
-                            'url': f'/web/content/{attachment.id}?download=true',
-                            'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
-                            'create_date': fields.Datetime.to_string(attachment.create_date),
-                            'create_uid': {
-                                'id': attachment.create_uid.id,
-                                'name': attachment.create_uid.name
-                            }
-                        })
-                
+                msg_data = self._prepare_message_data(message, include_read_details)
                 message_data.append(msg_data)
             
             return {
@@ -3072,6 +3108,8 @@ class TeamProjectAPI(http.Controller):
             }
         except Exception as e:
             _logger.error(f"Error in get_group_messages: {str(e)}")
+            import traceback
+            _logger.error(traceback.format_exc())
             return {'status': 'error', 'message': str(e)}
 
     # DASHBOARD

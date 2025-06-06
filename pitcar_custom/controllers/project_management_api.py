@@ -1637,9 +1637,114 @@ class TeamProjectAPI(http.Controller):
                 'progress': task.progress or 0,
                 'error': f'Data preparation error: {str(e)}'
             }
+    @http.route('/web/v2/team/messages/mark_read', type='json', auth='user', methods=['POST'], csrf=False)
+    def mark_message_read(self, **kw):
+        """Mark specific message as read"""
+        try:
+            message_id = kw.get('message_id')
+            if not message_id:
+                return {'status': 'error', 'message': 'Missing message_id'}
+            
+            # Validate current user has employee record
+            if not request.env.user.employee_id:
+                return {'status': 'error', 'message': 'Current user has no employee record'}
+            
+            message = request.env['team.project.message'].sudo().browse(int(message_id))
+            if not message.exists():
+                return {'status': 'error', 'message': 'Message not found'}
+            
+            # Mark as read
+            read_record = message.mark_as_read()
+            
+            if read_record:
+                # Get updated read status
+                read_status = message.get_read_status_details()
+                return {
+                    'status': 'success',
+                    'message': 'Message marked as read',
+                    'data': {
+                        'message_id': message.id,
+                        'read_status': read_status,
+                        'receipt_status': message.get_read_receipt_status()
+                    }
+                }
+            else:
+                return {
+                    'status': 'success',
+                    'message': 'Already marked as read',
+                    'data': {
+                        'message_id': message.id,
+                        'read_status': message.get_read_status_details(),
+                        'receipt_status': message.get_read_receipt_status()
+                    }
+                }
+                
+        except Exception as e:
+            _logger.error(f"Error marking message as read: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/messages/mark_all_read', type='json', auth='user', methods=['POST'], csrf=False)
+    def mark_all_messages_read(self, **kw):
+        """Mark all messages in group as read"""
+        try:
+            group_id = kw.get('group_id')
+            if not group_id:
+                return {'status': 'error', 'message': 'Missing group_id'}
+            
+            if not request.env.user.employee_id:
+                return {'status': 'error', 'message': 'Current user has no employee record'}
+            
+            current_employee_id = request.env.user.employee_id.id
+            
+            # Get all unread messages in group (exclude own messages)
+            messages = request.env['team.project.message'].sudo().search([
+                ('group_id', '=', int(group_id)),
+                ('author_id', '!=', current_employee_id)
+            ])
+            
+            marked_count = 0
+            for message in messages:
+                if message.mark_as_read(current_employee_id):
+                    marked_count += 1
+            
+            return {
+                'status': 'success',
+                'message': f'{marked_count} messages marked as read',
+                'data': {
+                    'marked_count': marked_count,
+                    'group_id': group_id
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error marking all messages as read: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/v2/team/messages/read_status', type='json', auth='user', methods=['POST'], csrf=False)
+    def get_message_read_status(self, **kw):
+        """Get detailed read status for specific message"""
+        try:
+            message_id = kw.get('message_id')
+            if not message_id:
+                return {'status': 'error', 'message': 'Missing message_id'}
+            
+            message = request.env['team.project.message'].sudo().browse(int(message_id))
+            if not message.exists():
+                return {'status': 'error', 'message': 'Message not found'}
+            
+            return {
+                'status': 'success',
+                'data': message.get_read_status_details()
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error getting read status: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
 
     def _prepare_message_data(self, message):
-        """Menyiapkan data pesan untuk respons API."""
+        """Enhanced message data preparation with read status"""
+        current_employee_id = request.env.user.employee_id.id if request.env.user.employee_id else False
+        
         message_data = {
             'id': message.id,
             'group_id': message.group_id.id,
@@ -1648,10 +1753,44 @@ class TeamProjectAPI(http.Controller):
             'date': self._format_message_datetime_jakarta(message.date),
             'project_id': message.project_id.id if message.project_id else None,
             'is_pinned': message.is_pinned,
-            'attachment_count': message.attachment_count if hasattr(message, 'attachment_count') else len(message.attachment_ids)
+            'attachment_count': len(message.attachment_ids),
+            'message_type': message.message_type,
+            
+            # Read status information
+            'read_status': {
+                'read_count': message.read_count,
+                'unread_count': message.unread_count,
+                'total_recipients': message.total_recipients,
+                'is_read_by_me': current_employee_id and message.is_read_by(current_employee_id),
+                'receipt_status': message.get_read_receipt_status()
+            }
         }
         
+        # Add detailed read status if requested
+        include_read_details = kw.get('include_read_details', False)
+        if include_read_details:
+            message_data['read_details'] = message.get_read_status_details()
+        
+        # Add attachments if any
+        if message.attachment_ids:
+            message_data['attachments'] = []
+            for attachment in message.attachment_ids:
+                message_data['attachments'].append({
+                    'id': attachment.id,
+                    'name': attachment.name,
+                    'mimetype': attachment.mimetype,
+                    'size': attachment.file_size,
+                    'url': f'/web/content/{attachment.id}?download=true',
+                    'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
+                    'create_date': fields.Datetime.to_string(attachment.create_date),
+                    'create_uid': {
+                        'id': attachment.create_uid.id,
+                        'name': attachment.create_uid.name
+                    }
+                })
+        
         return message_data
+
     
     # controllers/team_project_api.py (Lanjutan)
 

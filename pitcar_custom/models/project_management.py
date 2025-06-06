@@ -1043,6 +1043,200 @@ class TeamProjectMessage(models.Model):
                 data=message_data,
                 priority=priority
             )
+    # Tambahkan field baru untuk read status
+    read_ids = fields.One2many(
+        'team.project.message.read', 
+        'message_id', 
+        string='Read Status'
+    )
+    read_count = fields.Integer(
+        string='Read Count', 
+        compute='_compute_read_stats', 
+        store=True
+    )
+    unread_count = fields.Integer(
+        string='Unread Count', 
+        compute='_compute_read_stats', 
+        store=True
+    )
+    total_recipients = fields.Integer(
+        string='Total Recipients',
+        compute='_compute_read_stats',
+        store=True
+    )
+    
+    @api.depends('read_ids', 'group_id.member_ids', 'author_id')
+    def _compute_read_stats(self):
+        """Compute read statistics for the message"""
+        for message in self:
+            if not message.group_id:
+                message.read_count = 0
+                message.unread_count = 0
+                message.total_recipients = 0
+                continue
+                
+            # Total recipients = all group members except the author
+            total_members = len(message.group_id.member_ids)
+            if message.author_id and message.author_id in message.group_id.member_ids:
+                total_recipients = total_members - 1
+            else:
+                total_recipients = total_members
+                
+            read_count = len(message.read_ids)
+            unread_count = max(0, total_recipients - read_count)
+            
+            message.read_count = read_count
+            message.unread_count = unread_count
+            message.total_recipients = total_recipients
+    
+    def mark_as_read(self, reader_id=None):
+        """Mark message as read by specific user"""
+        if not reader_id:
+            if not self.env.user.employee_id:
+                return False
+            reader_id = self.env.user.employee_id.id
+            
+        return self.env['team.project.message.read'].mark_message_as_read(
+            self.id, reader_id
+        )
+    
+    def get_read_status_details(self):
+        """Get detailed read status for message"""
+        self.ensure_one()
+        
+        read_status = []
+        unread_status = []
+        
+        if not self.group_id:
+            return {
+                'read': read_status,
+                'unread': unread_status,
+                'read_count': 0,
+                'unread_count': 0,
+                'total_recipients': 0
+            }
+        
+        # Get read status
+        for read_record in self.read_ids:
+            read_status.append({
+                'reader_id': read_record.reader_id.id,
+                'reader_name': read_record.reader_id.name,
+                'read_at': read_record.read_at,
+                'avatar': read_record.reader_id.image_128 or False
+            })
+        
+        # Get unread members
+        read_member_ids = self.read_ids.mapped('reader_id.id')
+        unread_members = self.group_id.member_ids.filtered(
+            lambda m: m.id not in read_member_ids and m.id != self.author_id.id
+        )
+        
+        for member in unread_members:
+            unread_status.append({
+                'member_id': member.id,
+                'member_name': member.name,
+                'avatar': member.image_128 or False
+            })
+        
+        return {
+            'read': read_status,
+            'unread': unread_status,
+            'read_count': len(read_status),
+            'unread_count': len(unread_status),
+            'total_recipients': self.total_recipients
+        }
+    
+    def is_read_by(self, employee_id):
+        """Check if message is read by specific employee"""
+        return bool(self.read_ids.filtered(lambda r: r.reader_id.id == employee_id))
+    
+    def get_read_receipt_status(self):
+        """Get read receipt status for message display"""
+        self.ensure_one()
+        
+        if self.total_recipients == 0:
+            return 'sent'  # No recipients
+        elif self.read_count == 0:
+            return 'delivered'  # Sent but not read
+        elif self.unread_count == 0:
+            return 'read_all'  # Read by everyone
+        else:
+            return 'read_partial'  # Read by some
+        
+class TeamProjectMessageRead(models.Model):
+    _name = 'team.project.message.read'
+    _description = 'Message Read Status'
+    _rec_name = 'message_id'
+    _order = 'read_at desc'
+    
+    message_id = fields.Many2one(
+        'team.project.message', 
+        string='Message', 
+        required=True, 
+        ondelete='cascade',
+        index=True
+    )
+    reader_id = fields.Many2one(
+        'hr.employee', 
+        string='Reader', 
+        required=True, 
+        ondelete='cascade',
+        index=True
+    )
+    read_at = fields.Datetime(
+        string='Read At', 
+        default=fields.Datetime.now, 
+        required=True
+    )
+    
+    # Constraints
+    _sql_constraints = [
+        ('unique_message_reader', 
+         'UNIQUE(message_id, reader_id)', 
+         'Message can only be read once per person')
+    ]
+    
+    @api.model
+    def mark_message_as_read(self, message_id, reader_id=None):
+        """Mark a message as read by a specific user"""
+        if not reader_id:
+            if not self.env.user.employee_id:
+                return False
+            reader_id = self.env.user.employee_id.id
+            
+        # Get the message
+        message = self.env['team.project.message'].sudo().browse(message_id)
+        if not message.exists():
+            return False
+            
+        # Don't mark own messages as read
+        if message.author_id.id == reader_id:
+            return False
+            
+        # Check if already marked as read
+        existing = self.search([
+            ('message_id', '=', message_id),
+            ('reader_id', '=', reader_id)
+        ], limit=1)
+        
+        if existing:
+            return existing
+            
+        # Create read record
+        try:
+            read_record = self.create({
+                'message_id': message_id,
+                'reader_id': reader_id,
+                'read_at': fields.Datetime.now()
+            })
+            
+            _logger.info(f"Message {message_id} marked as read by employee {reader_id}")
+            return read_record
+            
+        except Exception as e:
+            _logger.error(f"Error marking message as read: {str(e)}")
+            return False
+
 class TeamProjectBAU(models.Model):
     _name = 'team.project.bau'
     _description = 'Business As Usual Activity'

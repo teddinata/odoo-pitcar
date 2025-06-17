@@ -203,11 +203,70 @@ class AccountMoveLine(models.Model):
         index=True,
     )
 
-    @api.onchange('partner_id')
-    def _onchange_partner_id_vendor_line(self):
-        """Auto-copy partner to vendor field (user bisa ubah manual jika perlu)"""
-        if self.partner_id:
-            self.vendor_id = self.partner_id
+    # FIELDS BARU UNTUK NOMOR HP DAN CUSTOMER SOURCE
+    customer_phone = fields.Char(
+        string='Customer Phone',
+        compute='_compute_customer_info',
+        store=True,
+        help="Customer phone number from sale order or partner"
+    )
+    
+    customer_source = fields.Selection([
+        ('loyal', 'Loyal'),
+        ('fb_ads', 'FB Ads'),
+        ('referral', 'Referral'),
+        ('all_b2b', 'All B2B'),
+        ('ig_ads', 'IG Ads'),
+        ('google_maps', 'Google Maps'),
+        ('tiktok_ads', 'Tiktok Ads'),
+        ('ig_organic', 'IG Organic'),
+        ('beli_part', 'Beli Part'),
+        ('web_paid_ads', 'Web - Paid Ads'),
+        ('web_organic', 'Web - Organic'),
+        ('workshop', 'Workshop'),
+        ('relation', 'Relation'),
+        ('youtube', 'Youtube'),
+        ('tidak_dapat_info', 'Tidak Dapat Info'),
+    ], 
+    string='Customer Source',
+    compute='_compute_customer_info',
+    store=True,
+    help="Customer source from sale order"
+    )
+
+    @api.depends('move_id.invoice_origin_sale_id', 'partner_id', 'move_id.partner_id')
+    def _compute_customer_info(self):
+        for line in self:
+            # Reset default values
+            line.customer_phone = False
+            line.customer_source = False
+            
+            # Prioritas 1: Ambil dari sale order jika ada
+            if line.move_id.invoice_origin_sale_id:
+                sale_order = line.move_id.invoice_origin_sale_id
+                if sale_order.partner_id:
+                    line.customer_phone = sale_order.partner_id.phone or sale_order.partner_id.mobile
+                    line.customer_source = sale_order.customer_sumber_info
+            
+            # Prioritas 2: Ambil dari partner di journal item
+            elif line.partner_id:
+                line.customer_phone = line.partner_id.phone or line.partner_id.mobile
+                # Coba ambil customer source dari partner
+                if line.partner_id.sumber_info_id:
+                    line.customer_source = line.partner_id.sumber_info_id[0].sumber if line.partner_id.sumber_info_id else False
+            
+            # Prioritas 3: Ambil dari partner di move header
+            elif line.move_id.partner_id:
+                line.customer_phone = line.move_id.partner_id.phone or line.move_id.partner_id.mobile
+                # Coba ambil customer source dari partner
+                if line.move_id.partner_id.sumber_info_id:
+                    line.customer_source = line.move_id.partner_id.sumber_info_id[0].sumber if line.move_id.partner_id.sumber_info_id else False
+
+    # @api.onchange('partner_id')
+    # def _onchange_partner_id_vendor_line(self):
+    #     """Auto-copy partner to vendor field (user bisa ubah manual jika perlu)"""
+    #     if self.partner_id:
+    #         self.vendor_id = self.partner_id
 
     @api.model_create_multi
     def create(self, vals_list):

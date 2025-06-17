@@ -3,6 +3,7 @@
     <data>
         <!-- GUNAKAN VIEWS YANG SUDAH ADA DI MODUL CUSTOM -->
         
+        <!-- INVOICE TREE VIEW - TAMBAH CUSTOMER INFO -->
         <record id="view_invoice_tree_inherit" model="ir.ui.view">
             <field name="name">view.invoice.tree.inherit</field>
             <field name="model">account.move</field>
@@ -17,7 +18,7 @@
             </field>
         </record>
 
-        <!-- FILTER ACCOUNT INVOICE -->
+        <!-- FILTER ACCOUNT INVOICE - SUDAH ADA, TIDAK PERLU DIUBAH -->
         <record id="view_account_invoice_filter_inherit" model="ir.ui.view">
             <field name="name">view.account.invoice.filter.inherit</field>
             <field name="model">account.move</field>
@@ -47,15 +48,17 @@
             </field>
         </record>
 
-        <!-- ACCOUNT MOVE FORM - TAMBAH VENDOR DI JOURNAL ITEMS TABLE -->
+        <!-- ACCOUNT MOVE FORM - TAMBAH CUSTOMER INFO DI JOURNAL ITEMS TABLE -->
         <record id="account_move_form_view_inherit" model="ir.ui.view">
             <field name="name">account.move.form.inherit</field>
             <field name="model">account.move</field>
             <field name="inherit_id" ref="account.view_move_form"/>
             <field name="arch" type="xml">
-                <!-- TAMBAH KOLOM VENDOR DI JOURNAL ITEMS TABLE -->
+                <!-- TAMBAH KOLOM VENDOR, CUSTOMER PHONE DAN SOURCE DI JOURNAL ITEMS TABLE -->
                 <xpath expr="//field[@name='line_ids']//field[@name='partner_id']" position="after">
                     <field name="vendor_id" optional="show"/>
+                    <field name="customer_phone" optional="show" string="Customer Phone"/>
+                    <field name="customer_source" optional="show" string="Customer Source"/>
                 </xpath>
                 
                 <!-- TETAP PERTAHANKAN FIELD EXISTING -->
@@ -69,7 +72,7 @@
             </field>
         </record>
 
-        <!-- TAMBAH VENDOR DI JOURNAL ITEMS TREE VIEW TERPISAH -->
+        <!-- JOURNAL ITEMS FORM VIEW - TAMBAH CUSTOMER INFO -->
         <record id="view_move_line_form_inherit_vendor" model="ir.ui.view">
             <field name="name">account.move.line.form.inherit.vendor</field>
             <field name="model">account.move.line</field>
@@ -77,11 +80,13 @@
             <field name="arch" type="xml">
                 <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="vendor_id"/>
+                    <field name="customer_phone" readonly="1" string="Customer Phone"/>
+                    <field name="customer_source" readonly="1" string="Customer Source"/>
                 </xpath>
             </field>
         </record>
 
-        <!-- SEARCH VIEW UNTUK JOURNAL ITEMS -->
+        <!-- JOURNAL ITEMS SEARCH VIEW - TAMBAH CUSTOMER INFO -->
         <record id="view_account_move_line_filter_inherit_vendor" model="ir.ui.view">
             <field name="name">account.move.line.filter.inherit.vendor</field>
             <field name="model">account.move.line</field>
@@ -89,27 +94,35 @@
             <field name="arch" type="xml">
                 <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="vendor_id" string="Vendor"/>
+                    <field name="customer_phone" string="Customer Phone" filter_domain="[('customer_phone', 'ilike', self)]"/>
+                    <field name="customer_source" string="Customer Source"/>
                 </xpath>
                 <xpath expr="//group" position="inside">
                     <filter string="Vendor" name="group_vendor" context="{'group_by': 'vendor_id'}"/>
+                    <filter string="Customer Source" name="group_customer_source" context="{'group_by': 'customer_source'}"/>
                 </xpath>
             </field>
         </record>
 
-        <!-- TAMBAH KOLOM VENDOR DI JOURNAL ITEMS LIST VIEW -->
+        <!-- JOURNAL ITEMS TREE VIEW - TAMBAH CUSTOMER INFO -->
         <record id="view_account_move_line_tree_inherit_vendor" model="ir.ui.view">
             <field name="name">account.move.line.tree.inherit.vendor</field>
             <field name="model">account.move.line</field>
             <field name="inherit_id" ref="account.view_move_line_tree"/>
             <field name="arch" type="xml">
-                <!-- Tambah kolom vendor setelah partner di Journal Items list -->
+                <!-- Tambah kolom vendor, customer phone dan source setelah partner di Journal Items list -->
                 <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="vendor_id" optional="hide" string="Vendor"/>
+                    <field name="customer_phone" optional="show" string="Customer Phone"/>
+                    <field name="customer_source" optional="show" string="Customer Source" 
+                        decoration-info="customer_source in ('loyal', 'referral')"
+                        decoration-warning="customer_source in ('fb_ads', 'ig_ads', 'tiktok_ads')"
+                        decoration-success="customer_source in ('google_maps', 'web_organic')"/>
                 </xpath>
             </field>
         </record>
 
-        <!-- TAMBAH KOLOM VENDOR DI JOURNAL ENTRIES LIST VIEW -->
+        <!-- JOURNAL ENTRIES TREE VIEW - TAMBAH CUSTOMER INFO -->
         <record id="view_journal_entries_tree_inherit_vendor" model="ir.ui.view">
             <field name="name">view.journal.entries.tree.inherit.vendor</field>
             <field name="model">account.move</field>
@@ -122,7 +135,7 @@
             </field>
         </record>
 
-        <!-- TAMBAH SEARCH VENDOR DI JOURNAL ENTRIES -->
+        <!-- JOURNAL ENTRIES SEARCH VIEW - TAMBAH CUSTOMER INFO -->
         <record id="view_journal_entries_filter_inherit_vendor" model="ir.ui.view">
             <field name="name">view.journal.entries.filter.inherit.vendor</field>
             <field name="model">account.move</field>
@@ -137,7 +150,7 @@
             </field>
         </record>
 
-        <!-- Extend account.move form untuk audit (EXISTING) -->
+        <!-- AUDIT VIEWS - TETAP PERTAHANKAN -->
         <record id="view_move_form_audit_inherit" model="ir.ui.view">
             <field name="name">account.move.form.audit</field>
             <field name="model">account.move</field>
@@ -155,7 +168,7 @@
             </field>
         </record>
 
-        <!-- Extend account.move search untuk audit dan vendor LINES -->
+        <!-- AUDIT SEARCH VIEW - TETAP PERTAHANKAN -->
         <record id="view_account_move_filter_audit" model="ir.ui.view">
             <field name="name">account.move.select.audit</field>
             <field name="model">account.move</field>
@@ -176,7 +189,7 @@
             </field>
         </record>
 
-        <!-- Server actions dan menu (EXISTING) -->
+        <!-- SERVER ACTIONS DAN MENU - TETAP PERTAHANKAN -->
         <record id="action_create_audit_entry" model="ir.actions.server">
             <field name="name">Create Stock Audit Entry</field>
             <field name="model_id" ref="account.model_account_move"/>
@@ -220,28 +233,69 @@
                 action="action_stock_audit_report"
                 sequence="100"/>
 
-        <!-- MENU ACTION UNTUK JOURNAL ITEMS DENGAN KOLOM VENDOR -->
+        <!-- MENU ACTION UNTUK JOURNAL ITEMS DENGAN KOLOM CUSTOMER INFO -->
         <record id="action_account_move_line_vendor" model="ir.actions.act_window">
-            <field name="name">Journal Items (with Vendor)</field>
+            <field name="name">Journal Items (with Customer Info)</field>
             <field name="res_model">account.move.line</field>
             <field name="view_mode">tree,form</field>
             <field name="domain">[]</field>
             <field name="context">{}</field>
             <field name="help" type="html">
                 <p class="o_view_nocontent_smiling_face">
-                    Journal Items with Vendor column
+                    Journal Items with Customer Information
                 </p>
                 <p>
-                    View all journal items with vendor information for better tracking.
+                    View all journal items with vendor, customer phone, and customer source information for better tracking.
                 </p>
             </field>
         </record>
 
-        <!-- MENU ITEM UNTUK JOURNAL ITEMS (OPTIONAL) -->
+        <!-- MENU ITEM UNTUK JOURNAL ITEMS DENGAN CUSTOMER INFO -->
         <menuitem id="menu_journal_items_vendor"
-                name="Journal Items (Vendor)"
+                name="Journal Items (Customer Info)"
                 parent="account.menu_finance_entries"
                 action="action_account_move_line_vendor"
                 sequence="15"/>
+
+        <!-- VIEW KHUSUS UNTUK CUSTOMER ANALYSIS -->
+        <record id="view_account_move_line_pivot_customer" model="ir.ui.view">
+            <field name="name">account.move.line.pivot.customer</field>
+            <field name="model">account.move.line</field>
+            <field name="arch" type="xml">
+                <pivot string="Customer Analysis">
+                    <field name="customer_source" type="row"/>
+                    <field name="date" type="col"/>
+                    <field name="debit" type="measure"/>
+                    <field name="credit" type="measure"/>
+                    <field name="balance" type="measure"/>
+                </pivot>
+            </field>
+        </record>
+
+        <!-- ACTION UNTUK CUSTOMER ANALYSIS -->
+        <record id="action_customer_analysis_journal" model="ir.actions.act_window">
+            <field name="name">Customer Source Analysis</field>
+            <field name="res_model">account.move.line</field>
+            <field name="view_mode">pivot,tree,form</field>
+            <field name="view_id" ref="view_account_move_line_pivot_customer"/>
+            <field name="domain">[('customer_source', '!=', False)]</field>
+            <field name="context">{}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Customer Source Analysis
+                </p>
+                <p>
+                    Analyze journal entries by customer source to understand revenue patterns.
+                </p>
+            </field>
+        </record>
+
+        <!-- MENU UNTUK CUSTOMER ANALYSIS -->
+        <menuitem id="menu_customer_analysis_journal"
+                name="Customer Source Analysis"
+                parent="account.menu_finance_reports"
+                action="action_customer_analysis_journal"
+                sequence="25"/>
+
     </data>
 </odoo>

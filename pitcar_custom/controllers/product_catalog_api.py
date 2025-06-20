@@ -263,6 +263,97 @@ class ProductCatalogAPI(http.Controller):
                         domain.append(('is_below_mandatory_level', '=', True))
         
         return domain
+
+    def _sort_products_by_stock(self, products, sort_order='desc'):
+        """Quick fix untuk stock sorting"""
+        try:
+            # Convert recordset ke list dengan stock values
+            product_stock_pairs = []
+            for product in products:
+                stock_qty = getattr(product, 'qty_available', 0) or 0
+                product_stock_pairs.append((product, float(stock_qty)))
+            
+            # Sort berdasarkan stock
+            reverse = sort_order == 'desc'
+            sorted_pairs = sorted(product_stock_pairs, key=lambda x: x[1], reverse=reverse)
+            
+            # Return sorted recordset
+            sorted_ids = [pair[0].id for pair in sorted_pairs]
+            return request.env['product.template'].sudo().browse(sorted_ids)
+        except Exception as e:
+            _logger.error(f"Stock sorting error: {str(e)}")
+            return products
+        
+    def _get_products_with_stock_sorting(self, domain, sort_field, sort_order, limit, offset):
+        """
+        Handle stock sorting dengan post-processing sederhana
+        """
+        if sort_field != 'qty_available':
+            # Normal sorting untuk field lain
+            order = f"{sort_field} {sort_order}"
+            products = request.env['product.template'].sudo().search(
+                domain, 
+                limit=limit, 
+                offset=offset, 
+                order=order
+            )
+            total = request.env['product.template'].sudo().search_count(domain)
+            return products, total
+        
+        # Special handling untuk qty_available
+        try:
+            # Ambil semua data untuk halaman saat ini + buffer
+            buffer_size = limit * 3  # Ambil 3x lebih banyak untuk ensure correct sorting
+            extended_limit = offset + buffer_size
+            
+            # Ambil data dengan default sorting
+            all_products = request.env['product.template'].sudo().search(
+                domain, 
+                limit=extended_limit, 
+                order='name asc'  # Fallback sorting
+            )
+            
+            # Convert ke list untuk sorting
+            products_with_stock = []
+            for product in all_products:
+                try:
+                    stock_qty = product.qty_available if hasattr(product, 'qty_available') else 0.0
+                    products_with_stock.append({
+                        'product': product,
+                        'stock': float(stock_qty)
+                    })
+                except:
+                    products_with_stock.append({
+                        'product': product,
+                        'stock': 0.0
+                    })
+            
+            # Sort berdasarkan stock
+            reverse = sort_order == 'desc'
+            sorted_products = sorted(products_with_stock, key=lambda x: x['stock'], reverse=reverse)
+            
+            # Apply pagination
+            paginated_products = sorted_products[offset:offset + limit]
+            products = request.env['product.template'].sudo().browse([p['product'].id for p in paginated_products])
+            
+            # Total count
+            total = request.env['product.template'].sudo().search_count(domain)
+            
+            _logger.info(f"Stock sorting applied: {len(sorted_products)} total, showing {len(products)} for page")
+            return products, total
+            
+        except Exception as e:
+            _logger.error(f"Stock sorting failed: {str(e)}")
+            # Fallback ke normal sorting
+            products = request.env['product.template'].sudo().search(
+                domain, 
+                limit=limit, 
+                offset=offset, 
+                order='name asc'
+            )
+            total = request.env['product.template'].sudo().search_count(domain)
+            return products, total
+
     
     def _prepare_product_template_data(self, product, access_level='public', include_variants=False, include_attachments=False):
         """
@@ -502,12 +593,32 @@ class ProductCatalogAPI(http.Controller):
             _logger.info(f"Sort: {order}, Page: {page}, Limit: {limit}")
             
             # Cari produk
-            products = request.env['product.template'].sudo().search(
-                domain, 
-                limit=limit, 
-                offset=offset, 
-                order=order
-            )
+            # products = request.env['product.template'].sudo().search(
+            #     domain, 
+            #     limit=limit, 
+            #     offset=offset, 
+            #     order=order
+            # )
+
+            # products, total = self._get_products_with_stock_sorting(
+            #     domain, sort_field, sort_order, limit, offset
+            # )
+
+            if sort_field == 'qty_available':
+                # Special handling untuk stock sorting
+                all_products = request.env['product.template'].sudo().search(domain, order='name asc')
+                sorted_products = self._sort_products_by_stock(all_products, sort_order)
+                # Apply pagination setelah sorting
+                products = sorted_products[offset:offset + limit]
+            else:
+                # Normal sorting untuk field lain
+                products = request.env['product.template'].sudo().search(
+                    domain, 
+                    limit=limit, 
+                    offset=offset, 
+                    order=order
+                )
+
             total = request.env['product.template'].sudo().search_count(domain)
             
             _logger.info(f"Search results: Found {len(products)} products out of {total} total")

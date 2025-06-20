@@ -42,69 +42,6 @@ class ProductCatalogAPI(http.Controller):
         
         return False
     
-    def _get_product_attachments(self, product):
-        """
-        Mendapatkan attachments untuk product dengan cara yang benar
-        """
-        try:
-            attachments = []
-            
-            # Method 1: Cari di ir.attachment berdasarkan res_model dan res_id
-            attachment_domain = [
-                ('res_model', '=', 'product.template'),
-                ('res_id', '=', product.id),
-                ('public', '=', True)  # Hanya ambil yang public
-            ]
-            
-            ir_attachments = request.env['ir.attachment'].sudo().search(attachment_domain)
-            
-            for attachment in ir_attachments:
-                attachments.append({
-                    'id': attachment.id,
-                    'name': attachment.name or 'Unnamed file',
-                    'mimetype': attachment.mimetype or '',
-                    'size': attachment.file_size or 0,
-                    'url': f'/web/content/{attachment.id}?download=true',
-                    'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
-                    'create_date': attachment.create_date.isoformat() if attachment.create_date else None,
-                })
-            
-            # Method 2: Jika product memiliki message_attachment_ids (dari mail module)
-            if hasattr(product, 'message_attachment_ids'):
-                for attachment in product.message_attachment_ids:
-                    # Avoid duplicates
-                    if not any(att['id'] == attachment.id for att in attachments):
-                        attachments.append({
-                            'id': attachment.id,
-                            'name': attachment.name or 'Unnamed file',
-                            'mimetype': attachment.mimetype or '',
-                            'size': attachment.file_size or 0,
-                            'url': f'/web/content/{attachment.id}?download=true',
-                            'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
-                            'create_date': attachment.create_date.isoformat() if attachment.create_date else None,
-                        })
-            
-            # Method 3: Jika ada custom field attachment_ids
-            if hasattr(product, 'attachment_ids'):
-                for attachment in product.attachment_ids:
-                    # Avoid duplicates
-                    if not any(att['id'] == attachment.id for att in attachments):
-                        attachments.append({
-                            'id': attachment.id,
-                            'name': attachment.name or 'Unnamed file',
-                            'mimetype': attachment.mimetype or '',
-                            'size': attachment.file_size or 0,
-                            'url': f'/web/content/{attachment.id}?download=true',
-                            'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
-                            'create_date': attachment.create_date.isoformat() if attachment.create_date else None,
-                        })
-            
-            return attachments
-            
-        except Exception as e:
-            _logger.error(f"Error getting product attachments: {str(e)}")
-            return []
-    
     def _build_search_domain(self, search_query):
         """
         Membangun domain pencarian yang komprehensif dan benar
@@ -235,21 +172,18 @@ class ProductCatalogAPI(http.Controller):
             # Filter mandatory stock
             if kw.get('mandatory_stock_only'):
                 if str(kw['mandatory_stock_only']).lower() in ['true', '1', 'yes']:
-                    if hasattr(request.env['product.template'], '_fields') and 'is_mandatory_stock' in request.env['product.template']._fields:
-                        domain.append(('is_mandatory_stock', '=', True))
+                    domain.append(('is_mandatory_stock', '=', True))
             
             # Filter by inventory age category
             if kw.get('inventory_age_category'):
                 valid_categories = ['new', 'medium', 'old', 'very_old']
                 if kw['inventory_age_category'] in valid_categories:
-                    if hasattr(request.env['product.template'], '_fields') and 'inventory_age_category' in request.env['product.template']._fields:
-                        domain.append(('inventory_age_category', '=', kw['inventory_age_category']))
+                    domain.append(('inventory_age_category', '=', kw['inventory_age_category']))
             
             # Filter by service duration
             if kw.get('has_service_duration'):
                 if str(kw['has_service_duration']).lower() in ['true', '1', 'yes']:
-                    if hasattr(request.env['product.template'], '_fields') and 'service_duration' in request.env['product.template']._fields:
-                        domain.append(('service_duration', '>', 0))
+                    domain.append(('service_duration', '>', 0))
             
             # Filter low stock
             if kw.get('low_stock_only'):
@@ -259,8 +193,7 @@ class ProductCatalogAPI(http.Controller):
             # Filter below mandatory level
             if kw.get('below_mandatory_only'):
                 if str(kw['below_mandatory_only']).lower() in ['true', '1', 'yes']:
-                    if hasattr(request.env['product.template'], '_fields') and 'is_below_mandatory_level' in request.env['product.template']._fields:
-                        domain.append(('is_below_mandatory_level', '=', True))
+                    domain.append(('is_below_mandatory_level', '=', True))
         
         return domain
     
@@ -320,27 +253,27 @@ class ProductCatalogAPI(http.Controller):
                     'outgoing_qty': product.outgoing_qty,
                 })
                 
-                # Custom fields dari model Anda - dengan safety check
+                # Custom fields dari model Anda
                 if hasattr(product, 'inventory_age_days'):
                     data.update({
-                        'inventory_age': getattr(product, 'inventory_age', None),
-                        'inventory_age_days': getattr(product, 'inventory_age_days', None),
-                        'inventory_age_category': getattr(product, 'inventory_age_category', None),
+                        'inventory_age': product.inventory_age,
+                        'inventory_age_days': product.inventory_age_days,
+                        'inventory_age_category': product.inventory_age_category,
                     })
                 
                 if hasattr(product, 'is_mandatory_stock'):
                     data.update({
-                        'is_mandatory_stock': getattr(product, 'is_mandatory_stock', False),
-                        'min_mandatory_stock': getattr(product, 'min_mandatory_stock', 0),
-                        'is_below_mandatory_level': getattr(product, 'is_below_mandatory_level', False),
+                        'is_mandatory_stock': product.is_mandatory_stock,
+                        'min_mandatory_stock': product.min_mandatory_stock,
+                        'is_below_mandatory_level': product.is_below_mandatory_level,
                     })
                 
                 # Service fields
                 if hasattr(product, 'service_duration'):
                     data.update({
-                        'service_duration': getattr(product, 'service_duration', 0),
-                        'flat_rate': getattr(product, 'flat_rate', False),
-                        'flat_rate_value': getattr(product, 'flat_rate_value', 0),
+                        'service_duration': product.service_duration,
+                        'flat_rate': product.flat_rate,
+                        'flat_rate_value': product.flat_rate_value,
                     })
             
             # Cost price - hanya untuk yang punya akses
@@ -357,7 +290,7 @@ class ProductCatalogAPI(http.Controller):
                 })
             
             # Supplier information untuk internal dan manager
-            if access_level in ['internal', 'manager'] and hasattr(product, 'seller_ids') and product.seller_ids:
+            if access_level in ['internal', 'manager'] and product.seller_ids:
                 suppliers = []
                 for seller in product.seller_ids[:3]:  # Max 3 suppliers
                     supplier_data = {
@@ -377,24 +310,33 @@ class ProductCatalogAPI(http.Controller):
                 data['suppliers'] = suppliers
             
             # Variants jika diminta
-            if include_variants and hasattr(product, 'product_variant_ids') and product.product_variant_ids:
+            if include_variants and product.product_variant_ids:
                 variants = []
                 for variant in product.product_variant_ids:
                     variant_data = self._prepare_product_variant_data(variant, access_level)
                     variants.append(variant_data)
                 data['variants'] = variants
             else:
-                data['variant_count'] = len(product.product_variant_ids) if hasattr(product, 'product_variant_ids') else 1
+                data['variant_count'] = len(product.product_variant_ids)
             
             # Attachments jika diminta dan access internal/manager
-            if include_attachments and access_level in ['internal', 'manager']:
-                attachments = self._get_product_attachments(product)
+            if include_attachments and access_level in ['internal', 'manager'] and product.attachment_ids:
+                attachments = []
+                for attachment in product.attachment_ids:
+                    attachments.append({
+                        'id': attachment.id,
+                        'name': attachment.name,
+                        'mimetype': attachment.mimetype,
+                        'size': attachment.file_size,
+                        'url': f'/web/content/{attachment.id}?download=true',
+                        'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
+                    })
                 data['attachments'] = attachments
             
             return data
             
         except Exception as e:
-            _logger.error(f"Error preparing product template data for product {product.id}: {str(e)}")
+            _logger.error(f"Error preparing product template data: {str(e)}")
             return {'error': str(e)}
     
     def _prepare_product_variant_data(self, variant, access_level='public'):
@@ -420,7 +362,7 @@ class ProductCatalogAPI(http.Controller):
                             'name': pav.product_attribute_value_id.name,
                         }
                     } for pav in variant.product_template_attribute_value_ids
-                ] if hasattr(variant, 'product_template_attribute_value_ids') else [],
+                ],
                 'image_variant_1920_url': f'/web/image/product.product/{variant.id}/image_variant_1920' if variant.image_variant_1920 else None,
             }
             
@@ -476,10 +418,7 @@ class ProductCatalogAPI(http.Controller):
             sort_field = kw.get('sort_field', 'name')
             allowed_sort_fields = ['name', 'default_code', 'list_price', 'qty_available', 'categ_id', 'create_date']
             if access_level in ['internal', 'manager']:
-                allowed_sort_fields.extend(['standard_price'])
-                # Only add custom fields if they exist
-                if hasattr(request.env['product.template'], '_fields') and 'inventory_age_days' in request.env['product.template']._fields:
-                    allowed_sort_fields.append('inventory_age_days')
+                allowed_sort_fields.extend(['standard_price', 'inventory_age_days'])
             
             if sort_field not in allowed_sort_fields:
                 sort_field = 'name'
@@ -564,8 +503,6 @@ class ProductCatalogAPI(http.Controller):
             include_variants = str(kw.get('include_variants', True)).lower() in ['true', '1', 'yes']
             include_attachments = str(kw.get('include_attachments', True)).lower() in ['true', '1', 'yes']
             
-            _logger.info(f"Getting product detail for ID: {product_id}, access_level: {access_level}")
-            
             product = request.env['product.template'].sudo().browse(product_id)
             
             if not product.exists():
@@ -581,8 +518,6 @@ class ProductCatalogAPI(http.Controller):
                 include_variants=include_variants,
                 include_attachments=include_attachments
             )
-            
-            _logger.info(f"Product detail prepared successfully for ID: {product_id}")
             
             return {
                 'status': 'success',
@@ -731,8 +666,7 @@ class ProductCatalogAPI(http.Controller):
                     ('qty_available', '<=', 5)
                 ])
                 
-                # Check if custom fields exist before using them
-                if hasattr(request.env['product.template'], '_fields') and 'is_below_mandatory_level' in request.env['product.template']._fields:
+                if hasattr(request.env['product.template'], 'is_mandatory_stock'):
                     stats['mandatory_stock_below_min'] = request.env['product.template'].sudo().search_count([
                         ('active', '=', True),
                         ('is_below_mandatory_level', '=', True)
@@ -742,4 +676,152 @@ class ProductCatalogAPI(http.Controller):
             
         except Exception as e:
             _logger.error(f"Error in get_catalog_stats: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+    
+    @http.route('/web/v2/catalog/debug/search', type='json', auth='user', methods=['POST'], csrf=False)
+    def debug_search(self, **kw):
+        """
+        Endpoint debugging untuk troubleshoot search issues
+        """
+        try:
+            search_query = kw.get('search', '')
+            access_level = kw.get('access_level', 'public')
+            
+            debug_info = {
+                'search_query': search_query,
+                'access_level': access_level,
+                'total_products': request.env['product.template'].sudo().search_count([]),
+                'active_products': request.env['product.template'].sudo().search_count([('active', '=', True)]),
+                'sale_products': request.env['product.template'].sudo().search_count([('sale_ok', '=', True), ('active', '=', True)])
+            }
+            
+            # Test filter domain
+            filter_domain = self._build_filter_domain(kw, access_level)
+            debug_info['filter_domain'] = filter_domain
+            debug_info['filter_results_count'] = request.env['product.template'].sudo().search_count(filter_domain)
+            
+            # Test search domain
+            if search_query:
+                search_domain = self._build_search_domain(search_query)
+                debug_info['search_domain'] = search_domain
+                debug_info['search_results_count'] = request.env['product.template'].sudo().search_count(search_domain)
+                
+                # Test combined domain
+                if filter_domain and search_domain:
+                    combined_domain = ['&'] + filter_domain + search_domain
+                    debug_info['combined_domain'] = combined_domain
+                    debug_info['combined_results_count'] = request.env['product.template'].sudo().search_count(combined_domain)
+                
+                # Test sample results
+                sample_domain = search_domain if search_domain else []
+                sample_results = request.env['product.template'].sudo().search(sample_domain, limit=5)
+                debug_info['sample_results'] = [
+                    {
+                        'id': p.id, 
+                        'name': p.name, 
+                        'default_code': p.default_code,
+                        'sale_ok': p.sale_ok, 
+                        'active': p.active,
+                        'categ_name': p.categ_id.name if p.categ_id else None
+                    } for p in sample_results
+                ]
+            
+            return {'status': 'success', 'debug_info': debug_info}
+            
+        except Exception as e:
+            _logger.error(f"Error in debug_search: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+    
+    @http.route('/web/v2/catalog/test/filters', type='json', auth='user', methods=['POST'], csrf=False)
+    def test_filters(self, **kw):
+        """
+        Endpoint khusus untuk testing individual filters
+        """
+        try:
+            results = {}
+            
+            # Test 1: Basic filters
+            results['all_products'] = request.env['product.template'].sudo().search_count([])
+            results['active_products'] = request.env['product.template'].sudo().search_count([('active', '=', True)])
+            results['sale_products'] = request.env['product.template'].sudo().search_count([('sale_ok', '=', True)])
+            
+            # Test 2: Category filter
+            if kw.get('test_categ_id'):
+                try:
+                    categ_id = int(kw['test_categ_id'])
+                    results['category_filter'] = {
+                        'categ_id': categ_id,
+                        'count': request.env['product.template'].sudo().search_count([('categ_id', '=', categ_id)])
+                    }
+                except:
+                    results['category_filter'] = {'error': 'Invalid category ID'}
+            
+            # Test 3: Price range filter
+            if kw.get('test_min_price') or kw.get('test_max_price'):
+                price_domain = []
+                if kw.get('test_min_price'):
+                    try:
+                        min_price = float(kw['test_min_price'])
+                        price_domain.append(('list_price', '>=', min_price))
+                    except:
+                        pass
+                if kw.get('test_max_price'):
+                    try:
+                        max_price = float(kw['test_max_price'])
+                        price_domain.append(('list_price', '<=', max_price))
+                    except:
+                        pass
+                
+                if price_domain:
+                    results['price_filter'] = {
+                        'domain': price_domain,
+                        'count': request.env['product.template'].sudo().search_count(price_domain)
+                    }
+            
+            # Test 4: Type filter
+            if kw.get('test_type'):
+                type_domain = [('type', '=', kw['test_type'])]
+                results['type_filter'] = {
+                    'type': kw['test_type'],
+                    'count': request.env['product.template'].sudo().search_count(type_domain)
+                }
+            
+            # Test 5: Search functionality
+            if kw.get('test_search'):
+                search_query = kw['test_search']
+                
+                # Test different search approaches
+                results['search_tests'] = {}
+                
+                # Approach 1: Simple name search
+                simple_domain = [('name', 'ilike', search_query)]
+                results['search_tests']['simple_name'] = {
+                    'domain': simple_domain,
+                    'count': request.env['product.template'].sudo().search_count(simple_domain)
+                }
+                
+                # Approach 2: OR search across multiple fields
+                or_domain = [
+                    '|', '|', '|',
+                    ('name', 'ilike', search_query),
+                    ('default_code', 'ilike', search_query),
+                    ('barcode', 'ilike', search_query),
+                    ('categ_id.name', 'ilike', search_query)
+                ]
+                results['search_tests']['or_multi_field'] = {
+                    'domain': or_domain,
+                    'count': request.env['product.template'].sudo().search_count(or_domain)
+                }
+                
+                # Approach 3: Using our build_search_domain method
+                our_domain = self._build_search_domain(search_query)
+                results['search_tests']['our_method'] = {
+                    'domain': our_domain,
+                    'count': request.env['product.template'].sudo().search_count(our_domain) if our_domain else 0
+                }
+            
+            return {'status': 'success', 'test_results': results}
+            
+        except Exception as e:
+            _logger.error(f"Error in test_filters: {str(e)}")
             return {'status': 'error', 'message': str(e)}

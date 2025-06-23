@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- Campaign Analytics Tree View -->
+        <record id="view_campaign_analytics_tree" model="ir.ui.view">
+            <field name="name">campaign.analytics.tree</field>
+            <field name="model">campaign.analytics</field>
+            <field name="arch" type="xml">
+                <tree string="Campaign Analytics">
+                    <field name="campaign_name"/>
+                    <field name="adset_name"/>
+                    <field name="ad_name"/>
+                    <field name="campaign_category"/>
+                    <field name="date_start"/>
+                    <field name="date_stop"/>
+                    <field name="spend" sum="Total Spend"/>
+                    <field name="reach" sum="Total Reach"/>
+                    <field name="purchase" sum="Total Purchases"/>
+                    <field name="roas"/>
+                    <field name="conversion_rate"/>
+                    <field name="performance_rating"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- Campaign Analytics Form View -->
+        <record id="view_campaign_analytics_form" model="ir.ui.view">
+            <field name="name">campaign.analytics.form</field>
+            <field name="model">campaign.analytics</field>
+            <field name="arch" type="xml">
+                <form string="Campaign Analytics">
+                    <sheet>
+                        <group>
+                            <group string="Campaign Information">
+                                <field name="campaign_name"/>
+                                <field name="adset_name"/>
+                                <field name="ad_name"/>
+                                <field name="campaign_category"/>
+                                <field name="date_start"/>
+                                <field name="date_stop"/>
+                            </group>
+                            <group string="Performance Metrics">
+                                <field name="spend"/>
+                                <field name="reach"/>
+                                <field name="purchase"/>
+                                <field name="purchase_value"/>
+                                <field name="roas"/>
+                                <field name="conversion_rate"/>
+                                <field name="performance_rating"/>
+                            </group>
+                        </group>
+                        <group string="Additional Data">
+                            <field name="impressions"/>
+                            <field name="frequency"/>
+                            <field name="cpm"/>
+                            <field name="messaging_conversation_started_7d"/>
+                            <field name="add_to_cart"/>
+                        </group>
+                        <group string="Notes">
+                            <field name="notes" nolabel="1"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Campaign Analytics Search View -->
+        <record id="view_campaign_analytics_search" model="ir.ui.view">
+            <field name="name">campaign.analytics.search</field>
+            <field name="model">campaign.analytics</field>
+            <field name="arch" type="xml">
+                <search string="Campaign Analytics">
+                    <field name="campaign_name"/>
+                    <field name="adset_name"/>
+                    <field name="campaign_category"/>
+                    
+                    <filter string="Excellent Performance" name="excellent"
+                            domain="[('performance_rating', '=', 'excellent')]"/>
+                    <filter string="Good Performance" name="good"
+                            domain="[('performance_rating', '=', 'good')]"/>
+                    <filter string="AC Service" name="ac_service"
+                            domain="[('campaign_category', '=', 'ac_service')]"/>
+                    <filter string="Periodic Service" name="periodic_service"
+                            domain="[('campaign_category', '=', 'periodic_service')]"/>
+                    
+                    <group expand="0" string="Group By">
+                        <filter string="Category" name="group_category" context="{'group_by': 'campaign_category'}"/>
+                        <filter string="Performance" name="group_performance" context="{'group_by': 'performance_rating'}"/>
+                        <filter string="Month" name="group_month" context="{'group_by': 'date_start:month'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- Campaign Analytics Action -->
+        <record id="action_campaign_analytics" model="ir.actions.act_window">
+            <field name="name">Campaign Analytics</field>
+            <field name="res_model">campaign.analytics</field>
+            <field name="view_mode">tree,form</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Create your first campaign analytics record!
+                </p>
+                <p>
+                    Track and analyze your advertising campaign performance.
+                </p>
+            </field>
+        </record>
+
+        <!-- Menu Items -->
+        <menuitem id="menu_campaign_analytics_root" 
+                  name="Campaign Analytics" 
+                  sequence="60"/>
+        
+        <menuitem id="menu_campaign_analytics" 
+                  name="Campaigns" 
+                  parent="menu_campaign_analytics_root" 
+                  action="action_campaign_analytics" 
+                  sequence="10"/>
+
+    </data>
+</odoo>

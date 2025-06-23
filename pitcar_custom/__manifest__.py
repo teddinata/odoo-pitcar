@@ -112,6 +112,8 @@
         'views/utm_menu.xml',
         'views/notification_views.xml',
         'views/booking_metrics_views.xml',
+        'views/campaign_analytics_views.xml',
+        'wizard/campaign_import_wizard_views.xml',
         'views/menu.xml',
     ],
     'installable': True,

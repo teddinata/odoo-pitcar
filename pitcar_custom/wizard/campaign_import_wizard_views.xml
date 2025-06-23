@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- Campaign Import Wizard Form -->
+        <record id="view_campaign_import_wizard_form" model="ir.ui.view">
+            <field name="name">campaign.import.wizard.form</field>
+            <field name="model">campaign.import.wizard</field>
+            <field name="arch" type="xml">
+                <form string="Import Campaign Analytics">
+                    <sheet>
+                        <div class="oe_title">
+                            <h1>Import Campaign Analytics Data</h1>
+                            <p class="text-muted">Choose how you want to import campaign data into the system</p>
+                        </div>
+
+                        <group>
+                            <field name="import_type" widget="radio" options="{'horizontal': true}"/>
+                        </group>
+
+                        <!-- CSV File Upload -->
+                        <group string="CSV File Upload" attrs="{'invisible': [('import_type', '!=', 'csv_file')]}">
+                            <field name="csv_file" filename="csv_filename"/>
+                            <field name="csv_filename" invisible="1"/>
+                            <div class="alert alert-info" role="alert">
+                                <strong>CSV Format Requirements:</strong>
+                                <ul>
+                                    <li>Required columns: campaign_name, adset_name, ad_name, date_start, date_stop</li>
+                                    <li>Date format: YYYY-MM-DD (e.g., 2025-06-01)</li>
+                                    <li>Use the template below for reference</li>
+                                </ul>
+                            </div>
+                        </group>
+
+                        <!-- CSV Text Input -->
+                        <group string="CSV Data" attrs="{'invisible': [('import_type', '!=', 'csv_text')]}">
+                            <field name="csv_data" widget="text" placeholder="Paste your CSV data here...&#10;&#10;campaign_name,adset_name,ad_name,spend,reach,impressions,frequency,cpm,date_start,date_stop..."/>
+                            <div class="alert alert-warning" role="alert">
+                                <strong>Tip:</strong> Copy data directly from Excel/Google Sheets and paste here
+                            </div>
+                        </group>
+
+                        <!-- Manual Entry -->
+                        <group string="Manual Entry" attrs="{'invisible': [('import_type', '!=', 'manual')]}">
+                            <group>
+                                <field name="campaign_name" required="1" attrs="{'required': [('import_type', '=', 'manual')]}"/>
+                                <field name="adset_name" required="1" attrs="{'required': [('import_type', '=', 'manual')]}"/>
+                                <field name="ad_name" required="1" attrs="{'required': [('import_type', '=', 'manual')]}"/>
+                                <field name="date_start" required="1" attrs="{'required': [('import_type', '=', 'manual')]}"/>
+                                <field name="date_stop" required="1" attrs="{'required': [('import_type', '=', 'manual')]}"/>
+                            </group>
+                            <group>
+                                <field name="spend"/>
+                                <field name="reach"/>
+                                <field name="impressions"/>
+                            </group>
+                        </group>
+
+                        <!-- Sample Data Options -->
+                        <group string="Sample Data Generation" attrs="{'invisible': [('import_type', '!=', 'sample')]}">
+                            <field name="sample_count"/>
+                            <field name="sample_category"/>
+                            <div class="alert alert-success" role="alert">
+                                <strong>Sample Data:</strong> This will create realistic test data for demonstration purposes
+                            </div>
+                        </group>
+
+                        <!-- Import Results -->
+                        <group string="Import Results" attrs="{'invisible': [('import_result', '=', False)]}">
+                            <field name="import_result" widget="text" readonly="1"/>
+                            <group>
+                                <field name="success_count" readonly="1"/>
+                                <field name="error_count" readonly="1"/>
+                            </group>
+                        </group>
+
+                    </sheet>
+                    <footer>
+                        <button string="Download Template" 
+                                name="action_download_template" 
+                                type="object" 
+                                class="btn-link"
+                                attrs="{'invisible': [('import_type', 'not in', ['csv_file', 'csv_text'])]}"/>
+                        
+                        <button string="Import" 
+                                name="action_import" 
+                                type="object" 
+                                class="btn-primary"/>
+                        
+                        <button string="View Created Campaigns" 
+                                name="action_view_created_campaigns" 
+                                type="object" 
+                                class="btn-secondary"
+                                attrs="{'invisible': [('success_count', '=', 0)]}"/>
+                        
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <!-- Campaign Import Wizard Action -->
+        <record id="action_campaign_import_wizard" model="ir.actions.act_window">
+            <field name="name">Import Campaign Data</field>
+            <field name="res_model">campaign.import.wizard</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+            <field name="binding_model_id" ref="model_campaign_analytics"/>
+            <field name="binding_view_types">list</field>
+        </record>
+
+        <!-- Add to main Campaign Analytics menu -->
+        <menuitem id="menu_campaign_import" 
+                  name="Import Data" 
+                  parent="menu_campaign_analytics_root" 
+                  action="action_campaign_import_wizard" 
+                  sequence="30"/>
+
+    </data>
+</odoo>

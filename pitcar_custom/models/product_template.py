@@ -8,6 +8,15 @@ _logger = logging.getLogger(__name__)
 class ProductTemplate(models.Model):
     _inherit = 'product.template'
 
+    # === COST SECURITY ===
+    standard_price = fields.Float(
+        'Cost',
+        company_dependent=True,
+        digits='Product Price',
+        groups="base.group_system,stock.group_stock_manager",
+        help="Cost price - visible only to administrators and stock managers"
+    )
+
     service_duration = fields.Float(
         string='Durasi Layanan (Jam)',
         help='Durasi estimasi untuk menyelesaikan layanan ini',

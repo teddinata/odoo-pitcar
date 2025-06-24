@@ -1,5 +1,5 @@
-from odoo import models, fields, api
-# from dateutil.relativedelta import relativedelta
+from odoo import models, fields, api, _
+from odoo.exceptions import AccessError
 from datetime import datetime
 import logging
 
@@ -64,7 +64,8 @@ class ProductTemplate(models.Model):
             template_lines = self.env['sale.order.template.line'].search([
                 ('product_id.product_tmpl_id', 'in', self.ids)
             ])
-            template_lines.write({'service_duration': vals['service_duration']})
+            if template_lines:
+                template_lines.write({'service_duration': vals['service_duration']})
         return res
 
     oldest_stock_entry_date = fields.Datetime(string='Oldest Stock Entry Date', compute='_compute_oldest_stock_entry_date', store=True)
@@ -107,12 +108,19 @@ class ProductTemplate(models.Model):
                 
                 # Jika di bawah minimum, create record stockout
                 if product.is_below_mandatory_level:
-                    self.env['stock.mandatory.stockout'].sudo().create({
-                        'date': fields.Date.today(),
-                        'product_tmpl_id': product.id,
-                        'available_qty': current_qty,
-                        'min_required': product.min_mandatory_stock
-                    })
+                    # Check if stockout record already exists today
+                    existing_stockout = self.env['stock.mandatory.stockout'].search([
+                        ('date', '=', fields.Date.today()),
+                        ('product_tmpl_id', '=', product.id)
+                    ], limit=1)
+                    
+                    if not existing_stockout:
+                        self.env['stock.mandatory.stockout'].sudo().create({
+                            'date': fields.Date.today(),
+                            'product_tmpl_id': product.id,
+                            'available_qty': current_qty,
+                            'min_required': product.min_mandatory_stock
+                        })
             else:
                 product.is_below_mandatory_level = False
 

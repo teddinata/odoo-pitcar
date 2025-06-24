@@ -67,36 +67,6 @@
         </field>
     </record>
 
-    <!-- === COST SECURITY VIEWS === -->
-    <!-- Hide Cost dari Form View -->
-    <record id="product_template_form_cost_security" model="ir.ui.view">
-        <field name="name">product.template.form.cost.security</field>
-        <field name="model">product.template</field>
-        <field name="inherit_id" ref="product.product_template_only_form_view"/>
-        <field name="priority">998</field>
-        <field name="arch" type="xml">
-            <xpath expr="//field[@name='standard_price']" position="attributes">
-                <attribute name="groups">base.group_system,stock.group_stock_manager</attribute>
-            </xpath>
-            <xpath expr="//group[@name='group_standard_price']" position="attributes">
-                <attribute name="groups">base.group_system,stock.group_stock_manager</attribute>
-            </xpath>
-        </field>
-    </record>
-
-    <!-- Hide Cost dari Tree View -->
-    <record id="product_template_tree_cost_security" model="ir.ui.view">
-        <field name="name">product.template.tree.cost.security</field>
-        <field name="model">product.template</field>
-        <field name="inherit_id" ref="product.product_template_tree_view"/>
-        <field name="priority">998</field>
-        <field name="arch" type="xml">
-            <xpath expr="//field[@name='standard_price']" position="attributes">
-                <attribute name="groups">base.group_system,stock.group_stock_manager</attribute>
-            </xpath>
-        </field>
-    </record>
-
     <!-- Tree view -->
     <record id="product_template_tree_view_complete" model="ir.ui.view">
         <field name="name">product.template.tree.complete</field>
@@ -199,47 +169,6 @@
         </field>
     </record>
 
-    <record id="view_stock_mandatory_stockout_form" model="ir.ui.view">
-        <field name="name">stock.mandatory.stockout.form</field>
-        <field name="model">stock.mandatory.stockout</field>
-        <field name="arch" type="xml">
-            <form string="Stockout Wajib Ready">
-                <sheet>
-                    <group>
-                        <group>
-                            <field name="date"/>
-                            <field name="product_tmpl_id"/>
-                            <field name="sale_order_id"/>
-                        </group>
-                        <group>
-                            <field name="available_qty"/>
-                            <field name="min_required"/>
-                            <field name="shortage_qty"/>
-                        </group>
-                    </group>
-                </sheet>
-            </form>
-        </field>
-    </record>
-
-    <record id="view_stock_mandatory_stockout_search" model="ir.ui.view">
-        <field name="name">stock.mandatory.stockout.search</field>
-        <field name="model">stock.mandatory.stockout</field>
-        <field name="arch" type="xml">
-            <search string="Search Stockout">
-                <field name="product_tmpl_id"/>
-                <field name="date"/>
-                <filter string="Today" name="today" domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
-                <filter string="This Week" name="this_week" domain="[('date', '&gt;=', (context_today() + relativedelta(weeks=-1, day=1, weekday=0)).strftime('%Y-%m-%d')), ('date', '&lt;=', (context_today() + relativedelta(weekday=6)).strftime('%Y-%m-%d'))]"/>
-                <filter string="This Month" name="this_month" domain="[('date', '&gt;=', (context_today() + relativedelta(day=1)).strftime('%Y-%m-%d')), ('date', '&lt;=', (context_today() + relativedelta(months=1, day=1, days=-1)).strftime('%Y-%m-%d'))]"/>
-                <group expand="0" string="Group By">
-                    <filter string="Product" name="group_product" context="{'group_by': 'product_tmpl_id'}"/>
-                    <filter string="Date" name="group_date" context="{'group_by': 'date'}"/>
-                </group>
-            </search>
-        </field>
-    </record>
-
     <!-- Actions -->
     <record id="action_update_all_inventory_ages" model="ir.actions.server">
         <field name="name">Update All Inventory Ages</field>
@@ -266,16 +195,16 @@
     <record id="action_stock_mandatory_stockout" model="ir.actions.act_window">
         <field name="name">Stockout Wajib Ready</field>
         <field name="res_model">stock.mandatory.stockout</field>
-        <field name="view_mode">tree,form</field>
+        <field name="view_mode">tree</field>
         <field name="context">{
             'search_default_today': 1,
+            'create': 0,
+            'edit': 0,
+            'delete': 0
         }</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Belum ada stockout untuk part wajib ready
-            </p>
-            <p>
-                System akan otomatis membuat record stockout ketika stock part wajib ready berada di bawah minimum level.
             </p>
         </field>
     </record>

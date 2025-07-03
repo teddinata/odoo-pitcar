@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- SOP Master Views -->
+    
+    <!-- Tree View for SOP Master with Export/Import -->
+    <record id="view_pitcar_sop_tree" model="ir.ui.view">
+        <field name="name">pitcar.sop.tree</field>
+        <field name="model">pitcar.sop</field>
+        <field name="arch" type="xml">
+            <tree string="SOP Master" 
+                  decoration-success="state=='done'" 
+                  decoration-warning="state=='in_progress'" 
+                  decoration-muted="state=='cancelled'"
+                  export_xlsx="1" 
+                  import="1"
+                  create="1"
+                  edit="1"
+                  delete="1">
+                <field name="sequence" widget="handle"/>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="department"/>
+                <field name="role"/>
+                <field name="sampling_type"/>
+                <field name="activity_type"/>
+                <field name="state" widget="badge" 
+                       decoration-success="state=='done'"
+                       decoration-warning="state=='in_progress'"
+                       decoration-danger="state=='cancelled'"/>
+                <field name="review_state" widget="badge"/>
+                <field name="socialization_state" widget="badge"/>
+                <field name="date_start"/>
+                <field name="date_end"/>
+                <field name="document_url" widget="url"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View for SOP Master -->
+    <record id="view_pitcar_sop_form" model="ir.ui.view">
+        <field name="name">pitcar.sop.form</field>
+        <field name="model">pitcar.sop</field>
+        <field name="arch" type="xml">
+            <form string="SOP Master">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="SOP Name"/>
+                        </h1>
+                        <h2>
+                            <field name="code" placeholder="SOP Code"/>
+                        </h2>
+                    </div>
+                    
+                    <group>
+                        <group name="basic_info" string="Basic Information">
+                            <field name="department"/>
+                            <field name="role"/>
+                            <field name="sampling_type"/>
+                            <field name="activity_type"/>
+                            <field name="sequence"/>
+                            <field name="active"/>
+                        </group>
+                        <group name="status_info" string="Status Information">
+                            <field name="state"/>
+                            <field name="review_state"/>
+                            <field name="revision_state"/>
+                            <field name="socialization_state"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group name="dates" string="Dates">
+                            <field name="date_start"/>
+                            <field name="date_end"/>
+                            <field name="socialization_target_date"/>
+                            <field name="socialization_date"/>
+                        </group>
+                        <group name="document" string="Document">
+                            <field name="document_url" widget="url" placeholder="https://drive.google.com/..."/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page name="description" string="Description">
+                            <field name="description" placeholder="Detailed description of the SOP..."/>
+                        </page>
+                        <page name="notes" string="Notes">
+                            <field name="notes" placeholder="Additional notes and comments..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View for SOP Master -->
+    <record id="view_pitcar_sop_search" model="ir.ui.view">
+        <field name="name">pitcar.sop.search</field>
+        <field name="model">pitcar.sop</field>
+        <field name="arch" type="xml">
+            <search string="Search SOPs">
+                <field name="name" string="SOP" filter_domain="['|', '|', ('name', 'ilike', self), ('code', 'ilike', self), ('description', 'ilike', self)]"/>
+                <field name="department"/>
+                <field name="role"/>
+                <field name="state"/>
+                
+                <filter name="active" string="Active" domain="[('active', '=', True)]"/>
+                <filter name="archived" string="Archived" domain="[('active', '=', False)]"/>
+                <separator/>
+                <filter name="draft" string="Draft" domain="[('state', '=', 'draft')]"/>
+                <filter name="in_progress" string="In Progress" domain="[('state', '=', 'in_progress')]"/>
+                <filter name="done" string="Done" domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <filter name="service_dept" string="Service" domain="[('department', '=', 'service')]"/>
+                <filter name="cs_dept" string="Customer Service" domain="[('department', '=', 'cs')]"/>
+                <filter name="sparepart_dept" string="Spare Part" domain="[('department', '=', 'sparepart')]"/>
+                
+                <group expand="0" string="Group By">
+                    <filter name="group_department" string="Department" context="{'group_by': 'department'}"/>
+                    <filter name="group_role" string="Role" context="{'group_by': 'role'}"/>
+                    <filter name="group_state" string="State" context="{'group_by': 'state'}"/>
+                    <filter name="group_sampling_type" string="Sampling Type" context="{'group_by': 'sampling_type'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action for SOP Master -->
+    <record id="action_pitcar_sop" model="ir.actions.act_window">
+        <field name="name">SOP Master</field>
+        <field name="res_model">pitcar.sop</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first SOP!
+            </p>
+            <p>
+                Standard Operating Procedures help maintain consistency and quality in your operations.
+                Click the "Create" button to add a new SOP.
+            </p>
+        </field>
+    </record>
+
+    <!-- SOP Sampling Views -->
+    
+    <!-- Tree View for SOP Sampling with Export/Import -->
+    <record id="view_pitcar_sop_sampling_tree" model="ir.ui.view">
+        <field name="name">pitcar.sop.sampling.tree</field>
+        <field name="model">pitcar.sop.sampling</field>
+        <field name="arch" type="xml">
+            <tree string="SOP Sampling" 
+                  decoration-success="result=='pass'" 
+                  decoration-danger="result=='fail'" 
+                  decoration-info="state=='in_progress'"
+                  export_xlsx="1" 
+                  import="1"
+                  create="1"
+                  edit="1"
+                  delete="1">
+                <field name="name"/>
+                <field name="date"/>
+                <field name="month"/>
+                <field name="sale_order_id"/>
+                <field name="sop_id"/>
+                <field name="sampling_type" widget="badge"/>
+                <field name="controller_id"/>
+                <field name="state" widget="badge" 
+                       decoration-success="state=='done'"
+                       decoration-warning="state=='in_progress'"/>
+                <field name="result" widget="badge"
+                       decoration-success="result=='pass'"
+                       decoration-danger="result=='fail'"/>
+                <field name="validation_date"/>
+                <field name="notes"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View for SOP Sampling -->
+    <record id="view_pitcar_sop_sampling_form" model="ir.ui.view">
+        <field name="name">pitcar.sop.sampling.form</field>
+        <field name="model">pitcar.sop.sampling</field>
+        <field name="arch" type="xml">
+            <form string="SOP Sampling">
+                <sheet>
+                    <!-- Hidden fields for attrs -->
+                    <field name="sop_id" invisible="1"/>
+                    
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group name="basic_info" string="Basic Information">
+                            <field name="date"/>
+                            <field name="month" readonly="1"/>
+                            <field name="sale_order_id"/>
+                            <field name="sop_id"/>
+                            <field name="sampling_type"/>
+                            <field name="controller_id"/>
+                        </group>
+                        <group name="result_info" string="Result Information">
+                            <field name="state"/>
+                            <field name="result"/>
+                            <field name="validation_date" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Employee fields based on SOP role -->
+                    <group name="employees" string="Assigned Employees">
+                        <field name="sa_id" widget="many2many_tags"/>
+                        <field name="mechanic_id" widget="many2many_tags"/>
+                        <field name="valet_id" widget="many2many_tags"/>
+                        <field name="part_support_id" widget="many2many_tags"/>
+                        <field name="cs_id" widget="many2many_tags"/>
+                        <field name="lead_mechanic_id" widget="many2many_tags"/>
+                        <field name="lead_cs_id" widget="many2many_tags"/>
+                        <field name="head_workshop_id" widget="many2many_tags"/>
+                    </group>
+                    
+                    <group name="notes" string="Notes">
+                        <field name="notes" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View for SOP Sampling -->
+    <record id="view_pitcar_sop_sampling_search" model="ir.ui.view">
+        <field name="name">pitcar.sop.sampling.search</field>
+        <field name="model">pitcar.sop.sampling</field>
+        <field name="arch" type="xml">
+            <search string="Search SOP Sampling">
+                <field name="name" string="Sampling" 
+                       filter_domain="['|', '|', ('name', 'ilike', self), ('sale_order_id.name', 'ilike', self), ('sop_id.name', 'ilike', self)]"/>
+                <field name="month"/>
+                <field name="sop_id"/>
+                <field name="sale_order_id"/>
+                <field name="controller_id"/>
+                <field name="state"/>
+                <field name="result"/>
+                
+                <filter name="draft" string="Draft" domain="[('state', '=', 'draft')]"/>
+                <filter name="in_progress" string="In Progress" domain="[('state', '=', 'in_progress')]"/>
+                <filter name="done" string="Done" domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <filter name="pass" string="Pass" domain="[('result', '=', 'pass')]"/>
+                <filter name="fail" string="Fail" domain="[('result', '=', 'fail')]"/>
+                <separator/>
+                <filter name="kaizen" string="Kaizen Team" domain="[('sampling_type', '=', 'kaizen')]"/>
+                <filter name="lead" string="Leader" domain="[('sampling_type', '=', 'lead')]"/>
+                <separator/>
+                <filter name="this_month" string="This Month" 
+                        domain="[('date', '&gt;=', (context_today() - relativedelta(day=1)).strftime('%Y-%m-%d')), ('date', '&lt;', (context_today() + relativedelta(months=1, day=1)).strftime('%Y-%m-%d'))]"/>
+                
+                <group expand="0" string="Group By">
+                    <filter name="group_month" string="Month" context="{'group_by': 'month'}"/>
+                    <filter name="group_sop" string="SOP" context="{'group_by': 'sop_id'}"/>
+                    <filter name="group_state" string="State" context="{'group_by': 'state'}"/>
+                    <filter name="group_result" string="Result" context="{'group_by': 'result'}"/>
+                    <filter name="group_sampling_type" string="Sampling Type" context="{'group_by': 'sampling_type'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action for SOP Sampling -->
+    <record id="action_pitcar_sop_sampling" model="ir.actions.act_window">
+        <field name="name">SOP Sampling</field>
+        <field name="res_model">pitcar.sop.sampling</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'search_default_this_month': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No SOP sampling records found!
+            </p>
+            <p>
+                SOP sampling records track the evaluation of standard operating procedures.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Items - Following your pattern -->
+    
+    <!-- Main SOP Menu under KPI Monitoring (following your existing structure) -->
+    <menuitem id="menu_sop_root"
+              name="SOP Management"
+              parent="menu_kpi_monitoring_root"
+              sequence="4"/>
+
+    <!-- SOP Master Menu -->
+    <menuitem id="menu_pitcar_sop_master"
+              name="SOP Master"
+              parent="menu_sop_root"
+              action="action_pitcar_sop"
+              sequence="1"/>
+
+    <!-- SOP Sampling Menu -->
+    <menuitem id="menu_pitcar_sop_sampling"
+              name="SOP Sampling"
+              parent="menu_sop_root"
+              action="action_pitcar_sop_sampling"
+              sequence="2"/>
+
+    <!-- Alternatively, if you want it under Sales menu like your other menus -->
+    <menuitem id="menu_sop_master_sales"
+              name="SOP Master"
+              parent="sale.menu_sale_config"
+              action="action_pitcar_sop"
+              sequence="50"/>
+
+    <menuitem id="menu_sop_sampling_sales"
+              name="SOP Sampling"
+              parent="sale.menu_sale_config"
+              action="action_pitcar_sop_sampling"
+              sequence="51"/>
+
+</odoo>

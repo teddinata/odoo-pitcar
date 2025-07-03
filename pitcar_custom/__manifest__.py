@@ -110,6 +110,7 @@
         'views/work_location_views.xml',
         'views/hr_attendance_views.xml',
         'views/utm_menu.xml',
+        'views/sop_views.xml',
         'views/notification_views.xml',
         'views/booking_metrics_views.xml',
         'views/campaign_analytics_views.xml',

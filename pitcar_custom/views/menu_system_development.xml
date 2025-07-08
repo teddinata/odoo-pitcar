@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- SYSTEM DEVELOPMENT MENU - INTEGRATION WITH EXISTING STRUCTURE -->
+    
+    <!-- Main System Development Menu (after KPI Monitoring) -->
+    <menuitem id="menu_system_development_root"
+              name="System Development"
+              sequence="25"/>
+
+    <!-- Operations Management Submenu -->
+    <menuitem id="menu_operations_management"
+              name="Operations Management"
+              parent="menu_system_development_root"
+              sequence="10"/>
+
+    <!-- SOP Management under Operations -->
+    <menuitem id="menu_sop_management"
+              name="SOP Management"
+              parent="menu_operations_management"
+              sequence="10"/>
+
+    <!-- SOP Master Menu -->
+    <menuitem id="menu_pitcar_sop_master"
+              name="SOP Master"
+              parent="menu_sop_management"
+              action="action_pitcar_sop"
+              sequence="1"/>
+
+    <!-- SOP Sampling Menu -->
+    <menuitem id="menu_pitcar_sop_sampling"
+              name="SOP Sampling"
+              parent="menu_sop_management"
+              action="action_pitcar_sop_sampling"
+              sequence="2"/>
+
+    <!-- Process Documentation Submenu (Ready for future modules) -->
+    <menuitem id="menu_process_documentation"
+              name="Process Documentation"
+              parent="menu_system_development_root"
+              sequence="20"/>
+
+    <!-- Quality Assurance Submenu (Ready for future modules) -->
+    <menuitem id="menu_quality_assurance"
+              name="Quality Assurance"
+              parent="menu_system_development_root"
+              sequence="30"/>
+
+    <!-- Business Process Submenu (Ready for future modules) -->
+    <menuitem id="menu_business_process"
+              name="Business Process"
+              parent="menu_system_development_root"
+              sequence="40"/>
+
+    <!-- System Configuration Submenu (Ready for future modules) -->
+    <menuitem id="menu_system_configuration"
+              name="System Configuration"
+              parent="menu_system_development_root"
+              sequence="90"/>
+
+    <!-- INTEGRATION WITH EXISTING SALES MENU (Following your pattern) -->
+    
+    <!-- SOP Management under Sales Configuration (like your other modules) -->
+    <menuitem id="menu_sop_sales_config"
+              name="SOP Management"
+              parent="sale.menu_sale_config"
+              sequence="32"/>
+
+    <menuitem id="menu_sop_master_sales"
+              name="SOP Master"
+              parent="menu_sop_sales_config"
+              action="action_pitcar_sop"
+              sequence="1"/>
+
+    <menuitem id="menu_sop_sampling_sales"
+              name="SOP Sampling"
+              parent="menu_sop_sales_config"
+              action="action_pitcar_sop_sampling"
+              sequence="2"/>
+
+</odoo>

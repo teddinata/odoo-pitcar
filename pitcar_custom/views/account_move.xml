@@ -82,6 +82,7 @@
                     <field name="vendor_id"/>
                     <field name="customer_phone" readonly="1" string="Customer Phone"/>
                     <field name="customer_source" readonly="1" string="Customer Source"/>
+                    <field name="is_loyal_customer" readonly="1" string="Loyal Customer"/>
                 </xpath>
             </field>
         </record>
@@ -110,7 +111,6 @@
             <field name="model">account.move.line</field>
             <field name="inherit_id" ref="account.view_move_line_tree"/>
             <field name="arch" type="xml">
-                <!-- Tambah kolom vendor, customer phone dan source setelah partner di Journal Items list -->
                 <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="vendor_id" optional="hide" string="Vendor"/>
                     <field name="customer_phone" optional="show" string="Customer Phone"/>
@@ -118,6 +118,8 @@
                         decoration-info="customer_source in ('loyal', 'referral')"
                         decoration-warning="customer_source in ('fb_ads', 'ig_ads', 'tiktok_ads')"
                         decoration-success="customer_source in ('google_maps', 'web_organic')"/>
+                    <field name="is_loyal_customer" optional="show" string="Loyal Customer" 
+                        widget="boolean" decoration-success="is_loyal_customer == True"/>
                 </xpath>
             </field>
         </record>

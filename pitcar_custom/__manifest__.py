@@ -116,6 +116,7 @@
         'views/campaign_analytics_views.xml',
         'wizard/campaign_import_wizard_views.xml',
         'views/menu.xml',
+        'views/menu_system_development.xml',
     ],
     'installable': True,
     'application': True,

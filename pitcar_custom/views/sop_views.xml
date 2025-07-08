@@ -286,39 +286,4 @@
         </field>
     </record>
 
-    <!-- Menu Items - Following your pattern -->
-    
-    <!-- Main SOP Menu under KPI Monitoring (following your existing structure) -->
-    <menuitem id="menu_sop_root"
-              name="SOP Management"
-              parent="menu_kpi_monitoring_root"
-              sequence="4"/>
-
-    <!-- SOP Master Menu -->
-    <menuitem id="menu_pitcar_sop_master"
-              name="SOP Master"
-              parent="menu_sop_root"
-              action="action_pitcar_sop"
-              sequence="1"/>
-
-    <!-- SOP Sampling Menu -->
-    <menuitem id="menu_pitcar_sop_sampling"
-              name="SOP Sampling"
-              parent="menu_sop_root"
-              action="action_pitcar_sop_sampling"
-              sequence="2"/>
-
-    <!-- Alternatively, if you want it under Sales menu like your other menus -->
-    <menuitem id="menu_sop_master_sales"
-              name="SOP Master"
-              parent="sale.menu_sale_config"
-              action="action_pitcar_sop"
-              sequence="50"/>
-
-    <menuitem id="menu_sop_sampling_sales"
-              name="SOP Sampling"
-              parent="sale.menu_sale_config"
-              action="action_pitcar_sop_sampling"
-              sequence="51"/>
-
 </odoo>

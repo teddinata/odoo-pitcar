@@ -233,7 +233,7 @@ class AccountMoveLine(models.Model):
     store=True,
     help="Customer source from sale order"
     )
-    
+
     is_loyal_customer = fields.Boolean(
         string='Loyal Customer',
         compute='_compute_customer_info',
@@ -243,44 +243,49 @@ class AccountMoveLine(models.Model):
 
     @api.depends('move_id.invoice_origin_sale_id', 'partner_id', 'move_id.partner_id')
     def _compute_customer_info(self):
+        # Kumpulkan semua partner_id yang relevan
+        partner_ids = set()
         for line in self:
-            # Reset default values
+            partner = (line.move_id.invoice_origin_sale_id.partner_id or
+                    line.partner_id or
+                    line.move_id.partner_id)
+            if partner:
+                partner_ids.add(partner.id)
+
+        # Hitung transaction_count untuk semua partner sekaligus
+        transaction_counts = {
+            partner_id: self.env['account.move'].search_count([
+                ('partner_id', '=', partner_id),
+                ('move_type', 'in', ('out_invoice', 'out_refund')),
+                ('state', '=', 'posted')
+            ]) for partner_id in partner_ids
+        }
+
+        for line in self:
             line.customer_phone = False
             line.customer_source = False
             line.is_loyal_customer = False
 
             partner = False
-            # Prioritas 1: Ambil dari sale order jika ada
             if line.move_id.invoice_origin_sale_id:
                 sale_order = line.move_id.invoice_origin_sale_id
                 if sale_order.partner_id:
                     line.customer_phone = sale_order.partner_id.phone or sale_order.partner_id.mobile
                     line.customer_source = sale_order.customer_sumber_info
                     partner = sale_order.partner_id
-            # Prioritas 2: Ambil dari partner di journal item
             elif line.partner_id:
                 line.customer_phone = line.partner_id.phone or line.partner_id.mobile
                 if line.partner_id.sumber_info_id:
-                    line.customer_source = line.partner_id.sumber_info_id[0].sumber if line.partner_id.sumber_info_id else False
-                partner = line.partner_id
-            # Prioritas 3: Ambil dari partner di move header
+                    line.customer_source = line.partner_id.sumber_info_id[0].sumber
+                    partner = line.partner_id
             elif line.move_id.partner_id:
                 line.customer_phone = line.move_id.partner_id.phone or line.move_id.partner_id.mobile
                 if line.move_id.partner_id.sumber_info_id:
-                    line.customer_source = line.move_id.partner_id.sumber_info_id[0].sumber if line.move_id.partner_id.sumber_info_id else False
-                partner = line.move_id.partner_id
+                    line.customer_source = line.move_id.partner_id.sumber_info_id[0].sumber
+                    partner = line.move_id.partner_id
 
-            # Cek apakah pelanggan loyal (lebih dari 1 transaksi)
             if partner:
-                # Hitung jumlah transaksi (sale order atau invoice) untuk partner ini
-                transaction_count = self.env['account.move'].search_count([
-                    ('partner_id', '=', partner.id),
-                    ('move_type', 'in', ('out_invoice', 'out_refund')),
-                    ('state', '=', 'posted')
-                ])
-                line.is_loyal_customer = transaction_count > 1
-
-                # Jika pelanggan loyal dan customer_source belum diisi, set ke 'loyal'
+                line.is_loyal_customer = transaction_counts.get(partner.id, 0) > 1
                 if line.is_loyal_customer and not line.customer_source:
                     line.customer_source = 'loyal'
 

@@ -1,8 +1,3 @@
-# models/pitcar_sop.py
-# =====================================
-# COMPLETE SOP MODEL WITH SOFT MIGRATION
-# =====================================
-
 from odoo import models, fields, api
 from odoo.exceptions import ValidationError
 
@@ -20,50 +15,7 @@ class PitcarSOP(models.Model):
     active = fields.Boolean('Active', default=True)
     notes = fields.Text('Catatan', tracking=True)
     
-    # ===== SOFT MIGRATION FIELDS =====
-    # OLD DEPARTMENT - Keep for backward compatibility
-    department_old = fields.Selection([
-        ('service', 'Service'),
-        ('sparepart', 'Spare Part'),
-        ('cs', 'Customer Service')
-    ], string='Department (Legacy)', tracking=True, 
-       help="Legacy department field - will be deprecated")
-    
-    # NEW DEPARTMENT - The future structure
-    department_new = fields.Selection([
-        ('mekanik', 'Mekanik'),
-        ('support', 'Support')
-    ], string='Department (New)', tracking=True,
-       help="New department structure")
-    
-    # COMPUTED DEPARTMENT - Active field that handles both
-    department = fields.Selection([
-        ('service', 'Service'),
-        ('sparepart', 'Spare Part'),
-        ('cs', 'Customer Service'),
-        ('mekanik', 'Mekanik'),
-        ('support', 'Support')
-    ], string='Department', required=True, tracking=True,
-       compute='_compute_department', store=True, readonly=False)
-    
-    # Migration control flags
-    is_migrated = fields.Boolean('Is Migrated', default=False, 
-                                help="True if record has been migrated to new structure")
-    migration_date = fields.Datetime('Migration Date', readonly=True)
-    
-    # ===== ROLE FIELD (Updated for new structure) =====
-    role = fields.Selection([
-        ('sa', 'Service Advisor'),
-        ('mechanic', 'Mechanic'),
-        ('lead_mechanic', 'Lead Mechanic'),
-        ('valet', 'Valet Parking'),
-        ('part_support', 'Part Support'),
-        ('cs', 'Customer Service'),
-        ('lead_cs', 'Lead Customer Service'),
-        ('head_workshop', 'Kepala Bengkel')
-    ], string='Role', required=True, tracking=True)
-
-    # Other existing fields...
+    # New fields for tracking dates and statuses
     activity_type = fields.Selection([
         ('pembuatan', 'Pembuatan'),
         ('revisi', 'Revisi'),
@@ -105,9 +57,31 @@ class PitcarSOP(models.Model):
     ], string='Status Sosialisasi', default='not_started', tracking=True)
     
     socialization_date = fields.Date('Tanggal Sosialisasi', tracking=True)
+
+     # Target waktu sosialisasi - field baru yang diminta
     socialization_target_date = fields.Date('Target Waktu Sosialisasi', tracking=True, 
                                            help="Tanggal target kapan SOP harus sudah disosialisasikan")
-    
+
+
+    # Classification fields
+    department = fields.Selection([
+        ('service', 'Service'),
+        ('sparepart', 'Spare Part'),
+        ('cs', 'Customer Service')
+    ], string='Department', required=True, tracking=True)
+
+    role = fields.Selection([
+        ('sa', 'Service Advisor'),
+        ('mechanic', 'Mechanic'),
+        ('lead_mechanic', 'Lead Mechanic'),  # New role
+        ('valet', 'Valet Parking'),
+        ('part_support', 'Part Support'),
+        ('cs', 'Customer Service'),
+        ('lead_cs', 'Lead Customer Service'),  # New role
+        ('head_workshop', 'Kepala Bengkel')  # New role
+    ], string='Role', required=True, tracking=True)
+
+    # Sampling type
     sampling_type = fields.Selection([
         ('kaizen', 'Kaizen Team'),
         ('lead', 'Leader'),
@@ -129,29 +103,6 @@ class PitcarSOP(models.Model):
         store=True
     )
 
-    # Computed fields for statistics
-    days_to_complete = fields.Integer('Hari Penyelesaian', compute='_compute_days_to_complete', store=True)
-    socialization_status = fields.Selection([
-        ('on_time', 'Tepat Waktu'),
-        ('delayed', 'Terlambat'),
-        ('not_due', 'Belum Jatuh Tempo')
-    ], string='Status Target Sosialisasi', compute='_compute_socialization_status', store=True)
-    
-    # ===== COMPUTED DEPARTMENT LOGIC =====
-    @api.depends('department_new', 'department_old', 'is_migrated')
-    def _compute_department(self):
-        """Compute department based on migration status"""
-        for record in self:
-            if record.is_migrated and record.department_new:
-                # Use new department if migrated
-                record.department = record.department_new
-            elif record.department_old:
-                # Use old department if not migrated
-                record.department = record.department_old
-            else:
-                # Default fallback
-                record.department = record.department_old or 'support'
-
     @api.depends('role')
     def _compute_is_sa(self):
         """Compute is_sa based on role for backward compatibility"""
@@ -164,6 +115,50 @@ class PitcarSOP(models.Model):
         for record in self:
             record.is_lead_role = record.role in ['lead_mechanic', 'lead_cs', 'head_workshop']
 
+    @api.onchange('department')
+    def _onchange_department(self):
+        """Update available roles based on department"""
+        if self.department == 'service':
+            return {'domain': {'role': [('role', 'in', ['sa', 'mechanic', 'lead_mechanic', 'head_workshop'])]}}
+        elif self.department == 'cs':
+            return {'domain': {'role': [('role', 'in', ['valet', 'part_support', 'cs', 'lead_cs'])]}}
+        elif self.department == 'sparepart':
+            return {'domain': {'role': [('role', 'in', ['part_support'])]}}
+
+    @api.constrains('department', 'role')
+    def _check_role_department_compatibility(self):
+        """Ensure role is compatible with department"""
+        valid_combinations = {
+            'service': ['sa', 'mechanic', 'lead_mechanic', 'head_workshop'],
+            'cs': ['valet', 'part_support', 'cs', 'lead_cs'],
+            'sparepart': ['part_support']
+        }
+        for record in self:
+            if record.role not in valid_combinations.get(record.department, []):
+                raise ValidationError(
+                    f'Role {dict(record._fields["role"].selection).get(record.role)} '
+                    f'tidak valid untuk department {dict(record._fields["department"].selection).get(record.department)}'
+                )
+
+    @api.constrains('code')
+    def _check_unique_code(self):
+        """Ensure SOP code is unique"""
+        for record in self:
+            existing = self.search([
+                ('code', '=', record.code),
+                ('id', '!=', record.id)
+            ])
+            if existing:
+                raise ValidationError('Kode SOP harus unik!')
+    
+    # Computed fields for statistics (optional enhancement)
+    days_to_complete = fields.Integer('Hari Penyelesaian', compute='_compute_days_to_complete', store=True)
+    socialization_status = fields.Selection([
+        ('on_time', 'Tepat Waktu'),
+        ('delayed', 'Terlambat'),
+        ('not_due', 'Belum Jatuh Tempo')
+    ], string='Status Target Sosialisasi', compute='_compute_socialization_status', store=True)
+    
     @api.depends('date_start', 'date_end', 'state')
     def _compute_days_to_complete(self):
         """Compute days taken to complete the SOP"""
@@ -192,132 +187,17 @@ class PitcarSOP(models.Model):
             else:
                 record.socialization_status = 'not_due'
     
-    # ===== MIGRATION METHODS =====
-    def migrate_to_new_structure(self):
-        """Migrate individual record to new department structure"""
+    @api.depends('date_start', 'date_end', 'state')
+    def _compute_days_to_complete(self):
+        """Compute days taken to complete the SOP"""
         for record in self:
-            if record.is_migrated:
-                continue
-                
-            # Determine new department based on role (SA masuk support)
-            if record.role in ['mechanic', 'lead_mechanic', 'head_workshop']:
-                new_dept = 'mekanik'
-            else:  # SA, valet, part_support, cs, lead_cs
-                new_dept = 'support'
-            
-            # Update fields
-            record.write({
-                'department_new': new_dept,
-                'is_migrated': True,
-                'migration_date': fields.Datetime.now()
-            })
-            
-            # Log migration
-            record.message_post(
-                body=f"Migrated from {record.department_old} to {new_dept}",
-                subject="Department Migration"
-            )
-    
-    def bulk_migrate_department(self):
-        """Bulk migrate all records"""
-        unmigrated = self.search([('is_migrated', '=', False)])
-        
-        for record in unmigrated:
-            record.migrate_to_new_structure()
-        
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'message': f'Successfully migrated {len(unmigrated)} records',
-                'type': 'success'
-            }
-        }
-    
-    def rollback_migration(self):
-        """Rollback migration for this record"""
-        for record in self:
-            if record.is_migrated:
-                record.write({
-                    'department_new': False,
-                    'is_migrated': False,
-                    'migration_date': False
-                })
-                
-                record.message_post(
-                    body=f"Migration rolled back to {record.department_old}",
-                    subject="Migration Rollback"
-                )
-    
-    def get_migration_status(self):
-        """Get migration status summary"""
-        total_records = self.search_count([])
-        migrated_records = self.search_count([('is_migrated', '=', True)])
-        
-        return {
-            'total': total_records,
-            'migrated': migrated_records,
-            'pending': total_records - migrated_records,
-            'progress': (migrated_records / total_records * 100) if total_records > 0 else 0
-        }
-    
-    # ===== UPDATED CONSTRAINTS =====
-    def _get_valid_role_combinations(self):
-        """Get valid role combinations for both old and new structure"""
-        return {
-            # Old structure
-            'service': ['sa', 'mechanic', 'lead_mechanic', 'head_workshop'],
-            'cs': ['valet', 'part_support', 'cs', 'lead_cs'],
-            'sparepart': ['part_support'],
-            
-            # New structure
-            'mekanik': ['mechanic', 'lead_mechanic', 'head_workshop'],
-            'support': ['sa', 'valet', 'part_support', 'cs', 'lead_cs']
-        }
-    
-    @api.constrains('department', 'role')
-    def _check_role_department_compatibility(self):
-        """Ensure role is compatible with department (both old and new)"""
-        valid_combinations = self._get_valid_role_combinations()
-        
-        for record in self:
-            current_dept = record.department
-            valid_roles = valid_combinations.get(current_dept, [])
-            
-            if record.role not in valid_roles:
-                dept_label = dict(record._fields['department'].selection).get(current_dept)
-                role_label = dict(record._fields['role'].selection).get(record.role)
-                
-                raise ValidationError(
-                    f'Role {role_label} tidak valid untuk department {dept_label}.\n'
-                    f'Valid roles: {[dict(record._fields["role"].selection).get(r) for r in valid_roles]}'
-                )
+            if record.date_start and record.date_end and record.state == 'done':
+                delta = record.date_end - record.date_start
+                record.days_to_complete = delta.days
+            else:
+                record.days_to_complete = 0
 
-    @api.constrains('code')
-    def _check_unique_code(self):
-        """Ensure SOP code is unique"""
-        for record in self:
-            existing = self.search([
-                ('code', '=', record.code),
-                ('id', '!=', record.id)
-            ])
-            if existing:
-                raise ValidationError('Kode SOP harus unik!')
-
-    @api.onchange('department')
-    def _onchange_department(self):
-        """Update available roles based on department"""
-        if self.department:
-            valid_combinations = self._get_valid_role_combinations()
-            valid_roles = valid_combinations.get(self.department, [])
-            
-            return {
-                'domain': {
-                    'role': [('role', 'in', valid_roles)]
-                }
-            }
-
-    # ===== STATE CHANGE METHODS =====
+    # New methods for state changes
     def action_start_sop(self):
         """Start SOP development process"""
         self.write({
@@ -373,7 +253,6 @@ class PitcarSOP(models.Model):
         self.write({
             'socialization_state': 'done'
         })
-
 
 class PitcarSOPSampling(models.Model):
     _name = 'pitcar.sop.sampling'
@@ -566,108 +445,3 @@ class PitcarSOPSampling(models.Model):
                 raise ValidationError('Lead Customer Service harus diisi untuk SOP Lead CS')
             elif role == 'head_workshop' and not record.head_workshop_id:
                 raise ValidationError('Kepala Bengkel harus diisi untuk SOP Kepala Bengkel')
-
-
-# =====================================
-# MIGRATION WIZARD
-# =====================================
-
-class SOPMigrationWizard(models.TransientModel):
-    _name = 'sop.migration.wizard'
-    _description = 'SOP Department Migration Wizard'
-    
-    migration_type = fields.Selection([
-        ('preview', 'Preview Migration'),
-        ('execute', 'Execute Migration'),
-        ('rollback', 'Rollback Migration')
-    ], string='Migration Type', required=True, default='preview')
-    
-    department_filter = fields.Selection([
-        ('all', 'All Departments'),
-        ('service', 'Service Only'),
-        ('sparepart', 'Sparepart Only'),
-        ('cs', 'Customer Service Only')
-    ], string='Department Filter', default='all')
-    
-    # Preview results
-    preview_results = fields.Text('Preview Results', readonly=True)
-    
-    def action_preview_migration(self):
-        """Preview what will be migrated"""
-        domain = [('is_migrated', '=', False)]
-        
-        if self.department_filter != 'all':
-            domain.append(('department_old', '=', self.department_filter))
-        
-        records = self.env['pitcar.sop'].search(domain)
-        
-        preview = []
-        migration_summary = {'mekanik': 0, 'support': 0}
-        
-        for record in records:
-            if record.role in ['mechanic', 'lead_mechanic', 'head_workshop']:
-                new_dept = 'mekanik'
-            else:
-                new_dept = 'support'
-            
-            preview.append(f"SOP: {record.code} | {record.name} | {record.department_old} → {new_dept}")
-            migration_summary[new_dept] += 1
-        
-        result_text = f"Migration Preview:\n"
-        result_text += f"Total records to migrate: {len(records)}\n"
-        result_text += f"Will move to Mekanik: {migration_summary['mekanik']}\n"
-        result_text += f"Will move to Support: {migration_summary['support']}\n\n"
-        result_text += "Details:\n" + "\n".join(preview)
-        
-        self.preview_results = result_text
-        
-        return {
-            'type': 'ir.actions.act_window',
-            'res_model': 'sop.migration.wizard',
-            'res_id': self.id,
-            'view_mode': 'form',
-            'target': 'new',
-            'context': self.env.context
-        }
-    
-    def action_execute_migration(self):
-        """Execute the migration"""
-        domain = [('is_migrated', '=', False)]
-        
-        if self.department_filter != 'all':
-            domain.append(('department_old', '=', self.department_filter))
-        
-        records = self.env['pitcar.sop'].search(domain)
-        
-        for record in records:
-            record.migrate_to_new_structure()
-        
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'message': f'Successfully migrated {len(records)} SOP records',
-                'type': 'success'
-            }
-        }
-    
-    def action_rollback_migration(self):
-        """Rollback migration"""
-        domain = [('is_migrated', '=', True)]
-        
-        if self.department_filter != 'all':
-            domain.append(('department_old', '=', self.department_filter))
-        
-        records = self.env['pitcar.sop'].search(domain)
-        
-        for record in records:
-            record.rollback_migration()
-        
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'message': f'Successfully rolled back {len(records)} SOP records',
-                'type': 'success'
-            }
-        }

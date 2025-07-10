@@ -788,6 +788,10 @@ class SOPController(http.Controller):
             role = kw.get('role')
             department = kw.get('department')
             sampling_type = kw.get('sampling_type')
+            activity_type = kw.get('activity_type')
+            state = kw.get('state')
+            review_state = kw.get('review_state')
+            socialization_state = kw.get('socialization_state')
             search = (kw.get('search') or '').strip()
             
             # Migration-aware parameters
@@ -798,6 +802,25 @@ class SOPController(http.Controller):
             sort_by = kw.get('sort_by', 'code')
             sort_order = kw.get('sort_order', 'asc')
             
+            # Validate dan map sort_by ke field yang valid
+            valid_sort_fields = {
+                'code': 'code',
+                'name': 'name',
+                'department': 'department',
+                'role': 'role',
+                'sampling_type': 'sampling_type',
+                'date_start': 'date_start',
+                'date_end': 'date_end',
+                'socialization_date': 'socialization_date',
+                'socialization_target_date': 'socialization_target_date',
+                'state': 'state',
+                'review_state': 'review_state'
+            }
+            
+            # Pastikan sort_by valid
+            sort_field = valid_sort_fields.get(sort_by, 'code')
+            order_string = f"{sort_field} {sort_order}"
+
             # Build domain
             domain = [('active', '=', True)]
             
@@ -824,6 +847,18 @@ class SOPController(http.Controller):
             if sampling_type:
                 domain.append(('sampling_type', '=', sampling_type))
             
+            if activity_type:
+                domain.append(('activity_type', '=', activity_type))
+            
+            if state:
+                domain.append(('state', '=', state))
+            
+            if review_state:
+                domain.append(('review_state', '=', review_state))
+            
+            if socialization_state:
+                domain.append(('socialization_state', '=', socialization_state))
+            
             # Search filter
             if search:
                 for term in search.split():
@@ -831,28 +866,28 @@ class SOPController(http.Controller):
                         ('name', 'ilike', term),
                         ('code', 'ilike', term),
                         ('description', 'ilike', term),
-                        ('notes', 'ilike', term),
-                        ('document_url', 'ilike', term)
+                        ('document_url', 'ilike', term),
+                        ('notes', 'ilike', term)
                     ])
             
-            # Get data
+            # Get data with ordering
             SOP = request.env['pitcar.sop'].sudo()
             total_count = SOP.search_count(domain)
             offset = (page - 1) * limit
-            sops = SOP.search(domain, limit=limit, offset=offset, order=f'{sort_by} {sort_order}')
+            sops = SOP.search(domain, limit=limit, offset=offset, order=order_string)
 
-            # Format response
+            # Format response - LENGKAP dengan semua field
             rows = []
             for sop in sops:
                 # Determine current department (migration-aware)
-                current_dept = sop.department_new if sop.is_migrated else sop.department_old
+                current_dept = sop.department_new if sop.is_migrated else (sop.department_old or sop.department)
                 current_dept_label = self._get_department_label(current_dept)
                 
                 row = {
                     'id': sop.id,
                     'code': sop.code,
                     'name': sop.name,
-                    'description': sop.description,
+                    'description': sop.description or '',
                     
                     # Migration-aware department fields
                     'department': current_dept,
@@ -861,26 +896,57 @@ class SOPController(http.Controller):
                     'department_new': sop.department_new,
                     'is_migrated': sop.is_migrated,
                     'migration_date': sop.migration_date.strftime('%Y-%m-%d %H:%M:%S') if sop.migration_date else None,
+                    'migration_status': 'migrated' if sop.is_migrated else 'pending',
                     
                     # Role info
                     'role': sop.role,
                     'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
                     
-                    # Other fields
+                    # Sampling type
                     'sampling_type': sop.sampling_type,
                     'sampling_type_label': dict(sop._fields['sampling_type'].selection).get(sop.sampling_type, ''),
-                    'activity_type': sop.activity_type,
-                    'state': sop.state,
-                    'notes': sop.notes,
-                    'sequence': sop.sequence,
                     
-                    # Migration status indicators
-                    'migration_status': 'migrated' if sop.is_migrated else 'pending'
+                    # Activity type
+                    'activity_type': sop.activity_type,
+                    'activity_type_label': dict(sop._fields['activity_type'].selection).get(sop.activity_type, ''),
+                    
+                    # Dates
+                    'date_start': sop.date_start.strftime('%Y-%m-%d') if sop.date_start else None,
+                    'date_end': sop.date_end.strftime('%Y-%m-%d') if sop.date_end else None,
+                    
+                    # States
+                    'state': sop.state,
+                    'state_label': dict(sop._fields['state'].selection).get(sop.state, ''),
+                    'review_state': sop.review_state,
+                    'review_state_label': dict(sop._fields['review_state'].selection).get(sop.review_state, ''),
+                    'revision_state': sop.revision_state,
+                    'revision_state_label': dict(sop._fields['revision_state'].selection).get(sop.revision_state, ''),
+                    
+                    # Document
+                    'document_url': sop.document_url or '',
+                    
+                    # Socialization
+                    'socialization_state': sop.socialization_state,
+                    'socialization_state_label': dict(sop._fields['socialization_state'].selection).get(sop.socialization_state, ''),
+                    'socialization_date': sop.socialization_date.strftime('%Y-%m-%d') if sop.socialization_date else None,
+                    'socialization_target_date': sop.socialization_target_date.strftime('%Y-%m-%d') if sop.socialization_target_date else None,
+                    'socialization_status': sop.socialization_status,
+                    'socialization_status_label': dict(sop._fields['socialization_status'].selection).get(sop.socialization_status, ''),
+                    
+                    # Notes and metadata
+                    'notes': sop.notes or '',
+                    'sequence': sop.sequence,
+                    'active': sop.active,
+                    
+                    # Computed fields
+                    'is_lead_role': sop.is_lead_role,
+                    'is_sa': sop.is_sa,
+                    'days_to_complete': sop.days_to_complete or 0
                 }
                 rows.append(row)
 
             # Migration summary
-            migration_summary = self._get_migration_summary()
+            migration_summary = self._get_migration_summary() if hasattr(self, '_get_migration_summary') else {}
 
             return {
                 'status': 'success',
@@ -894,13 +960,55 @@ class SOPController(http.Controller):
                         'has_next': page * limit < total_count,
                         'has_previous': page > 1
                     },
+                    'sort': {
+                        'sort_by': sort_by,
+                        'sort_order': sort_order
+                    },
                     'filters': {
-                        'departments': self._get_department_filters(),
-                        'roles': self._get_role_filters(),
+                        'departments': self._get_department_filters() if hasattr(self, '_get_department_filters') else [
+                            {'value': 'service', 'label': 'Service'},
+                            {'value': 'sparepart', 'label': 'Spare Part'},
+                            {'value': 'cs', 'label': 'Customer Service'},
+                            {'value': 'mekanik', 'label': 'Mekanik'},
+                            {'value': 'support', 'label': 'Support'}
+                        ],
+                        'roles': [
+                            {'value': 'sa', 'label': 'Service Advisor'},
+                            {'value': 'mechanic', 'label': 'Mechanic'},
+                            {'value': 'lead_mechanic', 'label': 'Lead Mechanic'},
+                            {'value': 'valet', 'label': 'Valet Parking'},
+                            {'value': 'part_support', 'label': 'Part Support'},
+                            {'value': 'cs', 'label': 'Customer Service'},
+                            {'value': 'lead_cs', 'label': 'Lead Customer Service'},
+                            {'value': 'head_workshop', 'label': 'Kepala Bengkel'}
+                        ],
                         'sampling_types': [
                             {'value': 'kaizen', 'label': 'Kaizen Team'},
                             {'value': 'lead', 'label': 'Leader'},
                             {'value': 'both', 'label': 'Both'}
+                        ],
+                        'activity_types': [
+                            {'value': 'pembuatan', 'label': 'Pembuatan'},
+                            {'value': 'revisi', 'label': 'Revisi'},
+                            {'value': 'update', 'label': 'Update'}
+                        ],
+                        'states': [
+                            {'value': 'draft', 'label': 'Draft'},
+                            {'value': 'in_progress', 'label': 'In Progress'},
+                            {'value': 'done', 'label': 'Done'},
+                            {'value': 'cancelled', 'label': 'Cancelled'}
+                        ],
+                        'review_states': [
+                            {'value': 'waiting', 'label': 'Waiting for Review'},
+                            {'value': 'in_review', 'label': 'In Review'},
+                            {'value': 'done', 'label': 'Done'},
+                            {'value': 'rejected', 'label': 'Rejected'}
+                        ],
+                        'socialization_states': [
+                            {'value': 'not_started', 'label': 'Belum Dimulai'},
+                            {'value': 'scheduled', 'label': 'Dijadwalkan'},
+                            {'value': 'in_progress', 'label': 'Sedang Berlangsung'},
+                            {'value': 'done', 'label': 'Selesai'}
                         ]
                     },
                     'migration_summary': migration_summary
@@ -910,6 +1018,35 @@ class SOPController(http.Controller):
         except Exception as e:
             _logger.error(f"Error dalam get_sop_list: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
+    # def _get_migration_summary(self):
+    #     """Get migration summary statistics"""
+    #     try:
+    #         SOP = request.env['pitcar.sop'].sudo()
+            
+    #         total = SOP.search_count([('active', '=', True)])
+    #         migrated = SOP.search_count([('active', '=', True), ('is_migrated', '=', True)])
+    #         pending = total - migrated
+            
+    #         # Check if migration is initialized
+    #         migration_initialized = request.env['ir.config_parameter'].sudo().get_param('sop.migration.initialized', 'False')
+            
+    #         return {
+    #             'total_sops': total,
+    #             'migrated_sops': migrated,
+    #             'pending_sops': pending,
+    #             'progress_percentage': round((migrated / total * 100), 2) if total > 0 else 0,
+    #             'initialized': migration_initialized.lower() == 'true'
+    #         }
+    #     except Exception as e:
+    #         _logger.error(f"Error getting migration summary: {str(e)}")
+    #         return {
+    #             'total_sops': 0,
+    #             'migrated_sops': 0,
+    #             'pending_sops': 0,
+    #             'progress_percentage': 0,
+    #             'initialized': False
+    #         }
 
     @http.route('/web/sop/sampling/available-orders', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def get_available_orders(self, **kw):

@@ -1038,6 +1038,289 @@ class SOPController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in get_available_orders: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/sop/master/statistics', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_sop_statistics(self, **kw):
+        """Mendapatkan statistik SOP secara keseluruhan"""
+        try:
+            # Filter domain
+            domain = [('active', '=', True)]
+            
+            department = kw.get('department')
+            if department:
+                domain.append(('department', '=', department))
+            
+            SOP = request.env['pitcar.sop'].sudo()
+            
+            # Hitung total SOP
+            total_sops = SOP.search_count(domain)
+            
+            # Statistik berdasarkan state
+            stats_by_state = {}
+            for state_value, state_label in SOP._fields['state'].selection:
+                count = SOP.search_count(domain + [('state', '=', state_value)])
+                percentage = round((count / total_sops * 100), 2) if total_sops > 0 else 0
+                stats_by_state[state_value] = {
+                    'count': count,
+                    'percentage': percentage,
+                    'label': state_label
+                }
+            
+            # Statistik berdasarkan department
+            stats_by_department = {}
+            for dept_value, dept_label in SOP._fields['department'].selection:
+                count = SOP.search_count(domain + [('department', '=', dept_value)])
+                percentage = round((count / total_sops * 100), 2) if total_sops > 0 else 0
+                stats_by_department[dept_value] = {
+                    'count': count,
+                    'percentage': percentage,
+                    'label': dept_label
+                }
+            
+            # Statistik berdasarkan role
+            stats_by_role = {}
+            for role_value, role_label in SOP._fields['role'].selection:
+                count = SOP.search_count(domain + [('role', '=', role_value)])
+                percentage = round((count / total_sops * 100), 2) if total_sops > 0 else 0
+                stats_by_role[role_value] = {
+                    'count': count,
+                    'percentage': percentage,
+                    'label': role_label
+                }
+            
+            # Statistik sosialisasi
+            socialization_stats = {
+                'scheduled': SOP.search_count(domain + [('socialization_state', '=', 'scheduled')]),
+                'in_progress': SOP.search_count(domain + [('socialization_state', '=', 'in_progress')]),
+                'done': SOP.search_count(domain + [('socialization_state', '=', 'done')]),
+                'not_started': SOP.search_count(domain + [('socialization_state', '=', 'not_started')]),
+                'on_time': SOP.search_count(domain + [('socialization_status', '=', 'on_time')]),
+                'delayed': SOP.search_count(domain + [('socialization_status', '=', 'delayed')]),
+                'not_due': SOP.search_count(domain + [('socialization_status', '=', 'not_due')])
+            }
+            
+            # Statistik dokumen
+            document_stats = {
+                'with_document': SOP.search_count(domain + [('document_url', '!=', False)]),
+                'without_document': SOP.search_count(domain + ['|', ('document_url', '=', False), ('document_url', '=', '')])
+            }
+            
+            # Return semua statistik
+            return {
+                'status': 'success',
+                'data': {
+                    'total_sops': total_sops,
+                    'by_state': stats_by_state,
+                    'by_department': stats_by_department,
+                    'by_role': stats_by_role,
+                    'socialization': socialization_stats,
+                    'document': document_stats
+                }
+            }
+        
+        except Exception as e:
+            _logger.error(f"Error di get_sop_statistics: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+        
+    @http.route('/web/sop/master/socialization-schedule', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_socialization_schedule(self, **kw):
+        """Mendapatkan jadwal sosialisasi SOP"""
+        try:
+            # Filter parameters
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
+            
+            if not start_date or not end_date:
+                # Default ke rentang 30 hari
+                today = fields.Date.today()
+                start_date = today.strftime('%Y-%m-%d')
+                end_date = (today + timedelta(days=30)).strftime('%Y-%m-%d')
+            
+            # Domain untuk SOP dengan jadwal sosialisasi
+            domain = [
+                ('active', '=', True),
+                ('socialization_target_date', '>=', start_date),
+                ('socialization_target_date', '<=', end_date),
+                ('socialization_state', 'in', ['not_started', 'scheduled', 'in_progress'])
+            ]
+            
+            # Dapatkan SOPs
+            sops = request.env['pitcar.sop'].sudo().search(domain, order='socialization_target_date')
+            
+            # Format hasil
+            schedule_items = []
+            for sop in sops:
+                schedule_items.append({
+                    'id': sop.id,
+                    'code': sop.code,
+                    'name': sop.name,
+                    'department': sop.department,
+                    'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
+                    'role': sop.role,
+                    'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
+                    'socialization_state': sop.socialization_state,
+                    'socialization_state_label': dict(sop._fields['socialization_state'].selection).get(sop.socialization_state, ''),
+                    'socialization_target_date': sop.socialization_target_date.strftime('%Y-%m-%d') if sop.socialization_target_date else None,
+                    'socialization_date': sop.socialization_date.strftime('%Y-%m-%d') if sop.socialization_date else None,
+                    'document_url': sop.document_url or '',
+                    'notes': sop.notes or ''
+                })
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'items': schedule_items
+                }
+            }
+        
+        except Exception as e:
+            _logger.error(f"Error di get_socialization_schedule: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    @http.route('/web/sop/master/export', type='http', auth='user', methods=['GET'], csrf=False)
+    def export_sop_list(self, **kw):
+        """Export daftar SOP ke CSV"""
+        try:
+            # Domain dasar
+            domain = [('active', '=', True)]
+            
+            # Filter parameters
+            department = kw.get('department')
+            role = kw.get('role')
+            state = kw.get('state')
+            
+            if department:
+                domain.append(('department', '=', department))
+            
+            if role:
+                domain.append(('role', '=', role))
+            
+            if state:
+                domain.append(('state', '=', state))
+            
+            # Dapatkan SOP
+            sops = request.env['pitcar.sop'].sudo().search(domain, order='code, name')
+            
+            if not sops:
+                return Response("Tidak ada data SOP yang ditemukan", content_type='text/plain')
+            
+            # Buat file CSV
+            output = StringIO()
+            writer = csv.writer(output)
+            
+            # Header baris
+            header = [
+                'Kode', 'Nama', 'Departemen', 'Posisi', 'Aktivitas', 
+                'Tanggal Mulai', 'Tanggal Selesai', 'Status', 'Status Review',
+                'Status Revisi', 'Target Waktu Sosialisasi', 'Tanggal Sosialisasi', 
+                'Status Sosialisasi', 'Dokumen URL', 'Keterangan'
+            ]
+            writer.writerow(header)
+            
+            # Department dan role mapping
+            dept_mapping = dict(request.env['pitcar.sop']._fields['department'].selection)
+            role_mapping = dict(request.env['pitcar.sop']._fields['role'].selection)
+            state_mapping = dict(request.env['pitcar.sop']._fields['state'].selection)
+            review_mapping = dict(request.env['pitcar.sop']._fields['review_state'].selection)
+            revision_mapping = dict(request.env['pitcar.sop']._fields['revision_state'].selection)
+            socialization_mapping = dict(request.env['pitcar.sop']._fields['socialization_state'].selection)
+            
+            # Baris data
+            for sop in sops:
+                row = [
+                    sop.code,
+                    sop.name,
+                    dept_mapping.get(sop.department, ''),
+                    role_mapping.get(sop.role, ''),
+                    dict(sop._fields['activity_type'].selection).get(sop.activity_type, ''),
+                    sop.date_start.strftime('%Y-%m-%d') if sop.date_start else '',
+                    sop.date_end.strftime('%Y-%m-%d') if sop.date_end else '',
+                    state_mapping.get(sop.state, ''),
+                    review_mapping.get(sop.review_state, ''),
+                    revision_mapping.get(sop.revision_state, ''),
+                    sop.socialization_target_date.strftime('%Y-%m-%d') if sop.socialization_target_date else '',
+                    sop.socialization_date.strftime('%Y-%m-%d') if sop.socialization_date else '',
+                    socialization_mapping.get(sop.socialization_state, ''),
+                    sop.document_url or '',
+                    sop.notes or ''
+                ]
+                writer.writerow(row)
+            
+            # Set file name
+            filename = f"SOP_List_{fields.Date.today().strftime('%Y%m%d')}.csv"
+            
+            # Return CSV response
+            output_str = output.getvalue()
+            output.close()
+            
+            headers = [
+                ('Content-Type', 'text/csv'),
+                ('Content-Disposition', f'attachment; filename="{filename}"'),
+                ('Content-Length', str(len(output_str)))
+            ]
+            
+            return Response(output_str, headers=headers)
+        
+        except Exception as e:
+            _logger.error(f"Error di export_sop_list: {str(e)}")
+            return Response(f"Error: {str(e)}", content_type='text/plain')
+        
+    @http.route('/web/sop/master/detail', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_sop_detail(self, **kw):
+        """Mendapatkan detail SOP berdasarkan ID"""
+        try:
+            sop_id = kw.get('id')
+            if not sop_id:
+                return {'status': 'error', 'message': 'ID SOP diperlukan'}
+            
+            sop = request.env['pitcar.sop'].sudo().browse(int(sop_id))
+            if not sop.exists():
+                return {'status': 'error', 'message': 'SOP tidak ditemukan'}
+            
+            # Format hasil untuk respons
+            result = {
+                'id': sop.id,
+                'code': sop.code,
+                'name': sop.name,
+                'description': sop.description or '',
+                'department': sop.department,
+                'department_label': dict(sop._fields['department'].selection).get(sop.department, ''),
+                'role': sop.role,
+                'role_label': dict(sop._fields['role'].selection).get(sop.role, ''),
+                'sampling_type': sop.sampling_type,
+                'sampling_type_label': dict(sop._fields['sampling_type'].selection).get(sop.sampling_type, ''),
+                'activity_type': sop.activity_type,
+                'activity_type_label': dict(sop._fields['activity_type'].selection).get(sop.activity_type, ''),
+                'date_start': sop.date_start.strftime('%Y-%m-%d') if sop.date_start else '',
+                'date_end': sop.date_end.strftime('%Y-%m-%d') if sop.date_end else '',
+                'state': sop.state,
+                'state_label': dict(sop._fields['state'].selection).get(sop.state, ''),
+                'review_state': sop.review_state,
+                'review_state_label': dict(sop._fields['review_state'].selection).get(sop.review_state, ''),
+                'revision_state': sop.revision_state,
+                'revision_state_label': dict(sop._fields['revision_state'].selection).get(sop.revision_state, ''),
+                'document_url': sop.document_url or '',
+                'socialization_state': sop.socialization_state,
+                'socialization_state_label': dict(sop._fields['socialization_state'].selection).get(sop.socialization_state, ''),
+                'socialization_date': sop.socialization_date.strftime('%Y-%m-%d') if sop.socialization_date else '',
+                'socialization_target_date': sop.socialization_target_date.strftime('%Y-%m-%d') if sop.socialization_target_date else '',
+                'socialization_status': sop.socialization_status,
+                'socialization_status_label': dict(sop._fields['socialization_status'].selection).get(sop.socialization_status, ''),
+                'notes': sop.notes or '',
+                'days_to_complete': sop.days_to_complete or 0,
+                'is_sa': sop.is_sa,
+                'is_lead_role': sop.is_lead_role,
+                'sequence': sop.sequence,
+                'active': sop.active
+            }
+            
+            return {'status': 'success', 'data': result}
+        
+        except Exception as e:
+            _logger.error(f"Error di get_sop_detail: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
 
     @http.route('/web/sop/sampling/create', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def create_sampling(self, **kw):

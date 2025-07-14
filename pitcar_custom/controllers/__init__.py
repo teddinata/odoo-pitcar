@@ -28,3 +28,4 @@ from . import booking_controller
 from . import stall_controller
 from . import product_catalog_api
 from . import campaign_api
+from . import accounting

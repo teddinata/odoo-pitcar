@@ -243,7 +243,7 @@ class PowerfulAccountingAPI(http.Controller):
     # MAIN POWERFUL ENDPOINT
     # =====================================
 
-    @http.route('/api/accounting/query', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    @http.route('/web/accounting/query', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def accounting_query(self, **kw):
         """
         POWERFUL COMPREHENSIVE ACCOUNTING QUERY ENDPOINT
@@ -752,7 +752,7 @@ class PowerfulAccountingAPI(http.Controller):
     # OPERATIONS ENDPOINT (CREATE/UPDATE/DELETE)
     # =====================================
 
-    @http.route('/api/accounting/operations', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    @http.route('/web/accounting/operations', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
     def accounting_operations(self, **kw):
         """
         POWERFUL OPERATIONS ENDPOINT
@@ -1049,7 +1049,7 @@ class PowerfulAccountingAPI(http.Controller):
     # HEALTH CHECK & UTILITY
     # =====================================
 
-    @http.route('/api/accounting/health', type='json', auth='user', methods=['GET', 'POST'], csrf=False, cors='*')
+    @http.route('/web/accounting/health', type='json', auth='user', methods=['GET', 'POST'], csrf=False, cors='*')
     def health_check(self, **kw):
         """Comprehensive health check for the API"""
         try:
@@ -1081,9 +1081,9 @@ class PowerfulAccountingAPI(http.Controller):
                         'cars': car_count
                     },
                     'api_endpoints': [
-                        '/api/accounting/query',
-                        '/api/accounting/operations',
-                        '/api/accounting/health'
+                        '/web/accounting/query',
+                        '/web/accounting/operations',
+                        '/web/accounting/health'
                     ]
                 }
             }

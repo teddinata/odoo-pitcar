@@ -3423,4 +3423,175 @@ class SaleOrder(models.Model):
                 order.customer_tags_display = ', '.join(order.customer_tags.mapped('name'))
             else:
                 order.customer_tags_display = ''
-    
+
+    is_loyal_customer = fields.Boolean(
+        string='Loyal Customer',
+        compute='_compute_customer_loyalty_info',
+        store=True,
+        help="Indicates if the customer has more than one transaction"
+    )
+
+    customer_transaction_count = fields.Integer(
+        string='Transaction Count',
+        compute='_compute_customer_loyalty_info',
+        store=True,
+        help="Total number of confirmed sale orders for this customer"
+    )
+
+    customer_level_display = fields.Char(
+        string='Level Customer',
+        compute='_compute_customer_level_display',
+        store=True,
+        help="Display customer level: Loyal or New"
+    )
+
+    @api.depends('is_loyal_customer', 'customer_transaction_count')
+    def _compute_customer_level_display(self):
+        for order in self:
+            if not order.partner_id:
+                order.customer_level_display = False
+            elif order.is_loyal_customer:
+                order.customer_level_display = f"🏆 Loyal ({order.customer_transaction_count} transactions)"
+            else:
+                order.customer_level_display = "✨ New Customer"
+
+    @api.depends('partner_id')
+    def _compute_customer_loyalty_info(self):
+        """
+        Compute customer loyalty based on transaction count
+        Customer is considered loyal if they have more than 1 confirmed sale order
+        """
+        # Kumpulkan semua partner_id yang relevan
+        partner_ids = set()
+        for order in self:
+            if order.partner_id:
+                partner_ids.add(order.partner_id.id)
+
+        # Hitung transaction_count untuk semua partner sekaligus untuk performa
+        transaction_counts = {}
+        if partner_ids:
+            transaction_counts = {
+                partner_id: self.env['sale.order'].search_count([
+                    ('partner_id', '=', partner_id),
+                    ('state', 'in', ('sale', 'done')),  # Sale orders yang sudah confirmed
+                ]) for partner_id in partner_ids
+            }
+
+        for order in self:
+            if order.partner_id:
+                count = transaction_counts.get(order.partner_id.id, 0)
+                order.customer_transaction_count = count
+                order.is_loyal_customer = count > 1
+                
+                # Auto-set customer source sebagai loyal jika belum ada dan customer loyal
+                if order.is_loyal_customer and not order.customer_sumber_info:
+                    order.customer_sumber_info = 'loyal'
+            else:
+                order.customer_transaction_count = 0
+                order.is_loyal_customer = False
+
+    # ==================== UTILITY METHODS ====================
+    def action_recompute_customer_loyalty(self):
+        """
+        Manual recompute customer loyalty untuk testing/debugging
+        Dapat dipanggil dari button atau server action
+        """
+        self.ensure_one()
+        try:
+            # Force recompute
+            self.invalidate_cache(['is_loyal_customer', 'customer_transaction_count'])
+            self._compute_customer_loyalty_info()
+            
+            # Log hasil ke chatter
+            message = f"""
+                <p><strong>Customer Loyalty Recomputed</strong></p>
+                <ul>
+                    <li>Customer: {self.partner_id.name}</li>
+                    <li>Transaction Count: {self.customer_transaction_count}</li>
+                    <li>Is Loyal: {'Yes' if self.is_loyal_customer else 'No'}</li>
+                    <li>Customer Source: {self.customer_sumber_info or 'Not Set'}</li>
+                    <li>Recomputed by: {self.env.user.name}</li>
+                </ul>
+            """
+            self.message_post(body=message, message_type='notification')
+
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Success',
+                    'message': f'Customer loyalty recomputed. Loyal: {"Yes" if self.is_loyal_customer else "No"}',
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+        except Exception as e:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Error',
+                    'message': f'Failed to recompute loyalty: {str(e)}',
+                    'type': 'danger',
+                    'sticky': True,
+                }
+            }
+
+    def action_show_customer_transactions(self):
+        """
+        Tampilkan semua transaksi customer ini
+        """
+        self.ensure_one()
+        if not self.partner_id:
+            raise UserError("No customer selected")
+        
+        return {
+            'name': f'Transactions for {self.partner_id.name}',
+            'type': 'ir.actions.act_window',
+            'res_model': 'sale.order',
+            'view_mode': 'tree,form',
+            'domain': [('partner_id', '=', self.partner_id.id)],
+            'context': {
+                'search_default_partner_id': self.partner_id.id,
+                'default_partner_id': self.partner_id.id
+            }
+        }
+
+    @api.model
+    def get_customer_loyalty_stats(self):
+        """
+        Get statistik customer loyalty untuk dashboard
+        """
+        # Total customers
+        total_customers = self.env['res.partner'].search_count([
+            ('customer_rank', '>', 0)
+        ])
+        
+        # Loyal customers (berdasarkan sale orders)
+        loyal_customers = self.env['sale.order'].read_group(
+            domain=[('is_loyal_customer', '=', True)],
+            fields=['partner_id'],
+            groupby=['partner_id']
+        )
+        loyal_count = len(loyal_customers)
+        
+        # Revenue comparison
+        loyal_revenue = sum(self.search([
+            ('is_loyal_customer', '=', True),
+            ('state', 'in', ('sale', 'done'))
+        ]).mapped('amount_total'))
+        
+        new_revenue = sum(self.search([
+            ('is_loyal_customer', '=', False),
+            ('state', 'in', ('sale', 'done'))
+        ]).mapped('amount_total'))
+        
+        return {
+            'total_customers': total_customers,
+            'loyal_customers': loyal_count,
+            'new_customers': total_customers - loyal_count,
+            'loyalty_rate': (loyal_count / total_customers * 100) if total_customers else 0,
+            'loyal_revenue': loyal_revenue,
+            'new_revenue': new_revenue,
+            'loyal_revenue_percentage': (loyal_revenue / (loyal_revenue + new_revenue) * 100) if (loyal_revenue + new_revenue) else 0
+        }

@@ -1290,5 +1290,124 @@
             </field>
         </record>
 
+        <!-- ========== CLEAN & SIMPLE LOYAL CUSTOMER VIEWS ========== -->
+        <!-- GANTI/TAMBAHKAN di bagian bawah file views XML -->
+
+        <!-- 1. Sale Order Tree - Kolom Loyal (OPTIONAL) -->
+        <record id="sale_order_tree_loyal_clean" model="ir.ui.view">
+            <field name="name">sale.order.tree.loyal.clean</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_tree"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='amount_total']" position="after">
+                    <field name="is_loyal_customer" optional="hide" string="Loyal" 
+                        widget="boolean" 
+                        decoration-success="is_loyal_customer == True"/>
+                    <field name="customer_transaction_count" optional="hide" string="Trans Count"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- 2. Quotation Tree - Kolom Loyal (OPTIONAL) -->
+        <record id="sale_quotation_tree_loyal_clean" model="ir.ui.view">
+            <field name="name">sale.quotation.tree.loyal.clean</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_quotation_tree"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='amount_total']" position="after">
+                    <field name="is_loyal_customer" optional="hide" string="Loyal" 
+                        widget="boolean" 
+                        decoration-success="is_loyal_customer == True"/>
+                    <field name="customer_transaction_count" optional="hide" string="Trans Count"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- 3. Sale Order Form - Loyalty Info yang Rapi (TANPA customer_source dan customer_tags) -->
+        <!-- SOLUSI BENAR - TANPA FIELD BARU -->
+
+        <record id="sale_order_form_loyalty_clean" model="ir.ui.view">
+            <field name="name">sale.order.form.loyalty.clean</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="customer_level_display" readonly="1" string="Level Customer"
+                        attrs="{'invisible': [('partner_id', '=', False)]}"
+                        decoration-success="is_loyal_customer == True"
+                        decoration-info="is_loyal_customer == False"/>
+                    
+                    <field name="is_loyal_customer" invisible="1"/>
+                    <field name="customer_transaction_count" invisible="1"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- 4. Search Filter - Tambah filter loyalty -->
+        <record id="sale_order_filter_loyalty_clean" model="ir.ui.view">
+            <field name="name">sale.order.filter.loyalty.clean</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+            <field name="arch" type="xml">
+                <!-- Tambah search fields -->
+                <xpath expr="//field[@name='name']" position="after">
+                    <field name="is_loyal_customer" string="Loyal Customer"/>
+                </xpath>
+                
+                <!-- Tambah filters -->
+                <xpath expr="//filter[@name='my_sale_orders_filter']" position="after">
+                    <separator/>
+                    <filter string="Loyal Customers" name="loyal_customers" 
+                        domain="[('is_loyal_customer', '=', True)]"/>
+                    <filter string="New Customers" name="new_customers" 
+                        domain="[('is_loyal_customer', '=', False)]"/>
+                </xpath>
+                
+                <!-- Tambah group by -->
+                <xpath expr="//filter[@name='salesperson']" position="after">
+                    <filter string="Customer Loyalty" name="group_loyalty" 
+                        context="{'group_by': 'is_loyal_customer'}"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- 5. Action untuk Loyal Customer Analysis -->
+        <record id="action_loyal_analysis_clean" model="ir.actions.act_window">
+            <field name="name">Loyal Customer Analysis</field>
+            <field name="res_model">sale.order</field>
+            <field name="view_mode">tree,pivot,graph,form</field>
+            <field name="domain">[('is_loyal_customer', '=', True)]</field>
+            <field name="context">{'search_default_loyal_customers': 1}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Loyal Customer Analysis
+                </p>
+                <p>
+                    Analyze sales from loyal customers (customers with more than one transaction).
+                </p>
+            </field>
+        </record>
+
+        <!-- 6. Menu untuk Loyal Customer Analysis -->
+        <menuitem id="menu_loyal_analysis_clean"
+                name="Loyal Customer Analysis"
+                parent="sale.sale_menu_root"
+                action="action_loyal_analysis_clean"
+                sequence="50"/>
+
+        <!-- 7. Pivot View untuk Analysis -->
+        <record id="view_loyal_pivot_clean" model="ir.ui.view">
+            <field name="name">loyal.pivot.clean</field>
+            <field name="model">sale.order</field>
+            <field name="arch" type="xml">
+                <pivot string="Loyal Customer Analysis">
+                    <field name="is_loyal_customer" type="col"/>
+                    <field name="partner_id" type="row"/>
+                    <field name="amount_total" type="measure"/>
+                    <field name="customer_transaction_count" type="measure"/>
+                </pivot>
+            </field>
+        </record>
+
     </data>
 </odoo>

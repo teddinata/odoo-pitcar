@@ -1756,6 +1756,9 @@ class TeamProjectAPI(http.Controller):
             'attachment_count': len(message.attachment_ids),
             'message_type': message.message_type,
             
+            # TAMBAHKAN INI - Flag untuk menandai message milik user saat ini
+            'is_my_message': current_employee_id and message.author_id.id == current_employee_id,
+            
             # Read status information
             'read_status': {
                 'read_count': message.read_count,

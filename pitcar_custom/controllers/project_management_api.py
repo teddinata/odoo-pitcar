@@ -1657,8 +1657,21 @@ class TeamProjectAPI(http.Controller):
             read_record = message.mark_as_read()
             
             if read_record:
-                # Get updated read status
+                # Get updated read status dengan detail
                 read_status = message.get_read_status_details()
+                
+                # PERBAIKAN: Konversi semua timestamp ke waktu Jakarta
+                if read_status:
+                    if 'read' in read_status and isinstance(read_status['read'], list):
+                        for read_item in read_status['read']:
+                            if 'read_at' in read_item and read_item['read_at']:
+                                read_item['read_at'] = self._format_message_datetime_jakarta(read_item['read_at'])
+                    
+                    if 'unread' in read_status and isinstance(read_status['unread'], list):
+                        for unread_item in read_status['unread']:
+                            if 'last_seen' in unread_item and unread_item['last_seen']:
+                                unread_item['last_seen'] = self._format_message_datetime_jakarta(unread_item['last_seen'])
+                
                 return {
                     'status': 'success',
                     'message': 'Message marked as read',
@@ -1669,12 +1682,21 @@ class TeamProjectAPI(http.Controller):
                     }
                 }
             else:
+                read_status = message.get_read_status_details()
+                
+                # PERBAIKAN: Konversi timestamp untuk response "already read"
+                if read_status:
+                    if 'read' in read_status and isinstance(read_status['read'], list):
+                        for read_item in read_status['read']:
+                            if 'read_at' in read_item and read_item['read_at']:
+                                read_item['read_at'] = self._format_message_datetime_jakarta(read_item['read_at'])
+                
                 return {
                     'status': 'success',
                     'message': 'Already marked as read',
                     'data': {
                         'message_id': message.id,
-                        'read_status': message.get_read_status_details(),
+                        'read_status': read_status,
                         'receipt_status': message.get_read_receipt_status()
                     }
                 }
@@ -1682,6 +1704,7 @@ class TeamProjectAPI(http.Controller):
         except Exception as e:
             _logger.error(f"Error marking message as read: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
 
     @http.route('/web/v2/team/messages/mark_all_read', type='json', auth='user', methods=['POST'], csrf=False)
     def mark_all_messages_read(self, **kw):
@@ -1732,14 +1755,30 @@ class TeamProjectAPI(http.Controller):
             if not message.exists():
                 return {'status': 'error', 'message': 'Message not found'}
             
+            # Get read status details
+            read_status = message.get_read_status_details()
+            
+            # PERBAIKAN: Konversi semua timestamp ke waktu Jakarta
+            if read_status:
+                if 'read' in read_status and isinstance(read_status['read'], list):
+                    for read_item in read_status['read']:
+                        if 'read_at' in read_item and read_item['read_at']:
+                            read_item['read_at'] = self._format_message_datetime_jakarta(read_item['read_at'])
+                
+                if 'unread' in read_status and isinstance(read_status['unread'], list):
+                    for unread_item in read_status['unread']:
+                        if 'last_seen' in unread_item and unread_item['last_seen']:
+                            unread_item['last_seen'] = self._format_message_datetime_jakarta(unread_item['last_seen'])
+            
             return {
                 'status': 'success',
-                'data': message.get_read_status_details()
+                'data': read_status
             }
             
         except Exception as e:
             _logger.error(f"Error getting read status: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+
 
     def _prepare_message_data(self, message, include_read_details=False):
         """Enhanced message data preparation with read status"""
@@ -1750,13 +1789,13 @@ class TeamProjectAPI(http.Controller):
             'group_id': message.group_id.id,
             'author': {'id': message.author_id.id, 'name': message.author_id.name},
             'content': message.content,
-            'date': self._format_message_datetime_jakarta(message.date),
+            'date': self._format_message_datetime_jakarta(message.date),  # ✅ Sudah benar
             'project_id': message.project_id.id if message.project_id else None,
             'is_pinned': message.is_pinned,
             'attachment_count': len(message.attachment_ids),
             'message_type': message.message_type,
             
-            # TAMBAHKAN INI - Flag untuk menandai message milik user saat ini
+            # SUDAH BENAR - Flag untuk menandai message milik user saat ini
             'is_my_message': current_employee_id and message.author_id.id == current_employee_id,
             
             # Read status information
@@ -1769,9 +1808,25 @@ class TeamProjectAPI(http.Controller):
             }
         }
         
-        # Add detailed read status if requested
+        # Add detailed read status if requested - PERBAIKAN DI SINI
         if include_read_details:
-            message_data['read_details'] = message.get_read_status_details()
+            read_details = message.get_read_status_details()
+            
+            # Konversi semua timestamp ke waktu Jakarta
+            if read_details:
+                # Konversi timestamp di 'read' list
+                if 'read' in read_details and isinstance(read_details['read'], list):
+                    for read_item in read_details['read']:
+                        if 'read_at' in read_item and read_item['read_at']:
+                            read_item['read_at'] = self._format_message_datetime_jakarta(read_item['read_at'])
+                
+                # Konversi timestamp di 'unread' list jika ada
+                if 'unread' in read_details and isinstance(read_details['unread'], list):
+                    for unread_item in read_details['unread']:
+                        if 'last_seen' in unread_item and unread_item['last_seen']:
+                            unread_item['last_seen'] = self._format_message_datetime_jakarta(unread_item['last_seen'])
+            
+            message_data['read_details'] = read_details
         
         # Add attachments if any
         if message.attachment_ids:
@@ -1784,7 +1839,7 @@ class TeamProjectAPI(http.Controller):
                     'size': attachment.file_size,
                     'url': f'/web/content/{attachment.id}?download=true',
                     'is_image': attachment.mimetype.startswith('image/') if attachment.mimetype else False,
-                    'create_date': fields.Datetime.to_string(attachment.create_date),
+                    'create_date': self._format_message_datetime_jakarta(attachment.create_date),  # ✅ Konversi ke Jakarta
                     'create_uid': {
                         'id': attachment.create_uid.id,
                         'name': attachment.create_uid.name

@@ -3399,14 +3399,37 @@ class SaleOrder(models.Model):
         store=True
     )
 
-        # COMPUTE METHODS
+    # ========== COMPUTE METHODS ==========
+
     @api.depends('partner_id', 'partner_id.sumber_info_id')
     def _compute_customer_sumber_info(self):
+        """
+        Compute customer source - TIDAK BERUBAH meskipun customer jadi loyal
+        """
         for order in self:
             if order.partner_id and order.partner_id.sumber_info_id:
+                # Ambil dari customer sumber info yang pertama
                 order.customer_sumber_info = order.partner_id.sumber_info_id[0].sumber
             else:
                 order.customer_sumber_info = False
+    
+    @api.depends('partner_id', 'create_date')
+    def _compute_customer_transaction_sequence(self):
+        """
+        Compute urutan transaksi untuk customer ini
+        Menggunakan create_date untuk menentukan urutan
+        """
+        for order in self:
+            if order.partner_id and order.create_date:
+                # Hitung berapa sale order customer ini yang create_date-nya <= order ini
+                sequence = self.env['sale.order'].search_count([
+                    ('partner_id', '=', order.partner_id.id),
+                    ('create_date', '<=', order.create_date),
+                    ('state', 'in', ('draft', 'sent', 'sale', 'done'))  # Semua kecuali cancel
+                ])
+                order.customer_transaction_sequence = sequence
+            else:
+                order.customer_transaction_sequence = 0
 
     @api.depends('partner_id', 'partner_id.category_id')
     def _compute_customer_tags(self):
@@ -3438,6 +3461,17 @@ class SaleOrder(models.Model):
         help="Total number of confirmed sale orders for this customer"
     )
 
+    customer_level = fields.Selection([
+            ('new', 'New Customer'),
+            ('loyal', 'Loyal Customer'),
+        ], 
+        string="Customer Level",
+        compute='_compute_customer_loyalty_info',
+        store=True,
+        readonly=True,
+        help="Level customer berdasarkan jumlah transaksi"
+        )
+
     customer_level_display = fields.Char(
         string='Level Customer',
         compute='_compute_customer_level_display',
@@ -3445,35 +3479,47 @@ class SaleOrder(models.Model):
         help="Display customer level: Loyal or New"
     )
 
-    @api.depends('is_loyal_customer', 'customer_transaction_count')
+    # 3. SEQUENCE TRANSAKSI - field baru untuk efisiensi
+    customer_transaction_sequence = fields.Integer(
+        string='Transaction Sequence',
+        compute='_compute_customer_transaction_sequence',
+        store=True,
+        help="Ini adalah transaksi ke-berapa untuk customer ini"
+    )
+
+
+    @api.depends('customer_level', 'customer_transaction_count', 'customer_transaction_sequence')
     def _compute_customer_level_display(self):
+        """
+        Display customer level dengan informasi sequence
+        """
         for order in self:
             if not order.partner_id:
-                order.customer_level_display = False
-            elif order.is_loyal_customer:
-                order.customer_level_display = f"🏆 Loyal ({order.customer_transaction_count} transactions)"
+                order.customer_level_display = ''
+            elif order.customer_level == 'loyal':
+                order.customer_level_display = f"🏆 Loyal Customer (Transaksi ke-{order.customer_transaction_sequence} dari {order.customer_transaction_count})"
             else:
-                order.customer_level_display = "✨ New Customer"
+                order.customer_level_display = f"✨ New Customer (Transaksi ke-{order.customer_transaction_sequence})"
 
-    @api.depends('partner_id')
+    @api.depends('partner_id', 'customer_transaction_sequence')
     def _compute_customer_loyalty_info(self):
         """
-        Compute customer loyalty based on transaction count
-        Customer is considered loyal if they have more than 1 confirmed sale order
+        Compute customer loyalty berdasarkan jumlah transaksi
+        TIDAK MENGUBAH customer_sumber_info
         """
-        # Kumpulkan semua partner_id yang relevan
+        # Batch compute untuk performa - kumpulkan partner_ids
         partner_ids = set()
         for order in self:
             if order.partner_id:
                 partner_ids.add(order.partner_id.id)
 
-        # Hitung transaction_count untuk semua partner sekaligus untuk performa
+        # Hitung transaction_count untuk semua partner sekaligus
         transaction_counts = {}
         if partner_ids:
             transaction_counts = {
                 partner_id: self.env['sale.order'].search_count([
                     ('partner_id', '=', partner_id),
-                    ('state', 'in', ('sale', 'done')),  # Sale orders yang sudah confirmed
+                    ('state', 'in', ('sale', 'done')),  # Hanya yang confirmed
                 ]) for partner_id in partner_ids
             }
 
@@ -3483,33 +3529,53 @@ class SaleOrder(models.Model):
                 order.customer_transaction_count = count
                 order.is_loyal_customer = count > 1
                 
-                # Auto-set customer source sebagai loyal jika belum ada dan customer loyal
-                if order.is_loyal_customer and not order.customer_sumber_info:
-                    order.customer_sumber_info = 'loyal'
+                # Set customer level berdasarkan count
+                if count > 1:
+                    order.customer_level = 'loyal'
+                else:
+                    order.customer_level = 'new'
+                
+                # *** TIDAK MENGUBAH customer_sumber_info ***
+                # Ini yang dihapus dari kode sebelumnya:
+                # if order.is_loyal_customer and not order.customer_sumber_info:
+                #     order.customer_sumber_info = 'loyal'
+                
             else:
                 order.customer_transaction_count = 0
                 order.is_loyal_customer = False
+                order.customer_level = 'new'
+
 
     # ==================== UTILITY METHODS ====================
     def action_recompute_customer_loyalty(self):
         """
         Manual recompute customer loyalty untuk testing/debugging
-        Dapat dipanggil dari button atau server action
         """
         self.ensure_one()
         try:
             # Force recompute
-            self.invalidate_cache(['is_loyal_customer', 'customer_transaction_count'])
-            self._compute_customer_loyalty_info()
+            self.invalidate_cache([
+                'customer_sumber_info', 
+                'customer_level', 
+                'is_loyal_customer', 
+                'customer_transaction_count',
+                'customer_transaction_sequence'
+            ])
             
+            self._compute_customer_sumber_info()
+            self._compute_customer_transaction_sequence()
+            self._compute_customer_loyalty_info()
+
             # Log hasil ke chatter
             message = f"""
-                <p><strong>Customer Loyalty Recomputed</strong></p>
+                <p><strong>Customer Info Recomputed</strong></p>
                 <ul>
                     <li>Customer: {self.partner_id.name}</li>
+                    <li>Customer Source: {self.customer_sumber_info or 'Not Set'}</li>
+                    <li>Customer Level: {self.customer_level}</li>
+                    <li>Transaction Sequence: {self.customer_transaction_sequence}</li>
                     <li>Transaction Count: {self.customer_transaction_count}</li>
                     <li>Is Loyal: {'Yes' if self.is_loyal_customer else 'No'}</li>
-                    <li>Customer Source: {self.customer_sumber_info or 'Not Set'}</li>
                     <li>Recomputed by: {self.env.user.name}</li>
                 </ul>
             """
@@ -3520,7 +3586,7 @@ class SaleOrder(models.Model):
                 'tag': 'display_notification',
                 'params': {
                     'title': 'Success',
-                    'message': f'Customer loyalty recomputed. Loyal: {"Yes" if self.is_loyal_customer else "No"}',
+                    'message': f'Customer info recomputed. Level: {self.customer_level}, Source: {self.customer_sumber_info}',
                     'type': 'success',
                     'sticky': False,
                 }
@@ -3531,7 +3597,7 @@ class SaleOrder(models.Model):
                 'tag': 'display_notification',
                 'params': {
                     'title': 'Error',
-                    'message': f'Failed to recompute loyalty: {str(e)}',
+                    'message': f'Failed to recompute: {str(e)}',
                     'type': 'danger',
                     'sticky': True,
                 }
@@ -3539,59 +3605,299 @@ class SaleOrder(models.Model):
 
     def action_show_customer_transactions(self):
         """
-        Tampilkan semua transaksi customer ini
+        Show all transactions for this customer with transaction sequence
         """
         self.ensure_one()
         if not self.partner_id:
             raise UserError("No customer selected")
         
         return {
-            'name': f'Transactions for {self.partner_id.name}',
+            'name': f'Transaction History - {self.partner_id.name}',
             'type': 'ir.actions.act_window',
             'res_model': 'sale.order',
             'view_mode': 'tree,form',
             'domain': [('partner_id', '=', self.partner_id.id)],
             'context': {
                 'search_default_partner_id': self.partner_id.id,
-                'default_partner_id': self.partner_id.id
+                'default_partner_id': self.partner_id.id,
+                'search_default_group_transaction_sequence': 1
+            },
+            'help': f"""
+                <p class="o_view_nocontent_smiling_face">
+                    Customer Transaction History
+                </p>
+                <p>
+                    All transactions for: {self.partner_id.name}<br/>
+                    Current customer level: {self.customer_level}<br/>
+                    This is transaction #{self.customer_transaction_sequence}
+                </p>
+            """
+        }
+
+    def action_view_customer_source_detail(self):
+        """
+        View detailed customer source information (non-redundant)
+        Only accessible from detail tab
+        """
+        self.ensure_one()
+        
+        if not self.partner_id:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'No Customer',
+                    'message': 'No customer selected for this order',
+                    'type': 'warning'
+                }
+            }
+        
+        # Collect customer source info
+        source_info = []
+        
+        # From partner master data
+        if self.partner_id.sumber_info_id:
+            source_info.append(f"🎯 Master Source: {self.partner_id.sumber_info_id[0].sumber}")
+        
+        if self.partner_id.source:
+            source_info.append(f"📋 Backup Source: {self.partner_id.source.name}")
+        
+        if self.partner_id.category_id:
+            tags = ', '.join(self.partner_id.category_id.mapped('name'))
+            source_info.append(f"🏷️ Customer Tags: {tags}")
+        
+        # Current order info
+        source_info.append(f"📊 Order Source: {self.customer_sumber_info or 'Not Set'}")
+        source_info.append(f"🏆 Customer Level: {self.customer_level}")
+        source_info.append(f"📈 Transaction #{self.customer_transaction_sequence} of {self.customer_transaction_count}")
+        
+        # Additional info
+        if self.is_loyal_customer:
+            source_info.append(f"✨ Status: Loyal Customer")
+        else:
+            source_info.append(f"🆕 Status: New Customer")
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': f'Customer Source Detail - {self.partner_id.name}',
+                'message': '\n'.join(source_info),
+                'type': 'info',
+                'sticky': True,
             }
         }
 
     @api.model
-    def get_customer_loyalty_stats(self):
+    def validate_customer_data_consistency(self):
         """
-        Get statistik customer loyalty untuk dashboard
+        Validate that customer data is consistent and non-redundant
+        Safe method that won't cause errors
         """
-        # Total customers
-        total_customers = self.env['res.partner'].search_count([
-            ('customer_rank', '>', 0)
-        ])
+        issues = []
         
-        # Loyal customers (berdasarkan sale orders)
-        loyal_customers = self.env['sale.order'].read_group(
-            domain=[('is_loyal_customer', '=', True)],
-            fields=['partner_id'],
-            groupby=['partner_id']
-        )
-        loyal_count = len(loyal_customers)
-        
-        # Revenue comparison
-        loyal_revenue = sum(self.search([
-            ('is_loyal_customer', '=', True),
-            ('state', 'in', ('sale', 'done'))
-        ]).mapped('amount_total'))
-        
-        new_revenue = sum(self.search([
-            ('is_loyal_customer', '=', False),
-            ('state', 'in', ('sale', 'done'))
-        ]).mapped('amount_total'))
+        try:
+            # Check for missing transaction sequences
+            orders_without_sequence = self.search([
+                ('partner_id', '!=', False),
+                ('customer_transaction_sequence', '=', 0)
+            ])
+            
+            for order in orders_without_sequence:
+                issues.append({
+                    'type': 'missing_sequence',
+                    'order_id': order.id,
+                    'order_name': order.name,
+                    'customer': order.partner_id.name,
+                    'issue': 'Missing transaction sequence'
+                })
+            
+            # Check for inconsistent sequences
+            customers = self.env['res.partner'].search([('customer_rank', '>', 0)])
+            
+            for customer in customers:
+                customer_orders = self.search([
+                    ('partner_id', '=', customer.id),
+                    ('customer_transaction_sequence', '>', 0)
+                ], order='create_date')
+                
+                expected_sequence = 1
+                for order in customer_orders:
+                    if order.customer_transaction_sequence != expected_sequence:
+                        issues.append({
+                            'type': 'sequence_inconsistency',
+                            'order_id': order.id,
+                            'order_name': order.name,
+                            'customer': customer.name,
+                            'expected_sequence': expected_sequence,
+                            'actual_sequence': order.customer_transaction_sequence,
+                            'issue': f'Expected sequence {expected_sequence}, got {order.customer_transaction_sequence}'
+                        })
+                    expected_sequence += 1
+            
+        except Exception as e:
+            _logger.error(f"Error in validation: {e}")
+            issues.append({
+                'type': 'validation_error',
+                'issue': f'Validation error: {str(e)}'
+            })
         
         return {
-            'total_customers': total_customers,
-            'loyal_customers': loyal_count,
-            'new_customers': total_customers - loyal_count,
-            'loyalty_rate': (loyal_count / total_customers * 100) if total_customers else 0,
-            'loyal_revenue': loyal_revenue,
-            'new_revenue': new_revenue,
-            'loyal_revenue_percentage': (loyal_revenue / (loyal_revenue + new_revenue) * 100) if (loyal_revenue + new_revenue) else 0
+            'total_issues': len(issues),
+            'issues': issues,
+            'validation_passed': len(issues) == 0
         }
+
+    @api.model
+    def cleanup_redundant_customer_data(self):
+        """
+        Safe cleanup of redundant customer data
+        """
+        _logger.info("Starting safe cleanup of customer data...")
+        
+        try:
+            # Fix missing transaction sequences
+            orders_to_fix = self.search([
+                ('partner_id', '!=', False),
+                ('customer_transaction_sequence', '=', 0)
+            ])
+            
+            fixed_count = 0
+            for order in orders_to_fix:
+                try:
+                    # Recompute transaction sequence
+                    partner_orders = self.search([
+                        ('partner_id', '=', order.partner_id.id),
+                        ('create_date', '<=', order.create_date)
+                    ], order='create_date')
+                    
+                    sequence = len(partner_orders)
+                    order.customer_transaction_sequence = sequence
+                    
+                    # Recompute customer level
+                    confirmed_orders = self.search([
+                        ('partner_id', '=', order.partner_id.id),
+                        ('state', 'in', ('sale', 'done'))
+                    ])
+                    
+                    order.customer_transaction_count = len(confirmed_orders)
+                    order.is_loyal_customer = len(confirmed_orders) > 1
+                    order.customer_level = 'loyal' if len(confirmed_orders) > 1 else 'new'
+                    
+                    fixed_count += 1
+                    
+                except Exception as e:
+                    _logger.error(f"Error fixing order {order.name}: {e}")
+                    continue
+            
+            _logger.info(f"Safe cleanup completed. Fixed {fixed_count} orders.")
+            
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Cleanup Complete',
+                    'message': f'Successfully fixed {fixed_count} orders',
+                    'type': 'success',
+                    'sticky': False,
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in cleanup: {e}")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Cleanup Error',
+                    'message': f'Error during cleanup: {str(e)}',
+                    'type': 'danger',
+                    'sticky': True,
+                }
+            }
+
+    @api.model
+    def get_customer_summary_stats(self):
+        """
+        Get summary statistics for customer analysis (safe version)
+        """
+        try:
+            # Safe queries with error handling
+            total_customers = self.env['res.partner'].search_count([
+                ('customer_rank', '>', 0)
+            ])
+            
+            # Customer level distribution
+            level_stats = self.read_group(
+                domain=[('state', 'in', ('sale', 'done'))],
+                fields=['customer_level'],
+                groupby=['customer_level']
+            )
+            
+            # Transaction sequence distribution
+            sequence_stats = self.read_group(
+                domain=[
+                    ('state', 'in', ('sale', 'done')),
+                    ('customer_transaction_sequence', '>', 0)
+                ],
+                fields=['customer_transaction_sequence'],
+                groupby=['customer_transaction_sequence']
+            )
+            
+            return {
+                'total_customers': total_customers,
+                'level_statistics': level_stats or [],
+                'sequence_statistics': sequence_stats or [],
+                'total_orders': self.search_count([('state', 'in', ('sale', 'done'))]),
+                'status': 'success'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error getting customer stats: {e}")
+            return {
+                'total_customers': 0,
+                'level_statistics': [],
+                'sequence_statistics': [],
+                'total_orders': 0,
+                'status': 'error',
+                'error_message': str(e)
+            }
+
+
+    
+    # ========== PERFORMANCE OPTIMIZATION ==========
+    
+    @api.model
+    def _recompute_transaction_sequences_batch(self):
+        """
+        Batch recompute transaction sequences untuk performa
+        Bisa dijadwalkan sebagai cron job jika perlu
+        """
+        try:
+            # Ambil semua order yang perlu di-recompute
+            orders = self.search([
+                ('customer_transaction_sequence', '=', 0),
+                ('partner_id', '!=', False)
+            ])
+            
+            # Group by partner untuk efisiensi
+            partner_orders = {}
+            for order in orders:
+                if order.partner_id.id not in partner_orders:
+                    partner_orders[order.partner_id.id] = []
+                partner_orders[order.partner_id.id].append(order)
+            
+            # Process each partner's orders
+            for partner_id, partner_orders_list in partner_orders.items():
+                # Sort by create_date
+                partner_orders_list.sort(key=lambda x: x.create_date)
+                
+                # Assign sequence
+                for idx, order in enumerate(partner_orders_list, 1):
+                    order.customer_transaction_sequence = idx
+                    
+            self.env.cr.commit()
+            
+        except Exception as e:
+            _logger.error(f"Error in batch recompute: {str(e)}")
+            self.env.cr.rollback()

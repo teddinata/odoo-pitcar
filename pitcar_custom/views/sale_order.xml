@@ -1,446 +1,348 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
     <data>
-          <!-- Inherit search view untuk menambah filter today -->
-        <record id="view_sales_order_filter_inherit" model="ir.ui.view">
-            <field name="name">sale.order.list.select.inherit</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_sales_order_filter"/>
-            <field name="arch" type="xml">
-                <xpath expr="//filter[@name='my_sale_orders_filter']" position="after">
-                    <filter string="Quotation Hari Ini" name="today" domain="[('create_date', '>=', datetime.datetime.combine(context_today(), datetime.time(0,0,0))), ('create_date', '&lt;=', datetime.datetime.combine(context_today(), datetime.time(23,59,59)))]"/>
-                </xpath>
-            </field>
-        </record>
+        <!-- ========== DELETE OLD PROBLEMATIC VIEWS ========== -->
+        <delete model="ir.ui.view" search="[('name', 'ilike', 'hide.redundant.customer.source')]"/>
+        <delete model="ir.ui.view" search="[('name', 'ilike', 'customer.source.tree')]"/>
+        <delete model="ir.ui.view" search="[('name', 'ilike', 'customer.source.quotation')]"/>
 
-        <record id="view_sales_order_filter_custom" model="ir.ui.view">
-            <field name="name">sale.order.list.select.custom</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_sales_order_filter"/>
-            <field name="arch" type="xml">
-                <filter name="my_sale_orders_filter" position="after">
-                    <filter string="Reminder 3 Days - Hari ini" name="reminder_3_days" 
-                    domain="[('next_follow_up_3_days', '=', context_today())]"/>
-                    <filter string="Reminder 3 Bulan - Hari ini" name="reminder_3_months"
-                    domain="[('next_follow_up_3_months', '=', context_today())]"/>
-                    <filter string="Reminder 6 Bulan - Hari ini" name="reminder_6_months"
-                    domain="[('next_follow_up_6_months', '=', context_today())]"/>
-                </filter>
-            </field>
-        </record>
-        <!-- SALE ORDER TABLE -->
-        <record id="sale_order_tree_view_inherit" model="ir.ui.view">
-            <field name="name">sale.order.tree.inherit</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_tree"/>
-            <field name="arch" type="xml">
-                <!-- Tambahkan button sebagai field baru -->
-                <xpath expr="//tree" position="attributes">
-                    <attribute name="decoration-muted">state=='cancel'</attribute>
-                </xpath>
-                <xpath expr="//tree" position="inside">
-                    <header>
-                        <button 
-                            name="action_recompute_lead_time" 
-                            string="Recompute Lead Time"
-                            type="object"
-                            groups="base.group_system"/>
-                    </header>
-                </xpath>
-                <xpath expr="//field[@name='partner_id']" position="before">
-                    <!-- ANTREAN -->
-                    <field name="display_queue_number" optional="show" string="Nomor Antrean"/>
-                    <field name="is_booking" optional="show" string="Booking" widget="boolean_toggle"/>
-                    <field name="queue_status" optional="show" string="Status Antrean"
-                        decoration-success="queue_status == 'completed'"
-                        decoration-info="queue_status == 'in_progress'"
-                        decoration-warning="queue_status == 'waiting'"/>
-                </xpath>
-                <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="partner_car_id" optional="show"/>
-                    <field name="partner_car_odometer" optional="hide"/>
-                    <field name="generated_mechanic_team" optional="show"/>
-                    <field name="car_mechanic_id" optional="hide"/>
-                    <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
-                    <field name="service_advisor_id" widget="many2many_tags" options="{'color_field': 'color'}" string="Service Advisors" optional="hide"/>
-                    <field name="is_willing_to_feedback" optional="hide"/>
-                    <field name="no_feedback_reason" optional="hide"/>
-                    <field name="customer_rating" widget="badge" optional="hide" string="Customer Rating"
-                       decoration-danger="customer_rating in ('1', '2')"
-                       decoration-warning="customer_rating == '3'"
-                       decoration-success="customer_rating in ('4', '5')"/>
-                    <field name="customer_satisfaction" widget="badge" optional="hide" string="Customer Satisfaction"
-                       decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
-                       decoration-warning="customer_satisfaction == 'neutral'"
-                       decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
-                    <field name="customer_feedback" optional="hide"/>
-                    <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
-                    <field name="review_google" optional="hide"/>
-                    <field name="follow_instagram" optional="hide"/>
-                    <field name="complaint_action" optional="hide"/>
-                    <field name="complaint_status" optional="hide"/>
-                    <field name="is_follow_up" optional="hide"/>
-                    <field name="customer_feedback_follow_up" optional="hide"/>
-                    <field name="notif_follow_up_3_days" optional="hide"/>
-                    <field name="follow_up_evidence" optional="hide"/>
-                    <field name="no_follow_up_reason" optional="hide"/>
-                    <field name="show_complaint_action" optional="hide"/>
-                    <field name="reminder_3_months" optional="hide"/>
-                    <field name="date_follow_up_3_months" optional="hide"/>
-                    <field name="notif_follow_up_3_months" optional="hide"/>
-                    <field name="category_3_months" widget="many2many_tags" optional="hide"/>
-                    <field name="is_response_3_months" optional="hide"/>
-                    <field name="feedback_3_months" optional="hide"/>
-                    <field name="is_booking_3_months" optional="hide"/>
-                    <field name="booking_date_3_months" optional="hide"/>
-                    <field name="no_reminder_reason_3_months" optional="hide"/>
-                    <field name="reminder_6_months" optional="hide"/>
-                    <field name="date_follow_up_6_months" optional="hide"/>
-                    <field name="notif_follow_up_6_months" optional="hide"/>
-                    <field name="category_6_months" widget="many2many_tags" optional="hide"/>
-                    <field name="is_response_6_months" optional="hide"/>
-                    <field name="feedback_6_months" optional="hide"/>
-                    <field name="is_booking_6_months" optional="hide"/>
-                    <field name="booking_date_6_months" optional="hide"/>
-                    <field name="no_reminder_reason_6_months" optional="hide"/>
-                </xpath>
-                <xpath expr="//field[@name='expected_date']" position="after">
-                    <field name="date_completed" optional="show" widget="date"/>
-                    <field name="next_follow_up_3_days" optional="show" widget="date"/>
-                    <field name="next_follow_up_3_months" optional="hide" widget="date"/>
-                    <field name="next_follow_up_6_months" optional="hide" widget="date"/>
-                </xpath>
-                <xpath expr="//field[@name='company_id']" position="after">
-                    <field name="service_category" optional="hide" string="Kategori Servis"/>
-                    <field name="service_subcategory" optional="hide" string="Sub Kategori Servis"/>
-                    <!-- Waktu Masuk dan Keluar -->
-                    <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
-                    <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
-                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKB"/>
-                    <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
-                    
-                    <!-- Waktu Proses -->
-                    <field name="controller_mulai_servis" optional="hide" string="Mulai Servis"/>
-                    <field name="controller_selesai" optional="hide" string="Selesai Servis"/>
-                    
-                    <!-- Waktu Tunggu -->
-                    <field name="controller_tunggu_part1_mulai" optional="hide" string="Tunggu Part 1 Mulai"/>
-                    <field name="controller_tunggu_part1_selesai" optional="hide" string="Tunggu Part 1 Selesai"/>
-                    <field name="controller_tunggu_part2_mulai" optional="hide" string="Tunggu Part 2 Mulai"/>
-                    <field name="controller_tunggu_part2_selesai" optional="hide" string="Tunggu Part 2 Selesai"/>
-                    <field name="controller_tunggu_konfirmasi_mulai" optional="hide" string="Tunggu Konfirmasi Mulai"/>
-                    <field name="controller_tunggu_konfirmasi_selesai" optional="hide" string="Tunggu Konfirmasi Selesai"/>
-                    <field name="controller_istirahat_shift1_mulai" optional="hide" string="Istirahat Mulai"/>
-                    <field name="controller_istirahat_shift1_selesai" optional="hide" string="Istirahat Selesai"/>
-                    <field name="controller_tunggu_sublet_mulai" optional="hide" string="Tunggu Sublet Mulai"/>
-                    <field name="controller_tunggu_sublet_selesai" optional="hide" string="Tunggu Sublet Selesai"/>
-                    <field name="controller_job_stop_lain_mulai" optional="hide" string="Tunggu Job Stop Lain Mulai"/>
-                    <field name="controller_job_stop_lain_selesai" optional="hide" string="Tunggu Job Stop Lain Selesai"/>
-                    
-                    <!-- Perhitungan Lead Time -->
-                    <field name="lead_time_tunggu_penerimaan" optional="hide" widget="float_time" string="Waktu Tunggu Penerimaan"/>
-                    <field name="lead_time_penerimaan" optional="hide" widget="float_time" string="Waktu Penerimaan"/>
-                    <field name="lead_time_tunggu_servis" optional="hide" widget="float_time" string="Waktu Tunggu Servis"/>
-                    <field name="estimasi_durasi_pengerjaan" optional="hide" widget="float_time" string="Estimasi Durasi Pengerjaan"/>
-                    <field name="lead_time_tunggu_konfirmasi" optional="hide" widget="float_time" string="Waktu Tunggu Konfirmasi"/>
-                    <field name="lead_time_tunggu_part1" optional="hide" widget="float_time" string="Waktu Tunggu Part 1"/>
-                    <field name="lead_time_tunggu_part2" optional="hide" widget="float_time" string="Waktu Tunggu Part 2"/>
-                    <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
-                    <field name="lead_time_tunggu_sublet" optional="hide" widget="float_time" string="Tunggu Sublet"/>
-                    <field name="lead_time_job_stop_lain" optional="hide" widget="float_time" string="Job Stop Lain"/>
-                    <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
-                    <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
-                    <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Unit"/>
-                    
-                    <!-- Informasi Tambahan -->
-                    <field name="is_overnight" optional="hide" string="Menginap"/>
-                    <!-- <button 
-                        name="action_recompute_single_order" 
-                        string="Recompute Lead Time"
-                        type="object"
-                        groups="base.group_system"
-                        class="oe_highlight"/> -->
-                </xpath>
-            </field>
-        </record>
-
-        <!-- QUOTATION TABLE -->
-        <record id="sale_order_view_quotation_tree_inherit" model="ir.ui.view">
-            <field name="name">sale.order.view.quotation.tree.inherit</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_quotation_tree"/>
-            <field name="arch" type="xml">
-                <!-- Tambahkan button sebagai field baru -->
-                <xpath expr="//tree" position="attributes">
-                    <attribute name="decoration-muted">state=='cancel'</attribute>
-                </xpath>
-                <xpath expr="//tree" position="inside">
-                    <header>
-                        <button 
-                            name="action_recompute_lead_time" 
-                            string="Recompute Lead Time"
-                            type="object"
-                            groups="base.group_system"/>
-                    </header>
-                </xpath>
-                <xpath expr="//field[@name='partner_id']" position="before">
-                    <!-- ANTREAN -->
-                    <field name="display_queue_number" optional="show" string="Nomor Antrean"/>
-                    <field name="is_booking" optional="show" string="Booking" widget="boolean_toggle"/>
-                    <field name="queue_status" optional="show" string="Status Antrean"
-                        decoration-success="queue_status == 'completed'"
-                        decoration-info="queue_status == 'in_progress'"
-                        decoration-warning="queue_status == 'waiting'"/>
-                </xpath>
-                <xpath expr="//field[@name='partner_id']" position="after">
-                    
-                    <field name="partner_car_id" optional="show"/>
-                    <field name="partner_car_odometer" optional="hide"/>
-                    <field name="generated_mechanic_team" optional="show"/>
-                    <field name="car_mechanic_id" optional="hide"/>
-                    <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
-                    <field name="service_advisor_id" widget="many2many_tags" options="{'color_field': 'color'}" string="Service Advisors" optional="hide"/>
-                    <field name="is_willing_to_feedback" optional="hide"/>
-                    <field name="no_feedback_reason" optional="hide"/>
-                    <field name="customer_rating" widget="badge" optional="hide" string="Customer Rating"
-                       decoration-danger="customer_rating in ('1', '2')"
-                       decoration-warning="customer_rating == '3'"
-                       decoration-success="customer_rating in ('4', '5')"/>
-                    <field name="customer_satisfaction" widget="badge" optional="hide" string="Customer Satisfaction"
-                       decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
-                       decoration-warning="customer_satisfaction == 'neutral'"
-                       decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
-                    <field name="customer_feedback" optional="hide"/>
-                    <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
-                    <field name="review_google" optional="hide"/>
-                    <field name="follow_instagram" optional="hide"/>
-                    <field name="complaint_action" optional="hide"/>
-                    <field name="complaint_status" optional="hide"/>
-                    <field name="is_follow_up" optional="hide"/>
-                    <field name="customer_feedback_follow_up" optional="hide"/>
-                    <field name="notif_follow_up_3_days" optional="hide"/>
-                    <field name="follow_up_evidence" optional="hide"/>
-                    <field name="no_follow_up_reason" optional="hide"/>
-                    <field name="show_complaint_action" optional="hide"/>
-                    <field name="reminder_3_months" optional="hide"/>
-                    <field name="date_follow_up_3_months" optional="hide"/>
-                    <field name="notif_follow_up_3_months" optional="hide"/>
-                    <field name="category_3_months" widget="many2many_tags" optional="hide"/>
-                    <field name="is_response_3_months" optional="hide"/>
-                    <field name="feedback_3_months" optional="hide"/>
-                    <field name="is_booking_3_months" optional="hide"/>
-                    <field name="booking_date_3_months" optional="hide"/>
-                    <field name="no_reminder_reason_3_months" optional="hide"/>
-                    <field name="reminder_6_months" optional="hide"/>
-                    <field name="date_follow_up_6_months" optional="hide"/>
-                    <field name="notif_follow_up_6_months" optional="hide"/>
-                    <field name="category_6_months" widget="many2many_tags" optional="hide"/>
-                    <field name="is_response_6_months" optional="hide"/>
-                    <field name="feedback_6_months" optional="hide"/>
-                    <field name="is_booking_6_months" optional="hide"/>
-                    <field name="booking_date_6_months" optional="hide"/>
-                    <field name="no_reminder_reason_6_months" optional="hide"/>
-                </xpath>
-                <xpath expr="//field[@name='expected_date']" position="after">
-                    <field name="date_completed" optional="show" widget="date"/>
-                    <field name="next_follow_up_3_days" optional="show" widget="date"/>
-                    <field name="next_follow_up_3_months" optional="hide" widget="date"/>
-                    <field name="next_follow_up_6_months" optional="hide" widget="date"/>
-                </xpath>
-                <xpath expr="//field[@name='company_id']" position="after">
-                    <!-- Waktu Masuk dan Keluar -->
-                    <field name="service_category" optional="hide" string="Kategori Servis"/>
-                    <field name="service_subcategory" optional="hide" string="Sub Kategori Servis"/>
-                    <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
-                    <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
-                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKB"/>
-                    <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
-                    
-                    <!-- Waktu Proses -->
-                    <field name="controller_mulai_servis" optional="hide" string="Mulai Servis"/>
-                    <field name="controller_selesai" optional="hide" string="Selesai Servis"/>
-                    
-                    <!-- Waktu Tunggu -->
-                    <field name="controller_tunggu_part1_mulai" optional="hide" string="Tunggu Part 1 Mulai"/>
-                    <field name="controller_tunggu_part1_selesai" optional="hide" string="Tunggu Part 1 Selesai"/>
-                    <field name="controller_tunggu_part2_mulai" optional="hide" string="Tunggu Part 2 Mulai"/>
-                    <field name="controller_tunggu_part2_selesai" optional="hide" string="Tunggu Part 2 Selesai"/>
-                    <field name="controller_tunggu_konfirmasi_mulai" optional="hide" string="Tunggu Konfirmasi Mulai"/>
-                    <field name="controller_tunggu_konfirmasi_selesai" optional="hide" string="Tunggu Konfirmasi Selesai"/>
-                    <field name="controller_istirahat_shift1_mulai" optional="hide" string="Istirahat Mulai"/>
-                    <field name="controller_istirahat_shift1_selesai" optional="hide" string="Istirahat Selesai"/>
-                    <field name="controller_tunggu_sublet_mulai" optional="hide" string="Tunggu Sublet Mulai"/>
-                    <field name="controller_tunggu_sublet_selesai" optional="hide" string="Tunggu Sublet Selesai"/>
-                    <field name="controller_job_stop_lain_mulai" optional="hide" string="Tunggu Job Stop Lain Mulai"/>
-                    <field name="controller_job_stop_lain_selesai" optional="hide" string="Tunggu Job Stop Lain Selesai"/>
-                    
-                    <!-- Perhitungan Lead Time -->
-                    <field name="lead_time_tunggu_penerimaan" optional="hide" widget="float_time" string="Waktu Tunggu Penerimaan"/>
-                    <field name="lead_time_penerimaan" optional="hide" widget="float_time" string="Waktu Penerimaan"/>
-                    <field name="lead_time_tunggu_servis" optional="hide" widget="float_time" string="Waktu Tunggu Servis"/>
-                    <field name="estimasi_durasi_pengerjaan" optional="hide" widget="float_time" string="Estimasi Durasi Pengerjaan"/>
-                    <field name="lead_time_tunggu_konfirmasi" optional="hide" widget="float_time" string="Waktu Tunggu Konfirmasi"/>
-                    <field name="lead_time_tunggu_part1" optional="hide" widget="float_time" string="Waktu Tunggu Part 1"/>
-                    <field name="lead_time_tunggu_part2" optional="hide" widget="float_time" string="Waktu Tunggu Part 2"/>
-                    <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
-                    <field name="lead_time_tunggu_sublet" optional="hide" widget="float_time" string="Tunggu Sublet"/>
-                    <field name="lead_time_job_stop_lain" optional="hide" widget="float_time" string="Job Stop Lain"/>
-                    <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
-                    <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
-                    <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Unit"/>
-                    
-                    <!-- Informasi Tambahan -->
-                    <field name="is_overnight" optional="hide" string="Menginap"/>
-                    <!-- <button 
-                        name="action_recompute_single_order" 
-                        string="Recompute Lead Time"
-                        type="object"
-                        groups="base.group_system"
-                        class="oe_highlight"/> -->
-                </xpath>
-            </field>
-        </record>
-
-        <!-- Update SALE ORDER TABLE VIEW -->
-        <record id="sale_order_tree_view_inherit_additional_fields" model="ir.ui.view">
-            <field name="name">sale.order.tree.inherit.additional.fields</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale_order_tree_view_inherit"/>
-            <field name="arch" type="xml">
-                <!-- Tambahkan kolom baru setelah service_advisor_id -->
-                <xpath expr="//field[@name='service_advisor_id']" position="after">
-                    <!-- Stall -->
-                    <field name="stall_id" optional="hide" string="Service Stall"/>
-                    
-                    <!-- Car Year -->
-                    <field name="partner_car_year" optional="hide" string="Car Year"/>
-                    
-                    <!-- Customer Source -->
-                    <field name="customer_sumber_info" optional="hide" string="Customer Source"/>
-                    
-                    <!-- Customer Tags -->
-                    <field name="customer_tags_display" optional="hide" string="Customer Tags"/>
-                </xpath>
-            </field>
-        </record>
-
-        <!-- Update QUOTATION TABLE VIEW -->
-        <record id="sale_order_view_quotation_tree_inherit_additional_fields" model="ir.ui.view">
-            <field name="name">sale.order.view.quotation.tree.inherit.additional.fields</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale_order_view_quotation_tree_inherit"/>
-            <field name="arch" type="xml">
-                <!-- Tambahkan kolom baru setelah service_advisor_id -->
-                <xpath expr="//field[@name='service_advisor_id']" position="after">
-                    <!-- Stall -->
-                    <field name="stall_id" optional="hide" string="Service Stall"/>
-                    
-                    <!-- Car Year -->
-                    <field name="partner_car_year" optional="hide" string="Car Year"/>
-                    
-                    <!-- Customer Source -->
-                    <field name="customer_sumber_info" optional="hide" string="Customer Source"/>
-                    
-                    <!-- Customer Tags -->
-                    <field name="customer_tags_display" optional="hide" string="Customer Tags"/>
-                </xpath>
-            </field>
-        </record>
-
-        <!-- Update SALE ORDER FORM VIEW - Ganti inherit_id dan xpath -->
+        <!-- ========== SEARCH/FILTER VIEWS ========== -->
         
-
-        <!-- ALTERNATIF: Jika masih error, gunakan form view yang berbeda -->
-        <!-- Ganti record ini -->
-        <record id="sale_order_form_view_inherit_additional_info_alt" model="ir.ui.view">
-            <field name="name">sale.order.form.inherit.additional.info.alt</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_form"/>
-            <field name="arch" type="xml">
-                <!-- Gunakan field yang pasti ada di view standar -->
-                <xpath expr="//field[@name='partner_id']" position="after">
-                    <!-- Car Year -->
-                    <field name="partner_car_year" readonly="1" attrs="{'invisible': [('partner_car_year', '=', False)]}"/>
-                    
-                    <!-- Customer Source -->
-                    <field name="customer_sumber_info" readonly="1" attrs="{'invisible': [('customer_sumber_info', '=', False)]}"/>
-                    
-                    <!-- Customer Tags -->
-                    <field name="customer_tags" widget="many2many_tags" readonly="1" attrs="{'invisible': [('customer_tags', '=', [])]}"/>
-                </xpath>
-            </field>
-        </record>
-
-        <!-- Update FILTER untuk pencarian -->
-        <!-- Ganti record ini -->
-        <record id="sale_order_filter_inherit_additional_search" model="ir.ui.view">
-            <field name="name">sale.order.filter.inherit.additional.search</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_sales_order_filter"/>  <!-- Langsung ke view standar -->
-            <field name="arch" type="xml">
-                <!-- Tambahkan field pencarian -->
-                <xpath expr="//field[@name='name']" position="after">
-                    <field name="stall_id" string="Service Stall"/>
-                    <field name="customer_sumber_info" string="Customer Source"/>
-                    <field name="partner_car_year" string="Car Year"/>
-                </xpath>
-
-                <!-- Tambahkan group by -->
-                <xpath expr="//group" position="inside">
-                    <filter string="Service Stall" name="group_stall" context="{'group_by': 'stall_id'}"/>
-                    <filter string="Customer Source" name="group_customer_source" context="{'group_by': 'customer_sumber_info'}"/>
-                </xpath>
-            </field>
-        </record>
-
-
-        <!-- FILTER SALE ORDER -->
-        <record id="sale_order_filter_inherit" model="ir.ui.view">
-            <field name="name">sale.order.filter.inherit</field>
+        <!-- Complete Filter View -->
+        <record id="view_sales_order_filter_complete" model="ir.ui.view">
+            <field name="name">sale.order.filter.complete</field>
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_sales_order_filter"/>
             <field name="arch" type="xml">
+                <!-- Add today and reminder filters -->
+                <xpath expr="//filter[@name='my_sale_orders_filter']" position="after">
+                    <separator/>
+                    <filter string="Quotation Hari Ini" name="today" 
+                        domain="[('create_date', '>=', datetime.datetime.combine(context_today(), datetime.time(0,0,0))), ('create_date', '&lt;=', datetime.datetime.combine(context_today(), datetime.time(23,59,59)))]"/>
+                    
+                    <!-- Reminder filters -->
+                    <filter string="Reminder 3 Days - Hari ini" name="reminder_3_days" 
+                        domain="[('next_follow_up_3_days', '=', context_today())]"/>
+                    <filter string="Reminder 3 Bulan - Hari ini" name="reminder_3_months"
+                        domain="[('next_follow_up_3_months', '=', context_today())]"/>
+                    <filter string="Reminder 6 Bulan - Hari ini" name="reminder_6_months"
+                        domain="[('next_follow_up_6_months', '=', context_today())]"/>
+                    
+                    <!-- Service status filters -->
+                    <filter string="Menginap" name="overnight" domain="[('is_overnight', '=', True)]"/>
+                    <filter string="Need Part Purchase" name="need_parts" domain="[('need_part_purchase', '=', 'yes')]"/>
+                    <filter string="With Feedback" name="with_feedback" domain="[('is_willing_to_feedback', '=', 'yes')]"/>
+                </xpath>
+
+                <!-- Enhanced search fields -->
                 <xpath expr="//field[@name='name']" position="replace">
                     <field name="name" string="Order"
-                    filter_domain="['|', '|', '|', ('name', 'ilike', self), ('client_order_ref', 'ilike', self), ('partner_id', 'child_of', self), ('partner_car_id', 'ilike', self)]"/>
+                        filter_domain="['|', '|', '|', ('name', 'ilike', self), ('client_order_ref', 'ilike', self), ('partner_id', 'child_of', self), ('partner_car_id', 'ilike', self)]"/>
                     <field name="service_advisor_id" string="Service Advisor" filter_domain="[('service_advisor_id', 'ilike', self)]"/>
-                </xpath>
-                <xpath expr="//field[@name='partner_id']" position="after">
                     <field name="partner_car_id"/>
-                </xpath>
-                <xpath expr="//filter[@name='customer']" position="after">
-                    <filter string="Car Brand" name="group_car_brand" domain="[('partner_car_brand', '!=', False)]" context="{'group_by': 'partner_car_brand'}"/>
-                    <filter string="Car Brand Type" name="group_car_brand_type" domain="[('partner_car_brand_type', '!=', False)]" context="{'group_by': 'partner_car_brand_type'}"/>
-                    <filter string="Car" name="group_car" domain="[('partner_car_id', '!=', False)]" context="{'group_by': 'partner_car_id'}"/>
-                    <filter string="Car Year" name="group_car_year" domain="[('partner_car_year', '!=', False)]" context="{'group_by': 'partner_car_year'}"/>
-                    <filter string="Service Advisor" name="service_advisor" domain="[]" context="{'group_by': 'service_advisor_id'}"/>
-                </xpath>
-                <xpath expr="//field[@name='name']" position="after">
+                    <field name="stall_id" string="Service Stall"/>
+                    <field name="customer_level" string="Customer Level"/>
+                    <field name="customer_transaction_sequence" string="Transaction Number"/>
                     <field name="sa_jam_masuk"/>
                     <field name="fo_unit_keluar"/>
                     <field name="overall_lead_time"/>
                     <field name="lead_time_servis"/>
                     <field name="total_lead_time_servis"/>
-                    <filter string="Menginap" name="overnight" domain="[('is_overnight', '=', True)]"/>
                 </xpath>
+
+                <!-- Customer and car filters -->
+                <xpath expr="//filter[@name='customer']" position="after">
+                    <!-- Car related filters -->
+                    <filter string="Car Brand" name="group_car_brand" domain="[('partner_car_brand', '!=', False)]" context="{'group_by': 'partner_car_brand'}"/>
+                    <filter string="Car Brand Type" name="group_car_brand_type" domain="[('partner_car_brand_type', '!=', False)]" context="{'group_by': 'partner_car_brand_type'}"/>
+                    <filter string="Car" name="group_car" domain="[('partner_car_id', '!=', False)]" context="{'group_by': 'partner_car_id'}"/>
+                    <filter string="Car Year" name="group_car_year" domain="[('partner_car_year', '!=', False)]" context="{'group_by': 'partner_car_year'}"/>
+                    
+                    <!-- Service related filters -->
+                    <filter string="Service Advisor" name="service_advisor" domain="[]" context="{'group_by': 'service_advisor_id'}"/>
+                    
+                    <!-- Customer level filters -->
+                    <filter string="Loyal Customers" name="loyal_customers" domain="[('customer_level', '=', 'loyal')]"/>
+                    <filter string="New Customers" name="new_customers" domain="[('customer_level', '=', 'new')]"/>
+                    <filter string="First Time Customers" name="first_transaction" domain="[('customer_transaction_sequence', '=', 1)]"/>
+                    <filter string="Repeat Customers" name="repeat_customers" domain="[('customer_transaction_sequence', '>', 1)]"/>
+                    <filter string="VIP Customers (5+ Orders)" name="vip_customers" domain="[('customer_transaction_sequence', '>=', 5)]"/>
+                </xpath>
+
+                <!-- Complete group by options -->
                 <xpath expr="//group" position="inside">
+                    <!-- Service grouping -->
                     <filter string="Kategori Servis" name="group_service_category" context="{'group_by': 'service_category'}"/>
                     <filter string="Sub Kategori Servis" name="group_service_subcategory" context="{'group_by': 'service_subcategory'}"/>
+                    <filter string="Service Stall" name="group_stall" context="{'group_by': 'stall_id'}"/>
+                    
+                    <!-- Time grouping -->
                     <filter string="Jam Masuk" name="group_sa_jam_masuk" context="{'group_by': 'sa_jam_masuk'}"/>
                     <filter string="Jam Keluar" name="group_fo_unit_keluar" context="{'group_by': 'fo_unit_keluar'}"/>
                     <filter string="Overall Lead Time" name="group_overall_lead_time" context="{'group_by': 'overall_lead_time'}"/>
                     <filter string="Lead Time Servis" name="group_lead_time_servis" context="{'group_by': 'lead_time_servis'}"/>
                     <filter string="Menginap" name="group_is_overnight" context="{'group_by': 'is_overnight'}"/>
+                    
+                    <!-- Customer grouping -->
+                    <filter string="Customer Level" name="group_customer_level" context="{'group_by': 'customer_level'}"/>
+                    <filter string="Transaction Sequence" name="group_transaction_sequence" context="{'group_by': 'customer_transaction_sequence'}"/>
+                    
+                    <!-- Lead time stage grouping -->
+                    <filter string="Lead Time Stage" name="group_lead_time_stage" context="{'group_by': 'lead_time_stage'}"/>
                 </xpath>
             </field>
         </record>
 
-        <!-- FORM SALE ORDER -->
-        <record id="sale_order_form_view_inherit" model="ir.ui.view">
-            <field name="name">sale.order.form.inherit</field>
+        <!-- ========== TREE VIEWS - COMPLETE ========== -->
+
+        <!-- COMPLETE SALE ORDER TABLE -->
+        <record id="sale_order_tree_view_complete" model="ir.ui.view">
+            <field name="name">sale.order.tree.complete</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_tree"/>
+            <field name="arch" type="xml">
+                <!-- Tree attributes -->
+                <xpath expr="//tree" position="attributes">
+                    <attribute name="decoration-muted">state=='cancel'</attribute>
+                </xpath>
+                
+                <!-- Add button header -->
+                <xpath expr="//tree" position="inside">
+                    <header>
+                        <button name="action_recompute_lead_time" string="Recompute Lead Time"
+                            type="object" groups="base.group_system"/>
+                    </header>
+                </xpath>
+
+                <!-- Queue and booking info -->
+                <xpath expr="//field[@name='partner_id']" position="before">
+                    <field name="display_queue_number" optional="show" string="Nomor Antrean"/>
+                    <field name="is_booking" optional="show" string="Booking" widget="boolean_toggle"/>
+                    <field name="queue_status" optional="show" string="Status Antrean"
+                        decoration-success="queue_status == 'completed'"
+                        decoration-info="queue_status == 'in_progress'"
+                        decoration-warning="queue_status == 'waiting'"/>
+                </xpath>
+
+                <!-- Complete customer and service info -->
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <!-- Customer level and transaction info -->
+                    <field name="customer_level_display" optional="hide" string="Customer Level"/>
+                    <field name="customer_transaction_sequence" optional="hide" string="Trans #"/>
+                    
+                    <!-- Car and service info -->
+                    <field name="partner_car_id" optional="show"/>
+                    <field name="partner_car_year" optional="hide" string="Car Year"/>
+                    <field name="partner_car_odometer" optional="hide"/>
+                    <field name="generated_mechanic_team" optional="show"/>
+                    <field name="car_mechanic_id" optional="hide"/>
+                    <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                    <field name="service_advisor_id" widget="many2many_tags" options="{'color_field': 'color'}" string="Service Advisors" optional="hide"/>
+                    <field name="stall_id" optional="hide" string="Service Stall"/>
+                    
+                    <!-- Customer source info (optional/hidden by default) -->
+                    <field name="customer_sumber_info" optional="hide" string="Customer Source"/>
+                    
+                    <!-- Feedback fields -->
+                    <field name="is_willing_to_feedback" optional="hide"/>
+                    <field name="no_feedback_reason" optional="hide"/>
+                    <field name="customer_rating" widget="badge" optional="hide" string="Customer Rating"
+                       decoration-danger="customer_rating in ('1', '2')"
+                       decoration-warning="customer_rating == '3'"
+                       decoration-success="customer_rating in ('4', '5')"/>
+                    <field name="customer_satisfaction" widget="badge" optional="hide" string="Customer Satisfaction"
+                       decoration-danger="customer_satisfaction in ('very_dissatisfied', 'dissatisfied')"
+                       decoration-warning="customer_satisfaction == 'neutral'"
+                       decoration-success="customer_satisfaction in ('satisfied', 'very_satisfied')"/>
+                    <field name="customer_feedback" optional="hide"/>
+                    <field name="feedback_classification_ids" widget="many2many_tags" optional="hide"/>
+                    <field name="review_google" optional="hide"/>
+                    <field name="follow_instagram" optional="hide"/>
+                    <field name="complaint_action" optional="hide"/>
+                    <field name="complaint_status" optional="hide"/>
+                    
+                    <!-- Follow up fields -->
+                    <field name="is_follow_up" optional="hide"/>
+                    <field name="customer_feedback_follow_up" optional="hide"/>
+                    <field name="notif_follow_up_3_days" optional="hide"/>
+                    <field name="follow_up_evidence" optional="hide"/>
+                    <field name="no_follow_up_reason" optional="hide"/>
+                    <field name="show_complaint_action" optional="hide"/>
+                    
+                    <!-- 3 months reminder fields -->
+                    <field name="reminder_3_months" optional="hide"/>
+                    <field name="date_follow_up_3_months" optional="hide"/>
+                    <field name="notif_follow_up_3_months" optional="hide"/>
+                    <field name="category_3_months" widget="many2many_tags" optional="hide"/>
+                    <field name="is_response_3_months" optional="hide"/>
+                    <field name="feedback_3_months" optional="hide"/>
+                    <field name="is_booking_3_months" optional="hide"/>
+                    <field name="booking_date_3_months" optional="hide"/>
+                    <field name="no_reminder_reason_3_months" optional="hide"/>
+                    
+                    <!-- 6 months reminder fields -->
+                    <field name="reminder_6_months" optional="hide"/>
+                    <field name="date_follow_up_6_months" optional="hide"/>
+                    <field name="notif_follow_up_6_months" optional="hide"/>
+                    <field name="category_6_months" widget="many2many_tags" optional="hide"/>
+                    <field name="is_response_6_months" optional="hide"/>
+                    <field name="feedback_6_months" optional="hide"/>
+                    <field name="is_booking_6_months" optional="hide"/>
+                    <field name="booking_date_6_months" optional="hide"/>
+                    <field name="no_reminder_reason_6_months" optional="hide"/>
+                </xpath>
+
+                <!-- Date fields -->
+                <xpath expr="//field[@name='expected_date']" position="after">
+                    <field name="date_completed" optional="show" widget="date"/>
+                    <field name="next_follow_up_3_days" optional="show" widget="date"/>
+                    <field name="next_follow_up_3_months" optional="hide" widget="date"/>
+                    <field name="next_follow_up_6_months" optional="hide" widget="date"/>
+                </xpath>
+
+                <!-- Complete lead time and service fields -->
+                <xpath expr="//field[@name='company_id']" position="after">
+                    <field name="service_category" optional="hide" string="Kategori Servis"/>
+                    <field name="service_subcategory" optional="hide" string="Sub Kategori Servis"/>
+                    
+                    <!-- Complete time fields -->
+                    <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
+                    <field name="sa_mulai_penerimaan" optional="hide" string="Mulai Penerimaan"/>
+                    <field name="sa_cetak_pkb" optional="hide" string="Cetak PKB"/>
+                    <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
+                    
+                    <!-- Controller process fields -->
+                    <field name="controller_mulai_servis" optional="hide" string="Mulai Servis"/>
+                    <field name="controller_selesai" optional="hide" string="Selesai Servis"/>
+                    
+                    <!-- Wait time fields -->
+                    <field name="controller_tunggu_part1_mulai" optional="hide" string="Tunggu Part 1 Mulai"/>
+                    <field name="controller_tunggu_part1_selesai" optional="hide" string="Tunggu Part 1 Selesai"/>
+                    <field name="controller_tunggu_part2_mulai" optional="hide" string="Tunggu Part 2 Mulai"/>
+                    <field name="controller_tunggu_part2_selesai" optional="hide" string="Tunggu Part 2 Selesai"/>
+                    <field name="controller_tunggu_konfirmasi_mulai" optional="hide" string="Tunggu Konfirmasi Mulai"/>
+                    <field name="controller_tunggu_konfirmasi_selesai" optional="hide" string="Tunggu Konfirmasi Selesai"/>
+                    <field name="controller_istirahat_shift1_mulai" optional="hide" string="Istirahat Mulai"/>
+                    <field name="controller_istirahat_shift1_selesai" optional="hide" string="Istirahat Selesai"/>
+                    <field name="controller_tunggu_sublet_mulai" optional="hide" string="Tunggu Sublet Mulai"/>
+                    <field name="controller_tunggu_sublet_selesai" optional="hide" string="Tunggu Sublet Selesai"/>
+                    <field name="controller_job_stop_lain_mulai" optional="hide" string="Tunggu Job Stop Lain Mulai"/>
+                    <field name="controller_job_stop_lain_selesai" optional="hide" string="Tunggu Job Stop Lain Selesai"/>
+                    
+                    <!-- Complete lead time calculations -->
+                    <field name="lead_time_tunggu_penerimaan" optional="hide" widget="float_time" string="Waktu Tunggu Penerimaan"/>
+                    <field name="lead_time_penerimaan" optional="hide" widget="float_time" string="Waktu Penerimaan"/>
+                    <field name="lead_time_tunggu_servis" optional="hide" widget="float_time" string="Waktu Tunggu Servis"/>
+                    <field name="estimasi_durasi_pengerjaan" optional="hide" widget="float_time" string="Estimasi Durasi Pengerjaan"/>
+                    <field name="lead_time_tunggu_konfirmasi" optional="hide" widget="float_time" string="Waktu Tunggu Konfirmasi"/>
+                    <field name="lead_time_tunggu_part1" optional="hide" widget="float_time" string="Waktu Tunggu Part 1"/>
+                    <field name="lead_time_tunggu_part2" optional="hide" widget="float_time" string="Waktu Tunggu Part 2"/>
+                    <field name="lead_time_istirahat" optional="hide" widget="float_time" string="Waktu Istirahat"/>
+                    <field name="lead_time_tunggu_sublet" optional="hide" widget="float_time" string="Tunggu Sublet"/>
+                    <field name="lead_time_job_stop_lain" optional="hide" widget="float_time" string="Job Stop Lain"/>
+                    <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
+                    <field name="lead_time_servis" optional="hide" widget="float_time" string="Lead Time Servis Bersih"/>
+                    <field name="total_lead_time_servis" optional="hide" widget="float_time" string="Total Lead Time Unit"/>
+                    
+                    <!-- Additional info -->
+                    <field name="is_overnight" optional="hide" string="Menginap"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- COMPLETE QUOTATION TABLE -->
+        <record id="sale_order_view_quotation_tree_complete" model="ir.ui.view">
+            <field name="name">sale.order.view.quotation.tree.complete</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_quotation_tree"/>
+            <field name="arch" type="xml">
+                <!-- Tree attributes -->
+                <xpath expr="//tree" position="attributes">
+                    <attribute name="decoration-muted">state=='cancel'</attribute>
+                </xpath>
+                
+                <!-- Add button header -->
+                <xpath expr="//tree" position="inside">
+                    <header>
+                        <button name="action_recompute_lead_time" string="Recompute Lead Time"
+                            type="object" groups="base.group_system"/>
+                    </header>
+                </xpath>
+
+                <!-- Queue and booking info -->
+                <xpath expr="//field[@name='partner_id']" position="before">
+                    <field name="display_queue_number" optional="show" string="Nomor Antrean"/>
+                    <field name="is_booking" optional="show" string="Booking" widget="boolean_toggle"/>
+                    <field name="queue_status" optional="show" string="Status Antrean"
+                        decoration-success="queue_status == 'completed'"
+                        decoration-info="queue_status == 'in_progress'"
+                        decoration-warning="queue_status == 'waiting'"/>
+                </xpath>
+
+                <!-- Complete service and customer info (same as sales order) -->
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <!-- Customer level and transaction info -->
+                    <field name="customer_level_display" optional="hide" string="Customer Level"/>
+                    <field name="customer_transaction_sequence" optional="hide" string="Trans #"/>
+                    
+                    <!-- Car and service info -->
+                    <field name="partner_car_id" optional="show"/>
+                    <field name="partner_car_year" optional="hide" string="Car Year"/>
+                    <field name="partner_car_odometer" optional="hide"/>
+                    <field name="generated_mechanic_team" optional="show"/>
+                    <field name="car_mechanic_id_new" optional="hide" widget="many2many_tags" options="{'color_field': 'color'}"/>
+                    <field name="service_advisor_id" widget="many2many_tags" options="{'color_field': 'color'}" string="Service Advisors" optional="hide"/>
+                    <field name="stall_id" optional="hide" string="Service Stall"/>
+                    
+                    <!-- Customer source info (optional/hidden by default) -->
+                    <field name="customer_sumber_info" optional="hide" string="Customer Source"/>
+                    
+                    <!-- All feedback and reminder fields (hidden by default in quotation) -->
+                    <field name="is_willing_to_feedback" optional="hide"/>
+                    <field name="customer_rating" widget="badge" optional="hide"/>
+                    <field name="is_follow_up" optional="hide"/>
+                    <field name="reminder_3_months" optional="hide"/>
+                    <field name="reminder_6_months" optional="hide"/>
+                </xpath>
+
+                <!-- Date fields -->
+                <xpath expr="//field[@name='expected_date']" position="after">
+                    <field name="date_completed" optional="show" widget="date"/>
+                    <field name="next_follow_up_3_days" optional="show" widget="date"/>
+                    <field name="next_follow_up_3_months" optional="hide" widget="date"/>
+                    <field name="next_follow_up_6_months" optional="hide" widget="date"/>
+                </xpath>
+
+                <!-- Service categories -->
+                <xpath expr="//field[@name='company_id']" position="after">
+                    <field name="service_category" optional="hide" string="Kategori Servis"/>
+                    <field name="service_subcategory" optional="hide" string="Sub Kategori Servis"/>
+                    
+                    <!-- Key time fields -->
+                    <field name="sa_jam_masuk" optional="hide" string="Jam Masuk"/>
+                    <field name="fo_unit_keluar" optional="hide" string="Jam Keluar"/>
+                    <field name="overall_lead_time" optional="hide" widget="float_time" string="Overall Lead Time"/>
+                    <field name="is_overnight" optional="hide" string="Menginap"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- ========== COMPLETE FORM VIEW ========== -->
+
+        <!-- COMPLETE SALE ORDER FORM VIEW -->
+        <record id="sale_order_form_view_complete" model="ir.ui.view">
+            <field name="name">sale.order.form.complete</field>
             <field name="model">sale.order</field>
             <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
+                <!-- Hidden fields for functionality -->
+                <xpath expr="//form" position="inside">
+                    <field name="is_arrival_time_set" invisible="1"/>
+                    <field name="reception_state" invisible="1"/>
+                    <field name="is_penerimaan_filled" invisible="1"/>
+                </xpath>
+
+                <!-- Reception warning and info -->
                 <xpath expr="//field[@name='partner_id']" position="before">
                     <label class="mb-8" for="sa_mulai_penerimaan" string="Peringatan:" attrs="{'invisible': [('is_penerimaan_filled', '=', True)]}"/>
                     <div class="alert alert-warning" role="alert" attrs="{'invisible': [('is_penerimaan_filled', '=', True)]}">
@@ -451,10 +353,8 @@
                     <div class="alert alert-info" role="alert" attrs="{'invisible': [('is_penerimaan_filled', '=', False)]}">
                         Penerimaan telah dimulai. Anda dapat mengisi informasi customer dan detail lainnya sekarang.
                     </div>
-                </xpath>
-                <xpath expr="//field[@name='partner_id']" position="before">
-                    <field name="reception_state" invisible="1"/>
-                    <field name="is_penerimaan_filled" invisible="1"/>
+
+                    <!-- Reception start button -->
                     <label class="mb-8" for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
                     <div class="d-flex align-items-center mb-3">
                         <button name="action_record_sa_mulai_penerimaan" 
@@ -467,85 +367,72 @@
                         <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2 mb-8"/>
                     </div>
                 </xpath>
-                 <!-- Tambahkan xpath untuk service duration dari view kedua -->
-                <xpath expr="//field[@name='order_line']/tree//field[@name='price_unit']" position="before">
-                    <field name="service_duration" widget="float_time"/>
-                </xpath>
-                
-                <xpath expr="//field[@name='order_line']/form//field[@name='price_unit']" position="before">
-                    <field name="service_duration" widget="float_time"/>
-                </xpath>
 
-                <!-- <xpath expr="//field[@name='order_line']/tree/field[@name='product_id']" position="before">
-                    <field name="sequence" widget="handle"/>
-                </xpath> -->
-                <!-- Setelah tab order lines -->
-                <xpath expr="//page[@name='order_lines']" position="after">
-                    <page string="Rekomendasi Servis Berikutnya" name="recommendations">
-                        <field name="recommendation_ids">
-                            <tree editable="bottom">
-                                <field name="product_id"/>
-                                <field name="name"/>
-                                <field name="quantity"/>
-                                <field name="estimated_date"/>
-                                <field name="service_duration" widget="float_time"/>
-                                <field name="formatted_duration"/>
-                                <field name="price_unit" widget="monetary" options="{'currency_field': 'currency_id'}"/>
-                                <field name="total_amount" widget="monetary"/>
-                                <field name="currency_id" invisible="1"/>
-                            </tree>
-                        </field>
-                        <group class="oe_subtotal_footer oe_right">
-                            <field name="total_recommendation_amount" widget="monetary"/>
-                        </group>
-                    </page>
-                </xpath>
-                
-                <!-- <xpath expr="//field[@name='amount_total']" position="after">
-                    <field name="total_service_duration" widget="float_time"/>
-                </xpath> -->
-                 <xpath expr="//form" position="inside">
-                    <field name="is_arrival_time_set" invisible="1"/>
-                </xpath>
-                <!-- Modify existing fields to be readonly until penerimaan is filled -->
+                <!-- Make main fields readonly until reception is filled -->
                 <xpath expr="//field[@name='partner_id']" position="attributes">
                     <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft'), ('is_arrival_time_set', '=', False)]}</attribute>
                 </xpath>
+
                 <xpath expr="//field[@name='partner_invoice_id']" position="attributes">
-                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft'), ('is_arrival_time_set', '=', False)]}</attribute>
-                </xpath>
-                <xpath expr="//field[@name='partner_shipping_id']" position="attributes">
-                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft'), ('is_arrival_time_set', '=', False)]}</attribute>
-                </xpath>
-                <xpath expr="//field[@name='pricelist_id']" position="attributes">
-                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)], 'required': [('reception_state', '!=', 'draft'), ('is_arrival_time_set', '=', False)]}</attribute>
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
                 </xpath>
 
-                <!-- Add readonly attribute to other existing fields -->
+                <xpath expr="//field[@name='partner_shipping_id']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
+                </xpath>
+
+                <xpath expr="//field[@name='pricelist_id']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
+                </xpath>
+
                 <xpath expr="//field[@name='date_order']" position="attributes">
                     <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
                 </xpath>
+
                 <xpath expr="//field[@name='validity_date']" position="attributes">
                     <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
                 </xpath>
+
                 <xpath expr="//field[@name='payment_term_id']" position="attributes">
                     <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
                 </xpath>
-                
-                <!-- If you have custom fields added in your module, add them here -->
-                <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="partner_car_id" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
-                    <field name="partner_car_odometer" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
-                    <field name="car_mechanic_id_new" widget="many2many_tags" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
-                </xpath>
 
-                 <!-- Make the Quotation Template field readonly -->
+                <!-- Make template field readonly -->
                 <xpath expr="//field[@name='sale_order_template_id']" position="attributes">
                     <attribute name="attrs">{'readonly': [('is_penerimaan_filled', '=', False)]}</attribute>
                 </xpath>
-                <!-- Menambahkan car_arrival_time di bawah payment terms -->
+
+                <!-- Complete customer and service fields -->
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <!-- Customer transaction info -->
+                    <field name="customer_transaction_sequence" readonly="1" 
+                        string="Transaction #"
+                        attrs="{'invisible': [('partner_id', '=', False)]}"
+                        help="Ini adalah transaksi ke berapa dari customer"/>
+                    
+                    <field name="customer_level_display" readonly="1" 
+                        string="Customer Info"
+                        attrs="{'invisible': [('partner_id', '=', False)]}"
+                        decoration-success="customer_level == 'loyal'"
+                        decoration-info="customer_level == 'new'"
+                        help="Shows customer level and transaction sequence"/>
+                    
+                    <!-- Car and service info -->
+                    <field name="partner_car_id" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
+                    <field name="partner_car_odometer" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
+                    <field name="car_mechanic_id_new" widget="many2many_tags" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
+                    <field name="service_advisor_id" widget="many2many_tags" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
+                    <field name="stall_id" options="{'no_create': True}" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
+                    
+                    <!-- Hidden computed fields -->
+                    <field name="customer_level" invisible="1"/>
+                    <field name="is_loyal_customer" invisible="1"/>
+                    <field name="customer_transaction_count" invisible="1"/>
+                </xpath>
+
+                <!-- Car arrival time -->
                 <xpath expr="//field[@name='payment_term_id']" position="after">
-                     <label for="car_arrival_time" string="Jam Kedatangan Mobil"/>
+                    <label for="car_arrival_time" string="Jam Kedatangan Mobil"/>
                     <div>
                         <field name="car_arrival_time" string="Jam Kedatangan Mobil" readonly="1" width="120" placeholder="Isi di sini untuk rekam manual"/>
                         <button name="action_record_car_arrival_time" 
@@ -555,8 +442,8 @@
                                 attrs="{'invisible': [('car_arrival_time', '!=', False)]}"
                         />
                     </div>
-                </xpath>
-                <xpath expr="//field[@name='payment_term_id']" position="after">
+
+                    <!-- Complete queue info -->
                     <field name="is_booking" readonly="1"/>
                     <field name="display_queue_number" readonly="1" attrs="{'invisible': [('display_queue_number', '=', False)]}"/>
                     <field name="current_queue_number" readonly="1"/>
@@ -566,14 +453,476 @@
                         <div class="ml-4">antrian lagi</div>
                     </div>
                     <field name="queue_line_id" invisible="1"/>
-                    
                     <field name="queue_status" readonly="1" 
                         decoration-success="queue_status == 'completed'"
                         decoration-info="queue_status == 'in_progress'"
                         decoration-warning="queue_status == 'waiting'"/>
-                    
                 </xpath>
-                <xpath expr="//notebook" position="inside">
+
+                <!-- Order lines with service duration and move to recommendation -->
+                <xpath expr="//field[@name='order_line']/tree" position="attributes">
+                    <attribute name="editable">bottom</attribute>
+                </xpath>
+
+                <xpath expr="//field[@name='order_line']/tree//field[@name='price_unit']" position="before">
+                    <field name="service_duration" widget="float_time"/>
+                </xpath>
+                
+                <xpath expr="//field[@name='order_line']/form//field[@name='price_unit']" position="before">
+                    <field name="service_duration" widget="float_time"/>
+                </xpath>
+
+                <!-- Add button to move to recommendation -->
+                <xpath expr="//field[@name='order_line']/tree//field[@name='price_unit']" position="after">
+                    <button name="action_move_to_recommendation" 
+                            string="→ Rekomendasi" 
+                            type="object"
+                            class="btn btn-link"
+                            icon="fa-arrow-right"
+                            attrs="{'invisible': [('display_type', '!=', False)]}"
+                            help="Pindahkan item ini ke tab rekomendasi servis berikutnya"/>
+                </xpath>
+
+                <!-- Add button in form view of order lines -->
+                <xpath expr="//field[@name='order_line']/form//field[@name='price_unit']" position="after">
+                    <group>
+                        <div class="oe_button_box" name="button_box">
+                            <button name="action_move_to_recommendation" 
+                                    string="Pindahkan ke Rekomendasi Servis" 
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-exchange"
+                                    attrs="{'invisible': [('display_type', '!=', False)]}"
+                                    help="Pindahkan item ini ke tab rekomendasi servis berikutnya"/>
+                        </div>
+                    </group>
+                </xpath>
+
+                <!-- ========== COMPLETE NOTEBOOK TABS ========== -->
+                
+                <!-- Recommendations tab -->
+                <xpath expr="//page[@name='order_lines']" position="after">
+                    <page string="Rekomendasi Servis Berikutnya" name="recommendations">
+                        <field name="recommendation_ids">
+                            <tree editable="bottom" decoration-muted="not estimated_date">
+                                <field name="product_id"/>
+                                <field name="name"/>
+                                <field name="quantity"/>
+                                <field name="estimated_date"/>
+                                <field name="service_duration" widget="float_time"/>
+                                <field name="formatted_duration"/>
+                                <field name="price_unit" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                                <field name="total_amount" widget="monetary"/>
+                                <field name="currency_id" invisible="1"/>
+                                <field name="state" widget="badge" 
+                                    decoration-info="state == 'pending'"
+                                    decoration-success="state == 'scheduled'"
+                                    decoration-warning="state == 'overdue'"/>
+                                <field name="source_order_line" readonly="1"/>
+                            </tree>
+                        </field>
+                        <group class="oe_subtotal_footer oe_right">
+                            <field name="total_recommendation_amount" widget="monetary"/>
+                        </group>
+                    </page>
+                </xpath>
+
+                <!-- Complete Lead Time tab -->
+                <xpath expr="//page[@name='recommendations']" position="after">
+                    <page string="Lead Time" name="lead_time">
+                        <group>
+                            <!-- Service Category -->
+                            <group string="Sub Kategori Servis" class="o_group_controller">
+                                <field name="service_subcategory" 
+                                    widget="selection"
+                                    options="{'no_create': True, 'no_open': True}"/>
+                            </group>
+                            <group string="Kategori Servis" class="o_group_controller">
+                                <field name="service_category" 
+                                    readonly="1" 
+                                    force_save="1"/>
+                            </group>
+
+                            <!-- Service Advisor Section -->
+                            <group string="Service Advisor (SA)" class="o_group_controller">
+                                <label for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_record_sa_mulai_penerimaan" string="Mulai Penerimaan" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <!-- Request Part -->
+                                <group colspan="4">
+                                    <field name="need_part_purchase" 
+                                        widget="radio" 
+                                        options="{'horizontal': True}"
+                                        string="Perlu Request Part?" 
+                                        class="oe_inline mt-4"/>
+                                    
+                                    <div attrs="{'invisible': [('need_part_purchase', '!=', 'yes')]}"
+                                        class="alert alert-info mt-2 mb-2" colspan="4">
+                                        <i class="fa fa-info-circle"/> 
+                                        Silahkan ke tab "Request Part" untuk menambahkan detail part yang dibutuhkan
+                                    </div>
+                                </group>
+
+                                <label for="sa_cetak_pkb" string="Cetak PKB"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_print_work_order" string="Cetak PKB" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="sa_cetak_pkb" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                            </group>
+                            
+                            <!-- Final Output Section -->
+                            <group string="Final Output (FO)" class="o_group_controller">
+                                <label for="fo_unit_keluar" string="Unit Keluar"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_record_fo_unit_keluar" string="Unit Keluar" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="fo_unit_keluar" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                            </group>
+                        </group>
+                        
+                        <!-- Complete Controller Section -->
+                        <group string="Controller" class="o_group_controller">
+                            <group>
+                                <field name="user_is_controller" invisible="1"/>
+                                <field name="controller_estimasi_mulai" string="Estimasi Pekerjaan Mulai" widget="datetime" class="o_input_controller"/>
+                                <field name="controller_estimasi_selesai" string="Estimasi Pekerjaan Selesai" widget="datetime" class="o_input_controller"/>
+
+                                <!-- Service controls -->
+                                <label for="controller_mulai_servis" string="Mulai Servis" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-2">
+                                    <button name="action_mulai_servis" string="Mulai Servis" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="controller_mulai_servis" readonly="1" nolabel="1" class="ms-2" widget="lead_time_widget"/>
+                                </div>
+
+                                <!-- Wait confirmation controls -->
+                                <label for="controller_tunggu_konfirmasi_mulai" string="Tunggu Konfirmasi Mulai"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_tunggu_konfirmasi_mulai" string="Mulai Tunggu Konfirmasi" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 150px;" 
+                                            confirm="Apakah Anda yakin ingin memulai tunggu konfirmasi?"/>
+                                    <field name="controller_tunggu_konfirmasi_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_konfirmasi_selesai" string="Tunggu Konfirmasi Selesai"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_tunggu_konfirmasi_selesai" string="Selesai Tunggu Konfirmasi" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 150px;" 
+                                            confirm="Apakah Anda yakin ingin menyelesaikan tunggu konfirmasi?"/>
+                                    <field name="controller_tunggu_konfirmasi_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <!-- Service completion -->
+                                <label for="controller_selesai" string="Selesai Servis"/>
+                                <div class="d-flex align-items-center">
+                                    <button name="action_selesai_servis" string="Selesai Servis" type="object" 
+                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
+                                    <field name="controller_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+                            </group>
+                            
+                            <group>
+                                <!-- Complete Part waiting controls -->
+                                <label for="controller_tunggu_part1_mulai" string="Tunggu Part 1" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_part1_mulai" string="MULAI TUNGGU" type="object" 
+                                            class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;" 
+                                            confirm="Apakah anda yakin ingin memulai tunggu part 1?"/>
+                                    <field name="controller_tunggu_part1_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_part1_selesai" string="Selesai Tunggu Part 1" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_part1_selesai" string="SELESAI TUNGGU" type="object" 
+                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin menyelesaikan tunggu part 1?"/>
+                                    <field name="controller_tunggu_part1_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_part2_mulai" string="Tunggu Part 2" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_part2_mulai" string="MULAI TUNGGU" type="object" 
+                                            class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin memulai tunggu part 2?"/>
+                                    <field name="controller_tunggu_part2_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_part2_selesai" string="Selesai Tunggu Part 2" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_part2_selesai" string="SELESAI TUNGGU" type="object" 
+                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin menyelesaikan tunggu part 2?"/>
+                                    <field name="controller_tunggu_part2_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <!-- Sublet controls -->
+                                <label for="controller_tunggu_sublet_mulai" string="Tunggu Sublet" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_sublet_mulai" string="MULAI TUNGGU" type="object" 
+                                            class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin memulai tunggu sublet?"/>
+                                    <field name="controller_tunggu_sublet_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_tunggu_sublet_selesai" string="Selesai Tunggu Sublet" class="fw-bold mb-2"/>
+                                <div class="d-flex align-items-center mb-3">
+                                    <button name="action_tunggu_sublet_selesai" string="SELESAI TUNGGU" type="object" 
+                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin menyelesaikan tunggu sublet?"/>
+                                    <field name="controller_tunggu_sublet_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <!-- Break controls -->
+                                <field name="need_istirahat" widget="radio" options="{'horizontal': True}" class="o_radio_controller" />
+
+                                <label for="controller_istirahat_shift1_mulai" string="Istirahat" class="fw-bold mb-2" 
+                                    attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}" />
+                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}">
+                                    <button name="action_istirahat_shift1_mulai" 
+                                            string="MULAI ISTIRAHAT" 
+                                            type="object" 
+                                            class="btn btn-info btn-sm me-2 text-uppercase" 
+                                            style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin memulai istirahat?"/>
+                                    <field name="controller_istirahat_shift1_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_istirahat_shift1_selesai" 
+                                    string="Selesai Istirahat" 
+                                    class="fw-bold mb-2" 
+                                    attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}" />
+                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}">
+                                    <button name="action_istirahat_shift1_selesai" 
+                                            string="SELESAI ISTIRAHAT" 
+                                            type="object" 
+                                            class="btn btn-success btn-sm me-2 text-uppercase" 
+                                            style="width: 120px;"
+                                            confirm="Apakah anda yakin ingin menyelesaikan istirahat?"/>
+                                    <field name="controller_istirahat_shift1_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <!-- Other job stop controls -->
+                                <field name="need_other_job_stop" widget="radio" options="{'horizontal': True}" class="o_radio_controller" />
+
+                                <label for="controller_job_stop_lain_mulai" string="Job Stop Lain Mulai" class="fw-bold mb-2" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}" />
+                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}">
+                                    <button name="action_job_stop_lain_mulai" string="MULAI JOB STOP" type="object" class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;" confirm="Apakah anda yakin ingin memulai job stop lain?"/>
+                                    <field name="controller_job_stop_lain_mulai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <label for="controller_job_stop_lain_selesai" string="Job Stop Lain Selesai" class="fw-bold mb-2" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}" />
+                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}">
+                                    <button name="action_job_stop_lain_selesai" string="SELESAI JOB STOP" type="object" class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;" confirm="Apakah anda yakin ingin menyelesaikan job stop lain?"/>
+                                    <field name="controller_job_stop_lain_selesai" readonly="1" nolabel="1" class="ms-2"/>
+                                </div>
+
+                                <field name="job_stop_lain_keterangan" placeholder="Jelaskan mengapa perlu job stop lain" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}"/>
+                            </group> 
+                        </group>
+                        
+                        <!-- Complete Lead Time Summary -->
+                        <group string="Lead Time Summary" class="o_group_controller2">
+                            <group>
+                                <field name="lead_time_tunggu_penerimaan" widget="float_time" string="Lead Time Tunggu Penerimaan" class="o_input_controller2"/>
+                                <field name="lead_time_penerimaan" widget="float_time" string="Lead Time Penerimaan" class="o_input_controller"/>
+                                <field name="lead_time_tunggu_servis" widget="float_time" string="Lead Time Tunggu Servis" class="o_input_controller"/>
+                                <field name="estimasi_durasi_pengerjaan" widget="float_time" string="Estimasi Durasi Pengerjaan" class="o_input_controller"/>
+                                <field name="lead_time_tunggu_konfirmasi" widget="float_time" string="Lead Time Tunggu Konfirmasi" class="o_input_controller"/>
+                                <field name="lead_time_tunggu_part1" widget="float_time" string="Lead Time Tunggu Part 1" class="o_input_controller"/>
+                                <field name="lead_time_tunggu_part2" widget="float_time" string="Lead Time Tunggu Part 2" class="o_input_controller"/>
+                                <field name="lead_time_istirahat" widget="float_time" string="Lead Time Istirahat" class="o_input_controller"/>
+                                <field name="lead_time_tunggu_sublet" widget="float_time" string="Tunggu Sublet" class="o_input_controller"/>
+                                <field name="lead_time_job_stop_lain" widget="float_time" string="Job Stop Lain" class="o_input_controller"/>
+                                <field name="lead_time_servis" widget="float_time" string="Lead Time Servis"/>
+                                <field name="total_lead_time_servis" widget="float_time" string="Total Lead Time Unit"/>
+                            </group>
+                            <group>
+                                <field name="lead_time_progress" widget="percentpie" string="Lead Time Progress" class="o_input_controller"/>
+                                <field name="lead_time_stage" widget="badge" 
+                                        decoration-info="lead_time_stage in ('not_started', 'category_selected', 'check_in', 'reception')"
+                                        decoration-warning="lead_time_stage in ('pkb_printed', 'estimation', 'waiting_confirmation', 'waiting_parts')"
+                                        decoration-success="lead_time_stage in ('in_service', 'service_done', 'waiting_pickup')"
+                                        decoration-primary="lead_time_stage == 'completed'"/>
+                                <field name="overall_lead_time" widget="float_time" string="Overall Lead Time" class="o_input_controller"/>
+                                <field name="is_overnight" string="Status Menginap"/>
+                            </group>
+                        </group>
+                        
+                        <group string="Catatan">
+                            <field name="lead_time_catatan"/>
+                        </group>
+
+                        <!-- Timeline Progress -->
+                        <group string="Timeline Progress">
+                            <div class="timeline-container">
+                                <div class="timeline-track">
+                                    <div class="timeline-events">
+                                        <!-- Timeline Main Line -->
+                                        <div class="timeline-line"></div>
+
+                                        <!-- Start Event -->
+                                        <div class="timeline-event">
+                                            <span class="event-title">Mulai Servis</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker start"></div>
+                                            <div class="event-line right"></div>
+                                            <div class="event-time">
+                                                <field name="controller_mulai_servis"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Tunggu Konfirmasi -->
+                                        <div class="timeline-event" attrs="{'invisible': [('controller_tunggu_konfirmasi_mulai', '=', False)]}">
+                                            <span class="event-title">Tunggu Konfirmasi</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker konfirmasi"></div>
+                                            <div class="event-line right"></div>
+                                            <div class="event-time">
+                                                <field readonly="1" name="controller_tunggu_konfirmasi_mulai"/>
+                                            </div>
+                                            <div class="event-duration">
+                                                <field name="lead_time_tunggu_konfirmasi" widget="float_time"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Tunggu Part 1 -->
+                                        <div class="timeline-event" attrs="{'invisible': [('controller_tunggu_part1_mulai', '=', False)]}">
+                                            <span class="event-title">Tunggu Part 1</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker part"></div>
+                                            <div class="event-line right"></div>
+                                            <div class="event-time">
+                                                <field readonly="1" name="controller_tunggu_part1_mulai"/>
+                                            </div>
+                                            <div class="event-duration">
+                                                <field name="lead_time_tunggu_part1" widget="float_time"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Tunggu Part 2 -->
+                                        <div class="timeline-event" attrs="{'invisible': [('controller_tunggu_part2_mulai', '=', False)]}">
+                                            <span class="event-title">Tunggu Part 2</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker part"></div>
+                                            <div class="event-line right"></div>
+                                            <div class="event-time">
+                                                <field readonly="1" name="controller_tunggu_part2_mulai"/>
+                                            </div>
+                                            <div class="event-duration">
+                                                <field name="lead_time_tunggu_part2" widget="float_time"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- Istirahat -->
+                                        <div class="timeline-event" attrs="{'invisible': [('controller_istirahat_shift1_mulai', '=', False)]}">
+                                            <span class="event-title">Istirahat</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker break"></div>
+                                            <div class="event-line right"></div>
+                                            <div class="event-time">
+                                                <field readonly="1" name="controller_istirahat_shift1_mulai"/>
+                                            </div>
+                                            <div class="event-duration">
+                                                <field name="lead_time_istirahat" widget="float_time"/>
+                                            </div>
+                                        </div>
+
+                                        <!-- End Event -->
+                                        <div class="timeline-event">
+                                            <span class="event-title">Selesai Servis</span>
+                                            <div class="event-line left"></div>
+                                            <div class="event-marker end"></div>
+                                            <div class="event-line right"></div>
+                                            <div class="event-time">
+                                                <field name="controller_selesai"/>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </group>
+                    </page>
+
+                    <!-- Complete Request Part Tab -->
+                    <page string="Request Part" name="part_request" 
+                        attrs="{'invisible': [('need_part_purchase', '!=', 'yes')]}">
+                        <group>
+                            <field name="part_request_state" widget="badge"
+                                decoration-info="part_request_state == 'draft'"
+                                decoration-warning="part_request_state == 'requested'"
+                                decoration-success="part_request_state == 'completed'"/>
+                            <field name="part_request_time" readonly="1" string="Waktu Request"/>
+                            <field name="total_requested_items" readonly="1"/>
+                            <field name="total_fulfilled_items" readonly="1"/>
+                        </group>
+                        
+                        <field name="part_request_items_ids">
+                            <tree editable="bottom" 
+                                    decoration-success="state == 'approved'" 
+                                    decoration-warning="state == 'responded'"
+                                    decoration-danger="state == 'rejected' or is_response_late">
+                                <!-- Basic Info -->
+                                <field name="product_id"/>
+                                <field name="part_name"/>
+                                <field name="quantity"/>
+                                <field name="notes" string="Catatan SA"/>
+                                
+                                <!-- Tim Part Response -->
+                                <field name="response_time" string="Waktu Respon Part"/>
+                                <field name="is_response_late" string="Respon Terlambat"/>
+                                <field name="estimated_cost" string="Estimasi Biaya"/>
+                                <field name="estimated_arrival" string="Estimasi Kedatangan"/>
+                                <field name="alternative_part" string="Part Alternatif"/>
+                                <field name="response_notes" string="Catatan Tim Part"/>
+                                
+                                <!-- SA Approval -->
+                                <field name="state" invisible="1"/>
+                                <field name="is_fulfilled" string="Disetujui SA"/>
+                                <button name="action_approve_part_response" 
+                                        string="Terima" 
+                                        type="object" 
+                                        icon="fa-check"
+                                        attrs="{'invisible': ['|', ('response_time', '=', False), '|', ('state', '=', 'approved'), ('state', '=', 'rejected')]}"/>
+                                <button name="action_reject_part_response" 
+                                        string="Tolak" 
+                                        type="object" 
+                                        icon="fa-times"
+                                        attrs="{'invisible': ['|', ('response_time', '=', False), '|', ('state', '=', 'approved'), ('state', '=', 'rejected')]}"/>
+                            </tree>
+                            <form>
+                                <sheet>
+                                    <group>
+                                        <group string="Informasi Part">
+                                            <field name="product_id"/>
+                                            <field name="part_name"/>
+                                            <field name="part_number"/>
+                                            <field name="quantity"/>
+                                            <field name="notes" string="Catatan SA"/>
+                                        </group>
+                                        <group string="Respon Tim Part">
+                                            <field name="response_time" string="Waktu Respon"/>
+                                            <field name="is_response_late" string="Respon Terlambat"/>
+                                            <field name="estimated_cost" string="Estimasi Biaya"/>
+                                            <field name="estimated_arrival" string="Estimasi Kedatangan"/>
+                                            <field name="alternative_part" string="Part Alternatif"/>
+                                            <field name="response_notes" string="Catatan Tim Part"/>
+                                        </group>
+                                        <group string="Persetujuan SA">
+                                            <field name="is_fulfilled" string="Disetujui"/>
+                                        </group>
+                                    </group>
+                                </sheet>
+                            </form>
+                        </field>
+                    </page>
+
+                    <!-- Complete After Service Tab -->
                     <page string="After Service" name="after_service" attrs="{'invisible': [('id', '!=', True)]}">
                         <div class="row">
                             <div class="col-lg-6 col-md-6 col-sm-12">
@@ -613,33 +962,32 @@
                             </div>
                         </div>
                     </page>
-                </xpath>
-                <!-- Tambahkan tab baru "Follow Up - Setelah 3 hari servis" di sini -->
-                <xpath expr="//notebook" position="inside">
+
+                    <!-- Complete Follow Up Tab -->
                     <page string="Follow Up" name="follow_up">
                         <div class="row">
                             <div class="col-lg-6 col-md-6 col-sm-12">
                                 <div class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small">Follow Up After 3 Days</div>
                                 <div class="alert alert-info" role="alert">
                                     <strong>Next Follow Up: </strong>
-                                      <field name="notif_follow_up_3_days" 
+                                    <field name="notif_follow_up_3_days" 
                                         decoration-danger="'Late' in notif_follow_up_3_days"
                                         decoration-warning="'Reminder today' in notif_follow_up_3_days"
                                         decoration-success="'Upcoming' in notif_follow_up_3_days"
                                         decoration-info="notif_follow_up_3_days in ('Not Set', 'Error')"/>
                                 </div>
-                                 <group>
+                                <group>
                                     <field name="is_follow_up" widget="radio" options="{'horizontal': True}"/>
                                 </group>
-                                    <div attrs="{'invisible': [('is_follow_up', '!=', 'yes')]}">
-                                        <group string="Follow Up - Customer Feedback">
-                                            <field name="customer_feedback_follow_up" widget="text"/>
-                                            <field name="follow_up_evidence" widget="text"/>
-                                        </group>
-                                    </div>
+                                <div attrs="{'invisible': [('is_follow_up', '!=', 'yes')]}">
+                                    <group string="Follow Up - Customer Feedback">
+                                        <field name="customer_feedback_follow_up" widget="text"/>
+                                        <field name="follow_up_evidence" widget="text"/>
+                                    </group>
                                 </div>
+                            </div>
                             <div class="col-lg-6 col-md-6 col-sm-12">
-                                 <div attrs="{'invisible': [('is_follow_up', '!=', 'no')]}">
+                                <div attrs="{'invisible': [('is_follow_up', '!=', 'no')]}">
                                     <group string="Reason for No Follow Up">
                                         <field name="no_follow_up_reason" widget="text"/>
                                     </group>
@@ -647,9 +995,8 @@
                             </div>
                         </div>
                     </page>
-                </xpath>
 
-                <xpath expr="//notebook" position="inside">
+                    <!-- Complete Reminder 3 Months Tab -->
                     <page string="Reminder 3 Bulan" name="reminder_3_months">
                         <div class="row">
                             <div class="col-lg-6 col-md-6 col-sm-12">
@@ -687,9 +1034,8 @@
                             </div>
                         </div>
                     </page>
-                </xpath>
 
-                <xpath expr="//notebook" position="inside">
+                    <!-- Complete Reminder 6 Months Tab -->
                     <page string="Reminder 6 Bulan" name="reminder_6_months">
                         <div class="row">
                             <div class="col-lg-6 col-md-6 col-sm-12">
@@ -727,519 +1073,74 @@
                             </div>
                         </div>
                     </page>
-                </xpath>
-            </field>
-        </record>
 
-        <!-- Inherit Form View -->
-        <record id="view_order_form_inherit_move_recommendation" model="ir.ui.view">
-            <field name="name">sale.order.form.inherit.move.recommendation</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_form"/>
-            <field name="arch" type="xml">
-                <!-- Modify Order Lines Tree View -->
-                <xpath expr="//field[@name='order_line']/tree" position="attributes">
-                    <attribute name="editable">bottom</attribute>
-                </xpath>
-                
-                <!-- Add button in tree view of order lines -->
-                <xpath expr="//field[@name='order_line']/tree//field[@name='price_unit']" position="after">
-                    <button name="action_move_to_recommendation" 
-                            string="→ Rekomendasi" 
-                            type="object"
-                            class="btn btn-link"
-                            icon="fa-arrow-right"
-                            attrs="{'invisible': [('display_type', '!=', False)]}"
-                            help="Pindahkan item ini ke tab rekomendasi servis berikutnya"/>
-                </xpath>
-
-                <!-- Add button in form view of order lines -->
-                <xpath expr="//field[@name='order_line']/form//field[@name='price_unit']" position="after">
-                    <group>
-                        <div class="oe_button_box" name="button_box">
-                            <button name="action_move_to_recommendation" 
-                                    string="Pindahkan ke Rekomendasi Servis" 
-                                    type="object"
-                                    class="oe_stat_button"
-                                    icon="fa-exchange"
-                                    attrs="{'invisible': [('display_type', '!=', False)]}"
-                                    help="Pindahkan item ini ke tab rekomendasi servis berikutnya"/>
-                        </div>
-                    </group>
-                </xpath>
-
-                <!-- Update recommendations tree view -->
-                <xpath expr="//field[@name='recommendation_ids']/tree" position="attributes">
-                    <attribute name="editable">bottom</attribute>
-                    <attribute name="decoration-muted">not estimated_date</attribute>
-                </xpath>
-
-                <!-- Add states to recommendations -->
-                <xpath expr="//field[@name='recommendation_ids']/tree" position="inside">
-                    <field name="state" widget="badge" 
-                        decoration-info="state == 'pending'"
-                        decoration-success="state == 'scheduled'"
-                        decoration-warning="state == 'overdue'"/>
-                    <field name="source_order_line" readonly="1"/>
-                </xpath>
-            </field>
-        </record>
-
-        <!-- views/sale_views.xml -->
-        <!-- <record id="view_order_form_inherit" model="ir.ui.view">
-            <field name="name">sale.order.form.inherit</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_form"/>
-            <field name="arch" type="xml">
-                <xpath expr="//field[@name='order_line']/tree//field[@name='price_unit']" position="before">
-                    <field name="service_duration" widget="float_time"/>
-                </xpath>
-                <xpath expr="//field[@name='order_line']/form//field[@name='price_unit']" position="before">
-                    <field name="service_duration" widget="float_time"/>
-                </xpath>
-                <xpath expr="//field[@name='amount_total']" position="after">
-                    <field name="total_service_duration" widget="float_time"/>
-                </xpath>
-            </field>
-        </record> -->
-
-        <record id="sale_order_form_custom" model="ir.ui.view">
-            <field name="name">sale.order.form.custom</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_form"/>
-            <field name="arch" type="xml">
-                <xpath expr="//field[@name='partner_id']" position="after">
-                    <!-- <field name="campaign"/> -->
-                    <!-- <field name="campaign" attrs="{'invisible': [('id', '!=', False)]}"/>  -->
-                </xpath>
-            </field>
-        </record>
-
-        <record id="view_order_form_inherit_service_advisor" model="ir.ui.view">
-            <field name="name">sale.order.form.inherit.service.advisor</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_form"/>
-            <field name="arch" type="xml">
-                <!-- Menambahkan field service advisor setelah customer -->
-                <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="service_advisor_id" widget="many2many_tags" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
-                </xpath>
-            </field>
-        </record>
-
-        <record id="view_order_form_inherit_lead_time" model="ir.ui.view">
-            <field name="name">sale.order.form.inherit.lead.time</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_form"/>
-            <field name="arch" type="xml">
-                <!-- <xpath expr="//field[@name='partner_id']" position="before">
-                    <field name="is_arrival_time_set" invisible="1"/>
-                </xpath> -->
-                <xpath expr="//page[@name='after_service']" position="before">
-                    <page string="Lead Time" name="lead_time">
-                        <group>
-
-                        <!-- Service Sub Kategori -->
-                            <group string="Sub Kategori Servis" class="o_group_controller">
-                                <field name="service_subcategory" 
-                                    widget="selection"
-                                    options="{'no_create': True, 'no_open': True}"/>
+                    <!-- Complete Customer Details Tab -->
+                    <page string="Customer Details" name="customer_detail" 
+                          attrs="{'invisible': [('partner_id', '=', False)]}"
+                          groups="base.group_user">
+                        <group string="Customer Transaction Info">
+                            <group>
+                                <field name="customer_level" readonly="1" 
+                                    decoration-success="customer_level == 'loyal'"
+                                    decoration-info="customer_level == 'new'"/>
+                                <field name="customer_transaction_sequence" readonly="1" 
+                                    string="Transaction Number"/>
+                                <field name="customer_transaction_count" readonly="1" 
+                                    string="Total Transactions"/>
                             </group>
-                        <!-- Service Kategori -->
-                            <group string="Kategori Servis" class="o_group_controller">
-                                <field name="service_category" 
-                                    readonly="1" 
-                                    force_save="1"/>
-                            </group>
-
-                            
-                            <group string="Service Advisor (SA)" class="o_group_controller">
-                                <!-- <field name="service_subcategory" widget="float_time" string="Sub Kategori Servis"  class="o_input_controller2"/>
-                                <field name="service_category" widget="float_time" string="Kategori Servis" class="o_input_controller2"/> -->
-                                <!-- Sub Kategori -->
-                                <label for="sa_mulai_penerimaan" string="Mulai Penerimaan"/>
-                                <div class="d-flex align-items-center">
-                                    <button name="action_record_sa_mulai_penerimaan" string="Mulai Penerimaan" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
-                                    <field name="sa_mulai_penerimaan" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                 <!-- Request Part dengan layout yang lebih terorganisir -->
-                                <group colspan="4">
-                                    <field name="need_part_purchase" 
-                                        widget="radio" 
-                                        options="{'horizontal': True}"
-                                        string="Perlu Request Part?" 
-                                        class="oe_inline mt-4"/>
-                                    
-                                    <div attrs="{'invisible': [('need_part_purchase', '!=', 'yes')]}"
-                                        class="alert alert-info mt-2 mb-2" colspan="4">
-                                        <i class="fa fa-info-circle"/> 
-                                        Silahkan ke tab "Request Part" untuk menambahkan detail part yang dibutuhkan
-                                    </div>
-                                </group>
-                                <label for="sa_cetak_pkb" string="Cetak PKB"/>
-                                <div class="d-flex align-items-center">
-                                    <button name="action_print_work_order" string="Cetak PKB" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
-                                    <field name="sa_cetak_pkb" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-                                
-                            </group>
-                            
-                            <group string="Final Output (FO)" class="o_group_controller">
-                                <label for="fo_unit_keluar" string="Unit Keluar"/>
-                                <div class="d-flex align-items-center">
-                                    <button name="action_record_fo_unit_keluar" string="Unit Keluar" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
-                                    <field name="fo_unit_keluar" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
+                            <group>
+                                <field name="is_loyal_customer" readonly="1" 
+                                    widget="boolean"/>
+                                <field name="customer_level_display" readonly="1" 
+                                    string="Level Summary"/>
                             </group>
                         </group>
                         
-                        <group string="Controller" class="o_group_controller">
+                        <!-- Customer Source Info -->
+                        <group string="Customer Source Information" groups="base.group_system">
                             <group>
-                                <!-- Jam Masuk -->
-                                <!-- <label for="sa_jam_masuk" string="Jam Masuk"/>
-                                <div class="d-flex align-items-center">
-                                    <button name="action_record_car_arrival_time" string="Rekam Jam Masuk" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin merekam jam masuk?"/>
-                                    <field name="sa_jam_masuk" readonly="0" nolabel="1" class="ms-2"/>
-                                    <field name="car_arrival_time" invisible="1"/>
-                                </div> -->
-
-                                <field name="user_is_controller" invisible="1"/>
-                                <field name="controller_estimasi_mulai" string="Estimasi Pekerjaan Mulai" widget="datetime" class="o_input_controller"/>
-                                <field name="controller_estimasi_selesai" string="Estimasi Pekerjaan Selesai" widget="datetime" class="o_input_controller"/>
-
-                                <!-- Mulai Servis -->
-                                <label for="controller_mulai_servis" string="Mulai Servis" class="fw-bold mb-2"/>
-                                <div class="d-flex align-items-center mb-2">
-                                    <button name="action_mulai_servis" string="Mulai Servis" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
-                                    <field name="controller_mulai_servis" readonly="1" nolabel="1" class="ms-2" widget="lead_time_widget"/>
-                                </div>
-
-                                 <!-- Tombol untuk Tunggu Konfirmasi Mulai -->
-                                <label for="controller_tunggu_konfirmasi_mulai" string="Tunggu Konfirmasi Mulai"/>
-                                <div class="d-flex align-items-center">
-                                    <button name="action_tunggu_konfirmasi_mulai" string="Mulai Tunggu Konfirmasi" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 150px;" 
-                                            confirm="Apakah Anda yakin ingin memulai tunggu konfirmasi?"/>
-                                    <field name="controller_tunggu_konfirmasi_mulai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <!-- Tombol untuk Tunggu Konfirmasi Selesai -->
-                                <label for="controller_tunggu_konfirmasi_selesai" string="Tunggu Konfirmasi Selesai"/>
-                                <div class="d-flex align-items-center">
-                                    <button name="action_tunggu_konfirmasi_selesai" string="Selesai Tunggu Konfirmasi" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 150px;" 
-                                            confirm="Apakah Anda yakin ingin menyelesaikan tunggu konfirmasi?"/>
-                                    <field name="controller_tunggu_konfirmasi_selesai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <label for="controller_selesai" string="Selesai Servis"/>
-                                <div class="d-flex align-items-center">
-                                    <button name="action_selesai_servis" string="Selesai Servis" type="object" 
-                                            class="btn btn-primary btn-sm me-2" style="width: 120px;"/>
-                                    <field name="controller_selesai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
+                                <field name="customer_sumber_info" readonly="1" 
+                                    string="Customer Source"
+                                    help="Original customer source information"/>
+                                <field name="customer_tags" readonly="1" 
+                                    widget="many2many_tags"
+                                    help="Customer tags"/>
                             </group>
                             <group>
-                                <label for="controller_tunggu_part1_mulai" string="Tunggu Part 1" class="fw-bold mb-2"/>
-                                <div class="d-flex align-items-center mb-3">
-                                    <button name="action_tunggu_part1_mulai" string="MULAI TUNGGU" type="object" 
-                                            class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;" 
-                                            confirm="Apakah anda yakin ingin memulai tunggu part 1?"/>
-                                    <field name="controller_tunggu_part1_mulai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <label for="controller_tunggu_part1_selesai" string="Selesai Tunggu Part 1" class="fw-bold mb-2"/>
-                                <div class="d-flex align-items-center mb-3">
-                                    <button name="action_tunggu_part1_selesai" string="SELESAI TUNGGU" type="object" 
-                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin menyelesaikan tunggu part 1?"/>
-                                    <field name="controller_tunggu_part1_selesai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <label for="controller_tunggu_part2_mulai" string="Tunggu Part 2" class="fw-bold mb-2"/>
-                                <div class="d-flex align-items-center mb-3">
-                                    <button name="action_tunggu_part2_mulai" string="MULAI TUNGGU" type="object" 
-                                            class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin memulai tunggu part 2?"/>
-                                    <field name="controller_tunggu_part2_mulai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <label for="controller_tunggu_part2_selesai" string="Selesai Tunggu Part 2" class="fw-bold mb-2"/>
-                                <div class="d-flex align-items-center mb-3">
-                                    <button name="action_tunggu_part2_selesai" string="SELESAI TUNGGU" type="object" 
-                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin menyelesaikan tunggu part 2?"/>
-                                    <field name="controller_tunggu_part2_selesai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <label for="controller_tunggu_sublet_mulai" string="Tunggu Sublet" class="fw-bold mb-2"/>
-                                <div class="d-flex align-items-center mb-3">
-                                    <button name="action_tunggu_sublet_mulai" string="MULAI TUNGGU" type="object" 
-                                            class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin memulai tunggu sublet?"/>
-                                    <field name="controller_tunggu_sublet_mulai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <label for="controller_tunggu_sublet_selesai" string="Selesai Tunggu Sublet" class="fw-bold mb-2"/>
-                                <div class="d-flex align-items-center mb-3">
-                                    <button name="action_tunggu_sublet_selesai" string="SELESAI TUNGGU" type="object" 
-                                            class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin menyelesaikan tunggu sublet?"/>
-                                    <field name="controller_tunggu_sublet_selesai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <field name="need_istirahat" widget="radio" options="{'horizontal': True}" class="o_radio_controller" />
-
-                                <label for="controller_istirahat_shift1_mulai" string="Istirahat" class="fw-bold mb-2" 
-                                    attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}" />
-                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}">
-                                    <button name="action_istirahat_shift1_mulai" 
-                                            string="MULAI ISTIRAHAT" 
-                                            type="object" 
-                                            class="btn btn-info btn-sm me-2 text-uppercase" 
-                                            style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin memulai istirahat?"/>
-                                    <field name="controller_istirahat_shift1_mulai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <label for="controller_istirahat_shift1_selesai" 
-                                    string="Selesai Istirahat" 
-                                    class="fw-bold mb-2" 
-                                    attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}" />
-                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_istirahat', '!=', 'yes')]}">
-                                    <button name="action_istirahat_shift1_selesai" 
-                                            string="SELESAI ISTIRAHAT" 
-                                            type="object" 
-                                            class="btn btn-success btn-sm me-2 text-uppercase" 
-                                            style="width: 120px;"
-                                            confirm="Apakah anda yakin ingin menyelesaikan istirahat?"/>
-                                    <field name="controller_istirahat_shift1_selesai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <field name="need_other_job_stop" widget="radio" options="{'horizontal': True}" class="o_radio_controller" />
-
-                                <label for="controller_job_stop_lain_mulai" string="Job Stop Lain Mulai" class="fw-bold mb-2" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}" />
-                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}">
-                                    <button name="action_job_stop_lain_mulai" string="MULAI JOB STOP" type="object" class="btn btn-warning text-white btn-sm me-2 text-uppercase" style="width: 120px;" confirm="Apakah anda yakin ingin memulai job stop lain?"/>
-                                    <field name="controller_job_stop_lain_mulai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <label for="controller_job_stop_lain_selesai" string="Job Stop Lain Selesai" class="fw-bold mb-2" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}" />
-                                <div class="d-flex align-items-center mb-3" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}">
-                                    <button name="action_job_stop_lain_selesai" string="SELESAI JOB STOP" type="object" class="btn btn-success btn-sm me-2 text-uppercase" style="width: 120px;" confirm="Apakah anda yakin ingin menyelesaikan job stop lain?"/>
-                                    <field name="controller_job_stop_lain_selesai" readonly="1" nolabel="1" class="ms-2"/>
-                                </div>
-
-                                <field name="job_stop_lain_keterangan" placeholder="Jelaskan mengapa perlu job stop lain" attrs="{'invisible': [('need_other_job_stop', '!=', 'yes')]}"/>
-                            </group> 
-                        </group>
-                        
-                        <group string="Lead Time Summary" class="o_group_controller2">
-                            <group>
-                                <field name="lead_time_tunggu_penerimaan" widget="float_time" string="Lead Time Tunggu Penerimaan"  class="o_input_controller2"/>
-                                <field name="lead_time_penerimaan" widget="float_time" string="Lead Time Penerimaan" class="o_input_controller"/>
-                                <field name="lead_time_tunggu_servis" widget="float_time" string="Lead Time Tunggu Servis" class="o_input_controller"/>
-                                <field name="estimasi_durasi_pengerjaan" widget="float_time" string="Estimasi Durasi Pengerjaan" class="o_input_controller"/>
-                                <field name="lead_time_tunggu_konfirmasi" widget="float_time" string="Lead Time Tunggu Konfirmasi" class="o_input_controller"/>
-                                <field name="lead_time_tunggu_part1" widget="float_time" string="Lead Time Tunggu Part 1" class="o_input_controller"/>
-                                <field name="lead_time_tunggu_part2" widget="float_time" string="Lead Time Tunggu Part 2" class="o_input_controller"/>
-                                <field name="lead_time_istirahat" widget="float_time" string="Lead Time Istirahat" class="o_input_controller"/>
-                                <field name="lead_time_servis" widget="float_time" string="Lead Time Servis"/>
-                                <field name="total_lead_time_servis" widget="float_time" string="Total Lead Time Unit"/>
-                            </group>
-                            <group>
-                                <field name="lead_time_progress" widget="percentpie" string="Lead Time Progress" class="o_input_controller"/>
-                                <field name="lead_time_stage" widget="badge" 
-                                        decoration-info="lead_time_stage in ('not_started', 'category_selected', 'check_in', 'reception')"
-                                        decoration-warning="lead_time_stage in ('pkb_printed', 'estimation', 'waiting_confirmation', 'waiting_parts')"
-                                        decoration-success="lead_time_stage in ('in_service', 'service_done', 'waiting_pickup')"
-                                        decoration-primary="lead_time_stage == 'completed'"/>
-                                <field name="overall_lead_time" widget="float_time" string="Overall Lead Time" class="o_input_controller"/>
-                                <field name="is_overnight" string="Status Menginap"/>
+                                <field name="customer_tags_display" readonly="1" 
+                                    string="Tags Summary"
+                                    help="Customer tags as text summary"/>
                             </group>
                         </group>
                         
-                        <group string="Catatan">
-                            <field name="lead_time_catatan"/>
-                        </group>
-                        <!-- Timeline Section -->
-                       <group string="Timeline Progress">
-                            <div class="timeline-container">
-                                <div class="timeline-track">
-                                    <div class="timeline-events">
-                                        <!-- Timeline Main Line -->
-                                        <div class="timeline-line"></div>
-
-                                        <!-- Start Event -->
-                                        <div class="timeline-event">
-                                            <span class="event-title">Mulai Servis</span>
-                                            <div class="event-line left"></div>
-                                            <div class="event-marker start"></div>
-                                            <div class="event-line right"></div>
-                                            <div class="event-time">
-                                                <field name="controller_mulai_servis"/>
-                                            </div>
-                                        </div>
-
-                                        <!-- Tunggu Konfirmasi -->
-                                        <div class="timeline-event" attrs="{'invisible': [('controller_tunggu_konfirmasi_mulai', '=', False)]}">
-                                            <span class="event-title">Tunggu Konfirmasi</span>
-                                            <div class="event-line left"></div>
-                                            <div class="event-marker konfirmasi"></div>
-                                            <div class="event-line right"></div>
-                                            <div class="event-time">
-                                                <field readonly="1" name="controller_tunggu_konfirmasi_mulai"/>
-                                            </div>
-                                            <div class="event-duration">
-                                                <field name="lead_time_tunggu_konfirmasi" widget="float_time"/>
-                                            </div>
-                                        </div>
-
-                                        <!-- Tunggu Part 1 -->
-                                        <div class="timeline-event" attrs="{'invisible': [('controller_tunggu_part1_mulai', '=', False)]}">
-                                            <span class="event-title">Tunggu Part 1</span>
-                                            <div class="event-line left"></div>
-                                            <div class="event-marker part"></div>
-                                            <div class="event-line right"></div>
-                                            <div class="event-time">
-                                                <field readonly="1"  name="controller_tunggu_part1_mulai"/>
-                                            </div>
-                                            <div class="event-duration">
-                                                <field name="lead_time_tunggu_part1" widget="float_time"/>
-                                            </div>
-                                        </div>
-
-                                        <!-- Tunggu Part 2 -->
-                                        <div class="timeline-event" attrs="{'invisible': [('controller_tunggu_part2_mulai', '=', False)]}">
-                                            <span class="event-title">Tunggu Part 2</span>
-                                            <div class="event-line left"></div>
-                                            <div class="event-marker part"></div>
-                                            <div class="event-line right"></div>
-                                            <div class="event-time">
-                                                <field readonly="1"  name="controller_tunggu_part2_mulai"/>
-                                            </div>
-                                            <div class="event-duration">
-                                                <field name="lead_time_tunggu_part2" widget="float_time"/>
-                                            </div>
-                                        </div>
-
-                                        <!-- Istirahat -->
-                                        <div class="timeline-event" attrs="{'invisible': [('controller_istirahat_shift1_mulai', '=', False)]}">
-                                            <span class="event-title">Istirahat</span>
-                                            <div class="event-line left"></div>
-                                            <div class="event-marker break"></div>
-                                            <div class="event-line right"></div>
-                                            <div class="event-time">
-                                                <field readonly="1"  name="controller_istirahat_shift1_mulai"/>
-                                            </div>
-                                            <div class="event-duration">
-                                                <field name="lead_time_istirahat" widget="float_time"/>
-                                            </div>
-                                        </div>
-
-                                        <!-- End Event -->
-                                        <div class="timeline-event">
-                                            <span class="event-title">Selesai Servis</span>
-                                            <div class="event-line left"></div>
-                                            <div class="event-marker end"></div>
-                                            <div class="event-line right"></div>
-                                            <div class="event-time">
-                                                <field name="controller_selesai"/>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        <!-- Customer Transaction History -->
+                        <group string="Transaction History">
+                            <field name="partner_id" invisible="1"/>
+                            <button name="action_show_customer_transactions" 
+                                string="Show All Customer Transactions" 
+                                type="object" 
+                                class="btn-primary"
+                                icon="fa-list"/>
+                            <button name="action_view_customer_source_detail" 
+                                string="View Source Detail" 
+                                type="object" 
+                                class="btn-info"
+                                icon="fa-info-circle"/>
+                            <button name="action_recompute_customer_loyalty" 
+                                string="Recompute Customer Info" 
+                                type="object" 
+                                class="btn-secondary"
+                                groups="base.group_system"/>
                         </group>
                     </page>
-
-                    <!-- Modifikasi tab Request Part -->
-                    <page string="Request Part" name="part_request" 
-                        attrs="{'invisible': [('need_part_purchase', '!=', 'yes')]}">
-                        <group>
-                            <field name="part_request_state" widget="badge"
-                                decoration-info="part_request_state == 'draft'"
-                                decoration-warning="part_request_state == 'requested'"
-                                decoration-success="part_request_state == 'completed'"/>
-                            <field name="part_request_time" readonly="1" string="Waktu Request"/>
-                            <field name="total_requested_items" readonly="1"/>
-                            <field name="total_fulfilled_items" readonly="1"/>
-                        </group>
-                        
-                        <field name="part_request_items_ids">
-                              <tree editable="bottom" 
-                                    decoration-success="state == 'approved'" 
-                                    decoration-warning="state == 'responded'"
-                                    decoration-danger="state == 'rejected' or is_response_late">
-                                <!-- Basic Info -->
-                                <field name="product_id"/>
-                                <field name="part_name"/>
-                                <!-- <field name="part_number"/> -->
-                                <field name="quantity"/>
-                                <field name="notes" string="Catatan SA"/>
-                                
-                                <!-- Tim Part Response -->
-                                <field name="response_time" string="Waktu Respon Part"/>
-                                <field name="is_response_late" string="Respon Terlambat"/>
-                                <field name="estimated_cost" string="Estimasi Biaya"/>
-                                <field name="estimated_arrival" string="Estimasi Kedatangan"/>
-                                <field name="alternative_part" string="Part Alternatif"/>
-                                <field name="response_notes" string="Catatan Tim Part"/>
-                                
-                                <!-- SA Approval -->
-                                <field name="state" invisible="1"/>
-                                <field name="is_fulfilled" string="Disetujui SA"/>
-                                <button name="action_approve_part_response" 
-                                        string="Terima" 
-                                        type="object" 
-                                        icon="fa-check"
-                                        attrs="{'invisible': ['|', ('response_time', '=', False), '|', ('state', '=', 'approved'), ('state', '=', 'rejected')]}"/>
-                                <button name="action_reject_part_response" 
-                                        string="Tolak" 
-                                        type="object" 
-                                        icon="fa-times"
-                                        attrs="{'invisible': ['|', ('response_time', '=', False), '|', ('state', '=', 'approved'), ('state', '=', 'rejected')]}"/>
-                                </tree>
-                            <form>
-                                <sheet>
-                                    <group>
-                                        <group string="Informasi Part">
-                                            <field name="product_id"/>
-                                            <field name="part_name"/>
-                                            <field name="part_number"/>
-                                            <field name="quantity"/>
-                                            <field name="notes" string="Catatan SA"/>
-                                        </group>
-                                        <group string="Respon Tim Part">
-                                            <field name="response_time" string="Waktu Respon"/>
-                                            <field name="is_response_late" string="Respon Terlambat"/>
-                                            <field name="estimated_cost" string="Estimasi Biaya"/>
-                                            <field name="estimated_arrival" string="Estimasi Kedatangan"/>
-                                            <field name="alternative_part" string="Part Alternatif"/>
-                                            <field name="response_notes" string="Catatan Tim Part"/>
-                                        </group>
-                                        <group string="Persetujuan SA">
-                                            <field name="is_fulfilled" string="Disetujui"/>
-                                        </group>
-                                    </group>
-                                </sheet>
-                            </form>
-                        </field>
-                    </page>
-
                 </xpath>
             </field>
         </record>
 
-        <record id="view_sale_order_lead_time_kanban" model="ir.ui.view">
-            <field name="name">sale.order.lead.time.kanban</field>
+        <!-- ========== KANBAN AND GANTT VIEWS ========== -->
+
+        <record id="view_sale_order_lead_time_kanban_complete" model="ir.ui.view">
+            <field name="name">sale.order.lead.time.kanban.complete</field>
             <field name="model">sale.order</field>
             <field name="arch" type="xml">
                 <kanban>
@@ -1247,6 +1148,8 @@
                     <field name="partner_id"/>
                     <field name="lead_time_stage"/>
                     <field name="lead_time_progress"/>
+                    <field name="customer_level_display"/>
+                    <field name="service_category"/>
                     <templates>
                         <t t-name="kanban-box">
                             <div class="oe_kanban_global_click">
@@ -1256,10 +1159,12 @@
                                     </strong>
                                     <div class="o_kanban_tags_section">
                                         <field name="partner_id"/>
+                                        <field name="customer_level_display"/>
                                     </div>
                                     <div class="o_kanban_record_bottom">
                                         <field name="lead_time_stage"/>
                                         <field name="lead_time_progress" widget="progressbar"/>
+                                        <field name="service_category"/>
                                     </div>
                                 </div>
                             </div>
@@ -1269,145 +1174,172 @@
             </field>
         </record>
 
-        <record id="view_order_form_inherit_stall_field" model="ir.ui.view">
-            <field name="name">sale.order.form.inherit.stall.field</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_form"/>
-            <field name="arch" type="xml">
-                <!-- Add stall field below mechanic field -->
-                <xpath expr="//field[@name='car_mechanic_id_new']" position="after">
-                    <field name="stall_id" options="{'no_create': True}"/>
-                </xpath>
-            </field>
-        </record>
-
-        <record id="view_sale_order_lead_time_gantt" model="ir.ui.view">
-            <field name="name">sale.order.lead.time.gantt</field>
+        <record id="view_sale_order_lead_time_gantt_complete" model="ir.ui.view">
+            <field name="name">sale.order.lead.time.gantt.complete</field>
             <field name="model">sale.order</field>
             <field name="arch" type="xml">
                 <gantt date_start="sa_jam_masuk" date_stop="fo_unit_keluar" string="Lead Time" default_group_by="partner_id">
+                    <field name="service_category"/>
+                    <field name="customer_level_display"/>
+                    <field name="overall_lead_time"/>
                 </gantt>
             </field>
         </record>
 
-        <!-- ========== CLEAN & SIMPLE LOYAL CUSTOMER VIEWS ========== -->
-        <!-- GANTI/TAMBAHKAN di bagian bawah file views XML -->
+        <!-- ========== ANALYSIS VIEWS ========== -->
 
-        <!-- 1. Sale Order Tree - Kolom Loyal (OPTIONAL) -->
-        <record id="sale_order_tree_loyal_clean" model="ir.ui.view">
-            <field name="name">sale.order.tree.loyal.clean</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_tree"/>
-            <field name="arch" type="xml">
-                <xpath expr="//field[@name='amount_total']" position="after">
-                    <field name="is_loyal_customer" optional="hide" string="Loyal" 
-                        widget="boolean" 
-                        decoration-success="is_loyal_customer == True"/>
-                    <field name="customer_transaction_count" optional="hide" string="Trans Count"/>
-                </xpath>
-            </field>
-        </record>
-
-        <!-- 2. Quotation Tree - Kolom Loyal (OPTIONAL) -->
-        <record id="sale_quotation_tree_loyal_clean" model="ir.ui.view">
-            <field name="name">sale.quotation.tree.loyal.clean</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_quotation_tree"/>
-            <field name="arch" type="xml">
-                <xpath expr="//field[@name='amount_total']" position="after">
-                    <field name="is_loyal_customer" optional="hide" string="Loyal" 
-                        widget="boolean" 
-                        decoration-success="is_loyal_customer == True"/>
-                    <field name="customer_transaction_count" optional="hide" string="Trans Count"/>
-                </xpath>
-            </field>
-        </record>
-
-        <!-- 3. Sale Order Form - Loyalty Info yang Rapi (TANPA customer_source dan customer_tags) -->
-        <!-- SOLUSI BENAR - TANPA FIELD BARU -->
-
-        <record id="sale_order_form_loyalty_clean" model="ir.ui.view">
-            <field name="name">sale.order.form.loyalty.clean</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_order_form"/>
-            <field name="arch" type="xml">
-                <xpath expr="//field[@name='partner_id']" position="after">
-                    <field name="customer_level_display" readonly="1" string="Level Customer"
-                        attrs="{'invisible': [('partner_id', '=', False)]}"
-                        decoration-success="is_loyal_customer == True"
-                        decoration-info="is_loyal_customer == False"/>
-                    
-                    <field name="is_loyal_customer" invisible="1"/>
-                    <field name="customer_transaction_count" invisible="1"/>
-                </xpath>
-            </field>
-        </record>
-
-        <!-- 4. Search Filter - Tambah filter loyalty -->
-        <record id="sale_order_filter_loyalty_clean" model="ir.ui.view">
-            <field name="name">sale.order.filter.loyalty.clean</field>
-            <field name="model">sale.order</field>
-            <field name="inherit_id" ref="sale.view_sales_order_filter"/>
-            <field name="arch" type="xml">
-                <!-- Tambah search fields -->
-                <xpath expr="//field[@name='name']" position="after">
-                    <field name="is_loyal_customer" string="Loyal Customer"/>
-                </xpath>
-                
-                <!-- Tambah filters -->
-                <xpath expr="//filter[@name='my_sale_orders_filter']" position="after">
-                    <separator/>
-                    <filter string="Loyal Customers" name="loyal_customers" 
-                        domain="[('is_loyal_customer', '=', True)]"/>
-                    <filter string="New Customers" name="new_customers" 
-                        domain="[('is_loyal_customer', '=', False)]"/>
-                </xpath>
-                
-                <!-- Tambah group by -->
-                <xpath expr="//filter[@name='salesperson']" position="after">
-                    <filter string="Customer Loyalty" name="group_loyalty" 
-                        context="{'group_by': 'is_loyal_customer'}"/>
-                </xpath>
-            </field>
-        </record>
-
-        <!-- 5. Action untuk Loyal Customer Analysis -->
-        <record id="action_loyal_analysis_clean" model="ir.actions.act_window">
-            <field name="name">Loyal Customer Analysis</field>
+        <!-- Complete Customer Level Analysis Action -->
+        <record id="action_customer_level_analysis_complete" model="ir.actions.act_window">
+            <field name="name">Complete Customer Level Analysis</field>
             <field name="res_model">sale.order</field>
             <field name="view_mode">tree,pivot,graph,form</field>
-            <field name="domain">[('is_loyal_customer', '=', True)]</field>
-            <field name="context">{'search_default_loyal_customers': 1}</field>
+            <field name="context">{'search_default_group_customer_level': 1}</field>
+            <field name="domain">[]</field>
             <field name="help" type="html">
                 <p class="o_view_nocontent_smiling_face">
-                    Loyal Customer Analysis
+                    Complete Customer Level Analysis
                 </p>
                 <p>
-                    Analyze sales from loyal customers (customers with more than one transaction).
+                    Analyze customer levels, transaction sequences, and service performance with complete data.
                 </p>
             </field>
         </record>
 
-        <!-- 6. Menu untuk Loyal Customer Analysis -->
-        <menuitem id="menu_loyal_analysis_clean"
-                name="Loyal Customer Analysis"
-                parent="sale.sale_menu_root"
-                action="action_loyal_analysis_clean"
-                sequence="50"/>
-
-        <!-- 7. Pivot View untuk Analysis -->
-        <record id="view_loyal_pivot_clean" model="ir.ui.view">
-            <field name="name">loyal.pivot.clean</field>
+        <!-- Complete Pivot View -->
+        <record id="view_customer_level_pivot_complete" model="ir.ui.view">
+            <field name="name">customer.level.pivot.complete</field>
             <field name="model">sale.order</field>
             <field name="arch" type="xml">
-                <pivot string="Loyal Customer Analysis">
-                    <field name="is_loyal_customer" type="col"/>
-                    <field name="partner_id" type="row"/>
+                <pivot string="Complete Customer Level Analysis">
+                    <field name="customer_level" type="col"/>
+                    <field name="service_category" type="col"/>
+                    <field name="customer_transaction_sequence" type="row"/>
                     <field name="amount_total" type="measure"/>
                     <field name="customer_transaction_count" type="measure"/>
+                    <field name="overall_lead_time" type="measure"/>
                 </pivot>
             </field>
         </record>
+
+        <!-- Complete Graph View -->
+        <record id="view_customer_level_graph_complete" model="ir.ui.view">
+            <field name="name">customer.level.graph.complete</field>
+            <field name="model">sale.order</field>
+            <field name="arch" type="xml">
+                <graph string="Complete Customer Level Analysis" type="bar">
+                    <field name="customer_level"/>
+                    <field name="customer_transaction_sequence"/>
+                    <field name="service_category"/>
+                    <field name="amount_total" type="measure"/>
+                    <field name="overall_lead_time" type="measure"/>
+                </graph>
+            </field>
+        </record>
+
+        <!-- ========== SERVER ACTIONS ========== -->
+
+        <!-- Complete Customer Data Validation Action -->
+        <record id="action_customer_data_validation_complete" model="ir.actions.server">
+            <field name="name">Complete Customer Data Validation</field>
+            <field name="model_id" ref="sale.model_sale_order"/>
+            <field name="binding_model_id" ref="sale.model_sale_order"/>
+            <field name="binding_view_types">list</field>
+            <field name="state">code</field>
+            <field name="code">
+# Complete validation of customer data consistency
+result = env['sale.order'].validate_customer_data_consistency()
+
+action = {
+    'type': 'ir.actions.client',
+    'tag': 'display_notification',
+    'params': {
+        'title': 'Complete Customer Data Validation',
+        'message': f'Validation completed. {result["total_issues"]} issues found.',
+        'type': 'success' if result['validation_passed'] else 'warning',
+        'sticky': True,
+    }
+}
+            </field>
+        </record>
+
+        <!-- Complete Customer Info Action -->
+        <record id="action_quick_customer_info_complete" model="ir.actions.server">
+            <field name="name">Complete Customer Info</field>
+            <field name="model_id" ref="sale.model_sale_order"/>
+            <field name="binding_model_id" ref="sale.model_sale_order"/>
+            <field name="binding_view_types">form</field>
+            <field name="state">code</field>
+            <field name="code">
+# Show complete customer info for selected order
+if record and record.partner_id:
+    summary = record.partner_id.get_customer_level_summary()
+    
+    message = f"""
+Customer: {record.partner_id.name}
+Level: {summary['level']}
+Total Orders: {summary['total_orders']}
+Total Revenue: {summary['total_revenue']}
+Current Transaction #: {record.customer_transaction_sequence}
+Service Category: {record.service_category or 'Not Set'}
+Lead Time Stage: {record.lead_time_stage or 'Not Started'}
+Overall Lead Time: {record.overall_lead_time or 0:.2f} hours
+    """
+    
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification',
+        'params': {
+            'title': 'Complete Customer Summary',
+            'message': message,
+            'type': 'info',
+            'sticky': True,
+        }
+    }
+else:
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification',
+        'params': {
+            'title': 'No Customer',
+            'message': 'No customer selected for this order',
+            'type': 'warning',
+        }
+    }
+            </field>
+        </record>
+
+        <!-- ========== MENUS ========== -->
+
+        <!-- Menu for Complete Customer Level Analysis -->
+        <menuitem id="menu_customer_level_analysis_complete"
+                  name="Complete Customer Level Analysis"
+                  parent="sale.sale_menu_root"
+                  action="action_customer_level_analysis_complete"
+                  sequence="60"/>
+
+        <!-- Customer Transaction Sequence Report -->
+        <record id="action_customer_transaction_sequence_report_complete" model="ir.actions.act_window">
+            <field name="name">Complete Customer Transaction Report</field>
+            <field name="res_model">sale.order</field>
+            <field name="view_mode">tree,form</field>
+            <field name="domain">[('customer_transaction_sequence', '!=', 0)]</field>
+            <field name="context">{'search_default_group_transaction_sequence': 1}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Complete Customer Transaction Report
+                </p>
+                <p>
+                    Comprehensive view of customer transaction sequences and behavior patterns.
+                </p>
+            </field>
+        </record>
+
+        <!-- Menu for Transaction Sequence Report -->
+        <menuitem id="menu_customer_transaction_sequence_report_complete"
+                  name="Complete Transaction Report"
+                  parent="sale.sale_menu_root"
+                  action="action_customer_transaction_sequence_report_complete"
+                  sequence="61"/>
 
     </data>
 </odoo>

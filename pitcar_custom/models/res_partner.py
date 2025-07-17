@@ -159,6 +159,75 @@ class ResPartner(models.Model):
                 # Log error tapi jangan crash UI
                 _logger.error("Phone validation error: %s", str(e))
 
+    def get_customer_level_summary(self):
+        """
+        Safe method to get customer level summary
+        """
+        self.ensure_one()
+        
+        try:
+            orders = self.env['sale.order'].search([
+                ('partner_id', '=', self.id),
+                ('state', 'in', ('sale', 'done'))
+            ], order='create_date')
+            
+            if not orders:
+                return {
+                    'level': 'new',
+                    'total_orders': 0,
+                    'total_revenue': 0,
+                    'sequences': [],
+                    'status': 'success'
+                }
+            
+            return {
+                'level': orders[-1].customer_level if hasattr(orders[-1], 'customer_level') else 'new',
+                'total_orders': len(orders),
+                'total_revenue': sum(orders.mapped('amount_total')),
+                'sequences': orders.mapped('customer_transaction_sequence'),
+                'first_order_date': orders[0].create_date,
+                'last_order_date': orders[-1].create_date,
+                'status': 'success'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error getting customer summary for {self.name}: {e}")
+            return {
+                'level': 'new',
+                'total_orders': 0,
+                'total_revenue': 0,
+                'sequences': [],
+                'status': 'error',
+                'error_message': str(e)
+            }
+
+    def action_view_customer_orders_sequence(self):
+        """
+        Safe method to view customer orders with transaction sequence
+        """
+        self.ensure_one()
+        
+        return {
+            'name': f'Transaction History - {self.name}',
+            'type': 'ir.actions.act_window',
+            'res_model': 'sale.order',
+            'view_mode': 'tree,form',
+            'domain': [('partner_id', '=', self.id)],
+            'context': {
+                'search_default_group_transaction_sequence': 1,
+                'default_partner_id': self.id
+            },
+            'help': f"""
+                <p class="o_view_nocontent_smiling_face">
+                    Customer Transaction History
+                </p>
+                <p>
+                    Transaction sequence for: {self.name}<br/>
+                    View all orders with their transaction sequence numbers.
+                </p>
+            """
+        }
+
 class PitcarMechanic(models.Model):
     _name = 'pitcar.mechanic'
     _description = 'Mechanic'
@@ -460,3 +529,121 @@ class PitcarMechanicNew(models.Model):
     _sql_constraints = [
         ('name_uniq', 'unique (name)', "Mechanic name already exists !"),
     ]
+
+class CustomerDataCleanup(models.Model):
+    _name = 'customer.data.cleanup'
+    _description = 'Customer Data Cleanup Service'
+
+    @api.model
+    def run_daily_cleanup(self):
+        """
+        Daily cleanup of redundant customer data
+        Can be scheduled as cron job
+        """
+        _logger.info("Starting daily customer data cleanup...")
+        
+        # Clean up redundant customer data
+        self.env['sale.order'].cleanup_redundant_customer_data()
+        
+        # Validate data consistency
+        validation_result = self.env['sale.order'].validate_customer_data_consistency()
+        
+        if not validation_result['validation_passed']:
+            # Send notification about issues
+            _logger.warning(f"Customer data validation failed: {validation_result['total_issues']} issues found")
+            
+            # Could send email notification here
+            # self.env['mail.mail'].create({...}).send()
+        
+        _logger.info("Daily customer data cleanup completed")
+        
+        return validation_result
+
+    @api.model
+    def recompute_transaction_sequences(self):
+        """
+        Recompute transaction sequences for all customers
+        """
+        _logger.info("Starting transaction sequence recomputation...")
+        
+        customers = self.env['res.partner'].search([
+            ('customer_rank', '>', 0)
+        ])
+        
+        for customer in customers:
+            orders = self.env['sale.order'].search([
+                ('partner_id', '=', customer.id)
+            ], order='create_date')
+            
+            for i, order in enumerate(orders, 1):
+                if order.customer_transaction_sequence != i:
+                    order.customer_transaction_sequence = i
+        
+        _logger.info("Transaction sequence recomputation completed")
+
+class CustomerDataMaintenance(models.Model):
+    _name = 'customer.data.maintenance'
+    _description = 'Safe Customer Data Maintenance'
+
+    @api.model
+    def run_safe_daily_maintenance(self):
+        """
+        Safe daily maintenance of customer data
+        """
+        try:
+            _logger.info("Starting safe daily customer data maintenance...")
+            
+            # Safe cleanup
+            cleanup_result = self.env['sale.order'].cleanup_redundant_customer_data()
+            
+            # Safe validation
+            validation_result = self.env['sale.order'].validate_customer_data_consistency()
+            
+            # Log results
+            if validation_result['validation_passed']:
+                _logger.info("Daily maintenance completed successfully - no issues found")
+            else:
+                _logger.warning(f"Daily maintenance found {validation_result['total_issues']} issues")
+            
+            return {
+                'cleanup_result': cleanup_result,
+                'validation_result': validation_result,
+                'status': 'completed'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in daily maintenance: {e}")
+            return {
+                'status': 'error',
+                'error_message': str(e)
+            }
+
+    @api.model
+    def fix_missing_transaction_sequences(self):
+        """
+        Safe method to fix missing transaction sequences
+        """
+        try:
+            _logger.info("Fixing missing transaction sequences...")
+            
+            customers = self.env['res.partner'].search([
+                ('customer_rank', '>', 0)
+            ])
+            
+            fixed_count = 0
+            for customer in customers:
+                orders = self.env['sale.order'].search([
+                    ('partner_id', '=', customer.id)
+                ], order='create_date')
+                
+                for i, order in enumerate(orders, 1):
+                    if order.customer_transaction_sequence != i:
+                        order.customer_transaction_sequence = i
+                        fixed_count += 1
+            
+            _logger.info(f"Fixed {fixed_count} transaction sequences")
+            return {'fixed_count': fixed_count, 'status': 'success'}
+            
+        except Exception as e:
+            _logger.error(f"Error fixing sequences: {e}")
+            return {'fixed_count': 0, 'status': 'error', 'error_message': str(e)}

@@ -1,0 +1,489 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ========== LOYALTY CONFIGURATION VIEWS ========== -->
+    
+    <!-- Configuration Form View -->
+    <record id="view_pitcar_loyalty_config_form" model="ir.ui.view">
+        <field name="name">pitcar.loyalty.config.form</field>
+        <field name="model">pitcar.loyalty.config</field>
+        <field name="arch" type="xml">
+            <form string="Loyalty System Configuration">
+                <header>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Configuration Name"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group string="System Status">
+                            <field name="is_system_active" widget="boolean_toggle"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Points Configuration" name="points_config">
+                            <group>
+                                <group string="Points Earning">
+                                    <field name="points_per_rupiah" widget="float" digits="[16,6]"
+                                           help="0.0001 = 1 point per 10.000 IDR"/>
+                                    <field name="min_transaction_for_points" widget="monetary"/>
+                                </group>
+                                <group string="Points Expiry">
+                                    <field name="points_expiry_months" 
+                                           help="Points akan expire setelah X bulan"/>
+                                </group>
+                            </group>
+                        </page>
+                        
+                        <page string="Membership Levels" name="membership_levels">
+                            <group>
+                                <group string="Membership Thresholds (Lifetime Points)">
+                                    <field name="membership_bronze_threshold" readonly="1"/>
+                                    <field name="membership_silver_threshold"/>
+                                    <field name="membership_gold_threshold"/>
+                                    <field name="membership_platinum_threshold"/>
+                                </group>
+                            </group>
+                            
+                            <div class="alert alert-info mt16">
+                                <h4>Point-Based Membership System:</h4>
+                                <ul>
+                                    <li><strong>💰 Earning:</strong> 1 poin per 10.000 IDR spending</li>
+                                    <li><strong>🥉 Bronze:</strong> Default level untuk semua customer baru</li>
+                                    <li><strong>🥈 Silver:</strong> 250 poin akumulatif (≈ Rp 2.5 juta spending)</li>
+                                    <li><strong>🥇 Gold:</strong> 500 poin akumulatif (≈ Rp 5 juta spending)</li>
+                                    <li><strong>💎 Platinum:</strong> 1000 poin akumulatif (≈ Rp 10 juta spending)</li>
+                                </ul>
+                                <p><em>Level ditentukan berdasarkan total poin yang pernah diperoleh (lifetime points), bukan poin aktif saat ini.</em></p>
+                            </div>
+                        </page>
+                        
+                        <page string="Referral Program" name="referral_config">
+                            <group>
+                                <group string="Referral Bonus Points">
+                                    <field name="referrer_bonus_points" 
+                                           help="Points untuk yang mereferensikan"/>
+                                    <field name="referee_bonus_points" 
+                                           help="Points untuk customer baru"/>
+                                </group>
+                                <group string="Qualification Requirements">
+                                    <field name="referral_min_transaction" widget="monetary"
+                                           help="Minimum spending referee untuk qualify bonus"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </header>
+            </form>
+        </field>
+    </record>
+
+    <!-- Configuration Tree View -->
+    <record id="view_pitcar_loyalty_config_tree" model="ir.ui.view">
+        <field name="name">pitcar.loyalty.config.tree</field>
+        <field name="model">pitcar.loyalty.config</field>
+        <field name="arch" type="xml">
+            <tree string="Loyalty Configuration">
+                <field name="name"/>
+                <field name="is_system_active" widget="boolean_toggle"/>
+                <field name="points_per_rupiah"/>
+                <field name="points_expiry_months"/>
+                <field name="membership_platinum_threshold" widget="monetary"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Server Action untuk langsung buka config form -->
+    <record id="action_open_loyalty_config" model="ir.actions.server">
+        <field name="name">Open Loyalty Configuration</field>
+        <field name="model_id" ref="model_pitcar_loyalty_config"/>
+        <field name="state">code</field>
+        <field name="code">
+# Get or create config
+config = env['pitcar.loyalty.config'].get_config()
+
+# Return action to open form
+action = {
+    'name': 'Loyalty System Configuration',
+    'type': 'ir.actions.act_window',
+    'res_model': 'pitcar.loyalty.config',
+    'view_mode': 'form',
+    'res_id': config.id,
+    'target': 'current',
+    'context': {
+        'create': False,
+        'delete': False
+    }
+}
+        </field>
+    </record>
+
+    <!-- Configuration Action - Langsung ke Form -->
+    <record id="action_pitcar_loyalty_config" model="ir.actions.act_window">
+        <field name="name">Loyalty System Configuration</field>
+        <field name="res_model">pitcar.loyalty.config</field>
+        <field name="view_mode">form</field>
+        <field name="target">current</field>
+        <field name="context">{
+            'create': False,
+            'delete': False
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configure Pitcar Loyalty System
+            </p>
+            <p>
+                Set up points earning rules, membership thresholds, and referral bonuses.
+            </p>
+        </field>
+    </record>
+
+    <!-- ========== LOYALTY CUSTOMER VIEWS ========== -->
+    
+    <!-- Customer Form View -->
+    <record id="view_pitcar_loyalty_customer_form" model="ir.ui.view">
+        <field name="name">pitcar.loyalty.customer.form</field>
+        <field name="model">pitcar.loyalty.customer</field>
+        <field name="arch" type="xml">
+            <form string="Loyalty Customer">
+                <header>
+                    <field name="status" widget="statusbar" statusbar_visible="active,inactive,suspended"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_recalculate_points" 
+                                string="Recalculate Points" 
+                                type="object" 
+                                class="oe_stat_button" 
+                                icon="fa-refresh"
+                                groups="pitcar_custom.group_loyalty_manager"/>
+                    </div>
+                    
+                    <div class="oe_title">
+                        <h1>
+                            <field name="display_name" readonly="1"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group string="Customer Info">
+                            <field name="partner_id" options="{'no_create': True}"/>
+                            <field name="membership_level" widget="badge" 
+                                   decoration-info="membership_level == 'bronze'"
+                                   decoration-success="membership_level == 'silver'" 
+                                   decoration-warning="membership_level == 'gold'"
+                                   decoration-danger="membership_level == 'platinum'"/>
+                            <field name="registration_date"/>
+                            <field name="last_activity_date"/>
+                        </group>
+                        
+                        <group string="Points and Spending">
+                            <field name="total_points" widget="integer" 
+                                   decoration-success="total_points &gt; 1000"
+                                   decoration-warning="total_points &gt; 500"
+                                   decoration-info="total_points &gt; 0"/>
+                            <field name="lifetime_points" widget="integer"/>
+                            <field name="total_spent" widget="monetary"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group string="Referral Info">
+                            <field name="referral_code" readonly="1"/>
+                            <field name="referred_by_id"/>
+                            <field name="referral_count" widget="integer"/>
+                        </group>
+                        
+                        <group string="Notifications">
+                            <field name="points_expiry_reminder_sent" widget="boolean"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Points Transactions" name="transactions">
+                            <field name="points_transaction_ids" readonly="1">
+                                <tree decoration-success="transaction_type == 'earn'"
+                                      decoration-info="transaction_type == 'bonus'"
+                                      decoration-warning="transaction_type == 'redeem'"
+                                      decoration-muted="status == 'expired'">
+                                    <field name="transaction_date"/>
+                                    <field name="transaction_type"/>
+                                    <field name="points" sum="Total Points"/>
+                                    <field name="description"/>
+                                    <field name="status"/>
+                                    <field name="expiry_date"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Customer Tree View -->
+    <record id="view_pitcar_loyalty_customer_tree" model="ir.ui.view">
+        <field name="name">pitcar.loyalty.customer.tree</field>
+        <field name="model">pitcar.loyalty.customer</field>
+        <field name="arch" type="xml">
+            <tree string="Loyalty Customers">
+                <field name="display_name"/>
+                <field name="membership_level" widget="badge"
+                       decoration-info="membership_level == 'bronze'"
+                       decoration-success="membership_level == 'silver'" 
+                       decoration-warning="membership_level == 'gold'"
+                       decoration-danger="membership_level == 'platinum'"/>
+                <field name="total_points"/>
+                <field name="total_spent" widget="monetary"/>
+                <field name="referral_count"/>
+                <field name="last_activity_date"/>
+                <field name="status" widget="badge" 
+                       decoration-success="status == 'active'"
+                       decoration-warning="status == 'inactive'"
+                       decoration-danger="status == 'suspended'"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Customer Search View -->
+    <record id="view_pitcar_loyalty_customer_search" model="ir.ui.view">
+        <field name="name">pitcar.loyalty.customer.search</field>
+        <field name="model">pitcar.loyalty.customer</field>
+        <field name="arch" type="xml">
+            <search string="Search Loyalty Customers">
+                <field name="display_name"/>
+                <field name="partner_id"/>
+                <field name="referral_code"/>
+                
+                <filter string="Active" name="active" domain="[('status', '=', 'active')]"/>
+                <filter string="Inactive" name="inactive" domain="[('status', '=', 'inactive')]"/>
+                <filter string="Suspended" name="suspended" domain="[('status', '=', 'suspended')]"/>
+                
+                <separator/>
+                <filter string="Bronze" name="bronze" domain="[('membership_level', '=', 'bronze')]"/>
+                <filter string="Silver" name="silver" domain="[('membership_level', '=', 'silver')]"/>
+                <filter string="Gold" name="gold" domain="[('membership_level', '=', 'gold')]"/>
+                <filter string="Platinum" name="platinum" domain="[('membership_level', '=', 'platinum')]"/>
+                
+                <separator/>
+                <filter string="Has Points" name="has_points" domain="[('total_points', '>', 0)]"/>
+                <filter string="Active This Month" name="active_this_month" 
+                        domain="[('last_activity_date', '>=', (context_today() - relativedelta(months=1)).strftime('%Y-%m-%d'))]"/>
+                
+                <group expand="1" string="Group By">
+                    <filter string="Membership Level" name="group_membership_level" context="{'group_by': 'membership_level'}"/>
+                    <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                    <filter string="Registration Month" name="group_registration_month" context="{'group_by': 'registration_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Customer Action -->
+    <record id="action_pitcar_loyalty_customer" model="ir.actions.act_window">
+        <field name="name">Loyalty Customers</field>
+        <field name="res_model">pitcar.loyalty.customer</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No Loyalty Customers Yet
+            </p>
+            <p>
+                Loyalty customers will be automatically created when customers make purchases.
+            </p>
+        </field>
+    </record>
+
+    <!-- ========== POINTS TRANSACTION VIEWS ========== -->
+    
+    <!-- Transaction Form View -->
+    <record id="view_pitcar_points_transaction_form" model="ir.ui.view">
+        <field name="name">pitcar.points.transaction.form</field>
+        <field name="model">pitcar.points.transaction</field>
+        <field name="arch" type="xml">
+            <form string="Points Transaction" create="false" delete="false">
+                <header>
+                    <field name="status" widget="statusbar" statusbar_visible="active,expired,redeemed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="reference_code" readonly="1"/>
+                        </h1>
+                        <h2>
+                            <field name="customer_name" readonly="1"/>
+                        </h2>
+                    </div>
+                    
+                    <group>
+                        <group string="Transaction Details">
+                            <field name="customer_id" readonly="1"/>
+                            <field name="transaction_type" readonly="1"/>
+                            <field name="points" readonly="1" 
+                                   decoration-success="points &gt; 0"
+                                   decoration-danger="points &lt; 0"/>
+                            <field name="transaction_date" readonly="1"/>
+                        </group>
+                        
+                        <group string="Expiry and References">
+                            <field name="expiry_date" readonly="1"/>
+                            <field name="sale_order_id" readonly="1"/>
+                            <field name="original_amount" widget="monetary" readonly="1" 
+                                   attrs="{'invisible': [('original_amount', '=', 0)]}"/>
+                            <field name="related_customer_id" readonly="1"
+                                   attrs="{'invisible': [('related_customer_id', '=', False)]}"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <field name="description" readonly="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Transaction Tree View -->
+    <record id="view_pitcar_points_transaction_tree" model="ir.ui.view">
+        <field name="name">pitcar.points.transaction.tree</field>
+        <field name="model">pitcar.points.transaction</field>
+        <field name="arch" type="xml">
+            <tree string="Points Transactions" create="false" delete="false"
+                  decoration-success="transaction_type == 'earn'"
+                  decoration-info="transaction_type in ('bonus', 'referral_bonus')"
+                  decoration-warning="transaction_type == 'redeem'"
+                  decoration-muted="status == 'expired'">
+                <field name="transaction_date"/>
+                <field name="customer_name"/>
+                <field name="transaction_type"/>
+                <field name="points" sum="Total Points"/>
+                <field name="description"/>
+                <field name="status"/>
+                <field name="expiry_date"/>
+                <field name="reference_code"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Transaction Search View -->
+    <record id="view_pitcar_points_transaction_search" model="ir.ui.view">
+        <field name="name">pitcar.points.transaction.search</field>
+        <field name="model">pitcar.points.transaction</field>
+        <field name="arch" type="xml">
+            <search string="Search Points Transactions">
+                <field name="reference_code"/>
+                <field name="customer_name"/>
+                <field name="description"/>
+                
+                <filter string="Active" name="active" domain="[('status', '=', 'active')]"/>
+                <filter string="Expired" name="expired" domain="[('status', '=', 'expired')]"/>
+                <filter string="Redeemed" name="redeemed" domain="[('status', '=', 'redeemed')]"/>
+                
+                <separator/>
+                <filter string="Earning" name="earning" domain="[('transaction_type', '=', 'earn')]"/>
+                <filter string="Redemption" name="redemption" domain="[('transaction_type', '=', 'redeem')]"/>
+                <filter string="Bonus" name="bonus" domain="[('transaction_type', 'in', ('bonus', 'referral_bonus'))]"/>
+                <filter string="Expired" name="expired_trans" domain="[('transaction_type', '=', 'expire')]"/>
+                
+                <separator/>
+                <filter string="This Month" name="this_month" 
+                        domain="[('transaction_date', '&gt;=', (context_today() - relativedelta(months=1)).strftime('%Y-%m-01'))]"/>
+                <filter string="Expiring Soon" name="expiring_soon" 
+                        domain="[('expiry_date', '&lt;=', (context_today() + relativedelta(days=30)).strftime('%Y-%m-%d')), ('status', '=', 'active')]"/>
+                
+                <group expand="1" string="Group By">
+                    <filter string="Customer" name="group_customer" context="{'group_by': 'customer_id'}"/>
+                    <filter string="Transaction Type" name="group_type" context="{'group_by': 'transaction_type'}"/>
+                    <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                    <filter string="Transaction Date" name="group_date" context="{'group_by': 'transaction_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Transaction Action -->
+    <record id="action_pitcar_points_transaction" model="ir.actions.act_window">
+        <field name="name">Points Transactions</field>
+        <field name="res_model">pitcar.points.transaction</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'search_default_this_month': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No Points Transactions Yet
+            </p>
+            <p>
+                Points transactions will be automatically created when customers make purchases or redeem rewards.
+            </p>
+        </field>
+    </record>
+    <!-- Server Action untuk langsung buka config form -->
+    <record id="action_open_loyalty_config" model="ir.actions.server">
+        <field name="name">Open Loyalty Configuration</field>
+        <field name="model_id" ref="model_pitcar_loyalty_config"/>
+        <field name="state">code</field>
+        <field name="code">
+# Get or create config
+config = env['pitcar.loyalty.config'].get_config()
+
+# Return action to open form
+action = {
+    'name': 'Loyalty System Configuration',
+    'type': 'ir.actions.act_window',
+    'res_model': 'pitcar.loyalty.config',
+    'view_mode': 'form',
+    'res_id': config.id,
+    'target': 'current',
+    'context': {
+        'create': False,
+        'delete': False
+    }
+}
+        </field>
+    </record>
+
+    <!-- Cron Job untuk auto-update membership levels -->
+    <record id="cron_update_membership_levels" model="ir.cron">
+        <field name="name">Update Membership Levels Daily</field>
+        <field name="model_id" ref="model_pitcar_loyalty_customer"/>
+        <field name="state">code</field>
+        <field name="code">model.auto_update_membership_levels()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+        <field name="doall">False</field>
+    </record>
+
+    <!-- ========== MENU ITEMS ========== -->
+    
+    <!-- Main Loyalty Menu -->
+    <menuitem id="menu_pitcar_loyalty_main"
+              name="Loyalty System"
+              parent="sale.sale_menu_root"
+              sequence="60"/>
+
+    <!-- Configuration Menu -->
+    <menuitem id="menu_pitcar_loyalty_config"
+              name="Configuration"
+              parent="menu_pitcar_loyalty_main"
+              action="action_open_loyalty_config"
+              sequence="10"
+              groups="pitcar_custom.group_loyalty_manager"/>
+    
+    <!-- Customers Menu -->
+    <menuitem id="menu_pitcar_loyalty_customers"
+              name="Loyalty Customers"
+              parent="menu_pitcar_loyalty_main"
+              action="action_pitcar_loyalty_customer"
+              sequence="20"/>
+    
+    <!-- Transactions Menu -->
+    <menuitem id="menu_pitcar_loyalty_transactions"
+              name="Points Transactions"
+              parent="menu_pitcar_loyalty_main"
+              action="action_pitcar_points_transaction"
+              sequence="30"/>
+
+</odoo>

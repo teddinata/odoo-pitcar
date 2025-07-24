@@ -57,7 +57,12 @@
         'data/res_partner_car_data.xml',
         'data/lead_time_data.xml',
         'data/pitcar_position_data.xml',
+        'data/video_management_data.xml',
         'data/sequence.xml',
+        # NEW: Loyalty System Data
+        'data/pitcar_loyalty_data.xml',
+        'data/pitcar_rewards_data.xml',
+        'data/pitcar_referral_data.xml',
 
         'report/ir_actions_report_templates.xml',
         'report/ir_actions_report.xml',
@@ -73,6 +78,9 @@
 
         'security/mechanic_security.xml',
         'security/lead_time_security.xml',
+        'security/video_management_groups.xml',
+        # NEW: Loyalty System Security
+        'security/pitcar_loyalty_security.xml',
         'security/ir.model.access.csv',
 
         'wizard/mechanic_credential_views.xml',
@@ -115,6 +123,15 @@
         'views/booking_metrics_views.xml',
         'views/campaign_analytics_views.xml',
         'wizard/campaign_import_wizard_views.xml',
+        'views/video_management_views.xml',
+        # NEW: Loyalty System Views
+        'views/pitcar_loyalty_core_views.xml',
+        'views/pitcar_rewards_views.xml',
+        'views/pitcar_referral_views.xml',
+        # 'views/pitcar_loyalty_integration_views.xml',
+        # 'views/sale_order_loyalty_views.xml',
+        # Manual redemption wizard sudah dipindah ke pitcar_rewards_views.xml
+        # 'views/pitcar_manual_redemption_views.xml',
         'views/menu.xml',
         'views/menu_system_development.xml',
     ],
@@ -123,5 +140,5 @@
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.101'
+    'version':'16.0.204'  # Increment version untuk Integration
 }

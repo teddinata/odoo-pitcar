@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- Sequences -->
+        <record id="sequence_video_management" model="ir.sequence">
+            <field name="name">Video Management</field>
+            <field name="code">video.management</field>
+            <field name="prefix">VID</field>
+            <field name="padding">4</field>
+            <field name="company_id" eval="False"/>
+        </record>
+
+        <!-- Default Categories -->
+        <record id="video_category_promo" model="video.category">
+            <field name="name">Promo</field>
+            <field name="description">Promotional videos and advertisements</field>
+            <field name="color">4</field>
+        </record>
+
+        <record id="video_category_service" model="video.category">
+            <field name="name">Service</field>
+            <field name="description">Service-related videos</field>
+            <field name="color">2</field>
+        </record>
+
+        <record id="video_category_tutorial" model="video.category">
+            <field name="name">Tutorial</field>
+            <field name="description">How-to and tutorial videos</field>
+            <field name="color">6</field>
+        </record>
+
+        <record id="video_category_company" model="video.category">
+            <field name="name">Company</field>
+            <field name="description">Company profile and corporate videos</field>
+            <field name="color">8</field>
+        </record>
+
+        <!-- Default Tags -->
+        <record id="video_tag_featured" model="video.tag">
+            <field name="name">Featured</field>
+            <field name="color">3</field>
+        </record>
+
+        <record id="video_tag_new" model="video.tag">
+            <field name="name">New</field>
+            <field name="color">5</field>
+        </record>
+
+        <record id="video_tag_trending" model="video.tag">
+            <field name="name">Trending</field>
+            <field name="color">1</field>
+        </record>
+
+        <record id="video_tag_seasonal" model="video.tag">
+            <field name="name">Seasonal</field>
+            <field name="color">7</field>
+        </record>
+
+        <!-- Email Templates -->
+        <record id="email_template_video_published" model="mail.template">
+            <field name="name">Video Published Notification</field>
+            <field name="model_id" ref="model_video_management"/>
+            <field name="subject">Video Published: ${object.name}</field>
+            <field name="body_html" type="html">
+                <div style="margin: 0px; padding: 0px;">
+                    <p>Hello,</p>
+                    <p>A new video has been published on the dashboard:</p>
+                    <ul>
+                        <li><strong>Title:</strong> ${object.name}</li>
+                        <li><strong>Category:</strong> ${object.category_id.name or 'No category'}</li>
+                        <li><strong>Duration:</strong> ${object.video_duration or 'Unknown'} minutes</li>
+                        <li><strong>Published:</strong> ${object.publish_date}</li>
+                    </ul>
+                    % if object.description:
+                    <p><strong>Description:</strong></p>
+                    <p>${object.description}</p>
+                    % endif
+                    <p>Best regards,<br/>Video Management System</p>
+                </div>
+            </field>
+        </record>
+
+    </data>
+</odoo>

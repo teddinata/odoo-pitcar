@@ -5,3 +5,4 @@ from . import booking_link_sale_order
 from . import part_response_reject_wizard
 from . import part_response_approve_wizard
 from . import campaign_import_wizard
+from . import pitcar_manual_redemption_wizard

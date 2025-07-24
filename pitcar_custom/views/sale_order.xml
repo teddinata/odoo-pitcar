@@ -34,11 +34,10 @@
                     <filter string="With Feedback" name="with_feedback" domain="[('is_willing_to_feedback', '=', 'yes')]"/>
                 </xpath>
 
-                <!-- Enhanced search fields -->
                 <xpath expr="//field[@name='name']" position="replace">
                     <field name="name" string="Order"
                         filter_domain="['|', '|', '|', ('name', 'ilike', self), ('client_order_ref', 'ilike', self), ('partner_id', 'child_of', self), ('partner_car_id', 'ilike', self)]"/>
-                    <field name="service_advisor_id" string="Service Advisor" filter_domain="[('service_advisor_id', 'ilike', self)]"/>
+                    <field name="service_advisor_id" string="Service Advisor"/>
                     <field name="partner_car_id"/>
                     <field name="stall_id" string="Service Stall"/>
                     <field name="customer_level" string="Customer Level"/>
@@ -48,7 +47,14 @@
                     <field name="overall_lead_time"/>
                     <field name="lead_time_servis"/>
                     <field name="total_lead_time_servis"/>
+                    <!-- LOYALTY SEARCH FIELDS - ENHANCED -->
+                    <field name="referral_code_used" string="Referral Code"/>
+                    <field name="membership_level" string="Membership Level"/>
+                    <field name="customer_current_points" string="Current Points"/>
+                    <field name="points_earned_this_order" string="Points Earned"/>
+                    <field name="referrer_customer_id" string="Referred By"/>
                 </xpath>
+
 
                 <!-- Customer and car filters -->
                 <xpath expr="//filter[@name='customer']" position="after">
@@ -62,6 +68,37 @@
                     <filter string="Service Advisor" name="service_advisor" domain="[]" context="{'group_by': 'service_advisor_id'}"/>
                     
                     <!-- Customer level filters -->
+                    <separator/>
+                    <!-- LOYALTY FILTERS - ENHANCED -->
+                    <filter string="Platinum Members" name="platinum_members" 
+                            domain="[('membership_level', '=', 'platinum')]"/>
+                    <filter string="Gold Members" name="gold_members" 
+                            domain="[('membership_level', '=', 'gold')]"/>
+                    <filter string="Silver Members" name="silver_members" 
+                            domain="[('membership_level', '=', 'silver')]"/>
+                    <filter string="Bronze Members" name="bronze_members" 
+                            domain="[('membership_level', '=', 'bronze')]"/>
+                    <separator/>
+                    <!-- POINTS & VALUE FILTERS -->
+                    <filter string="High Points (1000+)" name="high_points" 
+                            domain="[('customer_current_points', '>=', 1000)]"/>
+                    <filter string="Medium Points (500+)" name="medium_points" 
+                            domain="[('customer_current_points', '>=', 500)]"/>
+                    <filter string="Low Points (100+)" name="low_points" 
+                            domain="[('customer_current_points', '>=', 100)]"/>
+                    <filter string="VIP Customers (10+ Orders)" name="vip_lifetime" 
+                            domain="[('customer_transaction_sequence', '>=', 10)]"/>
+                    
+                    <separator/>
+
+                    <!-- REFERRAL FILTERS -->
+                    <filter string="Referral Orders" name="referral_orders" 
+                            domain="[('is_referral_order', '=', True)]"/>
+                    <filter string="Loyalty Processed" name="loyalty_processed" 
+                            domain="[('loyalty_points_processed', '=', True)]"/>
+                    <filter string="Pending Loyalty Processing" name="loyalty_pending" 
+                            domain="[('loyalty_points_processed', '=', False), ('state', 'in', ['sale', 'done'])]"/>
+                            
                     <filter string="Loyal Customers" name="loyal_customers" domain="[('customer_level', '=', 'loyal')]"/>
                     <filter string="New Customers" name="new_customers" domain="[('customer_level', '=', 'new')]"/>
                     <filter string="First Time Customers" name="first_transaction" domain="[('customer_transaction_sequence', '=', 1)]"/>
@@ -129,6 +166,27 @@
                     <!-- Customer level and transaction info -->
                     <field name="customer_level_display" optional="hide" string="Customer Level"/>
                     <field name="customer_transaction_sequence" optional="hide" string="Trans #"/>
+
+                    <!-- LOYALTY COLUMNS - TAMPIL BY DEFAULT -->
+                    <field name="membership_level" widget="badge" optional="show" string="Member Level"
+                        decoration-success="membership_level == 'platinum'"
+                        decoration-info="membership_level == 'gold'"
+                        decoration-warning="membership_level == 'silver'"
+                        decoration-muted="membership_level == 'bronze'"/>
+                    
+                    <field name="customer_current_points" optional="show" string="Current Points" 
+                        widget="integer" 
+                        decoration-success="customer_current_points >= 1000"
+                        decoration-info="customer_current_points >= 500"
+                        decoration-warning="customer_current_points >= 100"/>
+                    
+                    <field name="points_earned_this_order" string="Points Earned" optional="hide" 
+                        widget="integer"
+                        decoration-success="points_earned_this_order > 0"/>
+                    
+                    <!-- REFERRAL INFO -->
+                    <field name="is_referral_order" string="Referral" optional="hide" widget="boolean"
+                        decoration-success="is_referral_order == True"/>
                     
                     <!-- Car and service info -->
                     <field name="partner_car_id" optional="show"/>
@@ -202,6 +260,22 @@
 
                 <!-- Complete lead time and service fields -->
                 <xpath expr="//field[@name='company_id']" position="after">
+                    <!-- LOYALTY COLUMNS - ADDITIONAL -->
+                    <field name="is_referral_order" string="Referral Order" optional="show" widget="boolean"
+                        decoration-success="is_referral_order == True"/>
+                    <field name="referral_code_used" string="Referral Code" optional="hide"/>
+                    <field name="loyalty_points_processed" string="Points Processed" optional="hide" widget="boolean"
+                        decoration-success="loyalty_points_processed == True"
+                        decoration-warning="loyalty_points_processed == False and state in ['sale', 'done']"/>
+                    
+                    <!-- Customer Analytics -->
+                    <!-- <field name="customer_lifetime_orders" string="Total Orders" optional="hide" 
+                        decoration-success="customer_lifetime_orders >= 10"
+                        decoration-info="customer_lifetime_orders >= 5"/>
+                    <field name="customer_lifetime_value" string="Customer LTV" optional="hide" widget="monetary"
+                        decoration-success="customer_lifetime_value >= 10000000"
+                        decoration-info="customer_lifetime_value >= 5000000"/> -->
+                        
                     <field name="service_category" optional="hide" string="Kategori Servis"/>
                     <field name="service_subcategory" optional="hide" string="Sub Kategori Servis"/>
                     
@@ -284,6 +358,29 @@
                     <!-- Customer level and transaction info -->
                     <field name="customer_level_display" optional="hide" string="Customer Level"/>
                     <field name="customer_transaction_sequence" optional="hide" string="Trans #"/>
+
+                    <!-- LOYALTY COLUMNS - TAMPIL BY DEFAULT -->
+                    <field name="membership_level" widget="badge" optional="show" string="Member Level"
+                        decoration-success="membership_level == 'platinum'"
+                        decoration-info="membership_level == 'gold'"
+                        decoration-warning="membership_level == 'silver'"
+                        decoration-muted="membership_level == 'bronze'"/>
+                    
+                    <field name="customer_current_points" optional="show" string="Current Points" 
+                        widget="integer" 
+                        decoration-success="customer_current_points >= 1000"
+                        decoration-info="customer_current_points >= 500"
+                        decoration-warning="customer_current_points >= 100"/>
+                    
+                    <field name="points_earned_this_order" string="Points Will Earn" optional="hide" 
+                        widget="integer"
+                        decoration-success="points_earned_this_order > 0"/>
+                    
+                    
+                    <!-- REFERRAL INFO -->
+                    <field name="is_referral_order" string="Referral" optional="hide" widget="boolean"
+                        decoration-success="is_referral_order == True"/>
+                    <field name="referral_code_used" string="Referral Code" optional="hide"/>
                     
                     <!-- Car and service info -->
                     <field name="partner_car_id" optional="show"/>
@@ -1078,6 +1175,77 @@
                     <page string="Customer Details" name="customer_detail" 
                           attrs="{'invisible': [('partner_id', '=', False)]}"
                           groups="base.group_user">
+                        
+
+                            <!-- Customer & Referral Input - SEMUA DI DALAM TAB -->
+                            <group>
+                                <group string="Customer Info">
+                                    <field name="membership_level" readonly="1" widget="badge" 
+                                        decoration-success="membership_level == 'platinum'"
+                                        decoration-info="membership_level == 'gold'"
+                                        decoration-warning="membership_level == 'silver'"
+                                        decoration-muted="membership_level == 'bronze'"/>
+                                    <field name="loyalty_customer_id" readonly="1"/>
+                                </group>
+                                
+                                <group string="Referral Input">
+                                    <field name="referral_code_used" placeholder="Enter referral code..."
+                                        attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                                    <field name="referrer_customer_id" readonly="1" 
+                                        attrs="{'invisible': [('referrer_customer_id', '=', False)]}"/>
+                                </group>
+                            </group>
+                            
+                            <!-- Points Summary -->
+                            <group string="Points Summary">
+                                <group>
+                                    <field name="customer_current_points" readonly="1"/>
+                                    <field name="points_earned_this_order" readonly="1"/>
+                                </group>
+                                <group>
+                                    <field name="loyalty_points_processed" readonly="1" widget="boolean"/>
+                                    <field name="loyalty_points_transaction_id" readonly="1"/>
+                                </group>
+                            </group>
+                            
+                            <!-- Referral Status -->
+                            <group string="Referral Status" attrs="{'invisible': [('is_referral_order', '=', False)]}">
+                                <group>
+                                    <field name="is_referral_order" readonly="1" widget="boolean"/>
+                                    <field name="is_referral_qualifying" readonly="1" widget="boolean"/>
+                                </group>
+                                <group>
+                                    <field name="referral_bonus_given" readonly="1" widget="boolean"/>
+                                    <field name="referral_tracking_id" readonly="1"/>
+                                </group>
+                            </group>
+                            
+                            <!-- Action Buttons Row -->
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="btn-group" role="group">
+                                        <button name="action_view_loyalty_points" 
+                                                string="📈 Points History" 
+                                                type="object" 
+                                                class="btn btn-outline-primary"
+                                                attrs="{'invisible': [('loyalty_customer_id', '=', False)]}"/>
+                                                
+                                        <button name="action_view_referral_history" 
+                                                string="👥 Referral History" 
+                                                type="object" 
+                                                class="btn btn-outline-info"
+                                                attrs="{'invisible': [('loyalty_customer_id', '=', False)]}"/>
+                                                
+                                        <button name="action_manual_process_loyalty" 
+                                                string="🔄 Reprocess" 
+                                                type="object" 
+                                                class="btn btn-outline-warning"
+                                                groups="base.group_system"/>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            
                         <group string="Customer Transaction Info">
                             <group>
                                 <field name="customer_level" readonly="1" 

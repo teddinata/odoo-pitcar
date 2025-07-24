@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- Manual Redemption Wizard Form -->
+    <record id="view_manual_redemption_wizard_form" model="ir.ui.view">
+        <field name="name">pitcar.manual.redemption.wizard.form</field>
+        <field name="model">pitcar.manual.redemption.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Manual Redemption - Help Customer Redeem Points">
+                <div class="alert alert-info" role="alert">
+                    <strong>ℹ️ Manual Redemption Tool</strong><br/>
+                    Use this tool to help customers redeem their loyalty points for rewards immediately.
+                </div>
+                
+                <group>
+                    <group string="👤 Select Customer">
+                        <field name="customer_id" 
+                               options="{'no_create': True, 'no_open': True}"
+                               placeholder="Search customer by name..."/>
+                        <field name="customer_name" readonly="1" 
+                               attrs="{'invisible': [('customer_id', '=', False)]}"/>
+                        <field name="customer_points" readonly="1"
+                               attrs="{'invisible': [('customer_id', '=', False)]}"
+                               decoration-info="customer_points &gt; 0"
+                               decoration-warning="customer_points == 0"/>
+                        <field name="customer_level" readonly="1"
+                               attrs="{'invisible': [('customer_id', '=', False)]}"
+                               widget="badge"/>
+                    </group>
+                    
+                    <group string="🎁 Select Reward">
+                        <field name="reward_id" 
+                               options="{'no_create': True, 'no_open': True}"
+                               attrs="{'invisible': [('customer_id', '=', False)]}"
+                               placeholder="Choose reward to redeem..."/>
+                        <field name="reward_name" readonly="1"
+                               attrs="{'invisible': [('reward_id', '=', False)]}"/>
+                        <field name="points_required" readonly="1"
+                               attrs="{'invisible': [('reward_id', '=', False)]}"
+                               decoration-info="points_required &gt; 0"/>
+                        <field name="available_stock" readonly="1"
+                               attrs="{'invisible': [('reward_id', '=', False)]}"
+                               decoration-warning="available_stock == 0"
+                               decoration-success="available_stock &gt; 0"/>
+                    </group>
+                </group>
+                
+                <!-- Validation Status -->
+                <group string="✅ Validation Status" 
+                       attrs="{'invisible': ['|', ('customer_id', '=', False), ('reward_id', '=', False)]}">
+                    <group>
+                        <field name="sufficient_points" readonly="1" widget="boolean"
+                               decoration-success="sufficient_points == True"
+                               decoration-danger="sufficient_points == False"/>
+                        <field name="stock_available" readonly="1" widget="boolean"
+                               decoration-success="stock_available == True"
+                               decoration-danger="stock_available == False"/>
+                    </group>
+                    <group>
+                        <field name="can_redeem" readonly="1" widget="boolean"
+                               decoration-success="can_redeem == True"
+                               decoration-danger="can_redeem == False"/>
+                        <field name="points_after_redemption" readonly="1"
+                               decoration-success="points_after_redemption &gt;= 0"/>
+                    </group>
+                </group>
+                
+                <!-- Reward Description -->
+                <group string="📝 Reward Details"
+                       attrs="{'invisible': [('reward_id', '=', False)]}">
+                    <field name="reward_description" readonly="1" nolabel="1"/>
+                </group>
+                
+                <!-- Delivery Information -->
+                <group string="🚚 Delivery Information"
+                       attrs="{'invisible': [('reward_id', '=', False)]}">
+                    <group>
+                        <field name="delivery_address" 
+                               placeholder="Customer delivery address..."
+                               required="1"/>
+                        <field name="customer_phone" readonly="1"/>
+                    </group>
+                    <group>
+                        <field name="notes" 
+                               placeholder="Any special instructions or notes..."/>
+                    </group>
+                </group>
+                
+                <!-- Status Messages -->
+                <div class="alert alert-success" role="alert" 
+                     attrs="{'invisible': [('can_redeem', '=', False)]}">
+                    <strong>✅ Ready to Process!</strong> All requirements met. Customer can redeem this reward.
+                </div>
+                
+                <div class="alert alert-warning" role="alert" 
+                     attrs="{'invisible': ['|', ('can_redeem', '=', True), '|', ('customer_id', '=', False), ('reward_id', '=', False)]}">
+                    <strong>⚠️ Cannot Process!</strong> Please check:
+                    <ul attrs="{'invisible': [('sufficient_points', '=', True)]}">
+                        <li>Customer needs more points (Required: <field name="points_required" readonly="1"/>, Available: <field name="customer_points" readonly="1"/>)</li>
+                    </ul>
+                    <ul attrs="{'invisible': [('stock_available', '=', True)]}">
+                        <li>Reward is out of stock</li>
+                    </ul>
+                </div>
+                
+                <footer>
+                    <button string="👁️ Check Customer History" 
+                            name="action_check_customer_history" 
+                            type="object" 
+                            class="btn-info"
+                            attrs="{'invisible': [('customer_id', '=', False)]}"/>
+                    <button string="🎁 Process Redemption" 
+                            name="action_process_redemption" 
+                            type="object" 
+                            class="btn-success"
+                            confirm="Are you sure you want to process this redemption? Points will be deducted immediately."
+                            attrs="{'invisible': [('can_redeem', '=', False)]}"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Manual Redemption Action -->
+    <record id="action_manual_redemption_wizard" model="ir.actions.act_window">
+        <field name="name">Manual Redemption Tool</field>
+        <field name="res_model">pitcar.manual.redemption.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Manual Redemption Tool
+            </p>
+            <p>
+                Help customers redeem their loyalty points for rewards immediately.
+            </p>
+        </field>
+    </record>
+
+    <!-- Manual Redemption Menu Item -->
+    <menuitem id="menu_manual_redemption_tool"
+              name="Manual Redemption"
+              parent="menu_pitcar_loyalty_main"
+              action="action_manual_redemption_wizard"
+              sequence="85"/>
+
+</odoo>

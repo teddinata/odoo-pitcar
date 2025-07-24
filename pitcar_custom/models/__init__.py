@@ -53,3 +53,14 @@ from . import team_project_automated_notification
 from . import booking_metrics
 from . import sale_order_template
 from . import campaign_analytics
+
+# New Loyalty System imports - Complete
+from . import pitcar_loyalty_core
+from . import pitcar_rewards
+from . import pitcar_referral
+from . import pitcar_loyalty_integration
+from . import pitcar_loyalty_helpers
+from . import sale_order_loyalty_integration
+# Manual redemption wizard removed - integrated into redemption form
+# from . import pitcar_manual_redemption_wizard
+from . import video_management

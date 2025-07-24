@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        
+        <!-- Default Loyalty Configuration -->
+        <record id="default_loyalty_config" model="pitcar.loyalty.config">
+            <field name="name">Pitcar Loyalty System Configuration</field>
+            <field name="points_per_rupiah">0.0001</field>  <!-- 1 point per 10.000 IDR -->
+            <field name="min_transaction_for_points">50000</field>  <!-- Min 50K IDR -->
+            <field name="points_expiry_months">6</field>
+            <field name="membership_bronze_threshold">0</field>  <!-- Default level -->
+            <field name="membership_silver_threshold">250</field>  <!-- 250 points -->
+            <field name="membership_gold_threshold">500</field>  <!-- 500 points -->
+            <field name="membership_platinum_threshold">1000</field>  <!-- 1000 points -->
+            <field name="is_system_active">True</field>
+            <field name="referrer_bonus_points">50</field>  <!-- Adjust sesuai kebutuhan -->
+            <field name="referee_bonus_points">30</field>   <!-- Adjust sesuai kebutuhan -->
+            <field name="referral_min_transaction">100000</field>  <!-- 100K IDR -->
+        </record>
+
+        <!-- Sequence for Points Transaction -->
+        <record id="seq_pitcar_points_transaction" model="ir.sequence">
+            <field name="name">Pitcar Points Transaction</field>
+            <field name="code">pitcar.points.transaction</field>
+            <field name="prefix"></field>
+            <field name="suffix"></field>
+            <field name="padding">3</field>
+            <field name="number_increment">1</field>
+            <field name="implementation">standard</field>
+        </record>
+
+        <!-- Cron Job for Points Expiry -->
+        <record id="cron_expire_loyalty_points" model="ir.cron">
+            <field name="name">Expire Loyalty Points</field>
+            <field name="model_id" ref="model_pitcar_points_transaction"/>
+            <field name="state">code</field>
+            <field name="code">model.expire_old_points()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+    </data>
+</odoo>

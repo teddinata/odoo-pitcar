@@ -1,0 +1,262 @@
+<!-- data/lms_default_data.xml -->
+<odoo>
+    <!-- Default Categories -->
+    <record id="category_odoo_training" model="lms.category">
+        <field name="name">Odoo System Training</field>
+        <field name="icon">fa-desktop</field>
+        <field name="color">7</field>
+        <field name="sequence">10</field>
+        <field name="description">Training courses for Odoo system usage and best practices</field>
+    </record>
+
+    <record id="category_technical_skills" model="lms.category">
+        <field name="name">Technical Skills</field>
+        <field name="icon">fa-wrench</field>
+        <field name="color">3</field>
+        <field name="sequence">20</field>
+        <field name="description">Technical skills training for workshop operations</field>
+    </record>
+
+    <record id="category_soft_skills" model="lms.category">
+        <field name="name">Soft Skills</field>
+        <field name="icon">fa-users</field>
+        <field name="color">4</field>
+        <field name="sequence">30</field>
+        <field name="description">Communication, leadership, and interpersonal skills</field>
+    </record>
+
+    <record id="category_compliance_safety" model="lms.category">
+        <field name="name">Compliance &amp; Safety</field>
+        <field name="icon">fa-shield</field>
+        <field name="color">1</field>
+        <field name="sequence">40</field>
+        <field name="description">Safety protocols and compliance training</field>
+    </record>
+
+    <!-- Default Competencies -->
+    <record id="competency_odoo_sales" model="lms.competency">
+        <field name="name">Odoo Sales Management</field>
+        <field name="code">ODOO_SALES</field>
+        <field name="category">system</field>
+        <field name="description">Proficient in using Odoo Sales module for quotations, orders, and customer management</field>
+        <field name="min_score_required">80.0</field>
+        <field name="points_awarded">75</field>
+    </record>
+
+    <record id="competency_odoo_inventory" model="lms.competency">
+        <field name="name">Odoo Inventory Management</field>
+        <field name="code">ODOO_INVENTORY</field>
+        <field name="category">system</field>
+        <field name="description">Proficient in using Odoo Inventory module for stock management</field>
+        <field name="min_score_required">80.0</field>
+        <field name="points_awarded">75</field>
+    </record>
+
+    <record id="competency_customer_service" model="lms.competency">
+        <field name="name">Customer Service Excellence</field>
+        <field name="code">CUSTOMER_SERVICE</field>
+        <field name="category">soft_skill</field>
+        <field name="description">Excellence in customer service delivery and communication</field>
+        <field name="min_score_required">85.0</field>
+        <field name="points_awarded">60</field>
+    </record>
+
+    <record id="competency_safety" model="lms.competency">
+        <field name="name">Workshop Safety Compliance</field>
+        <field name="code">SAFETY_COMPLIANCE</field>
+        <field name="category">compliance</field>
+        <field name="description">Complete understanding of workshop safety protocols</field>
+        <field name="min_score_required">90.0</field>
+        <field name="points_awarded">100</field>
+        <field name="requires_renewal">True</field>
+        <field name="validity_months">6</field>
+    </record>
+
+    <!-- Default Badges -->
+    <record id="badge_first_course" model="lms.badge">
+        <field name="name">First Course Completed</field>
+        <field name="code">FIRST_COURSE</field>
+        <field name="badge_type">course_completion</field>
+        <field name="description">Awarded for completing your first course</field>
+        <field name="points_awarded">25</field>
+        <field name="color">#4CAF50</field>
+    </record>
+
+    <record id="badge_perfect_score" model="lms.badge">
+        <field name="name">Perfect Score</field>
+        <field name="code">PERFECT_SCORE</field>
+        <field name="badge_type">assessment_excellence</field>
+        <field name="description">Achieved 100% on an assessment</field>
+        <field name="points_awarded">50</field>
+        <field name="color">#9C27B0</field>
+        <field name="min_score_required">100.0</field>
+    </record>
+
+    <record id="badge_odoo_expert" model="lms.badge">
+        <field name="name">Odoo Expert</field>
+        <field name="code">ODOO_EXPERT</field>
+        <field name="badge_type">competency_achievement</field>
+        <field name="description">Mastered all Odoo system modules</field>
+        <field name="points_awarded">100</field>
+        <field name="color">#875A7B</field>
+        <field name="courses_required">5</field>
+    </record>
+
+    <!-- Sample Course -->
+    <record id="course_odoo_basics" model="lms.course">
+        <field name="name">Odoo System Basics</field>
+        <field name="code">ODOO_BASIC_001</field>
+        <field name="category_id" ref="category_odoo_training"/>
+        <field name="description">
+            <![CDATA[
+            <p>This course introduces you to the Odoo system basics including:</p>
+            <ul>
+                <li>Navigation and user interface</li>
+                <li>Basic operations and workflows</li>
+                <li>User preferences and settings</li>
+                <li>Common troubleshooting</li>
+            </ul>
+            ]]>
+        </field>
+        <field name="short_description">Learn the fundamentals of Odoo system navigation and basic operations</field>
+        <field name="duration_hours">2.0</field>
+        <field name="difficulty_level">basic</field>
+        <field name="completion_points">20</field>
+        <field name="is_mandatory">True</field>
+        <field name="is_published">True</field>
+        <field name="sequence">10</field>
+    </record>
+
+    <!-- Sample Modules for the course -->
+    <record id="module_odoo_basics_intro" model="lms.module">
+        <field name="name">Introduction to Odoo</field>
+        <field name="course_id" ref="course_odoo_basics"/>
+        <field name="sequence">10</field>
+        <field name="content_type">document</field>
+        <field name="duration_minutes">30</field>
+        <field name="description">Overview of Odoo system and its capabilities</field>
+        <field name="learning_objectives">Understand what Odoo is and how it helps in business operations</field>
+    </record>
+
+    <record id="module_odoo_basics_navigation" model="lms.module">
+        <field name="name">System Navigation</field>
+        <field name="course_id" ref="course_odoo_basics"/>
+        <field name="sequence">20</field>
+        <field name="content_type">interactive</field>
+        <field name="duration_minutes">45</field>
+        <field name="description">Learn how to navigate through Odoo interface</field>
+        <field name="learning_objectives">Navigate efficiently through Odoo menus and screens</field>
+    </record>
+
+    <record id="module_odoo_basics_quiz" model="lms.module">
+        <field name="name">Knowledge Check Quiz</field>
+        <field name="course_id" ref="course_odoo_basics"/>
+        <field name="sequence">30</field>
+        <field name="content_type">assessment</field>
+        <field name="duration_minutes">15</field>
+        <field name="description">Test your understanding of Odoo basics</field>
+        <field name="passing_score">70.0</field>
+        <field name="max_attempts">3</field>
+        <field name="time_limit_minutes">15</field>
+    </record>
+
+    <!-- Sample Assessment -->
+    <record id="assessment_odoo_basics" model="lms.assessment">
+        <field name="name">Odoo Basics Assessment</field>
+        <field name="module_id" ref="module_odoo_basics_quiz"/>
+        <field name="assessment_type">quiz</field>
+        <field name="description">Assessment to evaluate understanding of Odoo system basics</field>
+        <field name="instructions">
+            <![CDATA[
+            <p><strong>Instructions:</strong></p>
+            <ul>
+                <li>You have 15 minutes to complete this quiz</li>
+                <li>You need to score at least 70% to pass</li>
+                <li>You can retake this quiz up to 3 times</li>
+                <li>Choose the best answer for each question</li>
+            </ul>
+            ]]>
+        </field>
+        <field name="passing_score">70.0</field>
+        <field name="max_attempts">3</field>
+        <field name="time_limit_minutes">15</field>
+        <field name="shuffle_questions">True</field>
+        <field name="show_correct_answers">True</field>
+        <field name="is_published">True</field>
+    </record>
+
+    <!-- Sample Questions -->
+    <record id="question_odoo_basics_1" model="lms.question">
+        <field name="assessment_id" ref="assessment_odoo_basics"/>
+        <field name="question_text">What is the main menu in Odoo called?</field>
+        <field name="question_type">multiple_choice</field>
+        <field name="points">10.0</field>
+        <field name="difficulty">easy</field>
+        <field name="sequence">10</field>
+        <field name="explanation">The main menu in Odoo is called the App Menu, which provides access to all installed applications.</field>
+    </record>
+
+    <!-- Sample Question Options -->
+    <record id="question_option_1_1" model="lms.question.option">
+        <field name="question_id" ref="question_odoo_basics_1"/>
+        <field name="option_text">App Menu</field>
+        <field name="sequence">1</field>
+        <field name="is_correct">True</field>
+    </record>
+
+    <record id="question_option_1_2" model="lms.question.option">
+        <field name="question_id" ref="question_odoo_basics_1"/>
+        <field name="option_text">Dashboard</field>
+        <field name="sequence">2</field>
+        <field name="is_correct">False</field>
+    </record>
+
+    <record id="question_option_1_3" model="lms.question.option">
+        <field name="question_id" ref="question_odoo_basics_1"/>
+        <field name="option_text">Main Panel</field>
+        <field name="sequence">3</field>
+        <field name="is_correct">False</field>
+    </record>
+
+    <record id="question_option_1_4" model="lms.question.option">
+        <field name="question_id" ref="question_odoo_basics_1"/>
+        <field name="option_text">Control Center</field>
+        <field name="sequence">4</field>
+        <field name="is_correct">False</field>
+    </record>
+
+    <!-- Sample Learning Paths -->
+    <record id="learning_path_new_employee" model="lms.learning.path">
+        <field name="name">New Employee Onboarding</field>
+        <field name="code">NEW_EMPLOYEE</field>
+        <field name="description">Complete onboarding program for new employees</field>
+        <field name="difficulty_level">beginner</field>
+        <field name="completion_points">200</field>
+        <field name="is_mandatory">True</field>
+        <field name="min_completion_percentage">100.0</field>
+        <field name="min_average_score">70.0</field>
+        <field name="course_ids" eval="[(6, 0, [ref('course_odoo_basics')])]"/>
+    </record>
+
+    <record id="learning_path_service_advisor" model="lms.learning.path">
+        <field name="name">Service Advisor Excellence Program</field>
+        <field name="code">SERVICE_ADVISOR</field>
+        <field name="description">Comprehensive training program for Service Advisors</field>
+        <field name="difficulty_level">intermediate</field>
+        <field name="completion_points">300</field>
+        <field name="min_completion_percentage">100.0</field>
+        <field name="min_average_score">80.0</field>
+        <field name="course_ids" eval="[(6, 0, [ref('course_odoo_basics')])]"/>
+    </record>
+
+    <!-- Link competencies to courses using separate records -->
+    <!-- <record id="competency_odoo_sales_courses" model="lms.competency">
+        <field name="id" ref="competency_odoo_sales"/>
+        <field name="required_course_ids" eval="[(6, 0, [ref('course_odoo_basics')])]"/>
+    </record> -->
+
+    <!-- <record id="competency_odoo_inventory_courses" model="lms.competency">
+        <field name="id" ref="competency_odoo_inventory"/>
+        <field name="required_course_ids" eval="[(6, 0, [ref('course_odoo_basics')])]"/>
+    </record> -->
+</odoo>

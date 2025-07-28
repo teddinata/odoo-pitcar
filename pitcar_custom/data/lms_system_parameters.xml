@@ -1,0 +1,53 @@
+<!-- data/lms_system_parameters.xml -->
+<odoo>
+    <!-- LMS Configuration Parameters -->
+    <record id="lms_param_auto_enroll" model="ir.config_parameter">
+        <field name="key">lms.auto_enroll_new_employees</field>
+        <field name="value">True</field>
+    </record>
+
+    <record id="lms_param_default_passing_score" model="ir.config_parameter">
+        <field name="key">lms.default_passing_score</field>
+        <field name="value">70.0</field>
+    </record>
+
+    <record id="lms_param_max_attempts" model="ir.config_parameter">
+        <field name="key">lms.max_attempts_default</field>
+        <field name="value">3</field>
+    </record>
+
+    <record id="lms_param_completion_points" model="ir.config_parameter">
+        <field name="key">lms.completion_points_default</field>
+        <field name="value">10</field>
+    </record>
+
+    <record id="lms_param_enable_gamification" model="ir.config_parameter">
+        <field name="key">lms.enable_gamification</field>
+        <field name="value">True</field>
+    </record>
+
+    <record id="lms_param_enable_certificates" model="ir.config_parameter">
+        <field name="key">lms.enable_certificates</field>
+        <field name="value">True</field>
+    </record>
+
+    <record id="lms_param_send_notifications" model="ir.config_parameter">
+        <field name="key">lms.send_enrollment_emails</field>
+        <field name="value">True</field>
+    </record>
+
+    <record id="lms_param_reminder_days" model="ir.config_parameter">
+        <field name="key">lms.reminder_days</field>
+        <field name="value">7</field>
+    </record>
+
+    <record id="lms_param_max_file_size" model="ir.config_parameter">
+        <field name="key">lms.max_file_size_mb</field>
+        <field name="value">100</field>
+    </record>
+
+    <record id="lms_param_allowed_file_types" model="ir.config_parameter">
+        <field name="key">lms.allowed_file_types</field>
+        <field name="value">pdf,mp4,pptx,docx,xlsx,png,jpg,jpeg</field>
+    </record>
+</odoo>

@@ -1,0 +1,86 @@
+<!-- security/lms_security.xml -->
+<odoo>
+    <!-- LMS User Groups -->
+    <record id="group_lms_user" model="res.groups">
+        <field name="name">LMS User</field>
+        <field name="category_id" ref="base.module_category_human_resources"/>
+        <field name="comment">Basic LMS access - can view and enroll in courses</field>
+    </record>
+    
+    <record id="group_lms_instructor" model="res.groups">
+        <field name="name">LMS Instructor</field>
+        <field name="category_id" ref="base.module_category_human_resources"/>
+        <field name="implied_ids" eval="[(4, ref('group_lms_user'))]"/>
+        <field name="comment">Can create content and assess students</field>
+    </record>
+    
+    <record id="group_lms_manager" model="res.groups">
+        <field name="name">LMS Manager</field>
+        <field name="category_id" ref="base.module_category_human_resources"/>
+        <field name="implied_ids" eval="[(4, ref('group_lms_instructor'))]"/>
+        <field name="comment">Full LMS administration rights</field>
+    </record>
+    
+    <!-- Add LMS User group to existing employee group -->
+    <record id="base.group_user" model="res.groups">
+        <field name="implied_ids" eval="[(4, ref('group_lms_user'))]"/>
+    </record>
+    
+    <!-- Record Rules -->
+    <record id="lms_enrollment_user_rule" model="ir.rule">
+        <field name="name">LMS Enrollment: User Own Records</field>
+        <field name="model_id" ref="model_lms_enrollment"/>
+        <field name="groups" eval="[(4, ref('group_lms_user'))]"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+    
+    <record id="lms_progress_user_rule" model="ir.rule">
+        <field name="name">LMS Progress: User Own Records</field>
+        <field name="model_id" ref="model_lms_progress"/>
+        <field name="groups" eval="[(4, ref('group_lms_user'))]"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+    
+    <record id="lms_result_user_rule" model="ir.rule">
+        <field name="name">LMS Result: User Own Records</field>
+        <field name="model_id" ref="model_lms_result"/>
+        <field name="groups" eval="[(4, ref('group_lms_user'))]"/>
+        <field name="domain_force">[('user_id', '=', user.id)]</field>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+    
+    <!-- Managers can see all records -->
+    <record id="lms_enrollment_manager_rule" model="ir.rule">
+        <field name="name">LMS Enrollment: Manager All Records</field>
+        <field name="model_id" ref="model_lms_enrollment"/>
+        <field name="groups" eval="[(4, ref('group_lms_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
+    </record>
+    
+    <!-- Published courses are visible to all LMS users -->
+    <record id="lms_course_published_rule" model="ir.rule">
+        <field name="name">LMS Course: Published Courses</field>
+        <field name="model_id" ref="model_lms_course"/>
+        <field name="groups" eval="[(4, ref('group_lms_user'))]"/>
+        <field name="domain_force">[('is_published', '=', True)]</field>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+</odoo>

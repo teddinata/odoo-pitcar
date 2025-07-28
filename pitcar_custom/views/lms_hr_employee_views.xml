@@ -1,0 +1,270 @@
+<!-- views/hr_employee_lms_views.xml -->
+<odoo>
+    <!-- Extend HR Employee Form to include LMS tab -->
+    <record id="view_hr_employee_form_lms" model="ir.ui.view">
+        <field name="name">hr.employee.form.lms</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <div name="button_box" position="inside">
+                <button name="action_view_learning_dashboard" 
+                        type="object" 
+                        class="oe_stat_button" 
+                        icon="fa-graduation-cap"
+                        attrs="{'invisible': [('user_id', '=', False)]}">
+                    <div class="o_field_widget o_stat_info">
+                        <span class="o_stat_value">
+                            <field name="total_courses_completed"/>
+                        </span>
+                        <span class="o_stat_text">Completed</span>
+                    </div>
+                </button>
+                <button name="%(action_lms_enrollment)d" 
+                        type="action" 
+                        class="oe_stat_button" 
+                        icon="fa-book"
+                        context="{'search_default_employee_id': active_id}"
+                        attrs="{'invisible': [('user_id', '=', False)]}">
+                    <div class="o_field_widget o_stat_info">
+                        <span class="o_stat_value">
+                            <field name="total_learning_hours"/>
+                        </span>
+                        <span class="o_stat_text">Learning Hours</span>
+                    </div>
+                </button>
+                <button name="%(action_lms_user_competency)d" 
+                        type="action" 
+                        class="oe_stat_button" 
+                        icon="fa-trophy"
+                        context="{'search_default_employee_id': active_id}"
+                        attrs="{'invisible': [('user_id', '=', False)]}">
+                    <div class="o_field_widget o_stat_info">
+                        <span class="o_stat_value">
+                            <field name="competencies_achieved"/>
+                        </span>
+                        <span class="o_stat_text">Competencies</span>
+                    </div>
+                </button>
+                <button name="action_auto_enroll_mandatory_courses" 
+                        type="object" 
+                        class="oe_stat_button" 
+                        icon="fa-exclamation-triangle"
+                        attrs="{'invisible': ['|', ('user_id', '=', False), ('overdue_trainings', '=', 0)]}">
+                    <div class="o_field_widget o_stat_info">
+                        <span class="o_stat_value">
+                            <field name="overdue_trainings"/>
+                        </span>
+                        <span class="o_stat_text">Overdue</span>
+                    </div>
+                </button>
+            </div>
+            
+            <notebook position="inside">
+                <page string="Learning Profile" attrs="{'invisible': [('user_id', '=', False)]}">
+                    <group>
+                        <group string="Learning Statistics">
+                            <field name="total_courses_completed"/>
+                            <field name="total_learning_hours"/>
+                            <field name="average_assessment_score"/>
+                            <field name="competencies_achieved"/>
+                            <field name="badges_earned"/>
+                        </group>
+                        <group string="Training Compliance">
+                            <field name="mandatory_training_compliance" widget="progressbar"/>
+                            <field name="overdue_trainings"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Learning Preferences">
+                        <group>
+                            <field name="learning_style"/>
+                        </group>
+                        <group>
+                            <field name="preferred_learning_time"/>
+                        </group>
+                    </group>
+                    
+                    <separator string="Current Enrollments"/>
+                    <field name="lms_enrollments" readonly="1">
+                        <tree decoration-success="status=='completed'" decoration-info="status=='in_progress'">
+                            <field name="course_id"/>
+                            <field name="status"/>
+                            <field name="progress_percentage" widget="progressbar"/>
+                            <field name="enrollment_date"/>
+                            <field name="final_score"/>
+                        </tree>
+                    </field>
+                    
+                    <separator string="Achieved Competencies"/>
+                    <field name="lms_competencies" readonly="1" domain="[('status', '=', 'achieved')]">
+                        <tree>
+                            <field name="competency_id"/>
+                            <field name="status"/>
+                            <field name="current_score"/>
+                            <field name="achieved_date"/>
+                            <field name="expiry_date"/>
+                        </tree>
+                    </field>
+                    
+                    <separator string="Earned Badges"/>
+                    <field name="lms_badges" readonly="1">
+                        <tree>
+                            <field name="badge_id"/>
+                            <field name="earned_date"/>
+                            <field name="course_id"/>
+                            <field name="competency_id"/>
+                        </tree>
+                    </field>
+                </page>
+            </notebook>
+        </field>
+    </record>
+
+    <!-- Extend HR Job Form to include LMS requirements -->
+    <record id="view_hr_job_form_lms" model="ir.ui.view">
+        <field name="name">hr.job.form.lms</field>
+        <field name="model">hr.job</field>
+        <field name="inherit_id" ref="hr.view_hr_job_form"/>
+        <field name="arch" type="xml">
+            <div name="button_box" position="inside">
+                <button name="action_bulk_enroll_employees" 
+                        type="object" 
+                        class="oe_stat_button" 
+                        icon="fa-users">
+                    <div class="o_field_widget o_stat_info">
+                        <span class="o_stat_text">Bulk Enroll</span>
+                    </div>
+                </button>
+            </div>
+            
+            <notebook position="inside">
+                <page string="Training Requirements">
+                    <group>
+                        <group string="Learning Requirements">
+                            <field name="onboarding_duration_days"/>
+                            <field name="mandatory_refresh_months"/>
+                        </group>
+                        <group>
+                            <field name="learning_path_id"/>
+                        </group>
+                    </group>
+                    
+                    <separator string="Required Courses"/>
+                    <field name="required_course_ids"/>
+                    
+                    <separator string="Required Competencies"/>
+                    <field name="required_competency_ids"/>
+                </page>
+            </notebook>
+        </field>
+    </record>
+
+    <!-- User Dashboard View -->
+    <record id="view_lms_user_dashboard_form" model="ir.ui.view">
+        <field name="name">lms.user.dashboard.form</field>
+        <field name="model">lms.dashboard</field>
+        <field name="arch" type="xml">
+            <form string="My Learning Dashboard" create="false" edit="false" delete="false">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>My Learning Dashboard</h1>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-lg-3 col-6">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="card-title text-primary">0</h3>
+                                    <p class="card-text">Active Courses</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="card-title text-success">0</h3>
+                                    <p class="card-text">Completed</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="card-title text-warning">0</h3>
+                                    <p class="card-text">Learning Hours</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3 class="card-title text-info">0</h3>
+                                    <p class="card-text">Badges Earned</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3" role="alert">
+                        <h4 class="alert-heading">Welcome to Learning Management System!</h4>
+                        <p>This dashboard shows your learning progress and achievements. Start by enrolling in courses relevant to your role.</p>
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Create dashboard action -->
+    <record id="action_lms_user_dashboard" model="ir.actions.act_window">
+        <field name="name">My Learning Dashboard</field>
+        <field name="res_model">lms.dashboard</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_lms_user_dashboard_form"/>
+        <field name="target">current</field>
+    </record>
+
+    <!-- Add dashboard to main menu -->
+    <!-- <menuitem id="menu_lms_my_dashboard" name="My Dashboard" parent="menu_lms_root" action="action_lms_user_dashboard" sequence="5"/> -->
+
+    <!-- Employee Tree View with LMS info -->
+    <record id="view_hr_employee_tree_lms" model="ir.ui.view">
+        <field name="name">hr.employee.tree.lms</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_tree"/>
+        <field name="arch" type="xml">
+            <field name="work_phone" position="after">
+                <field name="total_courses_completed"/>
+                <field name="mandatory_training_compliance" widget="progressbar"/>
+                <field name="overdue_trainings"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Mechanic Form View with LMS Integration -->
+    <!-- <record id="view_pitcar_mechanic_form_lms" model="ir.ui.view">
+        <field name="name">pitcar.mechanic.new.form.lms</field>
+        <field name="model">pitcar.mechanic.new</field>
+        <field name="inherit_id" ref="pitcar_custom.view_pitcar_mechanic_new_form"/>
+        <field name="arch" type="xml">
+            <div name="button_box" position="inside">
+                <button name="action_view_lms_progress" 
+                        type="object" 
+                        class="oe_stat_button" 
+                        icon="fa-graduation-cap"
+                        attrs="{'invisible': [('user_id', '=', False)]}">
+                    <div class="o_field_widget o_stat_info">
+                        <span class="o_stat_value">
+                            <field name="technical_certification_level"/>
+                        </span>
+                        <span class="o_stat_text">Certification</span>
+                    </div>
+                </button>
+            </div>
+            
+            <field name="attendance_achievement" position="after">
+                <field name="required_training_compliance" widget="progressbar"/>
+                <field name="technical_certification_level"/>
+            </field>
+        </field>
+    </record> -->
+</odoo>

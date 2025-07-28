@@ -63,6 +63,9 @@
         'data/pitcar_loyalty_data.xml',
         'data/pitcar_rewards_data.xml',
         'data/pitcar_referral_data.xml',
+        # LMS Data
+        'data/lms_default_data.xml',
+        'data/lms_system_parameters.xml',
 
         'report/ir_actions_report_templates.xml',
         'report/ir_actions_report.xml',
@@ -81,6 +84,8 @@
         'security/video_management_groups.xml',
         # NEW: Loyalty System Security
         'security/pitcar_loyalty_security.xml',
+        # LMS Security
+        'security/lms_security.xml',
         'security/ir.model.access.csv',
 
         'wizard/mechanic_credential_views.xml',
@@ -132,13 +137,28 @@
         # 'views/sale_order_loyalty_views.xml',
         # Manual redemption wizard sudah dipindah ke pitcar_rewards_views.xml
         # 'views/pitcar_manual_redemption_views.xml',
+
+        # LMS Views - Core only
+        'views/lms_core_views.xml',
+        'views/lms_enrollment_views.xml',
+        'views/lms_assessment_views.xml',
+        'views/lms_competency_views.xml',
+        'views/lms_hr_employee_views.xml',
+
         'views/menu.xml',
         'views/menu_system_development.xml',
+        'views/lms_menus.xml',
+    ],
+
+    'demo': [
+        'demo/lms_demo_courses.xml',
+        'demo/lms_demo_assessments.xml',
+        'demo/lms_demo_enrollments.xml',
     ],
     'installable': True,
     'application': True,
     'auto_install': False,
     'default_timezone': 'Asia/Jakarta',
     'license': 'LGPL-3',
-    'version':'16.0.204'  # Increment version untuk Integration
+    'version':'16.0.205'  # Increment version untuk Integration
 }

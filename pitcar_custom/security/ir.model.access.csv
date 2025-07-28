@@ -205,3 +205,66 @@ pitcar_custom.access_pitcar_referral_program_public,pitcar.referral.program publ
 pitcar_custom.access_pitcar_referral_tracking_manager,pitcar.referral.tracking manager,model_pitcar_referral_tracking,group_loyalty_manager,1,1,1,1
 pitcar_custom.access_pitcar_referral_tracking_user,pitcar.referral.tracking user,model_pitcar_referral_tracking,group_loyalty_user,1,1,1,0
 pitcar_custom.access_pitcar_referral_tracking_public,pitcar.referral.tracking public,model_pitcar_referral_tracking,base.group_public,1,0,0,0
+pitcar_custom.access_lms_category_user,LMS Category User,pitcar_custom.model_lms_category,base.group_user,1,0,0,0
+pitcar_custom.access_lms_category_manager,LMS Category Manager,pitcar_custom.model_lms_category,base.group_system,1,1,1,1
+
+pitcar_custom.access_lms_course_user,LMS Course User,pitcar_custom.model_lms_course,base.group_user,1,0,0,0
+pitcar_custom.access_lms_course_hr_officer,LMS Course HR Officer,pitcar_custom.model_lms_course,hr.group_hr_user,1,1,1,0
+pitcar_custom.access_lms_course_manager,LMS Course Manager,pitcar_custom.model_lms_course,base.group_system,1,1,1,1
+
+pitcar_custom.access_lms_module_user,LMS Module User,pitcar_custom.model_lms_module,base.group_user,1,0,0,0
+pitcar_custom.access_lms_module_hr_officer,LMS Module HR Officer,pitcar_custom.model_lms_module,hr.group_hr_user,1,1,1,0
+pitcar_custom.access_lms_module_manager,LMS Module Manager,pitcar_custom.model_lms_module,base.group_system,1,1,1,1
+pitcar_custom.access_lms_enrollment_user,LMS Enrollment User,pitcar_custom.model_lms_enrollment,base.group_user,1,1,0,0
+pitcar_custom.access_lms_enrollment_hr_officer,LMS Enrollment HR Officer,pitcar_custom.model_lms_enrollment,hr.group_hr_user,1,1,1,1
+pitcar_custom.access_lms_enrollment_manager,LMS Enrollment Manager,pitcar_custom.model_lms_enrollment,base.group_system,1,1,1,1
+
+pitcar_custom.access_lms_progress_user,LMS Progress User,pitcar_custom.model_lms_progress,base.group_user,1,1,0,0
+pitcar_custom.access_lms_progress_hr_officer,LMS Progress HR Officer,pitcar_custom.model_lms_progress,hr.group_hr_user,1,1,1,0
+pitcar_custom.access_lms_progress_manager,LMS Progress Manager,pitcar_custom.model_lms_progress,base.group_system,1,1,1,1
+pitcar_custom.access_lms_assessment_user,LMS Assessment User,pitcar_custom.model_lms_assessment,base.group_user,1,0,0,0
+pitcar_custom.access_lms_assessment_hr_officer,LMS Assessment HR Officer,pitcar_custom.model_lms_assessment,hr.group_hr_user,1,1,1,0
+pitcar_custom.access_lms_assessment_manager,LMS Assessment Manager,pitcar_custom.model_lms_assessment,base.group_system,1,1,1,1
+
+pitcar_custom.access_lms_question_user,LMS Question User,pitcar_custom.model_lms_question,base.group_user,1,0,0,0
+pitcar_custom.access_lms_question_option_user,LMS Question Option User,pitcar_custom.model_lms_question_option,base.group_user,1,0,0,0
+pitcar_custom.access_lms_question_option_hr_officer,LMS Question Option HR Officer,pitcar_custom.model_lms_question_option,hr.group_hr_user,1,1,1,0
+pitcar_custom.access_lms_question_option_manager,LMS Question Option Manager,pitcar_custom.model_lms_question_option,base.group_system,1,1,1,1
+pitcar_custom.access_lms_result_user,LMS Result User,pitcar_custom.model_lms_result,base.group_user,1,1,1,0
+pitcar_custom.access_lms_result_hr_officer,LMS Result HR Officer,pitcar_custom.model_lms_result,hr.group_hr_user,1,1,0,0
+pitcar_custom.access_lms_result_manager,LMS Result Manager,pitcar_custom.model_lms_result,base.group_system,1,1,1,1
+pitcar_custom.access_lms_result_detail_user,LMS Result Detail User,pitcar_custom.model_lms_result_detail,base.group_user,1,1,1,0
+pitcar_custom.access_lms_result_detail_hr_officer,LMS Result Detail HR Officer,pitcar_custom.model_lms_result_detail,hr.group_hr_user,1,1,0,0
+pitcar_custom.access_lms_result_detail_manager,LMS Result Detail Manager,pitcar_custom.model_lms_result_detail,base.group_system,1,1,1,1
+pitcar_custom.access_lms_competency_user,LMS Competency User,pitcar_custom.model_lms_competency,base.group_user,1,0,0,0
+pitcar_custom.access_lms_competency_hr_officer,LMS Competency HR Officer,pitcar_custom.model_lms_competency,hr.group_hr_user,1,1,1,0
+pitcar_custom.access_lms_competency_manager,LMS Competency Manager,pitcar_custom.model_lms_competency,base.group_system,1,1,1,1
+pitcar_custom.access_lms_user_competency_user,LMS User Competency User,pitcar_custom.model_lms_user_competency,base.group_user,1,1,0,0
+pitcar_custom.access_lms_user_competency_hr_officer,LMS User Competency HR Officer,pitcar_custom.model_lms_user_competency,hr.group_hr_user,1,1,1,1
+pitcar_custom.access_lms_user_competency_manager,LMS User Competency Manager,pitcar_custom.model_lms_user_competency,base.group_system,1,1,1,1
+pitcar_custom.access_lms_learning_path_user,LMS Learning Path User,pitcar_custom.model_lms_learning_path,base.group_user,1,0,0,0
+pitcar_custom.access_lms_learning_path_hr_officer,LMS Learning Path HR Officer,pitcar_custom.model_lms_learning_path,hr.group_hr_user,1,1,1,0
+pitcar_custom.access_lms_learning_path_manager,LMS Learning Path Manager,pitcar_custom.model_lms_learning_path,base.group_system,1,1,1,1
+pitcar_custom.access_lms_path_enrollment_user,LMS Path Enrollment User,pitcar_custom.model_lms_path_enrollment,base.group_user,1,1,0,0
+pitcar_custom.access_lms_path_enrollment_hr_officer,LMS Path Enrollment HR Officer,pitcar_custom.model_lms_path_enrollment,hr.group_hr_user,1,1,1,1
+pitcar_custom.access_lms_path_enrollment_manager,LMS Path Enrollment Manager,pitcar_custom.model_lms_path_enrollment,base.group_system,1,1,1,1
+pitcar_custom.access_lms_badge_user,LMS Badge User,pitcar_custom.model_lms_badge,base.group_user,1,0,0,0
+pitcar_custom.access_lms_badge_hr_officer,LMS Badge HR Officer,pitcar_custom.model_lms_badge,hr.group_hr_user,1,1,1,0
+pitcar_custom.access_lms_badge_manager,LMS Badge Manager,pitcar_custom.model_lms_badge,base.group_system,1,1,1,1
+pitcar_custom.access_lms_user_badge_user,LMS User Badge User,pitcar_custom.model_lms_user_badge,base.group_user,1,0,0,0
+pitcar_custom.access_lms_user_badge_hr_officer,LMS User Badge HR Officer,pitcar_custom.model_lms_user_badge,hr.group_hr_user,1,1,1,0
+pitcar_custom.access_lms_user_badge_manager,LMS User Badge Manager,pitcar_custom.model_lms_user_badge,base.group_system,1,1,1,1
+pitcar_custom.access_lms_system_parameter_user,LMS System Parameter User,pitcar_custom.model_lms_system_parameter,base.group_user,1,0,0,0
+pitcar_custom.access_lms_system_parameter_manager,LMS System Parameter Manager,pitcar_custom.model_lms_system_parameter,base.group_system,1,1,1,1
+pitcar_custom.access_lms_data_default_manager,LMS Data Default Manager,pitcar_custom.model_lms_data_default,base.group_system,1,1,1,1
+pitcar_custom.access_lms_dashboard_user,LMS Dashboard User,pitcar_custom.model_lms_dashboard,base.group_user,1,0,0,0
+pitcar_custom.access_lms_dashboard_hr_officer,LMS Dashboard HR Officer,pitcar_custom.model_lms_dashboard,hr.group_hr_user,1,1,0,0
+pitcar_custom.access_lms_dashboard_manager,LMS Dashboard Manager,pitcar_custom.model_lms_dashboard,base.group_system,1,1,1,1
+pitcar_custom.access_lms_course_mechanic,LMS Course Mechanic,pitcar_custom.model_lms_course,pitcar_custom.group_mechanic,1,0,0,0
+pitcar_custom.access_lms_enrollment_mechanic,LMS Enrollment Mechanic,pitcar_custom.model_lms_enrollment,pitcar_custom.group_mechanic,1,1,0,0
+pitcar_custom.access_lms_progress_mechanic,LMS Progress Mechanic,pitcar_custom.model_lms_progress,pitcar_custom.group_mechanic,1,1,0,0
+pitcar_custom.access_lms_result_mechanic,LMS Result Mechanic,pitcar_custom.model_lms_result,pitcar_custom.group_mechanic,1,1,1,0
+pitcar_custom.access_lms_course_service_advisor,LMS Course Service Advisor,pitcar_custom.model_lms_course,pitcar_custom.group_service_advisor,1,0,0,0
+pitcar_custom.access_lms_enrollment_service_advisor,LMS Enrollment Service Advisor,pitcar_custom.model_lms_enrollment,pitcar_custom.group_service_advisor,1,1,0,0
+pitcar_custom.access_lms_progress_service_advisor,LMS Progress Service Advisor,pitcar_custom.model_lms_progress,pitcar_custom.group_service_advisor,1,1,0,0
+pitcar_custom.access_lms_result_service_advisor,LMS Result Service Advisor,pitcar_custom.model_lms_result,pitcar_custom.group_service_advisor,1,1,1,0

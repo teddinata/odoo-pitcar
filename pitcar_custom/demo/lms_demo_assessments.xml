@@ -1,0 +1,64 @@
+<!-- demo/lms_demo_assessments.xml -->
+<odoo>
+    <!-- Demo Assessment -->
+    <record id="demo_assessment_customer_service" model="lms.assessment">
+        <field name="name">Customer Service Skills Assessment</field>
+        <field name="assessment_type">final_exam</field>
+        <field name="description">Comprehensive assessment of customer service skills</field>
+        <field name="instructions">
+            <![CDATA[
+            <p><strong>Final Assessment Instructions:</strong></p>
+            <ul>
+                <li>This assessment covers all customer service topics</li>
+                <li>You have 30 minutes to complete</li>
+                <li>Minimum score: 80% to pass</li>
+                <li>Maximum 2 attempts allowed</li>
+            </ul>
+            ]]>
+        </field>
+        <field name="passing_score">80.0</field>
+        <field name="max_attempts">2</field>
+        <field name="time_limit_minutes">30</field>
+        <field name="is_published">True</field>
+    </record>
+
+    <!-- Demo Questions -->
+    <record id="demo_question_customer_1" model="lms.question">
+        <field name="assessment_id" ref="demo_assessment_customer_service"/>
+        <field name="question_text">What is the most important aspect of customer service?</field>
+        <field name="question_type">multiple_choice</field>
+        <field name="points">20.0</field>
+        <field name="difficulty">medium</field>
+        <field name="sequence">10</field>
+        <field name="explanation">Active listening is fundamental to understanding customer needs and providing appropriate solutions.</field>
+    </record>
+
+    <!-- Demo Question Options -->
+    <record id="demo_option_1_1" model="lms.question.option">
+        <field name="question_id" ref="demo_question_customer_1"/>
+        <field name="option_text">Active listening to understand customer needs</field>
+        <field name="sequence">1</field>
+        <field name="is_correct">True</field>
+    </record>
+
+    <record id="demo_option_1_2" model="lms.question.option">
+        <field name="question_id" ref="demo_question_customer_1"/>
+        <field name="option_text">Speaking quickly to save time</field>
+        <field name="sequence">2</field>
+        <field name="is_correct">False</field>
+    </record>
+
+    <record id="demo_option_1_3" model="lms.question.option">
+        <field name="question_id" ref="demo_question_customer_1"/>
+        <field name="option_text">Always agreeing with the customer</field>
+        <field name="sequence">3</field>
+        <field name="is_correct">False</field>
+    </record>
+
+    <record id="demo_option_1_4" model="lms.question.option">
+        <field name="question_id" ref="demo_question_customer_1"/>
+        <field name="option_text">Focusing only on making sales</field>
+        <field name="sequence">4</field>
+        <field name="is_correct">False</field>
+    </record>
+</odoo>

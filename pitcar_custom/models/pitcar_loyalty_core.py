@@ -89,11 +89,26 @@ class PitcarLoyaltyConfig(models.Model):
     )
     
     # Constraint untuk hanya 1 config - hanya untuk create, tidak untuk edit
+    # @api.model
+    # def create(self, vals):
+    #     existing_config = self.search([], limit=1)
+    #     if existing_config:
+    #         raise ValidationError(_('Hanya boleh ada satu konfigurasi loyalty system. Silakan edit konfigurasi yang sudah ada.'))
+    #     return super().create(vals)
+
     @api.model
     def create(self, vals):
+        # Skip validation during module installation/upgrade/data loading
+        if (self.env.context.get('install_mode') or 
+            self.env.context.get('module_data_installation') or
+            self.env.context.get('noupdate') is not None):
+            return super().create(vals)
+        
+        # Check for existing config only in normal create operations
         existing_config = self.search([], limit=1)
         if existing_config:
             raise ValidationError(_('Hanya boleh ada satu konfigurasi loyalty system. Silakan edit konfigurasi yang sudah ada.'))
+        
         return super().create(vals)
     
     def write(self, vals):

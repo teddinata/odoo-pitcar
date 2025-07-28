@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        
+        <!-- Reward Categories -->
+        <record id="reward_category_merchandise" model="pitcar.reward.category">
+            <field name="name">Merchandise</field>
+            <field name="code">merchandise</field>
+            <field name="description">Barang-barang merchandise Pitcar</field>
+            <field name="icon">fa-gift</field>
+            <field name="sequence">10</field>
+        </record>
+        
+        <record id="reward_category_service" model="pitcar.reward.category">
+            <field name="name">Service</field>
+            <field name="code">service</field>
+            <field name="description">Layanan gratis dan diskon service</field>
+            <field name="icon">fa-wrench</field>
+            <field name="sequence">20</field>
+        </record>
+        
+        <record id="reward_category_voucher" model="pitcar.reward.category">
+            <field name="name">Voucher</field>
+            <field name="code">voucher</field>
+            <field name="description">Voucher service dan diskon</field>
+            <field name="icon">fa-ticket</field>
+            <field name="sequence">30</field>
+        </record>
+
+        <!-- Merchandise Rewards -->
+        <record id="reward_tumblr_pitcar" model="pitcar.rewards.catalog">
+            <field name="name">Tumblr Pitcar Eksklusif</field>
+            <field name="description">Tumblr eksklusif dengan logo Pitcar, cocok untuk di mobil atau kantor</field>
+            <field name="category_id" ref="reward_category_merchandise"/>
+            <field name="points_required">150</field>
+            <field name="stock_quantity">50</field>
+            <field name="max_redeem_per_customer">2</field>
+            <field name="is_active">True</field>
+        </record>
+        
+        <record id="reward_payung_pitcar" model="pitcar.rewards.catalog">
+            <field name="name">Payung Pitcar (Lipat)</field>
+            <field name="description">Payung lipat praktis dengan branding Pitcar</field>
+            <field name="category_id" ref="reward_category_merchandise"/>
+            <field name="points_required">300</field>
+            <field name="stock_quantity">30</field>
+            <field name="max_redeem_per_customer">1</field>
+            <field name="is_active">True</field>
+        </record>
+        
+        <record id="reward_kaos_polo_pitcar" model="pitcar.rewards.catalog">
+            <field name="name">Kaos Polo Shirt Pitcar</field>
+            <field name="description">Kaos polo berkualitas dengan logo Pitcar</field>
+            <field name="category_id" ref="reward_category_merchandise"/>
+            <field name="points_required">450</field>
+            <field name="stock_quantity">25</field>
+            <field name="max_redeem_per_customer">2</field>
+            <field name="is_active">True</field>
+        </record>
+        
+        <record id="reward_paket_cuci_mobil" model="pitcar.rewards.catalog">
+            <field name="name">Paket Cuci Mobil + AC + Parfum</field>
+            <field name="description">Paket lengkap cuci mobil, cuci AC, dan parfum mobil</field>
+            <field name="category_id" ref="reward_category_service"/>
+            <field name="points_required">400</field>
+            <field name="stock_quantity">-1</field>
+            <field name="max_redeem_per_customer">0</field>
+            <field name="is_active">True</field>
+        </record>
+
+        <!-- Service Rewards -->
+        <record id="reward_ganti_oli_reguler" model="pitcar.rewards.catalog">
+            <field name="name">Ganti Oli Reguler (Fastron LGGC 3.5L)</field>
+            <field name="description">Service ganti oli reguler menggunakan Fastron LGGC 3.5L</field>
+            <field name="category_id" ref="reward_category_service"/>
+            <field name="points_required">600</field>
+            <field name="stock_quantity">-1</field>
+            <field name="max_redeem_per_customer">0</field>
+            <field name="is_active">True</field>
+        </record>
+        
+        <record id="reward_tune_up_basic" model="pitcar.rewards.catalog">
+            <field name="name">Tune Up Basic (Bensin)</field>
+            <field name="description">Paket tune up basic untuk kendaraan bensin</field>
+            <field name="category_id" ref="reward_category_service"/>
+            <field name="points_required">700</field>
+            <field name="stock_quantity">-1</field>
+            <field name="max_redeem_per_customer">0</field>
+            <field name="is_active">True</field>
+        </record>
+        
+        <record id="reward_service_berkala" model="pitcar.rewards.catalog">
+            <field name="name">Service Berkala (Bensin)</field>
+            <field name="description">Paket service berkala untuk kendaraan bensin</field>
+            <field name="category_id" ref="reward_category_service"/>
+            <field name="points_required">900</field>
+            <field name="stock_quantity">-1</field>
+            <field name="max_redeem_per_customer">0</field>
+            <field name="is_active">True</field>
+        </record>
+
+        <!-- Voucher Rewards -->
+        <record id="reward_voucher_service_500k" model="pitcar.rewards.catalog">
+            <field name="name">Voucher Servis Gratis Rp 500.000</field>
+            <field name="description">Voucher untuk service gratis senilai Rp 500.000</field>
+            <field name="category_id" ref="reward_category_voucher"/>
+            <field name="points_required">1000</field>
+            <field name="stock_quantity">-1</field>
+            <field name="max_redeem_per_customer">1</field>
+            <field name="is_active">True</field>
+            <field name="terms_conditions"><![CDATA[
+                <p><strong>Syarat dan Ketentuan:</strong></p>
+                <ul>
+                    <li>Voucher berlaku 3 bulan sejak diterbitkan</li>
+                    <li>Tidak dapat digabung dengan promo lain</li>
+                    <li>Berlaku untuk semua jenis service kecuali sparepart</li>
+                    <li>Voucher tidak dapat diuangkan</li>
+                </ul>
+            ]]></field>
+        </record>
+
+        <!-- Sequences -->
+        <record id="seq_pitcar_points_redemption" model="ir.sequence">
+            <field name="name">Pitcar Points Redemption</field>
+            <field name="code">pitcar.points.redemption</field>
+            <field name="prefix"></field>
+            <field name="suffix"></field>
+            <field name="padding">3</field>
+            <field name="number_increment">1</field>
+            <field name="implementation">standard</field>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,45 @@
+<!-- views/lms_menus.xml -->
+<odoo>
+    <!-- Main LMS Menu -->
+    <menuitem id="menu_lms_root" name="Learning Management" sequence="15" web_icon="pitcar_custom,static/description/lms_icon.png"/>
+    
+    <!-- Learning Content Menu -->
+    <menuitem id="menu_lms_content" name="Learning Content" parent="menu_lms_root" sequence="10"/>
+    
+    <menuitem id="menu_lms_course_category" name="Course Categories" parent="menu_lms_content" action="action_lms_category" sequence="10"/>
+    <menuitem id="menu_lms_course" name="Courses" parent="menu_lms_content" action="action_lms_course" sequence="20"/>
+    <menuitem id="menu_lms_module" name="Course Modules" parent="menu_lms_content" action="action_lms_module" sequence="30"/>
+    
+    <!-- Assessment Menu -->
+    <menuitem id="menu_lms_assessment" name="Assessments" parent="menu_lms_root" sequence="20"/>
+    
+    <menuitem id="menu_lms_assessment_list" name="Assessments" parent="menu_lms_assessment" action="action_lms_assessment" sequence="10"/>
+    <menuitem id="menu_lms_question" name="Questions" parent="menu_lms_assessment" action="action_lms_question" sequence="20"/>
+    <menuitem id="menu_lms_result" name="Results" parent="menu_lms_assessment" action="action_lms_result" sequence="30"/>
+    
+    <!-- Enrollments & Progress Menu -->
+    <menuitem id="menu_lms_enrollment" name="Enrollments &amp; Progress" parent="menu_lms_root" sequence="30"/>
+    
+    <menuitem id="menu_lms_enrollment_list" name="Course Enrollments" parent="menu_lms_enrollment" action="action_lms_enrollment" sequence="10"/>
+    <menuitem id="menu_lms_progress" name="Learning Progress" parent="menu_lms_enrollment" action="action_lms_progress" sequence="20"/>
+    
+    <!-- Competencies & Badges Menu -->
+    <menuitem id="menu_lms_competency" name="Competencies &amp; Badges" parent="menu_lms_root" sequence="40"/>
+    
+    <menuitem id="menu_lms_competency_list" name="Competencies" parent="menu_lms_competency" action="action_lms_competency" sequence="10"/>
+    <menuitem id="menu_lms_user_competency" name="User Competencies" parent="menu_lms_competency" action="action_lms_user_competency" sequence="20"/>
+    <menuitem id="menu_lms_badge" name="Badges" parent="menu_lms_competency" action="action_lms_badge" sequence="30"/>
+    <menuitem id="menu_lms_user_badge" name="User Badges" parent="menu_lms_competency" action="action_lms_user_badge" sequence="40"/>
+    
+    <!-- Learning Paths Menu -->
+    <menuitem id="menu_lms_learning_path" name="Learning Paths" parent="menu_lms_root" sequence="50"/>
+    
+    <menuitem id="menu_lms_learning_path_list" name="Learning Paths" parent="menu_lms_learning_path" action="action_lms_learning_path" sequence="10"/>
+    <menuitem id="menu_lms_path_enrollment" name="Path Enrollments" parent="menu_lms_learning_path" action="action_lms_path_enrollment" sequence="20"/>
+    
+    <!-- Configuration Menu -->
+    <menuitem id="menu_lms_config" name="Configuration" parent="menu_lms_root" sequence="60" groups="base.group_system"/>
+    
+    <!-- Reports Menu -->
+    <menuitem id="menu_lms_reports" name="Reports" parent="menu_lms_root" sequence="70"/>
+</odoo>

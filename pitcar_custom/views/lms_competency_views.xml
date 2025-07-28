@@ -1,0 +1,755 @@
+<!-- views/lms_competency_views.xml -->
+<odoo>
+    <!-- LMS Competency Views -->
+    <record id="view_lms_competency_tree" model="ir.ui.view">
+        <field name="name">lms.competency.tree</field>
+        <field name="model">lms.competency</field>
+        <field name="arch" type="xml">
+            <tree string="Competencies">
+                <field name="name"/>
+                <field name="code"/>
+                <field name="category"/>
+                <field name="proficiency_levels"/>
+                <field name="min_score_required"/>
+                <field name="achiever_count"/>
+                <field name="average_score"/>
+                <field name="points_awarded"/>
+                <field name="requires_renewal"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- <record id="view_lms_competency_form" model="ir.ui.view">
+        <field name="name">lms.competency.form</field>
+        <field name="model">lms.competency</field>
+        <field name="arch" type="xml">
+            <form string="Competency">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="%(action_lms_user_competency_competency)d" 
+                                type="action" 
+                                class="oe_stat_button" 
+                                icon="fa-users"
+                                context="{'search_default_competency_id': active_id}">
+                            <field name="achiever_count" widget="statinfo" string="Achievers"/>
+                        </button>
+                    </div>
+                    
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="code"/>
+                            <field name="category"/>
+                            <field name="proficiency_levels"/>
+                        </group>
+                        <group>
+                            <field name="min_score_required"/>
+                            <field name="points_awarded"/>
+                            <field name="completion_badge"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Validity &amp; Renewal">
+                        <group>
+                            <field name="requires_renewal"/>
+                            <field name="validity_months" attrs="{'invisible': [('requires_renewal', '=', False)]}"/>
+                        </group>
+                        <group>
+                            <field name="average_score"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Description">
+                            <field name="description"/>
+                        </page>
+                        
+                        <page string="Required Courses">
+                            <field name="required_course_ids"/>
+                        </page>
+                        
+                        <page string="Prerequisites">
+                            <field name="prerequisite_competency_ids"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record> -->
+
+    <record id="view_lms_competency_kanban" model="ir.ui.view">
+        <field name="name">lms.competency.kanban</field>
+        <field name="model">lms.competency</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="category">
+                <field name="name"/>
+                <field name="code"/>
+                <field name="category"/>
+                <field name="achiever_count"/>
+                <field name="points_awarded"/>
+                <field name="requires_renewal"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="o_kanban_record_top">
+                                    <div class="o_kanban_record_headings">
+                                        <strong class="o_kanban_record_title">
+                                            <field name="name"/>
+                                        </strong>
+                                        <div class="o_kanban_record_subtitle">
+                                            <field name="code"/>
+                                        </div>
+                                    </div>
+                                    <div class="o_kanban_manage_button_section">
+                                        <span class="badge badge-primary">
+                                            <i class="fa fa-trophy"/> <field name="points_awarded"/> pts
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="o_kanban_record_body">
+                                    <div class="o_kanban_record_bottom">
+                                        <div class="oe_kanban_bottom_left">
+                                            <span t-if="record.requires_renewal.raw_value" class="badge badge-warning">
+                                                Renewal Required
+                                            </span>
+                                        </div>
+                                        <div class="oe_kanban_bottom_right">
+                                            <i class="fa fa-users"/> <field name="achiever_count"/> achievers
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- LMS User Competency Views -->
+    <record id="view_lms_user_competency_tree" model="ir.ui.view">
+        <field name="name">lms.user.competency.tree</field>
+        <field name="model">lms.user.competency</field>
+        <field name="arch" type="xml">
+            <tree string="User Competencies" decoration-success="status=='achieved'" decoration-warning="status=='renewal_required'" decoration-danger="status=='expired'">
+                <field name="user_id"/>
+                <field name="employee_id"/>
+                <field name="competency_id"/>
+                <field name="status"/>
+                <field name="current_score"/>
+                <field name="proficiency_level"/>
+                <field name="progress_percentage" widget="progressbar"/>
+                <field name="completed_courses"/>
+                <field name="required_courses"/>
+                <field name="achieved_date"/>
+                <field name="expiry_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_lms_user_competency_form" model="ir.ui.view">
+        <field name="name">lms.user.competency.form</field>
+        <field name="model">lms.user.competency</field>
+        <field name="arch" type="xml">
+            <form string="User Competency">
+                <header>
+                    <button name="action_validate_competency" 
+                            string="Validate Achievement" 
+                            type="object" 
+                            attrs="{'invisible': [('status', '!=', 'in_progress')]}"
+                            class="oe_highlight"/>
+                    <field name="status" widget="statusbar" statusbar_visible="not_started,in_progress,achieved"/>
+                </header>
+                
+                <sheet>
+                    <div class="alert alert-success" role="alert" attrs="{'invisible': [('status', '!=', 'achieved')]}">
+                        <strong>Achievement Unlocked!</strong> This competency has been successfully achieved.
+                    </div>
+                    <div class="alert alert-warning" role="alert" attrs="{'invisible': [('status', '!=', 'renewal_required')]}">
+                        <strong>Renewal Required.</strong> This competency needs to be renewed.
+                    </div>
+                    <div class="alert alert-danger" role="alert" attrs="{'invisible': [('status', '!=', 'expired')]}">
+                        <strong>Expired.</strong> This competency has expired and needs to be retaken.
+                    </div>
+                    
+                    <group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="employee_id"/>
+                            <field name="competency_id"/>
+                        </group>
+                        <group>
+                            <field name="current_score"/>
+                            <field name="proficiency_level"/>
+                            <field name="progress_percentage" widget="progressbar"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group>
+                            <field name="completed_courses"/>
+                            <field name="required_courses"/>
+                            <field name="start_date"/>
+                        </group>
+                        <group>
+                            <field name="achieved_date"/>
+                            <field name="expiry_date"/>
+                            <field name="last_updated"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Validation" attrs="{'invisible': [('status', '!=', 'achieved')]}">
+                        <group>
+                            <field name="validated_by"/>
+                            <field name="validation_date"/>
+                        </group>
+                        <group>
+                            <field name="certificate_number"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- LMS Badge Views -->
+    <record id="view_lms_badge_tree" model="ir.ui.view">
+        <field name="name">lms.badge.tree</field>
+        <field name="model">lms.badge</field>
+        <field name="arch" type="xml">
+            <tree string="Badges">
+                <field name="name"/>
+                <field name="code"/>
+                <field name="badge_type"/>
+                <field name="points_required"/>
+                <field name="courses_required"/>
+                <field name="min_score_required"/>
+                <field name="points_awarded"/>
+                <field name="awarded_count"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- <record id="view_lms_badge_form" model="ir.ui.view">
+        <field name="name">lms.badge.form</field>
+        <field name="model">lms.badge</field>
+        <field name="arch" type="xml">
+            <form string="Badge">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="%(action_lms_user_badge_badge)d" 
+                                type="action" 
+                                class="oe_stat_button" 
+                                icon="fa-trophy"
+                                context="{'search_default_badge_id': active_id}">
+                            <field name="awarded_count" widget="statinfo" string="Awarded"/>
+                        </button>
+                    </div>
+                    
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Badge Name"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group>
+                            <field name="code"/>
+                            <field name="badge_type"/>
+                            <field name="color" widget="color"/>
+                        </group>
+                        <group>
+                            <field name="points_awarded"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Requirements">
+                        <group>
+                            <field name="points_required"/>
+                            <field name="courses_required"/>
+                        </group>
+                        <group>
+                            <field name="min_score_required"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Badge Icon">
+                        <field name="icon" widget="image" filename="icon_filename"/>
+                        <field name="icon_filename" invisible="1"/>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Description">
+                            <field name="description"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record> -->
+
+    <record id="view_lms_badge_kanban" model="ir.ui.view">
+        <field name="name">lms.badge.kanban</field>
+        <field name="model">lms.badge</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="badge_type">
+                <field name="name"/>
+                <field name="code"/>
+                <field name="badge_type"/>
+                <field name="awarded_count"/>
+                <field name="points_awarded"/>
+                <field name="color"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="o_kanban_record_top">
+                                    <div class="o_kanban_record_headings">
+                                        <strong class="o_kanban_record_title">
+                                            <field name="name"/>
+                                        </strong>
+                                        <div class="o_kanban_record_subtitle">
+                                            <field name="code"/>
+                                        </div>
+                                    </div>
+                                    <div class="o_kanban_manage_button_section">
+                                        <span class="badge badge-primary">
+                                            <i class="fa fa-star"/> <field name="points_awarded"/> pts
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="o_kanban_record_body">
+                                    <div class="o_kanban_record_bottom">
+                                        <div class="oe_kanban_bottom_right">
+                                            <i class="fa fa-trophy"/> <field name="awarded_count"/> times
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- LMS User Badge Views -->
+    <record id="view_lms_user_badge_tree" model="ir.ui.view">
+        <field name="name">lms.user.badge.tree</field>
+        <field name="model">lms.user.badge</field>
+        <field name="arch" type="xml">
+            <tree string="User Badges">
+                <field name="user_id"/>
+                <field name="employee_id"/>
+                <field name="badge_id"/>
+                <field name="earned_date"/>
+                <field name="awarded_by"/>
+                <field name="course_id"/>
+                <field name="competency_id"/>
+                <field name="path_id"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_lms_user_badge_form" model="ir.ui.view">
+        <field name="name">lms.user.badge.form</field>
+        <field name="model">lms.user.badge</field>
+        <field name="arch" type="xml">
+            <form string="User Badge">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="badge_id"/>
+                        </h1>
+                        <h2>
+                            Awarded to <field name="user_id"/>
+                        </h2>
+                    </div>
+                    
+                    <group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="employee_id"/>
+                            <field name="earned_date"/>
+                        </group>
+                        <group>
+                            <field name="awarded_by"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Achievement Details">
+                        <group>
+                            <field name="course_id"/>
+                            <field name="competency_id"/>
+                        </group>
+                        <group>
+                            <field name="path_id"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Notes">
+                        <field name="reason" placeholder="Reason for awarding this badge..."/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_lms_user_badge_kanban" model="ir.ui.view">
+        <field name="name">lms.user.badge.kanban</field>
+        <field name="model">lms.user.badge</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="badge_id">
+                <field name="user_id"/>
+                <field name="badge_id"/>
+                <field name="earned_date"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="o_kanban_record_top">
+                                    <div class="o_kanban_record_headings">
+                                        <strong class="o_kanban_record_title">
+                                            <field name="user_id"/>
+                                        </strong>
+                                        <div class="o_kanban_record_subtitle">
+                                            <field name="earned_date"/>
+                                        </div>
+                                    </div>
+                                    <div class="o_kanban_manage_button_section">
+                                        <i class="fa fa-trophy fa-2x text-warning"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Learning Path Views -->
+    <record id="view_lms_learning_path_tree" model="ir.ui.view">
+        <field name="name">lms.learning.path.tree</field>
+        <field name="model">lms.learning.path</field>
+        <field name="arch" type="xml">
+            <tree string="Learning Paths">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="difficulty_level"/>
+                <field name="estimated_duration_hours"/>
+                <field name="enrollment_count"/>
+                <field name="completion_rate"/>
+                <field name="is_mandatory"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- <record id="view_lms_learning_path_form" model="ir.ui.view">
+        <field name="name">lms.learning.path.form</field>
+        <field name="model">lms.learning.path</field>
+        <field name="arch" type="xml">
+            <form string="Learning Path">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="%(action_lms_path_enrollment_path)d" 
+                                type="action" 
+                                class="oe_stat_button" 
+                                icon="fa-users"
+                                context="{'search_default_path_id': active_id}">
+                            <field name="enrollment_count" widget="statinfo" string="Enrolled"/>
+                        </button>
+                    </div>
+                    
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="code"/>
+                            <field name="difficulty_level"/>
+                            <field name="sequence"/>
+                        </group>
+                        <group>
+                            <field name="estimated_duration_hours"/>
+                            <field name="completion_points"/>
+                            <field name="is_mandatory"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group>
+                            <field name="min_completion_percentage"/>
+                            <field name="min_average_score"/>
+                        </group>
+                        <group>
+                            <field name="completion_badge"/>
+                            <field name="completion_rate"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Description">
+                            <field name="description"/>
+                        </page>
+                        
+                        <page string="Courses">
+                            <field name="course_ids"/>
+                        </page>
+                        
+                        <page string="Target Competencies">
+                            <field name="competency_ids"/>
+                        </page>
+                        
+                        <page string="Target Roles">
+                            <field name="target_role_ids"/>
+                        </page>
+                        
+                        <page string="Target Departments">
+                            <field name="target_department_ids"/>
+                        </page>
+                        
+                        <page string="Certificate Template">
+                            <field name="certificate_template"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record> -->
+
+    <!-- Path Enrollment Views -->
+    <record id="view_lms_path_enrollment_tree" model="ir.ui.view">
+        <field name="name">lms.path.enrollment.tree</field>
+        <field name="model">lms.path.enrollment</field>
+        <field name="arch" type="xml">
+            <tree string="Learning Path Enrollments" decoration-success="status=='completed'" decoration-info="status=='in_progress'">
+                <field name="user_id"/>
+                <field name="employee_id"/>
+                <field name="path_id"/>
+                <field name="enrollment_date"/>
+                <field name="status"/>
+                <field name="progress_percentage" widget="progressbar"/>
+                <field name="average_score"/>
+                <field name="completion_date"/>
+                <field name="total_points_earned"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_lms_path_enrollment_form" model="ir.ui.view">
+        <field name="name">lms.path.enrollment.form</field>
+        <field name="model">lms.path.enrollment</field>
+        <field name="arch" type="xml">
+            <form string="Learning Path Enrollment">
+                <header>
+                    <field name="status" widget="statusbar" statusbar_visible="not_started,in_progress,completed"/>
+                </header>
+                
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="employee_id"/>
+                            <field name="path_id"/>
+                        </group>
+                        <group>
+                            <field name="enrollment_date"/>
+                            <field name="enrolled_by"/>
+                            <field name="completion_date"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group>
+                            <field name="progress_percentage" widget="progressbar"/>
+                            <field name="average_score"/>
+                        </group>
+                        <group>
+                            <field name="total_points_earned"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Actions -->
+    <record id="action_lms_competency" model="ir.actions.act_window">
+        <field name="name">Competencies</field>
+        <field name="res_model">lms.competency</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Define your first competency
+            </p>
+            <p>
+                Competencies represent skills and knowledge that can be achieved through learning.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_lms_user_competency" model="ir.actions.act_window">
+        <field name="name">User Competencies</field>
+        <field name="res_model">lms.user.competency</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'search_default_achieved': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No competency achievements yet
+            </p>
+            <p>
+                User competency achievements will appear here.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_lms_user_competency_competency" model="ir.actions.act_window">
+        <field name="name">Competency Achievers</field>
+        <field name="res_model">lms.user.competency</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('competency_id', '=', active_id)]</field>
+    </record>
+
+    <record id="action_lms_badge" model="ir.actions.act_window">
+        <field name="name">Badges</field>
+        <field name="res_model">lms.badge</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first badge
+            </p>
+            <p>
+                Badges are awarded to recognize achievements and milestones.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_lms_user_badge" model="ir.actions.act_window">
+        <field name="name">User Badges</field>
+        <field name="res_model">lms.user.badge</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No badges awarded yet
+            </p>
+            <p>
+                Awarded badges will appear here.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_lms_user_badge_badge" model="ir.actions.act_window">
+        <field name="name">Badge Recipients</field>
+        <field name="res_model">lms.user.badge</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('badge_id', '=', active_id)]</field>
+    </record>
+
+    <record id="action_lms_learning_path" model="ir.actions.act_window">
+        <field name="name">Learning Paths</field>
+        <field name="res_model">lms.learning.path</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first learning path
+            </p>
+            <p>
+                Learning paths guide users through structured learning journeys.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_lms_path_enrollment" model="ir.actions.act_window">
+        <field name="name">Path Enrollments</field>
+        <field name="res_model">lms.path.enrollment</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No path enrollments yet
+            </p>
+            <p>
+                Learning path enrollments will appear here.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_lms_path_enrollment_path" model="ir.actions.act_window">
+        <field name="name">Path Enrollments</field>
+        <field name="res_model">lms.path.enrollment</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('path_id', '=', active_id)]</field>
+    </record>
+
+    <!-- Search Views -->
+    <record id="view_lms_competency_search" model="ir.ui.view">
+        <field name="name">lms.competency.search</field>
+        <field name="model">lms.competency</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="code"/>
+                <filter string="Technical" name="technical" domain="[('category', '=', 'technical')]"/>
+                <filter string="Soft Skills" name="soft_skill" domain="[('category', '=', 'soft_skill')]"/>
+                <filter string="System Knowledge" name="system" domain="[('category', '=', 'system')]"/>
+                <filter string="Compliance" name="compliance" domain="[('category', '=', 'compliance')]"/>
+                <filter string="Leadership" name="leadership" domain="[('category', '=', 'leadership')]"/>
+                <separator/>
+                <filter string="Requires Renewal" name="renewal" domain="[('requires_renewal', '=', True)]"/>
+                <filter string="Active" name="active" domain="[('active', '=', True)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Category" name="group_category" context="{'group_by': 'category'}"/>
+                    <filter string="Proficiency Level" name="group_proficiency" context="{'group_by': 'proficiency_levels'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_lms_user_competency_search" model="ir.ui.view">
+        <field name="name">lms.user.competency.search</field>
+        <field name="model">lms.user.competency</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="user_id"/>
+                <field name="employee_id"/>
+                <field name="competency_id"/>
+                <filter string="Not Started" name="not_started" domain="[('status', '=', 'not_started')]"/>
+                <filter string="In Progress" name="in_progress" domain="[('status', '=', 'in_progress')]"/>
+                <filter string="Achieved" name="achieved" domain="[('status', '=', 'achieved')]"/>
+                <filter string="Renewal Required" name="renewal_required" domain="[('status', '=', 'renewal_required')]"/>
+                <filter string="Expired" name="expired" domain="[('status', '=', 'expired')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="User" name="group_user" context="{'group_by': 'user_id'}"/>
+                    <filter string="Competency" name="group_competency" context="{'group_by': 'competency_id'}"/>
+                    <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_lms_learning_path_search" model="ir.ui.view">
+        <field name="name">lms.learning.path.search</field>
+        <field name="model">lms.learning.path</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="code"/>
+                <filter string="Beginner" name="beginner" domain="[('difficulty_level', '=', 'beginner')]"/>
+                <filter string="Intermediate" name="intermediate" domain="[('difficulty_level', '=', 'intermediate')]"/>
+                <filter string="Advanced" name="advanced" domain="[('difficulty_level', '=', 'advanced')]"/>
+                <separator/>
+                <filter string="Mandatory" name="mandatory" domain="[('is_mandatory', '=', True)]"/>
+                <filter string="Active" name="active" domain="[('active', '=', True)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Difficulty" name="group_difficulty" context="{'group_by': 'difficulty_level'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+</odoo>

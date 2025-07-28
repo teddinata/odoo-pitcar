@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        
+        <!-- Default Referral Program -->
+        <record id="default_referral_program" model="pitcar.referral.program">
+            <field name="name">Pitcar Referral Program 2025</field>
+            <field name="description">Refer friends and family to Pitcar and get rewarded! Both you and your friend will receive bonus points when they make their first qualifying transaction.</field>
+            <field name="referrer_points">50</field>
+            <field name="referee_points">30</field>
+            <field name="minimum_transaction">100000</field>
+            <field name="qualification_days">30</field>
+            <field name="is_active">True</field>
+            <field name="valid_from">2025-01-01</field>
+            <field name="valid_until">2025-12-31</field>
+            <field name="terms_conditions">&lt;h3&gt;Syarat dan Ketentuan Program Referral Pitcar&lt;/h3&gt;
+&lt;ul&gt;
+    &lt;li&gt;&lt;strong&gt;Cara Kerja:&lt;/strong&gt; Berikan kode referral Anda kepada teman atau keluarga&lt;/li&gt;
+    &lt;li&gt;&lt;strong&gt;Bonus Referrer:&lt;/strong&gt; Anda mendapat 50 poin ketika referee melakukan transaksi pertama minimal Rp 100.000&lt;/li&gt;
+    &lt;li&gt;&lt;strong&gt;Bonus Referee:&lt;/strong&gt; Teman Anda mendapat 30 poin welcome bonus setelah transaksi pertama&lt;/li&gt;
+    &lt;li&gt;&lt;strong&gt;Periode Qualifying:&lt;/strong&gt; Teman Anda harus melakukan transaksi dalam 30 hari setelah registrasi&lt;/li&gt;
+    &lt;li&gt;&lt;strong&gt;Unlimited Referrals:&lt;/strong&gt; Tidak ada batasan jumlah teman yang bisa Anda referensikan&lt;/li&gt;
+    &lt;li&gt;&lt;strong&gt;Points Expiry:&lt;/strong&gt; Points yang diperoleh akan expire dalam 6 bulan&lt;/li&gt;
+    &lt;li&gt;&lt;strong&gt;Program Validity:&lt;/strong&gt; Program berlaku hingga 31 Desember 2025&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h4&gt;Ketentuan Umum:&lt;/h4&gt;
+&lt;ul&gt;
+    &lt;li&gt;Referee harus customer baru yang belum pernah melakukan transaksi di Pitcar&lt;/li&gt;
+    &lt;li&gt;Transaksi qualifying harus berupa service kendaraan, bukan pembelian part saja&lt;/li&gt;
+    &lt;li&gt;Points akan otomatis masuk ke akun loyalty setelah transaksi qualifying completed&lt;/li&gt;
+    &lt;li&gt;Pitcar berhak mengubah syarat dan ketentuan sewaktu-waktu&lt;/li&gt;
+    &lt;li&gt;Keputusan Pitcar adalah final untuk semua sengketa terkait program ini&lt;/li&gt;
+&lt;/ul&gt;</field>
+        </record>
+
+        <!-- Sequence for Referral Tracking -->
+        <record id="seq_pitcar_referral_tracking" model="ir.sequence">
+            <field name="name">Pitcar Referral Tracking</field>
+            <field name="code">pitcar.referral.tracking</field>
+            <field name="prefix"></field>
+            <field name="suffix"></field>
+            <field name="padding">3</field>
+            <field name="number_increment">1</field>
+            <field name="implementation">standard</field>
+        </record>
+
+        <!-- Server Action untuk Update Terms -->
+        <record id="action_update_referral_terms" model="ir.actions.server">
+            <field name="name">Update Referral Program Terms</field>
+            <field name="model_id" ref="model_pitcar_referral_program"/>
+            <field name="binding_model_id" ref="model_pitcar_referral_program"/>
+            <field name="state">code</field>
+            <field name="code">
+# Update terms for default program
+default_program = env.ref('pitcar_custom.default_referral_program', raise_if_not_found=False)
+if default_program:
+    default_program._update_default_terms([default_program.id])
+    </field>
+        </record>
+        <record id="cron_expire_referrals" model="ir.cron">
+            <field name="name">Expire Old Referral Trackings</field>
+            <field name="model_id" ref="model_pitcar_referral_tracking"/>
+            <field name="state">code</field>
+            <field name="code">model.expire_old_referrals()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">-1</field>
+            <field name="active">True</field>
+            <field name="doall">False</field>
+        </record>
+
+    </data>
+</odoo>

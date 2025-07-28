@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- ========== SALE ORDER LOYALTY INTEGRATION ========== -->
+    
+    <!-- Sale Order Form - Clean Integration -->
+    <record id="view_sale_order_form_loyalty_clean" model="ir.ui.view">
+        <field name="name">sale.order.form.loyalty.clean</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            
+            <!-- HANYA Button Box dan Tab - TIDAK SENTUH HEADER FORM -->
+            
+            <!-- Button Box - Loyalty Stats -->
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_loyalty_customer" 
+                        type="object" 
+                        class="oe_stat_button" 
+                        icon="fa-star"
+                        attrs="{'invisible': [('loyalty_customer_id', '=', False)]}">
+                    <field string="Points Earned" name="points_earned_this_order" widget="statinfo"/>
+                </button>
+                
+                <button name="action_view_loyalty_points" 
+                        type="object" 
+                        class="oe_stat_button" 
+                        icon="fa-trophy"
+                        attrs="{'invisible': [('loyalty_customer_id', '=', False)]}">
+                    <field string="Current Points" name="customer_current_points" widget="statinfo"/>
+                </button>
+            </xpath>
+            
+            <!-- ISOLATED TAB - Tidak menyentuh existing form structure -->
+            <xpath expr="//notebook" position="inside">
+                <page string="Loyalty &amp; Referral" name="loyalty_referral">
+                    
+                    <!-- Customer & Referral Input - SEMUA DI DALAM TAB -->
+                    <group>
+                        <group string="Customer Info">
+                            <field name="membership_level" readonly="1" widget="badge" 
+                                   decoration-success="membership_level == 'platinum'"
+                                   decoration-info="membership_level == 'gold'"
+                                   decoration-warning="membership_level == 'silver'"
+                                   decoration-muted="membership_level == 'bronze'"/>
+                            <field name="loyalty_customer_id" readonly="1"/>
+                        </group>
+                        
+                        <group string="Referral Input">
+                            <field name="referral_code_used" placeholder="Enter referral code..."
+                                   attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            <field name="referrer_customer_id" readonly="1" 
+                                   attrs="{'invisible': [('referrer_customer_id', '=', False)]}"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Points Summary -->
+                    <group string="Points Summary">
+                        <group>
+                            <field name="customer_current_points" readonly="1"/>
+                            <field name="points_earned_this_order" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="loyalty_points_processed" readonly="1" widget="boolean"/>
+                            <field name="loyalty_points_transaction_id" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Referral Status -->
+                    <group string="Referral Status" attrs="{'invisible': [('is_referral_order', '=', False)]}">
+                        <group>
+                            <field name="is_referral_order" readonly="1" widget="boolean"/>
+                            <field name="is_referral_qualifying" readonly="1" widget="boolean"/>
+                        </group>
+                        <group>
+                            <field name="referral_bonus_given" readonly="1" widget="boolean"/>
+                            <field name="referral_tracking_id" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <!-- Action Buttons Row -->
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="btn-group" role="group">
+                                <button name="action_view_loyalty_points" 
+                                        string="📈 Points History" 
+                                        type="object" 
+                                        class="btn btn-outline-primary"
+                                        attrs="{'invisible': [('loyalty_customer_id', '=', False)]}"/>
+                                        
+                                <button name="action_view_referral_history" 
+                                        string="👥 Referral History" 
+                                        type="object" 
+                                        class="btn btn-outline-info"
+                                        attrs="{'invisible': [('loyalty_customer_id', '=', False)]}"/>
+                                        
+                                <button name="action_manual_process_loyalty" 
+                                        string="🔄 Reprocess" 
+                                        type="object" 
+                                        class="btn btn-outline-warning"
+                                        groups="base.group_system"/>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </page>
+            </xpath>
+            
+            <!-- TIDAK ADA FIELD DI HEADER - Semua hidden untuk dependency saja -->
+            <field name="loyalty_customer_id" invisible="1"/>
+            <field name="is_referral_order" invisible="1"/>
+            <field name="membership_level" invisible="1"/>
+            <field name="referral_code_used" invisible="1"/>
+            <field name="referrer_customer_id" invisible="1"/>
+            <field name="customer_current_points" invisible="1"/>
+            <field name="points_earned_this_order" invisible="1"/>
+            <field name="loyalty_points_processed" invisible="1"/>
+            <field name="loyalty_points_transaction_id" invisible="1"/>
+            <field name="is_referral_qualifying" invisible="1"/>
+            <field name="referral_bonus_given" invisible="1"/>
+            <field name="referral_tracking_id" invisible="1"/>
+            
+        </field>
+    </record>
+
+    <!-- Sale Order Tree View -->
+    <record id="view_sale_order_tree_loyalty_clean" model="ir.ui.view">
+        <field name="name">sale.order.tree.loyalty.clean</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_tree"/>
+        <field name="arch" type="xml">
+            
+            <!-- Membership Level Column -->
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="membership_level" widget="badge" optional="show"
+                       decoration-success="membership_level == 'platinum'"
+                       decoration-info="membership_level == 'gold'"
+                       decoration-warning="membership_level == 'silver'"
+                       decoration-muted="membership_level == 'bronze'"/>
+            </xpath>
+            
+            <!-- Loyalty Columns -->
+            <xpath expr="//field[@name='amount_total']" position="after">
+                <field name="points_earned_this_order" string="Points" optional="hide"/>
+                <field name="is_referral_order" string="Referral" optional="hide" widget="boolean"/>
+                <field name="loyalty_points_processed" string="Processed" optional="hide" widget="boolean"/>
+            </xpath>
+            
+        </field>
+    </record>
+
+    <!-- Sale Order Search -->
+    <record id="view_sale_order_search_loyalty_clean" model="ir.ui.view">
+        <field name="name">sale.order.search.loyalty.clean</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+        <field name="arch" type="xml">
+            
+            <xpath expr="//search" position="inside">
+                <separator/>
+                
+                <!-- Membership Filters -->
+                <filter string="Platinum Members" name="platinum_members" 
+                        domain="[('membership_level', '=', 'platinum')]"/>
+                <filter string="Gold Members" name="gold_members" 
+                        domain="[('membership_level', '=', 'gold')]"/>
+                <filter string="Silver Members" name="silver_members" 
+                        domain="[('membership_level', '=', 'silver')]"/>
+                <filter string="Bronze Members" name="bronze_members" 
+                        domain="[('membership_level', '=', 'bronze')]"/>
+                
+                <separator/>
+                
+                <!-- Loyalty & Referral Filters -->
+                <filter string="Referral Orders" name="referral_orders" 
+                        domain="[('is_referral_order', '=', True)]"/>
+                <filter string="Loyalty Processed" name="loyalty_processed" 
+                        domain="[('is_loyalty_processed', '=', True)]"/>
+                
+                <!-- Group By -->
+                <group expand="0" string="Group By">
+                    <filter string="Membership Level" name="group_membership_level" 
+                            context="{'group_by': 'membership_level'}"/>
+                    <filter string="Referral Status" name="group_referral_status" 
+                            context="{'group_by': 'is_referral_order'}"/>
+                </group>
+            </xpath>
+            
+        </field>
+    </record>
+
+    <!-- ========== PARTNER LOYALTY INTEGRATION ========== -->
+    
+    <!-- Partner Form -->
+    <record id="view_partner_form_loyalty_clean" model="ir.ui.view">
+        <field name="name">res.partner.form.loyalty.clean</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            
+            <!-- Loyalty Button -->
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_loyalty_profile" 
+                        type="object" 
+                        class="oe_stat_button" 
+                        icon="fa-star">
+                    <field string="Loyalty Points" name="loyalty_points" widget="statinfo"/>
+                </button>
+            </xpath>
+            
+            <!-- Loyalty Info Fields -->
+            <xpath expr="//field[@name='category_id']" position="after">
+                <field name="loyalty_level" readonly="1" widget="badge" 
+                       decoration-success="loyalty_level == 'platinum'"
+                       decoration-info="loyalty_level == 'gold'"
+                       decoration-warning="loyalty_level == 'silver'"
+                       decoration-muted="loyalty_level == 'bronze'"/>
+                <field name="loyalty_referral_code" readonly="1" 
+                       attrs="{'invisible': [('loyalty_referral_code', 'in', [False, ''])]}"/>
+            </xpath>
+            
+        </field>
+    </record>
+
+    <!-- ========== LOYALTY CUSTOMER ENHANCEMENTS ========== -->
+    
+    <!-- Loyalty Customer Form -->
+    <record id="view_loyalty_customer_form_clean" model="ir.ui.view">
+        <field name="name">pitcar.loyalty.customer.form.clean</field>
+        <field name="model">pitcar.loyalty.customer</field>
+        <field name="inherit_id" ref="pitcar_custom.view_pitcar_loyalty_customer_form"/>
+        <field name="arch" type="xml">
+            
+            <!-- Sale Orders Button -->
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_sale_orders" 
+                        type="object" 
+                        class="oe_stat_button" 
+                        icon="fa-shopping-cart">
+                    <field string="Sale Orders" name="total_orders" widget="statinfo"/>
+                </button>
+            </xpath>
+            
+            <!-- Average Order Value -->
+            <xpath expr="//field[@name='total_spent']" position="after">
+                <field name="avg_order_value" widget="monetary"/>
+            </xpath>
+            
+            <!-- Sale Orders Tab -->
+            <xpath expr="//page[@name='transactions']" position="after">
+                <page string="Sale Orders" name="sale_orders">
+                    <field name="sale_order_ids" readonly="1">
+                        <tree decoration-success="loyalty_points_processed == True"
+                              decoration-warning="loyalty_points_processed == False and state in ['sale', 'done']">
+                            <field name="name"/>
+                            <field name="date_order"/>
+                            <field name="amount_total" widget="monetary"/>
+                            <field name="points_earned_this_order"/>
+                            <field name="is_referral_order" widget="boolean"/>
+                            <field name="loyalty_points_processed" widget="boolean"/>
+                            <field name="state"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+            
+        </field>
+    </record>
+
+</odoo>

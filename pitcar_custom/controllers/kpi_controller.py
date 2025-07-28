@@ -4141,6 +4141,609 @@ class KPIController(http.Controller):
             _logger.error(f"Error in get_dashboard_overview: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
+    @http.route('/web/v3/statistics/overview', type='json', auth='user', methods=['POST'], csrf=False, cors='*')
+    def get_dashboard_overview_enhanced(self, **kw):
+        """Enhanced comprehensive dashboard overview including accounting revenue, lead time & membership stats"""
+        try:
+            # Get date range parameters
+            date_range = kw.get('date_range', 'today')
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
+            
+            # Set timezone
+            tz = pytz.timezone('Asia/Jakarta')
+            now = datetime.now(tz)
+            
+            # Calculate date range
+            if start_date and end_date:
+                try:
+                    start = datetime.strptime(start_date, '%Y-%m-%d')
+                    end = datetime.strptime(end_date, '%Y-%m-%d')
+                    start = tz.localize(start.replace(hour=0, minute=0, second=0))
+                    end = tz.localize(end.replace(hour=23, minute=59, second=59))
+                except (ValueError, TypeError):
+                    return {'status': 'error', 'message': 'Invalid date format'}
+            else:
+                if date_range == 'today':
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'yesterday':
+                    yesterday = now - timedelta(days=1)
+                    start = yesterday.replace(hour=0, minute=0, second=0)
+                    end = yesterday.replace(hour=23, minute=59, second=59)
+                elif date_range == 'this_week':
+                    start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_month':
+                    start = now.replace(day=1, hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'this_year':
+                    start = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+                    end = now
+                elif date_range == 'last_year':
+                    last_year = now.year - 1
+                    start = now.replace(year=last_year, month=1, day=1, hour=0, minute=0, second=0)
+                    end = now.replace(year=last_year, month=12, day=31, hour=23, minute=59, second=59)
+                elif date_range == 'all_time':
+                    start = now.replace(year=now.year-5, month=1, day=1, hour=0, minute=0, second=0)
+                    end = now
+                else:
+                    start = now.replace(hour=0, minute=0, second=0)
+                    end = now
+
+            # Convert to UTC for database queries
+            start_utc = start.astimezone(pytz.UTC)
+            end_utc = end.astimezone(pytz.UTC)
+
+            # Get previous period for comparison
+            delta = end_utc - start_utc
+            prev_end = start_utc - timedelta(microseconds=1)
+            prev_start = prev_end - delta
+
+            # ==================== EXISTING SALES DATA ====================
+            current_domain = [
+                ('date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale')
+            ]
+
+            prev_domain = [
+                ('date_completed', '>=', prev_start.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', prev_end.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale')
+            ]
+
+            current_orders = request.env['sale.order'].sudo().search(current_domain)
+            prev_orders = request.env['sale.order'].sudo().search(prev_domain)
+
+            # ==================== NEW: ACCOUNTING REVENUE (OMZET) ====================
+            accounting_revenue_data = self._get_accounting_revenue(start_utc, end_utc, prev_start, prev_end)
+
+            # ==================== NEW: LEAD TIME STATISTICS ====================
+            lead_time_stats = self._get_lead_time_statistics(current_orders, prev_orders)
+
+            # ==================== NEW: MEMBERSHIP STATISTICS ====================
+            membership_stats = self._get_membership_statistics(start_utc, end_utc, prev_start, prev_end)
+
+            # ==================== EXISTING CALCULATIONS ====================
+            # Calculate basic metrics
+            current_revenue = sum(order.amount_untaxed for order in current_orders)
+            prev_revenue = sum(order.amount_untaxed for order in prev_orders)
+            
+            # Calculate flat rate hours
+            current_flat_rate_hours = self._calculate_flat_rate_hours(current_orders)
+            prev_flat_rate_hours = self._calculate_flat_rate_hours(prev_orders)
+
+            # Get quotations
+            current_quotations = request.env['sale.order'].sudo().search([
+                *current_domain[:-1],  # Remove state filter
+                ('state', '=', 'draft')
+            ])
+            prev_quotations = request.env['sale.order'].sudo().search([
+                *prev_domain[:-1],  # Remove state filter
+                ('state', '=', 'draft')
+            ])
+
+            metrics = {
+                # Existing metrics
+                'quotations': {
+                    'current': len(current_quotations),
+                    'previous': len(prev_quotations),
+                    'growth': ((len(current_quotations) - len(prev_quotations)) / len(prev_quotations) * 100) 
+                            if prev_quotations else 0
+                },
+                'orders': {
+                    'current': len(current_orders),
+                    'previous': len(prev_orders),
+                    'growth': ((len(current_orders) - len(prev_orders)) / len(prev_orders) * 100) 
+                            if prev_orders else 0
+                },
+                'sales_revenue': {  # Renamed from 'revenue' to distinguish from accounting
+                    'current': current_revenue,
+                    'previous': prev_revenue,
+                    'growth': ((current_revenue - prev_revenue) / prev_revenue * 100) if prev_revenue else 0
+                },
+                'average_order': {
+                    'current': current_revenue / len(current_orders) if current_orders else 0,
+                    'previous': prev_revenue / len(prev_orders) if prev_orders else 0,
+                    'growth': (((current_revenue / len(current_orders) if current_orders else 0) - 
+                            (prev_revenue / len(prev_orders) if prev_orders else 0)) / 
+                            (prev_revenue / len(prev_orders) if prev_orders else 1) * 100)
+                            if prev_orders else 0
+                },
+                'flat_rate': {
+                    'current_hours': current_flat_rate_hours,
+                    'previous_hours': prev_flat_rate_hours,
+                    'growth': ((current_flat_rate_hours - prev_flat_rate_hours) / prev_flat_rate_hours * 100)
+                            if prev_flat_rate_hours else 0
+                },
+                
+                # NEW: Enhanced metrics
+                'accounting_revenue': accounting_revenue_data,
+                'lead_time': lead_time_stats,
+                'membership': membership_stats
+            }
+
+            # Calculate trends
+            trends = self._calculate_enhanced_trends(start, end)
+
+            # Get top data (existing)
+            top_data = self._get_top_data(current_orders, current_quotations, start_utc, end_utc)
+
+            # Get cohort analysis (existing)
+            cohort_data = self._get_cohort_analysis(start_utc, end_utc, kw.get('cohort', {}))
+
+            return {
+                'status': 'success',
+                'data': {
+                    'date_range': {
+                        'type': date_range,
+                        'start': start.strftime('%Y-%m-%d'),
+                        'end': end.strftime('%Y-%m-%d')
+                    },
+                    'metrics': metrics,
+                    'trends': trends,
+                    'cohort_analysis': cohort_data,
+                    'top_data': top_data,
+                    'enhanced_features': {
+                        'accounting_integration': True,
+                        'lead_time_analysis': True,
+                        'membership_tracking': True
+                    }
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error in get_dashboard_overview_enhanced: {str(e)}")
+            return {'status': 'error', 'message': str(e)}
+
+    def _get_accounting_revenue(self, start_utc, end_utc, prev_start, prev_end):
+        """
+        Calculate revenue from accounting journal entries (accounts starting with '4')
+        """
+        try:
+            # Get income accounts (starting with '4')
+            income_accounts = request.env['account.account'].sudo().search([
+                ('code', '=like', '4%'),
+                ('company_id', '=', request.env.company.id)
+            ])
+            
+            if not income_accounts:
+                _logger.warning("No income accounts found (accounts starting with '4')")
+                return self._empty_accounting_data()
+
+            # Current period journal entries
+            current_entries = request.env['account.move.line'].sudo().search([
+                ('account_id', 'in', income_accounts.ids),
+                ('date', '>=', start_utc.date()),
+                ('date', '<=', end_utc.date()),
+                ('move_id.state', '=', 'posted'),
+                ('company_id', '=', request.env.company.id)
+            ])
+
+            # Previous period journal entries
+            prev_entries = request.env['account.move.line'].sudo().search([
+                ('account_id', 'in', income_accounts.ids),
+                ('date', '>=', prev_start.date()),
+                ('date', '<=', prev_end.date()),
+                ('move_id.state', '=', 'posted'),
+                ('company_id', '=', request.env.company.id)
+            ])
+
+            # Calculate totals (credit - debit for income accounts)
+            current_total = sum(entry.credit - entry.debit for entry in current_entries)
+            prev_total = sum(entry.credit - entry.debit for entry in prev_entries)
+
+            # Calculate by account breakdown
+            account_breakdown = {}
+            for account in income_accounts:
+                account_entries = current_entries.filtered(lambda e: e.account_id.id == account.id)
+                account_total = sum(entry.credit - entry.debit for entry in account_entries)
+                if account_total != 0:  # Only include accounts with transactions
+                    account_breakdown[account.code] = {
+                        'name': account.name,
+                        'code': account.code,
+                        'amount': account_total,
+                        'entry_count': len(account_entries)
+                    }
+
+            return {
+                'current': current_total,
+                'previous': prev_total,
+                'growth': ((current_total - prev_total) / abs(prev_total) * 100) if prev_total != 0 else 0,
+                'account_breakdown': account_breakdown,
+                'total_accounts': len(income_accounts),
+                'active_accounts': len(account_breakdown),
+                'currency': request.env.company.currency_id.name
+            }
+
+        except Exception as e:
+            _logger.error(f"Error calculating accounting revenue: {str(e)}")
+            return self._empty_accounting_data()
+
+    def _empty_accounting_data(self):
+        """Return empty accounting data structure"""
+        return {
+            'current': 0,
+            'previous': 0,
+            'growth': 0,
+            'account_breakdown': {},
+            'total_accounts': 0,
+            'active_accounts': 0,
+            'currency': 'IDR',
+            'error': 'Unable to calculate accounting revenue'
+        }
+
+    def _get_lead_time_statistics(self, current_orders, prev_orders):
+        """
+        Calculate lead time statistics from service orders
+        """
+        try:
+            def calculate_lead_time_stats(orders):
+                if not orders:
+                    return {
+                        'avg_lead_time': 0,
+                        'avg_service_time': 0,
+                        'avg_overall_time': 0,
+                        'on_time_rate': 0,
+                        'completed_orders': 0,
+                        'overnight_orders': 0
+                    }
+
+                # Filter orders with lead time data
+                orders_with_lead_time = orders.filtered(lambda o: o.lead_time_servis > 0)
+                orders_with_service_time = orders.filtered(lambda o: o.total_lead_time_servis > 0)
+                orders_with_overall_time = orders.filtered(lambda o: o.overall_lead_time > 0)
+                
+                # Calculate averages
+                avg_lead_time = sum(orders_with_lead_time.mapped('lead_time_servis')) / len(orders_with_lead_time) if orders_with_lead_time else 0
+                avg_service_time = sum(orders_with_service_time.mapped('total_lead_time_servis')) / len(orders_with_service_time) if orders_with_service_time else 0
+                avg_overall_time = sum(orders_with_overall_time.mapped('overall_lead_time')) / len(orders_with_overall_time) if orders_with_overall_time else 0
+
+                # Calculate on-time rate (based on estimated vs actual duration)
+                orders_with_estimates = orders.filtered(lambda o: o.total_estimated_duration > 0 and o.controller_mulai_servis and o.controller_selesai)
+                on_time_count = 0
+                
+                for order in orders_with_estimates:
+                    actual_duration = (order.controller_selesai - order.controller_mulai_servis).total_seconds() / 3600
+                    if actual_duration <= order.total_estimated_duration * 1.1:  # 10% tolerance
+                        on_time_count += 1
+
+                on_time_rate = (on_time_count / len(orders_with_estimates) * 100) if orders_with_estimates else 0
+
+                # Count overnight orders
+                overnight_orders = len(orders.filtered(lambda o: o.is_overnight))
+
+                return {
+                    'avg_lead_time': round(avg_lead_time, 2),
+                    'avg_service_time': round(avg_service_time, 2),
+                    'avg_overall_time': round(avg_overall_time, 2),
+                    'on_time_rate': round(on_time_rate, 2),
+                    'completed_orders': len(orders_with_lead_time),
+                    'overnight_orders': overnight_orders,
+                    'overnight_rate': round((overnight_orders / len(orders) * 100), 2) if orders else 0
+                }
+
+            current_stats = calculate_lead_time_stats(current_orders)
+            prev_stats = calculate_lead_time_stats(prev_orders)
+
+            # Calculate growth rates
+            def calc_growth(current, previous):
+                return round(((current - previous) / previous * 100), 2) if previous > 0 else 0
+
+            return {
+                'current': current_stats,
+                'previous': prev_stats,
+                'growth': {
+                    'avg_lead_time': calc_growth(current_stats['avg_lead_time'], prev_stats['avg_lead_time']),
+                    'avg_service_time': calc_growth(current_stats['avg_service_time'], prev_stats['avg_service_time']),
+                    'avg_overall_time': calc_growth(current_stats['avg_overall_time'], prev_stats['avg_overall_time']),
+                    'on_time_rate': calc_growth(current_stats['on_time_rate'], prev_stats['on_time_rate']),
+                    'overnight_rate': calc_growth(current_stats['overnight_rate'], prev_stats['overnight_rate'])
+                }
+            }
+
+        except Exception as e:
+            _logger.error(f"Error calculating lead time statistics: {str(e)}")
+            return {
+                'current': {'avg_lead_time': 0, 'avg_service_time': 0, 'on_time_rate': 0, 'completed_orders': 0},
+                'previous': {'avg_lead_time': 0, 'avg_service_time': 0, 'on_time_rate': 0, 'completed_orders': 0},
+                'growth': {'avg_lead_time': 0, 'avg_service_time': 0, 'on_time_rate': 0},
+                'error': 'Unable to calculate lead time statistics'
+            }
+
+    def _get_membership_statistics(self, start_utc, end_utc, prev_start, prev_end):
+        """
+        Calculate membership/loyalty statistics
+        """
+        try:
+            # Check if loyalty system is available
+            if 'pitcar.loyalty.customer' not in request.env:
+                return self._empty_membership_data()
+
+            # Get loyalty customers
+            all_customers = request.env['pitcar.loyalty.customer'].sudo().search([('status', '=', 'active')])
+            
+            if not all_customers:
+                return self._empty_membership_data()
+
+            # Calculate membership level distribution
+            level_distribution = {}
+            levels = ['bronze', 'silver', 'gold', 'platinum']
+            
+            for level in levels:
+                count = len(all_customers.filtered(lambda c: c.membership_level == level))
+                level_distribution[level] = {
+                    'count': count,
+                    'percentage': round((count / len(all_customers) * 100), 2) if all_customers else 0
+                }
+
+            # Get transactions in current and previous periods
+            def get_period_stats(start_date, end_date):
+                # Get points transactions in period
+                transactions = request.env['pitcar.points.transaction'].sudo().search([
+                    ('transaction_date', '>=', start_date),
+                    ('transaction_date', '<=', end_date),
+                    ('status', '=', 'active')
+                ])
+
+                # Get new customers in period
+                new_customers = request.env['pitcar.loyalty.customer'].sudo().search([
+                    ('join_date', '>=', start_date.date()),
+                    ('join_date', '<=', end_date.date())
+                ])
+
+                # Calculate stats
+                earning_transactions = transactions.filtered(lambda t: t.transaction_type in ['earn', 'bonus', 'referral_bonus'])
+                redeem_transactions = transactions.filtered(lambda t: t.transaction_type == 'redeem')
+
+                return {
+                    'new_members': len(new_customers),
+                    'total_points_earned': sum(earning_transactions.mapped('points')),
+                    'total_points_redeemed': abs(sum(redeem_transactions.mapped('points'))),
+                    'earning_transactions': len(earning_transactions),
+                    'redeem_transactions': len(redeem_transactions),
+                    'active_customers': len(all_customers.filtered(lambda c: c.last_activity_date and c.last_activity_date >= start_date.date()))
+                }
+
+            current_stats = get_period_stats(start_utc, end_utc)
+            prev_stats = get_period_stats(prev_start, prev_end)
+
+            # Calculate growth
+            def calc_growth(current, previous):
+                return round(((current - previous) / previous * 100), 2) if previous > 0 else 0
+
+            # Get top customers by points
+            top_customers = all_customers.sorted(lambda c: c.total_points, reverse=True)[:10]
+            top_customers_data = [{
+                'name': customer.display_name,
+                'level': customer.membership_level,
+                'points': customer.total_points,
+                'total_spent': customer.total_spent
+            } for customer in top_customers]
+
+            # Get referral statistics if available
+            referral_stats = {}
+            if 'pitcar.referral.tracking' in request.env:
+                successful_referrals = request.env['pitcar.referral.tracking'].sudo().search_count([
+                    ('status', '=', 'rewarded'),
+                    ('create_date', '>=', start_utc),
+                    ('create_date', '<=', end_utc)
+                ])
+                referral_stats = {
+                    'successful_referrals': successful_referrals,
+                    'referral_customers': len(all_customers.filtered(lambda c: c.referred_by_id))
+                }
+
+            return {
+                'total_members': len(all_customers),
+                'level_distribution': level_distribution,
+                'current': current_stats,
+                'previous': prev_stats,
+                'growth': {
+                    'new_members': calc_growth(current_stats['new_members'], prev_stats['new_members']),
+                    'points_earned': calc_growth(current_stats['total_points_earned'], prev_stats['total_points_earned']),
+                    'points_redeemed': calc_growth(current_stats['total_points_redeemed'], prev_stats['total_points_redeemed']),
+                    'active_customers': calc_growth(current_stats['active_customers'], prev_stats['active_customers'])
+                },
+                'top_customers': top_customers_data,
+                'referral': referral_stats
+            }
+
+        except Exception as e:
+            _logger.error(f"Error calculating membership statistics: {str(e)}")
+            return self._empty_membership_data()
+
+    def _empty_membership_data(self):
+        """Return empty membership data structure"""
+        return {
+            'total_members': 0,
+            'level_distribution': {
+                'bronze': {'count': 0, 'percentage': 0},
+                'silver': {'count': 0, 'percentage': 0},
+                'gold': {'count': 0, 'percentage': 0},
+                'platinum': {'count': 0, 'percentage': 0}
+            },
+            'current': {'new_members': 0, 'total_points_earned': 0, 'total_points_redeemed': 0},
+            'previous': {'new_members': 0, 'total_points_earned': 0, 'total_points_redeemed': 0},
+            'growth': {'new_members': 0, 'points_earned': 0, 'points_redeemed': 0},
+            'top_customers': [],
+            'referral': {},
+            'error': 'Loyalty system not available'
+        }
+
+    def _calculate_flat_rate_hours(self, orders):
+        """Calculate total flat rate hours from orders"""
+        total_hours = 0.0
+        for order in orders:
+            for line in order.order_line:
+                if line.product_id.type == 'service' and line.product_id.flat_rate > 0:
+                    mechanics_count = len(order.car_mechanic_id_new) or 1
+                    total_hours += (line.product_id.flat_rate / mechanics_count * line.product_uom_qty)
+        return round(total_hours, 2)
+
+    def _calculate_enhanced_trends(self, start, end):
+        """Calculate enhanced daily trends including new metrics"""
+        trends = []
+        current = start
+        
+        while current <= end:
+            current_end = min(current.replace(hour=23, minute=59, second=59), end)
+            
+            # Get orders for this day
+            day_orders = request.env['sale.order'].sudo().search([
+                ('date_completed', '>=', current.strftime('%Y-%m-%d %H:%M:%S')),
+                ('date_completed', '<=', current_end.strftime('%Y-%m-%d %H:%M:%S')),
+                ('state', '=', 'sale')
+            ])
+            
+            # Calculate daily metrics
+            daily_revenue = sum(order.amount_total for order in day_orders)
+            daily_flat_rate = self._calculate_flat_rate_hours(day_orders)
+            
+            # Lead time metrics
+            completed_services = day_orders.filtered(lambda o: o.lead_time_servis > 0)
+            avg_lead_time = sum(completed_services.mapped('lead_time_servis')) / len(completed_services) if completed_services else 0
+            
+            # Membership activity (if available)
+            membership_activity = 0
+            if 'pitcar.points.transaction' in request.env:
+                daily_transactions = request.env['pitcar.points.transaction'].sudo().search_count([
+                    ('transaction_date', '>=', current),
+                    ('transaction_date', '<=', current_end),
+                    ('status', '=', 'active')
+                ])
+                membership_activity = daily_transactions
+
+            trend_data = {
+                'date': current.strftime('%Y-%m-%d'),
+                'revenue': daily_revenue,
+                'orders': len(day_orders),
+                'flat_rate_hours': daily_flat_rate,
+                'avg_lead_time': round(avg_lead_time, 2),
+                'membership_activity': membership_activity
+            }
+            
+            trends.append(trend_data)
+            current += timedelta(days=1)
+        
+        return trends
+
+    def _get_top_data(self, current_orders, current_quotations, start_utc, end_utc):
+        """Get top performers data (existing logic enhanced)"""
+        # This method contains the existing top data logic
+        # Enhanced with additional metrics
+        
+        # Get order lines for product analysis
+        order_lines = request.env['sale.order.line'].sudo().search([
+            ('order_id.state', '=', 'sale'),
+            ('order_id.date_completed', '>=', start_utc.strftime('%Y-%m-%d %H:%M:%S')),
+            ('order_id.date_completed', '<=', end_utc.strftime('%Y-%m-%d %H:%M:%S'))
+        ])
+        
+        # Service vs Product analysis
+        service_products = {}
+        physical_products = {}
+
+        for line in order_lines:
+            product = line.product_id
+            is_service = product.type == 'service'
+            target_dict = service_products if is_service else physical_products
+            
+            if product.id not in target_dict:
+                target_dict[product.id] = {
+                    'id': product.id,
+                    'name': product.name,
+                    'orders': 0,
+                    'revenue': 0,
+                    'flat_rate_hours': 0 if is_service else None
+                }
+            
+            target_dict[product.id]['orders'] += line.product_uom_qty
+            target_dict[product.id]['revenue'] += line.price_subtotal
+            
+            # Add flat rate hours for services
+            if is_service and product.flat_rate > 0:
+                target_dict[product.id]['flat_rate_hours'] += (product.flat_rate * line.product_uom_qty)
+
+        # Sort and get top 10
+        top_services = sorted(service_products.values(), key=lambda x: x['revenue'], reverse=True)[:10]
+        top_physical_products = sorted(physical_products.values(), key=lambda x: x['revenue'], reverse=True)[:10]
+
+        # Enhanced customer analysis
+        customer_data = {}
+        for order in current_orders:
+            customer_id = order.partner_id.id
+            if customer_id not in customer_data:
+                customer_data[customer_id] = {
+                    'id': customer_id,
+                    'name': order.partner_id.name,
+                    'orders': 0,
+                    'revenue': 0,
+                    'avg_lead_time': 0,
+                    'membership_level': getattr(order, 'membership_level', 'bronze')
+                }
+            
+            customer_data[customer_id]['orders'] += 1
+            customer_data[customer_id]['revenue'] += order.amount_total
+            
+            # Add lead time if available
+            if order.lead_time_servis > 0:
+                current_avg = customer_data[customer_id]['avg_lead_time']
+                customer_data[customer_id]['avg_lead_time'] = (current_avg + order.lead_time_servis) / 2
+
+        top_customers = sorted(customer_data.values(), key=lambda x: x['revenue'], reverse=True)[:10]
+
+        return {
+            'products': {
+                'services': top_services,
+                'physical': top_physical_products
+            },
+            'customers': top_customers,
+            'quotations': [{
+                'id': quot.id,
+                'name': quot.name,
+                'customer': quot.partner_id.name,
+                'amount': quot.amount_total
+            } for quot in sorted(current_quotations, key=lambda x: x.amount_total, reverse=True)[:10]]
+        }
+
+    def _get_cohort_analysis(self, start_utc, end_utc, cohort_params):
+        """Get cohort analysis (existing logic)"""
+        # Use existing cohort analysis method
+        try:
+            return self.calculate_auto_service_cohorts(
+                start_utc, 
+                end_utc, 
+                interval_type=cohort_params.get('interval_type', '3_month'),
+                depth=cohort_params.get('depth', 12),
+                segment_by=cohort_params.get('segment_by'),
+                include_metrics=cohort_params.get('include_metrics', False)
+            )
+        except:
+            return {'segmented': False, 'cohorts': []}
+
+
     def calculate_customer_cohorts(self, start_date, end_date, depth=6):
         """
         Menghitung analisis cohort retensi pelanggan dasar.

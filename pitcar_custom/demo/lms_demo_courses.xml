@@ -1,0 +1,73 @@
+<!-- demo/lms_demo_courses.xml -->
+<odoo>
+    <!-- Demo Courses for Testing -->
+    <record id="demo_course_sales_advanced" model="lms.course">
+        <field name="name">Advanced Odoo Sales Techniques</field>
+        <field name="code">ODOO_SALES_ADV</field>
+        <field name="category_id" ref="category_odoo_training"/>
+        <field name="description">
+            <![CDATA[
+            <p>Master advanced sales techniques in Odoo including:</p>
+            <ul>
+                <li>Complex quotation management</li>
+                <li>Price list optimization</li>
+                <li>Sales team management</li>
+                <li>Advanced reporting</li>
+            </ul>
+            ]]>
+        </field>
+        <field name="short_description">Advanced sales techniques and optimization strategies</field>
+        <field name="duration_hours">4.0</field>
+        <field name="difficulty_level">advanced</field>
+        <field name="completion_points">40</field>
+        <field name="is_published">True</field>
+        <field name="sequence">20</field>
+    </record>
+
+    <record id="demo_course_customer_service" model="lms.course">
+        <field name="name">Customer Service Excellence</field>
+        <field name="code">CUST_SERV_001</field>
+        <field name="category_id" ref="category_soft_skills"/>
+        <field name="description">
+            <![CDATA[
+            <p>Develop exceptional customer service skills:</p>
+            <ul>
+                <li>Active listening techniques</li>
+                <li>Conflict resolution</li>
+                <li>Building customer relationships</li>
+                <li>Handling difficult situations</li>
+            </ul>
+            ]]>
+        </field>
+        <field name="short_description">Master the art of exceptional customer service</field>
+        <field name="duration_hours">3.0</field>
+        <field name="difficulty_level">intermediate</field>
+        <field name="completion_points">30</field>
+        <field name="is_published">True</field>
+        <field name="sequence">30</field>
+    </record>
+
+    <record id="demo_course_safety" model="lms.course">
+        <field name="name">Workshop Safety Fundamentals</field>
+        <field name="code">SAFETY_001</field>
+        <field name="category_id" ref="category_compliance_safety"/>
+        <field name="description">
+            <![CDATA[
+            <p>Essential safety training for workshop operations:</p>
+            <ul>
+                <li>Personal protective equipment</li>
+                <li>Tool safety procedures</li>
+                <li>Emergency protocols</li>
+                <li>Risk assessment</li>
+            </ul>
+            ]]>
+        </field>
+        <field name="short_description">Essential safety training for all workshop staff</field>
+        <field name="duration_hours">2.5</field>
+        <field name="difficulty_level">basic</field>
+        <field name="completion_points">50</field>
+        <field name="is_mandatory">True</field>
+        <field name="is_published">True</field>
+        <field name="sequence">40</field>
+    </record>
+</odoo>

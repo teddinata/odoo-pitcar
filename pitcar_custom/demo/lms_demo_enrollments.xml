@@ -1,0 +1,26 @@
+<!-- demo/lms_demo_enrollments.xml -->
+<odoo>
+    <!-- Demo Learning Path with Courses -->
+    <record id="demo_path_complete_onboarding" model="lms.learning.path">
+        <field name="name">Complete Employee Onboarding</field>
+        <field name="code">COMPLETE_ONBOARD</field>
+        <field name="description">Comprehensive onboarding program including system training, safety, and customer service</field>
+        <field name="difficulty_level">beginner</field>
+        <field name="completion_points">500</field>
+        <field name="is_mandatory">True</field>
+        <field name="min_completion_percentage">100.0</field>
+        <field name="min_average_score">75.0</field>
+    </record>
+
+    <!-- Link courses to learning path -->
+    <record id="demo_path_courses" model="lms.learning.path">
+        <field name="id" ref="demo_path_complete_onboarding"/>
+        <field name="course_ids" eval="[(6, 0, [ref('course_odoo_basics'), ref('demo_course_safety'), ref('demo_course_customer_service')])]"/>
+    </record>
+
+    <!-- Link competencies to learning path -->
+    <record id="demo_path_competencies" model="lms.learning.path">
+        <field name="id" ref="demo_path_complete_onboarding"/>
+        <field name="competency_ids" eval="[(6, 0, [ref('competency_odoo_sales'), ref('competency_customer_service'), ref('competency_safety')])]"/>
+    </record>
+</odoo>

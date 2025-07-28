@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- ========== ACTIONS FIRST ========== -->
+    
+    <!-- Referral Program Action -->
+    <record id="action_pitcar_referral_program" model="ir.actions.act_window">
+        <field name="name">Referral Programs</field>
+        <field name="res_model">pitcar.referral.program</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create Referral Program
+            </p>
+            <p>
+                Set up referral programs to incentivize customers to bring new customers.
+            </p>
+        </field>
+    </record>
+
+    <!-- Referral Tracking Action -->
+    <record id="action_pitcar_referral_tracking" model="ir.actions.act_window">
+        <field name="name">Referral Tracking</field>
+        <field name="res_model">pitcar.referral.tracking</field>
+        <field name="view_mode">tree,form,kanban</field>
+        <field name="context">{'search_default_registered': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No Referrals Yet
+            </p>
+            <p>
+                Track customer referrals and manage bonus rewards here.
+            </p>
+        </field>
+    </record>
+    
+    <!-- ========== REFERRAL PROGRAM VIEWS ========== -->
+    
+    <!-- Program Form View -->
+    <record id="view_pitcar_referral_program_form" model="ir.ui.view">
+        <field name="name">pitcar.referral.program.form</field>
+        <field name="model">pitcar.referral.program</field>
+        <field name="arch" type="xml">
+            <form string="Referral Program">
+                <header>
+                    <div class="alert alert-info" role="alert" attrs="{'invisible': [('is_active', '=', True)]}">
+                        <strong>Program Inactive!</strong> Activate to start tracking referrals.
+                    </div>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="%(action_pitcar_referral_tracking)d" 
+                                type="action" 
+                                class="oe_stat_button" 
+                                icon="fa-users"
+                                context="{'search_default_program_id': active_id}">
+                            <field string="Total Referrals" name="total_referrals" widget="statinfo"/>
+                        </button>
+                        <button name="%(action_pitcar_referral_tracking)d" 
+                                type="action" 
+                                class="oe_stat_button" 
+                                icon="fa-check-circle"
+                                context="{'search_default_program_id': active_id, 'search_default_rewarded': 1}">
+                            <field string="Successful" name="qualified_referrals" widget="statinfo"/>
+                        </button>
+                        <button name="%(action_pitcar_referral_tracking)d"
+                                type="action" 
+                                class="oe_stat_button" 
+                                icon="fa-percent">
+                            <field string="Success Rate" name="success_rate" widget="statinfo" options="{'suffix': '%'}"/>
+                        </button>
+                    </div>
+                    
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Program Name"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group string="Program Status">
+                            <field name="is_active" widget="boolean_toggle"/>
+                            <field name="valid_from"/>
+                            <field name="valid_until"/>
+                        </group>
+                        
+                        <group string="Bonus Configuration">
+                            <field name="referrer_points" widget="integer"/>
+                            <field name="referee_points" widget="integer"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group string="Qualification Requirements">
+                            <field name="minimum_transaction" widget="monetary"/>
+                            <field name="qualification_days" widget="integer"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Description" name="description">
+                            <field name="description" placeholder="Describe this referral program..."/>
+                        </page>
+                        
+                        <page string="Terms and Conditions" name="terms">
+                            <field name="terms_conditions" placeholder="Terms and conditions for this program..."/>
+                        </page>
+                        
+                        <page string="Referral Trackings" name="trackings">
+                            <field name="referral_tracking_ids" readonly="1">
+                                <tree decoration-success="status == 'rewarded'"
+                                      decoration-info="status == 'qualified'"
+                                      decoration-warning="status == 'registered'"
+                                      decoration-muted="status == 'expired'">
+                                    <field name="tracking_code"/>
+                                    <field name="referrer_name"/>
+                                    <field name="referee_name"/>
+                                    <field name="registration_date"/>
+                                    <field name="status"/>
+                                    <field name="qualification_deadline"/>
+                                    <field name="days_to_qualify"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Program Tree View -->
+    <record id="view_pitcar_referral_program_tree" model="ir.ui.view">
+        <field name="name">pitcar.referral.program.tree</field>
+        <field name="model">pitcar.referral.program</field>
+        <field name="arch" type="xml">
+            <tree string="Referral Programs"
+                  decoration-muted="not is_active">
+                <field name="name"/>
+                <field name="referrer_points"/>
+                <field name="referee_points"/>
+                <field name="minimum_transaction" widget="monetary"/>
+                <field name="total_referrals"/>
+                <field name="qualified_referrals"/>
+                <field name="success_rate" widget="percentage"/>
+                <field name="valid_from"/>
+                <field name="valid_until"/>
+                <field name="is_active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Program Search View -->
+    <record id="view_pitcar_referral_program_search" model="ir.ui.view">
+        <field name="name">pitcar.referral.program.search</field>
+        <field name="model">pitcar.referral.program</field>
+        <field name="arch" type="xml">
+            <search string="Search Referral Programs">
+                <field name="name"/>
+                
+                <filter string="Active" name="active" domain="[('is_active', '=', True)]"/>
+                <filter string="Inactive" name="inactive" domain="[('is_active', '=', False)]"/>
+                <filter string="Current" name="current" 
+                        domain="[('valid_from', '&lt;=', context_today()), '|', ('valid_until', '=', False), ('valid_until', '&gt;=', context_today())]"/>
+                
+                <group expand="1" string="Group By">
+                    <filter string="Status" name="group_status" context="{'group_by': 'is_active'}"/>
+                    <filter string="Valid From" name="group_valid_from" context="{'group_by': 'valid_from:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ========== REFERRAL TRACKING VIEWS ========== -->
+    
+    <!-- Tracking Form View -->
+    <record id="view_pitcar_referral_tracking_form" model="ir.ui.view">
+        <field name="name">pitcar.referral.tracking.form</field>
+        <field name="model">pitcar.referral.tracking</field>
+        <field name="arch" type="xml">
+            <form string="Referral Tracking">
+                <header>
+                    <button name="award_referral_bonus" string="Award Bonus" type="object" 
+                            class="btn-success" attrs="{'invisible': [('status', '!=', 'qualified')]}"/>
+                    <field name="status" widget="statusbar" statusbar_visible="registered,qualified,rewarded"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="tracking_code" readonly="1"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group string="Program &amp; Timeline">
+                            <field name="program_id" readonly="1"/>
+                            <field name="registration_date"/>
+                            <field name="qualification_deadline" readonly="1"/>
+                            <field name="days_to_qualify" readonly="1" 
+                                   decoration-danger="days_to_qualify &lt; 0"
+                                   decoration-warning="days_to_qualify &lt;= 3"
+                                   decoration-success="days_to_qualify &gt; 3"/>
+                            <field name="status"/>
+                            <field name="source_channel"/>
+                            <field name="referral_code_used"/>
+                        </group>
+                        <group string="Referrer Info">
+                            <field name="referrer_id" readonly="1"/>
+                            <field name="referrer_name" readonly="1"/>
+                        </group>
+                        <group string="Referee Info">
+                            <field name="referee_id" readonly="1"/>
+                            <field name="referee_name" readonly="1"/>
+                            <field name="referee_partner_id" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Qualification Details" 
+                           attrs="{'invisible': [('status', '=', 'registered')]}">
+                        <group>
+                            <field name="first_transaction_date" readonly="1"/>
+                            <field name="first_transaction_amount" widget="monetary" readonly="1"/>
+                            <field name="qualifying_sale_order_id" readonly="1"/>
+                        </group>
+                        <group attrs="{'invisible': [('status', '!=', 'rewarded')]}">
+                            <field name="reward_date" readonly="1"/>
+                            <field name="points_awarded_referrer" readonly="1"/>
+                            <field name="points_awarded_referee" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Notes">
+                        <field name="notes" placeholder="Additional notes about this referral..."/>
+                    </group>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Tracking Tree View -->
+    <record id="view_pitcar_referral_tracking_tree" model="ir.ui.view">
+        <field name="name">pitcar.referral.tracking.tree</field>
+        <field name="model">pitcar.referral.tracking</field>
+        <field name="arch" type="xml">
+            <tree string="Referral Tracking"
+                  decoration-success="status == 'rewarded'"
+                  decoration-info="status == 'qualified'"
+                  decoration-warning="status == 'registered'"
+                  decoration-muted="status == 'expired'">
+                <field name="tracking_code"/>
+                <field name="program_id"/>
+                <field name="referrer_name"/>
+                <field name="referee_name"/>
+                <field name="registration_date"/>
+                <field name="qualification_deadline"/>
+                <field name="days_to_qualify" 
+                       decoration-danger="days_to_qualify &lt; 0"
+                       decoration-warning="days_to_qualify &lt;= 3"/>
+                <field name="first_transaction_amount" widget="monetary"/>
+                <field name="status"/>
+                <field name="source_channel"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Tracking Kanban View -->
+    <record id="view_pitcar_referral_tracking_kanban" model="ir.ui.view">
+        <field name="name">pitcar.referral.tracking.kanban</field>
+        <field name="model">pitcar.referral.tracking</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="status" class="o_kanban_small_column">
+                <field name="tracking_code"/>
+                <field name="referrer_name"/>
+                <field name="referee_name"/>
+                <field name="days_to_qualify"/>
+                <field name="status"/>
+                <field name="source_channel"/>
+                <field name="first_transaction_amount"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="o_kanban_record_top">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="tracking_code"/>
+                                    </strong>
+                                    <div class="o_kanban_record_subtitle">
+                                        <field name="source_channel" widget="badge"/>
+                                    </div>
+                                </div>
+                                <div class="o_kanban_record_body">
+                                    <div>👤 <strong>Referrer:</strong> <field name="referrer_name"/></div>
+                                    <div>🆕 <strong>Referee:</strong> <field name="referee_name"/></div>
+                                    <div t-if="record.days_to_qualify.raw_value &gt; 0">
+                                        ⏰ <span t-att-class="record.days_to_qualify.raw_value &lt;= 3 ? 'text-warning' : 'text-success'">
+                                            <field name="days_to_qualify"/> days left
+                                        </span>
+                                    </div>
+                                    <div t-if="record.first_transaction_amount.raw_value">
+                                        💰 <field name="first_transaction_amount" widget="monetary"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Tracking Search View -->
+    <record id="view_pitcar_referral_tracking_search" model="ir.ui.view">
+        <field name="name">pitcar.referral.tracking.search</field>
+        <field name="model">pitcar.referral.tracking</field>
+        <field name="arch" type="xml">
+            <search string="Search Referral Tracking">
+                <field name="tracking_code"/>
+                <field name="referrer_name"/>
+                <field name="referee_name"/>
+                <field name="program_id"/>
+                
+                <filter string="Registered" name="registered" domain="[('status', '=', 'registered')]"/>
+                <filter string="Qualified" name="qualified" domain="[('status', '=', 'qualified')]"/>
+                <filter string="Rewarded" name="rewarded" domain="[('status', '=', 'rewarded')]"/>
+                <filter string="Expired" name="expired" domain="[('status', '=', 'expired')]"/>
+                
+                <separator/>
+                <!-- <filter string="Expiring Soon" name="expiring_soon" 
+                        domain="[('days_to_qualify', '&lt;=', 3), ('days_to_qualify', '&gt;', 0), ('status', '=', 'registered')]"/> -->
+                <filter string="This Month" name="this_month" 
+                        domain="[('registration_date', '&gt;=', (context_today() - relativedelta(months=1)).strftime('%Y-%m-01'))]"/>
+                
+                <group expand="1" string="Group By">
+                    <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                    <filter string="Program" name="group_program" context="{'group_by': 'program_id'}"/>
+                    <filter string="Source Channel" name="group_source" context="{'group_by': 'source_channel'}"/>
+                    <filter string="Registration Date" name="group_registration" context="{'group_by': 'registration_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ========== ENHANCED LOYALTY CUSTOMER VIEWS ========== -->
+    
+    <!-- Update Customer Form to Show Referral Info -->
+    <record id="view_pitcar_loyalty_customer_form_referral" model="ir.ui.view">
+        <field name="name">pitcar.loyalty.customer.form.referral</field>
+        <field name="model">pitcar.loyalty.customer</field>
+        <field name="inherit_id" ref="view_pitcar_loyalty_customer_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_my_referrals" 
+                        type="object" 
+                        class="oe_stat_button" 
+                        icon="fa-users">
+                    <field string="My Referrals" name="total_referrals_made" widget="statinfo"/>
+                </button>
+                <button name="%(action_pitcar_referral_tracking)d" 
+                        type="action" 
+                        class="oe_stat_button" 
+                        icon="fa-trophy"
+                        context="{'search_default_referrer_id': active_id, 'search_default_rewarded': 1}">
+                    <field string="Successful" name="successful_referrals" widget="statinfo"/>
+                </button>
+            </xpath>
+            
+            <xpath expr="//field[@name='referral_count']" position="after">
+                <field name="referral_success_rate" widget="percentage"/>
+                <field name="total_referral_bonus_earned"/>
+            </xpath>
+            
+            <xpath expr="//page[@name='transactions']" position="after">
+                <page string="My Referrals" name="my_referrals">
+                    <field name="referral_trackings_as_referrer" readonly="1">
+                        <tree decoration-success="status == 'rewarded'"
+                              decoration-info="status == 'qualified'"
+                              decoration-warning="status == 'registered'"
+                              decoration-muted="status == 'expired'">
+                            <field name="tracking_code"/>
+                            <field name="referee_name"/>
+                            <field name="registration_date"/>
+                            <field name="first_transaction_amount" widget="monetary"/>
+                            <field name="points_awarded_referrer"/>
+                            <field name="status"/>
+                            <field name="source_channel"/>
+                        </tree>
+                    </field>
+                </page>
+                
+                <page string="Referred By" name="referred_by" 
+                      attrs="{'invisible': [('referred_by_id', '=', False)]}">
+                    <field name="referral_trackings_as_referee" readonly="1">
+                        <tree>
+                            <field name="tracking_code"/>
+                            <field name="referrer_name"/>
+                            <field name="registration_date"/>
+                            <field name="first_transaction_amount" widget="monetary"/>
+                            <field name="points_awarded_referee"/>
+                            <field name="status"/>
+                            <field name="source_channel"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ========== MENU ITEMS ========== -->
+    
+    <!-- Referral Menu -->
+    <menuitem id="menu_pitcar_loyalty_referral"
+              name="Referral System"
+              parent="menu_pitcar_loyalty_main"
+              sequence="60"/>
+    
+    <!-- Referral Programs Menu -->
+    <menuitem id="menu_pitcar_referral_programs"
+              name="Referral Programs"
+              parent="menu_pitcar_loyalty_referral"
+              action="action_pitcar_referral_program"
+              sequence="10"
+              groups="pitcar_custom.group_loyalty_manager"/>
+    
+    <!-- Referral Tracking Menu -->
+    <menuitem id="menu_pitcar_referral_tracking"
+              name="Referral Tracking"
+              parent="menu_pitcar_loyalty_referral"
+              action="action_pitcar_referral_tracking"
+              sequence="20"/>
+
+</odoo>

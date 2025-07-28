@@ -1,0 +1,288 @@
+<!-- views/lms_enrollment_views.xml -->
+<odoo>
+    <!-- LMS Enrollment Views -->
+    <record id="view_lms_enrollment_tree" model="ir.ui.view">
+        <field name="name">lms.enrollment.tree</field>
+        <field name="model">lms.enrollment</field>
+        <field name="arch" type="xml">
+            <tree string="Course Enrollments" decoration-success="status=='completed'" decoration-info="status=='in_progress'">
+                <field name="user_id"/>
+                <field name="employee_id"/>
+                <field name="course_id"/>
+                <field name="enrollment_date"/>
+                <field name="enrollment_type"/>
+                <field name="status"/>
+                <field name="progress_percentage"/>
+                <field name="final_score"/>
+                <field name="completion_date"/>
+                <field name="points_earned"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_lms_enrollment_form" model="ir.ui.view">
+        <field name="name">lms.enrollment.form</field>
+        <field name="model">lms.enrollment</field>
+        <field name="arch" type="xml">
+            <form string="Course Enrollment">
+                <header>
+                    <button name="action_start_course" 
+                            string="Start Course" 
+                            type="object" 
+                            attrs="{'invisible': [('status', '!=', 'not_started')]}"
+                            class="oe_highlight"/>
+                    <button name="action_reset_progress" 
+                            string="Reset Progress" 
+                            type="object" 
+                            attrs="{'invisible': [('status', '=', 'not_started')]}"
+                            confirm="Are you sure you want to reset the progress? This action cannot be undone."/>
+                    <field name="status" widget="statusbar" statusbar_visible="not_started,in_progress,completed"/>
+                </header>
+                
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="employee_id"/>
+                            <field name="course_id"/>
+                            <field name="enrollment_type"/>
+                        </group>
+                        <group>
+                            <field name="enrollment_date"/>
+                            <field name="enrolled_by"/>
+                            <field name="start_date"/>
+                            <field name="completion_date"/>
+                        </group>
+                    </group>
+                    
+                    <group>
+                        <group>
+                            <field name="progress_percentage" widget="progressbar"/>
+                            <field name="final_score"/>
+                            <field name="passed"/>
+                        </group>
+                        <group>
+                            <field name="points_earned"/>
+                            <field name="certificate_generated"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Module Progress">
+                            <field name="progress_ids">
+                                <tree>
+                                    <field name="module_id"/>
+                                    <field name="status"/>
+                                    <field name="completion_percentage" widget="progressbar"/>
+                                    <field name="start_date"/>
+                                    <field name="completion_date"/>
+                                    <field name="time_spent_minutes"/>
+                                    <field name="attempts"/>
+                                    <field name="best_score"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_lms_enrollment_kanban" model="ir.ui.view">
+        <field name="name">lms.enrollment.kanban</field>
+        <field name="model">lms.enrollment</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="status">
+                <field name="user_id"/>
+                <field name="course_id"/>
+                <field name="progress_percentage"/>
+                <field name="status"/>
+                <field name="enrollment_date"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="o_kanban_record_top">
+                                    <div class="o_kanban_record_headings">
+                                        <strong class="o_kanban_record_title">
+                                            <field name="course_id"/>
+                                        </strong>
+                                        <div class="o_kanban_record_subtitle">
+                                            <field name="user_id"/>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="o_kanban_record_body">
+                                    <div class="progress mb-2">
+                                        <div class="progress-bar" 
+                                             t-att-style="'width: ' + record.progress_percentage.raw_value + '%'"
+                                             role="progressbar">
+                                            <t t-esc="Math.round(record.progress_percentage.raw_value)"/>%
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="o_kanban_record_bottom">
+                                    <div class="oe_kanban_bottom_left">
+                                        <field name="enrollment_date"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- LMS Progress Views -->
+    <record id="view_lms_progress_tree" model="ir.ui.view">
+        <field name="name">lms.progress.tree</field>
+        <field name="model">lms.progress</field>
+        <field name="arch" type="xml">
+            <tree string="Module Progress" decoration-success="status=='completed'" decoration-info="status=='in_progress'">
+                <field name="user_id"/>
+                <field name="course_id"/>
+                <field name="module_id"/>
+                <field name="status"/>
+                <field name="completion_percentage" widget="progressbar"/>
+                <field name="start_date"/>
+                <field name="completion_date"/>
+                <field name="time_spent_minutes"/>
+                <field name="attempts"/>
+                <field name="best_score"/>
+                <field name="last_accessed"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_lms_progress_form" model="ir.ui.view">
+        <field name="name">lms.progress.form</field>
+        <field name="model">lms.progress</field>
+        <field name="arch" type="xml">
+            <form string="Module Progress">
+                <header>
+                    <button name="action_start_module" 
+                            string="Start Module" 
+                            type="object" 
+                            attrs="{'invisible': [('status', '!=', 'not_started')]}"
+                            class="oe_highlight"/>
+                    <button name="action_mark_completed" 
+                            string="Mark as Completed" 
+                            type="object" 
+                            attrs="{'invisible': [('status', '=', 'completed')]}"
+                            confirm="Are you sure you want to mark this module as completed?"/>
+                    <field name="status" widget="statusbar" statusbar_visible="not_started,in_progress,completed"/>
+                </header>
+                
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="course_id"/>
+                            <field name="module_id"/>
+                            <field name="enrollment_id"/>
+                        </group>
+                        <group>
+                            <field name="completion_percentage" widget="progressbar"/>
+                            <field name="start_date"/>
+                            <field name="completion_date"/>
+                            <field name="last_accessed"/>
+                        </group>
+                    </group>
+                    
+                    <group string="Assessment Results" attrs="{'invisible': [('attempts', '=', 0)]}">
+                        <group>
+                            <field name="attempts"/>
+                            <field name="best_score"/>
+                        </group>
+                        <group>
+                            <field name="last_score"/>
+                            <field name="time_spent_minutes"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Actions -->
+    <record id="action_lms_enrollment" model="ir.actions.act_window">
+        <field name="name">Course Enrollments</field>
+        <field name="res_model">lms.enrollment</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No enrollments found
+            </p>
+            <p>
+                Enrollments will appear here when users enroll in courses.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_lms_progress" model="ir.actions.act_window">
+        <field name="name">Learning Progress</field>
+        <field name="res_model">lms.progress</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No progress records found
+            </p>
+            <p>
+                Progress tracking will appear here when users start learning modules.
+            </p>
+        </field>
+    </record>
+
+    <!-- Search Views -->
+    <record id="view_lms_enrollment_search" model="ir.ui.view">
+        <field name="name">lms.enrollment.search</field>
+        <field name="model">lms.enrollment</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="user_id"/>
+                <field name="employee_id"/>
+                <field name="course_id"/>
+                <filter string="Not Started" name="not_started" domain="[('status', '=', 'not_started')]"/>
+                <filter string="In Progress" name="in_progress" domain="[('status', '=', 'in_progress')]"/>
+                <filter string="Completed" name="completed" domain="[('status', '=', 'completed')]"/>
+                <filter string="Failed" name="failed" domain="[('status', '=', 'failed')]"/>
+                <separator/>
+                <filter string="Active" name="active" domain="[('status', 'in', ['not_started', 'in_progress'])]"/>
+                <filter string="Mandatory" name="mandatory" domain="[('enrollment_type', '=', 'mandatory')]"/>
+                <filter string="Self Enrolled" name="self" domain="[('enrollment_type', '=', 'self')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="User" name="group_user" context="{'group_by': 'user_id'}"/>
+                    <filter string="Course" name="group_course" context="{'group_by': 'course_id'}"/>
+                    <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                    <filter string="Enrollment Type" name="group_type" context="{'group_by': 'enrollment_type'}"/>
+                    <filter string="Enrollment Date" name="group_date" context="{'group_by': 'enrollment_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_lms_progress_search" model="ir.ui.view">
+        <field name="name">lms.progress.search</field>
+        <field name="model">lms.progress</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="user_id"/>
+                <field name="course_id"/>
+                <field name="module_id"/>
+                <filter string="Not Started" name="not_started" domain="[('status', '=', 'not_started')]"/>
+                <filter string="In Progress" name="in_progress" domain="[('status', '=', 'in_progress')]"/>
+                <filter string="Completed" name="completed" domain="[('status', '=', 'completed')]"/>
+                <separator/>
+                <filter string="With Attempts" name="with_attempts" domain="[('attempts', '>', 0)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="User" name="group_user" context="{'group_by': 'user_id'}"/>
+                    <filter string="Course" name="group_course" context="{'group_by': 'course_id'}"/>
+                    <filter string="Module" name="group_module" context="{'group_by': 'module_id'}"/>
+                    <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+</odoo>

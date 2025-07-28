@@ -4290,6 +4290,46 @@ class KPIController(http.Controller):
             # Get top data (existing)
             top_data = self._get_top_data(current_orders, current_quotations, start_utc, end_utc)
 
+            # Get top service advisors
+            advisor_data = {}
+            for order in current_orders:
+                for advisor in order.service_advisor_id:
+                    if advisor.id not in advisor_data:
+                        advisor_data[advisor.id] = {
+                            'id': advisor.id,
+                            'name': advisor.name,
+                            'orders': 0,
+                            'revenue': 0
+                        }
+                    advisor_data[advisor.id]['orders'] += 1
+                    advisor_data[advisor.id]['revenue'] += order.amount_total / len(order.service_advisor_id)
+
+            top_advisors = sorted(
+                advisor_data.values(),
+                key=lambda x: x['revenue'],
+                reverse=True
+            )[:10]
+
+            # Get top mechanics
+            mechanic_data = {}
+            for order in current_orders:
+                for mechanic in order.car_mechanic_id_new:
+                    if mechanic.id not in mechanic_data:
+                        mechanic_data[mechanic.id] = {
+                            'id': mechanic.id,
+                            'name': mechanic.name,
+                            'orders': 0,
+                            'revenue': 0
+                        }
+                    mechanic_data[mechanic.id]['orders'] += 1
+                    mechanic_data[mechanic.id]['revenue'] += order.amount_total / len(order.car_mechanic_id_new)
+
+            top_mechanics = sorted(
+                mechanic_data.values(),
+                key=lambda x: x['revenue'],
+                reverse=True
+            )[:10]
+
             # Get cohort analysis (existing)
             cohort_data = self._get_cohort_analysis(start_utc, end_utc, kw.get('cohort', {}))
 
@@ -4305,6 +4345,8 @@ class KPIController(http.Controller):
                     'trends': trends,
                     'cohort_analysis': cohort_data,
                     'top_data': top_data,
+                    'advisors': top_advisors,
+                    'mechanics': top_mechanics,
                     'enhanced_features': {
                         'accounting_integration': True,
                         'lead_time_analysis': True,

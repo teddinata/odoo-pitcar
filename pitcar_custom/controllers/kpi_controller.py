@@ -4191,14 +4191,19 @@ class KPIController(http.Controller):
                     start = now.replace(hour=0, minute=0, second=0)
                     end = now
 
-            # Convert to UTC for database queries
+            # Convert to UTC for database queries (for datetime fields)
             start_utc = start.astimezone(pytz.UTC)
             end_utc = end.astimezone(pytz.UTC)
 
-            # Get previous period for comparison
+            # Get previous period for comparison (UTC - for datetime fields)
             delta = end_utc - start_utc
             prev_end = start_utc - timedelta(microseconds=1)
             prev_start = prev_end - delta
+
+            # Calculate previous period in local timezone (for date fields)
+            delta_local = end - start
+            prev_end_local = start - timedelta(microseconds=1)
+            prev_start_local = prev_end_local - delta_local
 
             # ==================== EXISTING SALES DATA ====================
             current_domain = [
@@ -4217,13 +4222,13 @@ class KPIController(http.Controller):
             prev_orders = request.env['sale.order'].sudo().search(prev_domain)
 
             # ==================== NEW: ACCOUNTING REVENUE (OMZET) ====================
-            accounting_revenue_data = self._get_accounting_revenue(start_utc, end_utc, prev_start, prev_end)
+            accounting_revenue_data = self._get_accounting_revenue(start, end, prev_start_local, prev_end_local)
 
             # ==================== NEW: LEAD TIME STATISTICS ====================
             lead_time_stats = self._get_lead_time_statistics(current_orders, prev_orders)
 
             # ==================== NEW: MEMBERSHIP STATISTICS ====================
-            membership_stats = self._get_membership_statistics(start_utc, end_utc, prev_start, prev_end)
+            membership_stats = self._get_membership_statistics(start, end, prev_start_local, prev_end_local)
 
             # ==================== EXISTING CALCULATIONS ====================
             # Calculate basic metrics
@@ -4359,9 +4364,10 @@ class KPIController(http.Controller):
             _logger.error(f"Error in get_dashboard_overview_enhanced: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    def _get_accounting_revenue(self, start_utc, end_utc, prev_start, prev_end):
+    def _get_accounting_revenue(self, start, end, prev_start, prev_end):
         """
         Calculate revenue from accounting journal entries (accounts starting with '4')
+        Args: Jakarta timezone datetime objects (not UTC)
         """
         try:
             # Get income accounts (starting with '4')
@@ -4374,16 +4380,16 @@ class KPIController(http.Controller):
                 _logger.warning("No income accounts found (accounts starting with '4')")
                 return self._empty_accounting_data()
 
-            # Current period journal entries
+            # Current period journal entries - FIXED: use local timezone dates
             current_entries = request.env['account.move.line'].sudo().search([
                 ('account_id', 'in', income_accounts.ids),
-                ('date', '>=', start_utc.date()),
-                ('date', '<=', end_utc.date()),
+                ('date', '>=', start.date()),
+                ('date', '<=', end.date()),
                 ('move_id.state', '=', 'posted'),
                 ('company_id', '=', request.env.company.id)
             ])
 
-            # Previous period journal entries
+            # Previous period journal entries - FIXED: use local timezone dates
             prev_entries = request.env['account.move.line'].sudo().search([
                 ('account_id', 'in', income_accounts.ids),
                 ('date', '>=', prev_start.date()),
@@ -4514,9 +4520,10 @@ class KPIController(http.Controller):
                 'error': 'Unable to calculate lead time statistics'
             }
 
-    def _get_membership_statistics(self, start_utc, end_utc, prev_start, prev_end):
+    def _get_membership_statistics(self, start, end, prev_start, prev_end):
         """
         Calculate membership/loyalty statistics
+        Args: Jakarta timezone datetime objects (not UTC)
         """
         try:
             # Check if loyalty system is available
@@ -4568,7 +4575,7 @@ class KPIController(http.Controller):
                     'active_customers': len(all_customers.filtered(lambda c: c.last_activity_date and c.last_activity_date >= start_date.date()))
                 }
 
-            current_stats = get_period_stats(start_utc, end_utc)
+            current_stats = get_period_stats(start, end)
             prev_stats = get_period_stats(prev_start, prev_end)
 
             # Calculate growth
@@ -4589,8 +4596,8 @@ class KPIController(http.Controller):
             if 'pitcar.referral.tracking' in request.env:
                 successful_referrals = request.env['pitcar.referral.tracking'].sudo().search_count([
                     ('status', '=', 'rewarded'),
-                    ('create_date', '>=', start_utc),
-                    ('create_date', '<=', end_utc)
+                    ('create_date', '>=', start),
+                    ('create_date', '<=', end)
                 ])
                 referral_stats = {
                     'successful_referrals': successful_referrals,

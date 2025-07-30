@@ -23,8 +23,8 @@ class PitcarLoyaltyConfig(models.Model):
     # Point Earning Configuration
     points_per_rupiah = fields.Float(
         string='Points per Rupiah',
-        default=0.0001,
-        help='0.001 = 1 point per 10,000 IDR (sesuai requirements)',
+        default=0.00001,
+        help='0.00001 = 1 point per 10,000 IDR (sesuai requirements)',
         required=True
     )
     min_transaction_for_points = fields.Float(

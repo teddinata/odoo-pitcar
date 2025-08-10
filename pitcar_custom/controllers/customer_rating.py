@@ -1377,9 +1377,9 @@ class CustomerRatingAPI(Controller):
 
         # Branch-specific templates
         templates = {
-            'pitcar1': f"""*PROGRAM APRESIASI PELANGGAN SETIA*
+            'pitcar1': f"""*SKIP PESAN INI KALO KAMU GAMAU DAPET VOUCHER! PROGRAM APRESIASI PELANGGAN SETIA*
 
-Selamat siang Pak/Bu *{order.partner_id.name}*,
+Selamat siang *{order.partner_id.name}*,
 {sa_names} dari Pitcar.
 
 Bagaimana kondisi kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah 3 hari servis? Apakah sudah optimal performanya?
@@ -1413,9 +1413,9 @@ Hormat kami,
 {sa_names} - Pitcar
 *S&K berlaku""",
 
-            'pitcar_otokits_cilacap': f"""*PROGRAM APRESIASI PELANGGAN SETIA*
+            'pitcar_otokits_cilacap': f"""*SKIP PESAN INI KALO KAMU GAMAU DAPET VOUCHER! PROGRAM APRESIASI PELANGGAN SETIA*
 
-Selamat siang Pak/Bu *{order.partner_id.name}*,
+Selamat siang *{order.partner_id.name}*,
 {sa_names} dari Pitcar Otokits Cilacap.
 
 Bagaimana kondisi kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah 3 hari servis? Apakah sudah optimal performanya?
@@ -2406,7 +2406,7 @@ Hormat kami,
 
         templates = {
             'pitcar1': {
-                '3_months': f"""*PROGRAM PERAWATAN BERKALA 3 BULAN*
+                '3_months': f"""*JANGAN DISKIP KALO KAMU PENGEN MOBILMU TETEP ENTENG! PROGRAM PERAWATAN BERKALA 3 BULAN*
 
 Selamat siang *{order.partner_id.name}*,
 {sa_names} dari Pitcar.
@@ -2438,7 +2438,7 @@ Jaga investasi kendaraan Anda dengan perawatan terpercaya.
 Hormat kami,
 {sa_names} - Pitcar""",
 
-                '6_months': f"""*PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN*
+                '6_months': f"""*JANGAN DISKIP KALO KAMU PENGEN MOBILMU TETEP ENTENG! PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN*
 
 Selamat siang *{order.partner_id.name}*,
 {sa_names} dari Pitcar.
@@ -2473,7 +2473,7 @@ Hormat kami,
             },
 
             'pitcar_otokits_cilacap': {
-                '3_months': f"""*PROGRAM PERAWATAN BERKALA 3 BULAN*
+                '3_months': f"""*JANGAN DISKIP KALO KAMU PENGEN MOBILMU TETEP ENTENG! PROGRAM PERAWATAN BERKALA 3 BULAN*
 
 Selamat siang *{order.partner_id.name}*,
 {sa_names} dari Pitcar Otokits Cilacap.
@@ -2505,7 +2505,7 @@ Jaga investasi kendaraan Anda dengan perawatan terpercaya.
 Hormat kami,
 {sa_names} - Pitcar Otokits Cilacap""",
 
-                '6_months': f"""*PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN*
+                '6_months': f"""*JANGAN DISKIP KALO KAMU PENGEN MOBILMU TETEP ENTENG! PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN*
 
 Selamat siang *{order.partner_id.name}*,
 {sa_names} dari Pitcar Otokits Cilacap.

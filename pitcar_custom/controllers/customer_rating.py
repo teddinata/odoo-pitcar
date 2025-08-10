@@ -2438,7 +2438,7 @@ Jaga investasi kendaraan Anda dengan perawatan terpercaya.
 Hormat kami,
 {sa_names} - Pitcar""",
 
-                '6_months': f"""*JANGAN DISKIP KALO KAMU PENGEN MOBILMU TETEP ENTENG! PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN*
+                '6_months': f"""*SKIP PESAN INI KALO KAMU PENGEN MOBILMU LEMOT! INI PENGINGAT PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN DARI PITCAR*
 
 Selamat siang *{order.partner_id.name}*,
 {sa_names} dari Pitcar.
@@ -2505,7 +2505,7 @@ Jaga investasi kendaraan Anda dengan perawatan terpercaya.
 Hormat kami,
 {sa_names} - Pitcar Otokits Cilacap""",
 
-                '6_months': f"""*JANGAN DISKIP KALO KAMU PENGEN MOBILMU TETEP ENTENG! PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN*
+                '6_months': f"""*SKIP PESAN INI KALO KAMU PENGEN MOBILMU LEMOT! INI PENGINGAT PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN DARI PITCAR*
 
 Selamat siang *{order.partner_id.name}*,
 {sa_names} dari Pitcar Otokits Cilacap.

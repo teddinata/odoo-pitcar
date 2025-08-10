@@ -1354,14 +1354,14 @@ class CustomerRatingAPI(Controller):
 #             return None
 
     def _get_whatsapp_template(self, database, order):
-        """Get WhatsApp message template based on database"""
+        """Get WhatsApp message template - Optimized for 30-50 years old audience with branch-specific greeting"""
         base_url = "https://pitscore.pitcar.co.id"
         encoded_id = self._encode_id(order.id)
         
         # Standardize database name handling
         db_mapping = {
             'pitcar1': 'Pitcar1',
-            'pitcar.bodyrepair': 'pitcar.bodyrepair'
+            'pitcar_otokits_cilacap': 'pitcar_otokits_cilacap'
         }
         
         # Map standardized database name for URL
@@ -1373,73 +1373,85 @@ class CustomerRatingAPI(Controller):
         if order.service_advisor_id:
             sa_names = ", ".join([sa.user_id.name for sa in order.service_advisor_id if sa.user_id])
             if not sa_names:
-                _logger.warning(f"No SA names found for order {order.id}")
+                sa_names = "Tim Pitcar"
 
+        # Branch-specific templates
         templates = {
-            'pitcar1': f"""Ganti oli mesin rutin selalu,
-Ban mobil dirotasi dengan teliti.
-Servis di Pitcar sudah berlalu,
-Bagaimana rasanya, yuk nilai di sini! 
+            'pitcar1': f"""*PROGRAM APRESIASI PELANGGAN SETIA*
 
-Hai, *{order.partner_id.name}*!
-Saya {sa_names} dari Pitcar. Bagaimana performa mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah servis? 
+Selamat siang Pak/Bu *{order.partner_id.name}*,
+{sa_names} dari Pitcar.
 
-Mohon luangkan waktu sebentar untuk memberikan penilaian melalui link berikut ya:
+Bagaimana kondisi kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah 3 hari servis? Apakah sudah optimal performanya?
+
+Sebagai bentuk apresiasi, kami mengundang Bapak/Ibu untuk mengikuti program berhadiah dengan total hadiah menarik:
+
+*HADIAH UTAMA:*
+- Voucher servis gratis senilai 500 ribu
+- Cashback 200 ribu untuk servis berikutnya
+
+*YANG KAMI HARAPKAN:*
+Kesediaan Bapak/Ibu untuk memberikan penilaian jujur mengenai:
+- Kualitas pelayanan tim kami
+- Kepuasan terhadap hasil servis
+- Saran untuk perbaikan layanan
+
+Prosesnya sangat mudah, cukup 2-3 menit:
 {feedback_url}
 
-*Info Garansi*
+*Pengumuman pemenang: Setiap tanggal 10 tiap bulan*
+
+Masukan dari Bapak/Ibu sangat berharga untuk kemajuan pelayanan kami.
+
+*Info Garansi:*
 - Servis: 2 minggu
-- Sparepart: 3 bulan*
-*kecuali part dari luar
+- Sparepart: 3 bulan
 
-Terima kasih atas kepercayaan Anda kepada Pitcar! 
+Terima kasih atas kepercayaan Anda.
 
-Best regards,
-Tim Pitcar""",
+Hormat kami,
+{sa_names} - Pitcar
+*S&K berlaku""",
 
-            'pitcar.bodyrepair': f"""Poles body sampai mengkilat,
-Dempul halus tanpa celah.
-Mobil sudah tampil hebat,
-Yuk beri rating sekarang ya! 
+            'pitcar_otokits_cilacap': f"""*PROGRAM APRESIASI PELANGGAN SETIA*
 
-Hai, *{order.partner_id.name}*!
-Saya Wylda dari Pitcar. Terima kasih telah mempercayakan perbaikan mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} kepada Pitcar Body Repair.
+Selamat siang Pak/Bu *{order.partner_id.name}*,
+{sa_names} dari Pitcar Otokits Cilacap.
 
-Yuk, berikan penilaian Anda melalui link berikut:
+Bagaimana kondisi kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah 3 hari servis? Apakah sudah optimal performanya?
+
+Sebagai bentuk apresiasi, kami mengundang Bapak/Ibu untuk mengikuti program berhadiah dengan total hadiah menarik:
+
+*HADIAH UTAMA:*
+- Voucher servis gratis senilai 500 ribu
+- Cashback 200 ribu untuk servis berikutnya  
+
+*YANG KAMI HARAPKAN:*
+Kesediaan Bapak/Ibu untuk memberikan penilaian jujur mengenai:
+- Kualitas pelayanan tim kami
+- Kepuasan terhadap hasil servis
+- Saran untuk perbaikan layanan
+
+Prosesnya sangat mudah, cukup 2-3 menit:
 {feedback_url}
 
-*Info Garansi*
-- Garansi Pengecatan: 3 bulan
-- Hubungi kami kapan saja jika ada keluhan
+*Pengumuman pemenang: Setiap tanggal 10 tiap bulan*
 
-Terima kasih atas kepercayaan Anda kepada Pitcar! 
+Masukan dari Bapak/Ibu sangat berharga untuk kemajuan pelayanan kami.
 
-Best regards,
-Tim Pitcar Body Repair"""
+*Info Garansi:*
+- Servis: 2 minggu
+- Sparepart: 3 bulan
+
+Terima kasih atas kepercayaan Anda.
+
+Hormat kami,
+{sa_names} - Pitcar Otokits Cilacap
+*S&K berlaku"""
         }
 
-        # Default template jika database tidak dikenali
-        default_template = f"""
-Ganti oli mesin rutin selalu,
-Ban mobil dirotasi dengan teliti.
-Servis di Pitcar sudah berlalu,
-Bagaimana rasanya, yuk nilai di sini! 
-
-Hai, *{order.partner_id.name}*!
-Saya {sa_names} dari Pitcar. Bagaimana performa mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} setelah servis? 
-
-Mohon luangkan waktu sebentar untuk memberikan penilaian melalui link berikut ya:
-{feedback_url}
-
-*Info Garansi*
-- Servis: 2 minggu
-- Sparepart: 3 bulan*
-   *kecuali part dari luar
-   
-Terima kasih atas kepercayaan Anda kepada Pitcar! 
-
-Best regards,
-Tim Pitcar"""
+        # Default template untuk database yang tidak dikenali
+        default_template = templates['pitcar1']
 
         # Get template using lowercase key
         template = templates.get(database.lower(), default_template)
@@ -2376,7 +2388,7 @@ Tim Pitcar"""
             return 'pending'
 
     def _get_long_term_whatsapp_template(self, database, order, reminder_type):
-        """Get WhatsApp message template for long-term reminders"""
+        """Get WhatsApp message template for long-term reminders - Boosted for 30-50 age group"""
         # Get SA names
         sa_names = ""
         if order.service_advisor_id:
@@ -2394,106 +2406,141 @@ Tim Pitcar"""
 
         templates = {
             'pitcar1': {
-                '3_months': f"""Rutin servis jangan sampai lupa,
-    Oli dan filter harus diganti.
-    Sudah {months_since} bulan sejak terakhir servis di Pitcar,
-    Yuk booking lagi untuk performa optimal!
+                '3_months': f"""*PROGRAM PERAWATAN BERKALA 3 BULAN*
 
-    Hai, *{order.partner_id.name}*!
-    Saya {sa_names} dari Pitcar. 
+Selamat siang *{order.partner_id.name}*,
+{sa_names} dari Pitcar.
 
-    Mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} sudah {months_since} bulan sejak servis terakhir pada {service_date}.
+Kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} sudah {months_since} bulan sejak terakhir servis pada {service_date}.
 
-    Saatnya servis rutin untuk menjaga performa optimal kendaraan Anda:
-    🔧 Ganti oli mesin
-    🔩 Cek filter udara & oli
-    ⚙️ Tune up mesin
-    🔍 Inspeksi menyeluruh
+Sudah saatnya perawatan berkala untuk menjaga performa optimal:
 
-    Dapatkan diskon spesial untuk pelanggan setia! Hubungi kami untuk booking.
+*PAKET PERAWATAN 3 BULAN:*
+- Ganti oli mesin + filter
+- Cek sistem kelistrikan  
+- Inspeksi ban dan rem
+- Tune up ringan
 
-    Terima kasih atas kepercayaan Anda kepada Pitcar!
+*PENAWARAN ISTIMEWA HARI INI:*
+Khusus untuk Bapak/Ibu yang booking setelah menerima pesan ini:
+- *AUTO DISKON 10%* langsung tanpa syarat
+- *GRATIS CEK 35 TITIK* kendaraan menyeluruh
+- *FREE CUCI MOBIL* untuk setiap servis berkala
+- *BONUS POIN REWARD* yang dapat ditukar voucher bensin, aksesoris mobil, dan merchandise menarik lainnya!
 
-    Best regards,
-    Tim Pitcar""",
+Tidak ada biaya tersembunyi, semua sudah termasuk!
+Makin sering servis, makin banyak poin yang terkumpul!
 
-                '6_months': f"""Setengah tahun sudah berlalu,
-    Mobil butuh perawatan menyeluruh.
-    Jangan sampai ada yang terlewatkan,
-    Yuk servis di Pitcar sekarang!
+Ketik *"BOOKING"* sekarang juga untuk langsung dapat slot di sistem booking kami!
 
-    Hai, *{order.partner_id.name}*!
-    Saya {sa_names} dari Pitcar.
+Jaga investasi kendaraan Anda dengan perawatan terpercaya.
 
-    Sudah {months_since} bulan sejak mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} terakhir servis di Pitcar ({service_date}).
+Hormat kami,
+{sa_names} - Pitcar""",
 
-    Saatnya perawatan menyeluruh untuk performa maksimal:
-    🔧 Servis mesin komprehensif
-    🔩 Ganti oli & semua filter
-    ⚙️ Tune up lengkap
-    🔍 Cek sistem kelistrikan
-    🛞 Inspeksi ban & rem
-    ❄️ Service AC
+                '6_months': f"""*PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN*
 
-    Dapatkan paket hemat untuk perawatan 6 bulanan! 
+Selamat siang *{order.partner_id.name}*,
+{sa_names} dari Pitcar.
 
-    Terima kasih atas kepercayaan Anda kepada Pitcar!
+Sudah {months_since} bulan sejak kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} terakhir servis di Pitcar ({service_date}).
 
-    Best regards,
-    Tim Pitcar"""
+Saatnya perawatan menyeluruh untuk performa maksimal:
+
+*PAKET PERAWATAN 6 BULAN:*
+- Servis mesin komprehensif
+- Ganti oli + semua filter (udara, oli, AC)
+- Tune up complete + injector cleaning
+- Cek sistem transmisi & kopling
+- Inspeksi kaki-kaki & alignment
+- Service AC + pembersihan evaporator
+
+*PENAWARAN EKSKLUSIF KHUSUS ANDA:*
+Booking setelah menerima pesan ini langsung dapat:
+- *AUTO DISKON 10%* untuk semua paket servis
+- *GRATIS CEK 35 TITIK* kendaraan menyeluruh
+- *FREE CUCI MOBIL* premium 
+- *BONUS POIN REWARD* ratusan poin yang bisa ditukar merchandise menarik seperti voucher bensin, aksesoris mobil, dan hadiah eksklusif lainnya!
+
+Makin sering servis, makin banyak poin yang terkumpul!
+
+Ketik *"BOOKING"* sekarang juga untuk langsung dapat slot di sistem booking kami!
+
+Investasi yang tepat untuk kendaraan kesayangan.
+
+Hormat kami,
+{sa_names} - Pitcar"""
             },
 
-            'pitcar.bodyrepair': {
-                '3_months': f"""Cat mobil perlu dirawat rutin,
-    Poles dan wax jangan diabaikan.
-    Sudah {months_since} bulan sejak perbaikan,
-    Yuk cek kondisi cat kendaraan!
+            'pitcar_otokits_cilacap': {
+                '3_months': f"""*PROGRAM PERAWATAN BERKALA 3 BULAN*
 
-    Hai, *{order.partner_id.name}*!
-    Saya Wylda dari Pitcar Body Repair.
+Selamat siang *{order.partner_id.name}*,
+{sa_names} dari Pitcar Otokits Cilacap.
 
-    Mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} sudah {months_since} bulan sejak perbaikan terakhir pada {service_date}.
+Kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} sudah {months_since} bulan sejak terakhir servis pada {service_date}.
 
-    Saatnya perawatan berkala untuk menjaga kualitas cat:
-    ✨ Poles dan wax premium
-    🧽 Deep cleaning body
-    🔍 Inspeksi hasil perbaikan
-    🛡️ Perlindungan cat tambahan
+Sudah saatnya perawatan berkala untuk menjaga performa optimal:
 
-    *Info Kontak:*
-    📱 WhatsApp: [Nomor Body Repair]
-    📍 Lokasi: [Alamat Body Repair]
+*PAKET PERAWATAN 3 BULAN:*
+- Ganti oli mesin + filter
+- Cek sistem kelistrikan
+- Inspeksi ban dan rem  
+- Tune up ringan
 
-    Terima kasih atas kepercayaan Anda!
+*PENAWARAN ISTIMEWA HARI INI:*
+Khusus untuk Bapak/Ibu yang booking setelah menerima pesan ini:
+- *AUTO DISKON 10%* langsung tanpa syarat
+- *GRATIS CEK 35 TITIK* kendaraan menyeluruh
+- *FREE CUCI MOBIL* untuk setiap servis berkala
+- *BONUS POIN REWARD* yang dapat ditukar voucher bensin, aksesoris mobil, dan merchandise menarik lainnya!
 
-    Best regards,
-    Tim Pitcar Body Repair""",
+Tidak ada biaya tersembunyi, semua sudah termasuk!
+Makin sering servis, makin banyak poin yang terkumpul!
 
-                '6_months': f"""Setengah tahun sudah berlalu,
-    Cat mobil butuh perawatan khusus.
-    Jaga investasi kendaraan Anda,
-    Dengan perawatan terbaik dari kami!
+Ketik *"BOOKING"* sekarang juga untuk langsung dapat slot di sistem booking kami!
 
-    Hai, *{order.partner_id.name}*!
-    Saya Wylda dari Pitcar Body Repair.
+Jaga investasi kendaraan Anda dengan perawatan terpercaya.
 
-    Sudah {months_since} bulan sejak mobil {order.partner_car_id.number_plate if order.partner_car_id else ''} diperbaiki di Pitcar Body Repair ({service_date}).
+Hormat kami,
+{sa_names} - Pitcar Otokits Cilacap""",
 
-    Saatnya perawatan menyeluruh untuk menjaga kualitas:
-    ✨ Full body treatment
-    🧽 Paint protection coating
-    🔍 Inspeksi menyeluruh
-    🛡️ Touch-up jika diperlukan
-    🚗 Interior detailing
+                '6_months': f"""*PROGRAM PERAWATAN KOMPREHENSIF 6 BULAN*
 
-    Garansi pengecatan masih berlaku!
+Selamat siang *{order.partner_id.name}*,
+{sa_names} dari Pitcar Otokits Cilacap.
 
-    Best regards,
-    Tim Pitcar Body Repair"""
+Sudah {months_since} bulan sejak kendaraan {order.partner_car_id.number_plate if order.partner_car_id else ''} terakhir servis di Pitcar ({service_date}).
+
+Saatnya perawatan menyeluruh untuk performa maksimal:
+
+*PAKET PERAWATAN 6 BULAN:*
+- Servis mesin komprehensif
+- Ganti oli + semua filter (udara, oli, AC)
+- Tune up complete + injector cleaning
+- Cek sistem transmisi & kopling
+- Inspeksi kaki-kaki & alignment
+- Service AC + pembersihan evaporator
+
+*PENAWARAN EKSKLUSIF KHUSUS ANDA:*
+Booking setelah menerima pesan ini langsung dapat:
+- *AUTO DISKON 10%* untuk semua paket servis
+- *GRATIS CEK 35 TITIK* kendaraan menyeluruh
+- *FREE CUCI MOBIL* 
+- *BONUS POIN REWARD* ratusan poin yang bisa ditukar merchandise menarik seperti voucher bensin, aksesoris mobil, dan hadiah eksklusif lainnya!
+
+Makin sering servis, makin banyak poin yang terkumpul!
+
+Ketik *"BOOKING"* sekarang juga untuk langsung dapat slot di sistem booking kami!
+
+Investasi yang tepat untuk kendaraan kesayangan.
+
+Hormat kami,
+{sa_names} - Pitcar Otokits Cilacap"""
             }
         }
 
-        # Default template
+        # Default template untuk database yang tidak dikenali
         default_template = templates['pitcar1'][reminder_type]
 
         return templates.get(database.lower(), {}).get(reminder_type, default_template)

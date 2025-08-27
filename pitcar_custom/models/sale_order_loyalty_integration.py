@@ -153,7 +153,7 @@ class SaleOrder(models.Model):
                 return {
                     'warning': {
                         'title': 'Invalid Referral Code',
-                        'message': f'Referral code "{self.referral_code_used}" not found or inactive.'
+                        'message': f'Kode Referral "{self.referral_code_used}" tidak ditemukan atau tidak aktif. Silakan periksa kembali.'
                     }
                 }
             
@@ -163,7 +163,7 @@ class SaleOrder(models.Model):
                 return {
                     'warning': {
                         'title': 'Invalid Referral',
-                        'message': 'Customer cannot use their own referral code.'
+                        'message': 'Customer tidak bisa menggunakan kode referral sendiri.'
                     }
                 }
             
@@ -391,7 +391,7 @@ class SaleOrder(models.Model):
             'tag': 'display_notification',
             'params': {
                 'title': 'Success',
-                'message': f'Loyalty processing completed for {self.name}',
+                'message': f'Poin loyalty dan referral untuk order {self.name} telah diproses ulang.',
                 'type': 'success'
             }
         }

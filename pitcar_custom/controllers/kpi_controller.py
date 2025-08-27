@@ -4222,13 +4222,42 @@ class KPIController(http.Controller):
             prev_orders = request.env['sale.order'].sudo().search(prev_domain)
 
             # ==================== NEW: ACCOUNTING REVENUE (OMZET) ====================
-            accounting_revenue_data = self._get_accounting_revenue(start, end, prev_start_local, prev_end_local)
+            # accounting_revenue_data = self._get_accounting_revenue(start, end, prev_start_local, prev_end_local)
+            accounting_revenue_data = self._get_accounting_revenue(
+                start, end, prev_start_local, prev_end_local, exclude_otokits=True
+            )
+
+            # ==================== NEW: COGS STATISTICS ====================
+            cogs_data = self._get_cogs_statistics(start, end, prev_start_local, prev_end_local)
 
             # ==================== NEW: LEAD TIME STATISTICS ====================
             lead_time_stats = self._get_lead_time_statistics(current_orders, prev_orders)
 
             # ==================== NEW: MEMBERSHIP STATISTICS ====================
             membership_stats = self._get_membership_statistics(start, end, prev_start_local, prev_end_local)
+
+            # ==================== CALCULATE GROSS PROFIT MARGIN ====================
+            gross_profit_data = None
+            if accounting_revenue_data and cogs_data:
+                current_revenue = accounting_revenue_data['current']
+                current_cogs = cogs_data['current']
+                prev_revenue = accounting_revenue_data['previous']
+                prev_cogs = cogs_data['previous']
+                
+                current_gross_profit = current_revenue - current_cogs
+                prev_gross_profit = prev_revenue - prev_cogs
+                
+                current_margin = (current_gross_profit / current_revenue * 100) if current_revenue else 0
+                prev_margin = (prev_gross_profit / prev_revenue * 100) if prev_revenue else 0
+                
+                gross_profit_data = {
+                    'current_gross_profit': current_gross_profit,
+                    'previous_gross_profit': prev_gross_profit,
+                    'growth': ((current_gross_profit - prev_gross_profit) / abs(prev_gross_profit) * 100) if prev_gross_profit != 0 else 0,
+                    'current_margin': round(current_margin, 2),
+                    'previous_margin': round(prev_margin, 2),
+                    'margin_change': round(current_margin - prev_margin, 2)
+                }
 
             # ==================== EXISTING CALCULATIONS ====================
             # Calculate basic metrics
@@ -4284,7 +4313,13 @@ class KPIController(http.Controller):
                 },
                 
                 # NEW: Enhanced metrics
+                # ENHANCED: Accounting revenue without Otokits
                 'accounting_revenue': accounting_revenue_data,
+                # NEW: COGS statistics
+                'cogs': cogs_data,
+                
+                # NEW: Gross profit calculations
+                'gross_profit': gross_profit_data,
                 'lead_time': lead_time_stats,
                 'membership': membership_stats
             }
@@ -4354,6 +4389,9 @@ class KPIController(http.Controller):
                     'mechanics': top_mechanics,
                     'enhanced_features': {
                         'accounting_integration': True,
+                        'cogs_tracking': True,
+                        'otokits_excluded': True,
+                        'gross_profit_analysis': True,
                         'lead_time_analysis': True,
                         'membership_tracking': True
                     }
@@ -4364,10 +4402,12 @@ class KPIController(http.Controller):
             _logger.error(f"Error in get_dashboard_overview_enhanced: {str(e)}")
             return {'status': 'error', 'message': str(e)}
 
-    def _get_accounting_revenue(self, start, end, prev_start, prev_end):
+    def _get_accounting_revenue(self, start, end, prev_start, prev_end, exclude_otokits=True):
         """
         Calculate revenue from accounting journal entries (accounts starting with '4')
-        Args: Jakarta timezone datetime objects (not UTC)
+        Args: 
+            start, end, prev_start, prev_end: Jakarta timezone datetime objects (not UTC)
+            exclude_otokits: Boolean to exclude Otokits income from calculation
         """
         try:
             # Get income accounts (starting with '4')
@@ -4380,7 +4420,10 @@ class KPIController(http.Controller):
                 _logger.warning("No income accounts found (accounts starting with '4')")
                 return self._empty_accounting_data()
 
-            # Current period journal entries - FIXED: use local timezone dates
+            # Define Otokits account codes to exclude
+            otokits_account_codes = ['41000050']  # Add more codes if needed
+            
+            # Current period journal entries
             current_entries = request.env['account.move.line'].sudo().search([
                 ('account_id', 'in', income_accounts.ids),
                 ('date', '>=', start.date()),
@@ -4389,7 +4432,7 @@ class KPIController(http.Controller):
                 ('company_id', '=', request.env.company.id)
             ])
 
-            # Previous period journal entries - FIXED: use local timezone dates
+            # Previous period journal entries
             prev_entries = request.env['account.move.line'].sudo().search([
                 ('account_id', 'in', income_accounts.ids),
                 ('date', '>=', prev_start.date()),
@@ -4398,22 +4441,48 @@ class KPIController(http.Controller):
                 ('company_id', '=', request.env.company.id)
             ])
 
-            # Calculate totals (credit - debit for income accounts)
-            current_total = sum(entry.credit - entry.debit for entry in current_entries)
-            prev_total = sum(entry.credit - entry.debit for entry in prev_entries)
+            # Calculate totals with optional Otokits exclusion
+            current_total = 0
+            current_otokits_amount = 0
+            prev_total = 0 
+            prev_otokits_amount = 0
+
+            # Process current entries
+            for entry in current_entries:
+                amount = entry.credit - entry.debit
+                if exclude_otokits and entry.account_id.code in otokits_account_codes:
+                    current_otokits_amount += amount
+                else:
+                    current_total += amount
+
+            # Process previous entries
+            for entry in prev_entries:
+                amount = entry.credit - entry.debit
+                if exclude_otokits and entry.account_id.code in otokits_account_codes:
+                    prev_otokits_amount += amount
+                else:
+                    prev_total += amount
 
             # Calculate by account breakdown
             account_breakdown = {}
+            otokits_breakdown = {}
+            
             for account in income_accounts:
                 account_entries = current_entries.filtered(lambda e: e.account_id.id == account.id)
                 account_total = sum(entry.credit - entry.debit for entry in account_entries)
-                if account_total != 0:  # Only include accounts with transactions
-                    account_breakdown[account.code] = {
+                
+                if account_total != 0:
+                    account_data = {
                         'name': account.name,
                         'code': account.code,
                         'amount': account_total,
                         'entry_count': len(account_entries)
                     }
+                    
+                    if exclude_otokits and account.code in otokits_account_codes:
+                        otokits_breakdown[account.code] = account_data
+                    else:
+                        account_breakdown[account.code] = account_data
 
             return {
                 'current': current_total,
@@ -4422,7 +4491,13 @@ class KPIController(http.Controller):
                 'account_breakdown': account_breakdown,
                 'total_accounts': len(income_accounts),
                 'active_accounts': len(account_breakdown),
-                'currency': request.env.company.currency_id.name
+                'currency': request.env.company.currency_id.name,
+                'excluded_otokits': {
+                    'current': current_otokits_amount,
+                    'previous': prev_otokits_amount,
+                    'growth': ((current_otokits_amount - prev_otokits_amount) / abs(prev_otokits_amount) * 100) if prev_otokits_amount != 0 else 0,
+                    'breakdown': otokits_breakdown
+                } if exclude_otokits else None
             }
 
         except Exception as e:
@@ -4441,6 +4516,137 @@ class KPIController(http.Controller):
             'currency': 'IDR',
             'error': 'Unable to calculate accounting revenue'
         }
+    
+    def _get_cogs_statistics(self, start, end, prev_start, prev_end):
+        """
+        Calculate Cost of Goods Sold (COGS) statistics from accounting data
+        Args: Jakarta timezone datetime objects (not UTC)
+        """
+        try:
+            # Get COGS accounts (typically starting with '5' for expenses/costs)
+            # Adjust account codes based on your chart of accounts
+            cogs_account_patterns = ['50%', '51%']  # Common COGS account patterns
+            cogs_accounts = request.env['account.account'].sudo().search([
+                '|',
+                ('code', '=like', cogs_account_patterns[0]),
+                ('code', '=like', cogs_account_patterns[1]),
+                ('company_id', '=', request.env.company.id)
+            ])
+            
+            if not cogs_accounts:
+                # Try alternative patterns if main ones don't exist
+                cogs_accounts = request.env['account.account'].sudo().search([
+                    ('name', 'ilike', 'cost'),
+                    ('name', 'ilike', 'cogs'),
+                    ('company_id', '=', request.env.company.id)
+                ])
+
+            if not cogs_accounts:
+                _logger.warning("No COGS accounts found")
+                return self._empty_cogs_data()
+
+            # Current period COGS entries
+            current_cogs_entries = request.env['account.move.line'].sudo().search([
+                ('account_id', 'in', cogs_accounts.ids),
+                ('date', '>=', start.date()),
+                ('date', '<=', end.date()),
+                ('move_id.state', '=', 'posted'),
+                ('company_id', '=', request.env.company.id)
+            ])
+
+            # Previous period COGS entries
+            prev_cogs_entries = request.env['account.move.line'].sudo().search([
+                ('account_id', 'in', cogs_accounts.ids),
+                ('date', '>=', prev_start.date()),
+                ('date', '<=', prev_end.date()),
+                ('move_id.state', '=', 'posted'),
+                ('company_id', '=', request.env.company.id)
+            ])
+
+            # Calculate totals (debit - credit for expense accounts)
+            current_cogs_total = sum(entry.debit - entry.credit for entry in current_cogs_entries)
+            prev_cogs_total = sum(entry.debit - entry.credit for entry in prev_cogs_entries)
+
+            # COGS breakdown by account
+            cogs_breakdown = {}
+            for account in cogs_accounts:
+                account_entries = current_cogs_entries.filtered(lambda e: e.account_id.id == account.id)
+                account_total = sum(entry.debit - entry.credit for entry in account_entries)
+                if account_total != 0:
+                    cogs_breakdown[account.code] = {
+                        'name': account.name,
+                        'code': account.code,
+                        'amount': account_total,
+                        'entry_count': len(account_entries)
+                    }
+
+            # Calculate COGS by category (if you have specific account structures)
+            cogs_categories = self._categorize_cogs_accounts(cogs_breakdown)
+
+            return {
+                'current': current_cogs_total,
+                'previous': prev_cogs_total,
+                'growth': ((current_cogs_total - prev_cogs_total) / abs(prev_cogs_total) * 100) if prev_cogs_total != 0 else 0,
+                'account_breakdown': cogs_breakdown,
+                'categories': cogs_categories,
+                'total_accounts': len(cogs_accounts),
+                'active_accounts': len(cogs_breakdown),
+                'currency': request.env.company.currency_id.name
+            }
+
+        except Exception as e:
+            _logger.error(f"Error calculating COGS statistics: {str(e)}")
+            return self._empty_cogs_data()
+
+    def _categorize_cogs_accounts(self, cogs_breakdown):
+        """
+        Categorize COGS accounts into meaningful groups for automotive service
+        """
+        categories = {
+            'parts_and_materials': {'name': 'Parts & Materials', 'amount': 0, 'accounts': []},
+            'labor_costs': {'name': 'Direct Labor', 'amount': 0, 'accounts': []},
+            'subcontractor_costs': {'name': 'Subcontractor', 'amount': 0, 'accounts': []},
+            'other_direct_costs': {'name': 'Other Direct Costs', 'amount': 0, 'accounts': []}
+        }
+        
+        for code, data in cogs_breakdown.items():
+            account_name_lower = data['name'].lower()
+            
+            # Categorize based on account name patterns
+            if any(keyword in account_name_lower for keyword in ['part', 'spare', 'material', 'component']):
+                categories['parts_and_materials']['amount'] += data['amount']
+                categories['parts_and_materials']['accounts'].append(data)
+            elif any(keyword in account_name_lower for keyword in ['labor', 'wage', 'mechanic', 'technician']):
+                categories['labor_costs']['amount'] += data['amount']
+                categories['labor_costs']['accounts'].append(data)
+            elif any(keyword in account_name_lower for keyword in ['subcontract', 'outsource', 'vendor']):
+                categories['subcontractor_costs']['amount'] += data['amount']
+                categories['subcontractor_costs']['accounts'].append(data)
+            else:
+                categories['other_direct_costs']['amount'] += data['amount']
+                categories['other_direct_costs']['accounts'].append(data)
+        
+        return categories
+
+    def _empty_cogs_data(self):
+        """Return empty COGS data structure"""
+        return {
+            'current': 0,
+            'previous': 0,
+            'growth': 0,
+            'account_breakdown': {},
+            'categories': {
+                'parts_and_materials': {'name': 'Parts & Materials', 'amount': 0, 'accounts': []},
+                'labor_costs': {'name': 'Direct Labor', 'amount': 0, 'accounts': []},
+                'subcontractor_costs': {'name': 'Subcontractor', 'amount': 0, 'accounts': []},
+                'other_direct_costs': {'name': 'Other Direct Costs', 'amount': 0, 'accounts': []}
+            },
+            'total_accounts': 0,
+            'active_accounts': 0,
+            'currency': 'IDR',
+            'error': 'Unable to calculate COGS statistics'
+        }
+
 
     def _get_lead_time_statistics(self, current_orders, prev_orders):
         """

@@ -514,6 +514,27 @@
                         decoration-info="customer_level == 'new'"
                         help="Shows customer level and transaction sequence"/>
                     
+                    <!-- Customer Points -->
+                    <field name="customer_current_points" readonly="1" 
+                        string="Customer Points"
+                        attrs="{'invisible': [('partner_id', '=', False)]}"
+                        decoration-success="customer_current_points >= 1000"
+                        decoration-info="customer_current_points >= 500"
+                        decoration-warning="customer_current_points >= 100"
+                        help="Current loyalty points for this customer"/>
+                    
+                    <!-- Customer Source Info -->
+                    <field name="customer_sumber_info" readonly="1" 
+                        string="Customer Source"
+                        attrs="{'invisible': [('partner_id', '=', False)]}"
+                        help="Source information for this customer"/>
+
+                    <!-- Referral Code Input -->
+                    <field name="referral_code_used" placeholder="Masukkan kode referral customer di sini"
+                        string="Kode Referral"
+                        attrs="{'readonly': [('state', '!=', 'draft')], 'invisible': [('partner_id', '=', False)]}"
+                        help="Ini adalah kode referral yang digunakan customer, untuk mendapatkan poin tambahan."/>
+                    
                     <!-- Car and service info -->
                     <field name="partner_car_id" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>
                     <field name="partner_car_odometer" attrs="{'readonly': [('is_penerimaan_filled', '=', False)]}"/>

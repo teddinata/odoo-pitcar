@@ -4228,7 +4228,12 @@ class KPIController(http.Controller):
             )
 
             # ==================== NEW: COGS STATISTICS ====================
-            cogs_data = self._get_cogs_statistics(start, end, prev_start_local, prev_end_local)
+            # cogs_data = self._get_cogs_statistics(start, end, prev_start_local, prev_end_local)
+            cogs_data = self._get_cogs_statistics(
+                start, end, prev_start_local, prev_end_local, 
+                accounting_revenue_current=accounting_revenue_data.get('current', 0),
+                accounting_revenue_prev=accounting_revenue_data.get('previous', 0)
+            )
 
             # ==================== NEW: LEAD TIME STATISTICS ====================
             lead_time_stats = self._get_lead_time_statistics(current_orders, prev_orders)
@@ -4517,7 +4522,7 @@ class KPIController(http.Controller):
             'error': 'Unable to calculate accounting revenue'
         }
     
-    def _get_cogs_statistics(self, start, end, prev_start, prev_end):
+    def _get_cogs_statistics(self, start, end, prev_start, prev_end, accounting_revenue_current=None, accounting_revenue_prev=None):
         """
         Calculate Cost of Goods Sold (COGS) statistics from accounting data
         Args: Jakarta timezone datetime objects (not UTC)
@@ -4580,13 +4585,29 @@ class KPIController(http.Controller):
                         'entry_count': len(account_entries)
                     }
 
-            # Calculate COGS by category (if you have specific account structures)
+            # Calculate COGS by category
             cogs_categories = self._categorize_cogs_accounts(cogs_breakdown)
+
+            # TAMBAHAN BARU: Calculate percentage of accounting revenue
+            current_cogs_percentage = 0
+            prev_cogs_percentage = 0
+            
+            if accounting_revenue_current and accounting_revenue_current > 0:
+                current_cogs_percentage = (current_cogs_total / accounting_revenue_current * 100)
+                
+            if accounting_revenue_prev and accounting_revenue_prev > 0:
+                prev_cogs_percentage = (prev_cogs_total / accounting_revenue_prev * 100)
 
             return {
                 'current': current_cogs_total,
                 'previous': prev_cogs_total,
                 'growth': ((current_cogs_total - prev_cogs_total) / abs(prev_cogs_total) * 100) if prev_cogs_total != 0 else 0,
+                # TAMBAHAN BARU: Persentase dari accounting revenue
+                'percentage_of_revenue': {
+                    'current': round(current_cogs_percentage, 2),
+                    'previous': round(prev_cogs_percentage, 2),
+                    'change': round(current_cogs_percentage - prev_cogs_percentage, 2)
+                },
                 'account_breakdown': cogs_breakdown,
                 'categories': cogs_categories,
                 'total_accounts': len(cogs_accounts),
@@ -4634,6 +4655,12 @@ class KPIController(http.Controller):
             'current': 0,
             'previous': 0,
             'growth': 0,
+            # TAMBAHAN BARU: Empty percentage structure
+            'percentage_of_revenue': {
+                'current': 0,
+                'previous': 0,
+                'change': 0
+            },
             'account_breakdown': {},
             'categories': {
                 'parts_and_materials': {'name': 'Parts & Materials', 'amount': 0, 'accounts': []},

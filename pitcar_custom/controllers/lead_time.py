@@ -4081,3 +4081,519 @@ class LeadTimeAPIController(http.Controller):
         except Exception as e:
             _logger.error(f"Error in manage_stall: {str(e)}")
             return {'status': 'error', 'message': str(e)}
+        
+    # Tambahkan ke LeadTimeAPIController
+    @http.route('/web/job-control/daily', type='json', auth='user', methods=['POST', 'OPTIONS'], csrf=False, cors='*')
+    def get_daily_job_control(self, **kw):
+        """Get comprehensive daily job control data"""
+        try:
+            # Handle OPTIONS request for CORS
+            if request.httprequest.method == 'OPTIONS':
+                headers = {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                    'Access-Control-Allow-Credentials': 'true'
+                }
+                return Response(status=200, headers=headers)
+
+            # Get parameters
+            params = kw.get('params', kw)
+            target_date = params.get('date', fields.Date.today())
+            
+            # Convert to datetime for filtering
+            if isinstance(target_date, str):
+                target_date = fields.Date.from_string(target_date)
+            
+            # Get all stalls
+            stalls = request.env['pitcar.service.stall'].search([('active', '=', True)])
+            
+            # Get active orders for the day
+            domain = [
+                ('sa_jam_masuk', '>=', fields.Datetime.to_string(
+                    datetime.combine(target_date, time.min))),
+                ('sa_jam_masuk', '<=', fields.Datetime.to_string(
+                    datetime.combine(target_date, time.max))),
+                ('sa_cetak_pkb', '!=', False)
+            ]
+            
+            active_orders = request.env['sale.order'].search(domain)
+            
+            # Get all mechanics and their availability
+            mechanics = request.env['pitcar.mechanic.new'].search([('active', '=', True)])
+            
+            # Get service advisors
+            service_advisors = request.env['pitcar.service.advisor'].search([('active', '=', True)])
+            
+            # Prepare stall data with detailed information
+            stall_data = []
+            for stall in stalls:
+                # Get current active order in this stall
+                current_order = active_orders.filtered(lambda o: o.stall_id.id == stall.id and not o.controller_selesai)
+                current_order = current_order[0] if current_order else None
+                
+                # Get today's completed orders in this stall
+                completed_orders = active_orders.filtered(lambda o: o.stall_id.id == stall.id and o.controller_selesai)
+                
+                stall_info = {
+                    'id': stall.id,
+                    'name': stall.name,
+                    'code': stall.code,
+                    'capacity': getattr(stall, 'capacity', 1),
+                    'status': self._get_stall_status(stall, current_order),
+                    'current_order': self._get_current_order_info(current_order) if current_order else None,
+                    'today_orders': len(active_orders.filtered(lambda o: o.stall_id.id == stall.id)),
+                    'completed_today': len(completed_orders),
+                    'utilization_hours': self._calculate_stall_utilization_hours(stall, target_date),
+                    'schedule': self._get_stall_schedule(stall, target_date)
+                }
+                stall_data.append(stall_info)
+            
+            # Prepare mechanic availability data
+            mechanic_data = []
+            for mechanic in mechanics:
+                # Get current assignments
+                current_assignments = active_orders.filtered(
+                    lambda o: mechanic.id in o.car_mechanic_id_new.ids and not o.controller_selesai
+                )
+                
+                today_completed = active_orders.filtered(
+                    lambda o: mechanic.id in o.car_mechanic_id_new.ids and o.controller_selesai
+                )
+                
+                # Check attendance status
+                attendance_info = self._get_mechanic_attendance(mechanic, target_date)
+                
+                mechanic_info = {
+                    'id': mechanic.id,
+                    'name': mechanic.name,
+                    'position_code': getattr(mechanic, 'position_code', 'mechanic'),
+                    'employee_id': mechanic.employee_id.id if hasattr(mechanic, 'employee_id') and mechanic.employee_id else None,
+                    'attendance': attendance_info,
+                    'status': self._get_mechanic_status_with_attendance(mechanic, current_assignments, attendance_info),
+                    'current_assignments': [self._get_current_order_info(order) for order in current_assignments],
+                    'today_completed': len(today_completed),
+                    'total_workload': len(current_assignments),
+                    'availability': self._get_mechanic_availability_with_attendance(mechanic, current_assignments, attendance_info)
+                }
+                mechanic_data.append(mechanic_info)
+            
+            # Prepare service advisor data
+            advisor_data = []
+            for advisor in service_advisors:
+                current_orders_sa = active_orders.filtered(
+                    lambda o: advisor.id in o.service_advisor_id.ids and not o.controller_selesai
+                )
+                
+                completed_orders_sa = active_orders.filtered(
+                    lambda o: advisor.id in o.service_advisor_id.ids and o.controller_selesai
+                )
+                
+                advisor_info = {
+                    'id': advisor.id,
+                    'name': advisor.name,
+                    'status': self._get_advisor_status(advisor, current_orders_sa),
+                    'current_orders': [self._get_current_order_info(order) for order in current_orders_sa],
+                    'today_completed': len(completed_orders_sa),
+                    'workload': len(current_orders_sa)
+                }
+                advisor_data.append(advisor_info)
+            
+            # Summary statistics
+            present_mechanics = len([m for m in mechanic_data if m['attendance']['is_present']])
+            working_mechanics = len([m for m in mechanic_data if m['attendance']['status'] == 'working'])
+            available_mechanics = len([m for m in mechanic_data if m['status']['code'] == 'available'])
+            
+            summary = {
+                'total_stalls': len(stalls),
+                'occupied_stalls': len([s for s in stall_data if s['status']['code'] in ['in_service', 'occupied', 'waiting_parts', 'waiting_confirmation']]),
+                'available_stalls': len([s for s in stall_data if s['status']['code'] == 'available']),
+                'total_mechanics': len(mechanics),
+                'present_mechanics': present_mechanics,
+                'working_mechanics': working_mechanics,
+                'busy_mechanics': len([m for m in mechanic_data if m['status']['code'] in ['busy', 'overloaded']]),
+                'available_mechanics': available_mechanics,
+                'absent_mechanics': len(mechanics) - present_mechanics,
+                'total_advisors': len(service_advisors),
+                'busy_advisors': len([a for a in advisor_data if a['status']['code'] == 'busy']),
+                'today_total_orders': len(active_orders),
+                'today_completed_orders': len(active_orders.filtered('controller_selesai')),
+                'today_active_orders': len(active_orders.filtered(lambda o: not o.controller_selesai)),
+                'attendance_rate': round((present_mechanics / len(mechanics) * 100), 1) if mechanics else 0
+            }
+            
+            return {
+                'status': 'success',
+                'data': {
+                    'date': target_date.strftime('%Y-%m-%d'),
+                    'current_time': self._format_local_datetime(fields.Datetime.now()),
+                    'summary': summary,
+                    'stalls': stall_data,
+                    'mechanics': mechanic_data,
+                    'service_advisors': advisor_data,
+                    'active_orders': [self._get_detailed_order_info(order) for order in active_orders.filtered(lambda o: not o.controller_selesai)]
+                }
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in get_daily_job_control: {str(e)}", exc_info=True)
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    def _get_stall_status(self, stall, current_order):
+        """Get stall status with detailed information"""
+        if current_order:
+            # Determine specific status based on order state
+            if current_order.controller_tunggu_part1_mulai and not current_order.controller_tunggu_part1_selesai:
+                status_code = 'waiting_parts'
+                status_text = 'Menunggu Part'
+                color = 'yellow'
+            elif current_order.controller_tunggu_konfirmasi_mulai and not current_order.controller_tunggu_konfirmasi_selesai:
+                status_code = 'waiting_confirmation'
+                status_text = 'Tunggu Konfirmasi'
+                color = 'orange'
+            elif current_order.controller_istirahat_shift1_mulai and not current_order.controller_istirahat_shift1_selesai:
+                status_code = 'on_break'
+                status_text = 'Istirahat'
+                color = 'blue'
+            elif current_order.controller_mulai_servis and not current_order.controller_selesai:
+                status_code = 'in_service'
+                status_text = 'Sedang Dikerjakan'
+                color = 'green'
+            else:
+                status_code = 'occupied'
+                status_text = 'Terisi'
+                color = 'gray'
+        else:
+            status_code = 'available'
+            status_text = 'Tersedia'
+            color = 'green'
+        
+        return {
+            'code': status_code,
+            'text': status_text,
+            'color': color
+        }
+
+    def _get_current_order_info(self, order):
+        """Get current order information for job control"""
+        if not order:
+            return None
+            
+        return {
+            'id': order.id,
+            'name': order.name,
+            'customer': order.partner_id.name,
+            'car_plate': order.partner_car_id.number_plate if order.partner_car_id else None,
+            'car_brand': f"{order.partner_car_brand.name} {order.partner_car_brand_type.name}".strip() if order.partner_car_brand and order.partner_car_brand_type else None,
+            'mechanics': [{'id': m.id, 'name': m.name} for m in order.car_mechanic_id_new],
+            'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id],
+            'status': self._get_order_status(order),
+            'start_time': self._format_local_time(order.controller_mulai_servis),
+            'estimated_completion': self._format_local_time(order.controller_estimasi_selesai),
+            'progress': order.lead_time_progress or 0,
+            'service_type': order.service_category,
+            'stall_time': self._calculate_stall_occupation_time(order)
+        }
+
+    def _get_mechanic_status(self, mechanic, current_assignments):
+        """Get mechanic status based on current assignments"""
+        if not current_assignments:
+            return {'code': 'available', 'text': 'Tersedia', 'color': 'green'}
+        elif len(current_assignments) == 1:
+            return {'code': 'busy', 'text': 'Sedang Bekerja', 'color': 'blue'}
+        else:
+            return {'code': 'overloaded', 'text': f'Bekerja ({len(current_assignments)} unit)', 'color': 'red'}
+
+    def _get_advisor_status(self, advisor, current_orders):
+        """Get service advisor status"""
+        if not current_orders:
+            return {'code': 'available', 'text': 'Tersedia', 'color': 'green'}
+        elif len(current_orders) <= 3:
+            return {'code': 'busy', 'text': f'Menangani {len(current_orders)} unit', 'color': 'blue'}
+        else:
+            return {'code': 'overloaded', 'text': f'Overload ({len(current_orders)} unit)', 'color': 'red'}
+
+    def _get_mechanic_attendance(self, mechanic, target_date):
+        """Get mechanic attendance information for the target date"""
+        try:
+            # Get employee record if exists
+            if not hasattr(mechanic, 'employee_id') or not mechanic.employee_id:
+                return {
+                    'is_present': False,
+                    'check_in': None,
+                    'check_out': None,
+                    'worked_hours': 0,
+                    'status': 'no_employee_link',
+                    'note': 'No employee record linked'
+                }
+            
+            employee = mechanic.employee_id
+            
+            # Find attendance record for target date
+            attendance_domain = [
+                ('employee_id', '=', employee.id),
+                ('check_in', '>=', fields.Datetime.to_string(datetime.combine(target_date, time.min))),
+                ('check_in', '<=', fields.Datetime.to_string(datetime.combine(target_date, time.max)))
+            ]
+            
+            attendance = request.env['hr.attendance'].search(attendance_domain, limit=1, order='check_in desc')
+            
+            if not attendance:
+                return {
+                    'is_present': False,
+                    'check_in': None,
+                    'check_out': None,
+                    'worked_hours': 0,
+                    'status': 'absent',
+                    'note': 'Not checked in today'
+                }
+            
+            # Calculate worked hours
+            worked_hours = 0
+            if attendance.check_out:
+                worked_hours = (attendance.check_out - attendance.check_in).total_seconds() / 3600
+            else:
+                # Still working - calculate hours so far
+                worked_hours = (fields.Datetime.now() - attendance.check_in).total_seconds() / 3600
+            
+            return {
+                'is_present': True,
+                'check_in': self._format_local_time(attendance.check_in),
+                'check_out': self._format_local_time(attendance.check_out) if attendance.check_out else None,
+                'worked_hours': round(worked_hours, 2),
+                'status': 'checked_out' if attendance.check_out else 'working',
+                'note': 'Present and working' if not attendance.check_out else 'Shift completed'
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error getting attendance for mechanic {mechanic.name}: {str(e)}")
+            return {
+                'is_present': False,
+                'check_in': None,
+                'check_out': None,
+                'worked_hours': 0,
+                'status': 'error',
+                'note': 'Error checking attendance'
+            }
+
+    def _get_mechanic_status_with_attendance(self, mechanic, current_assignments, attendance_info):
+        """Get mechanic status considering both assignments and attendance"""
+        # First check attendance
+        if not attendance_info['is_present']:
+            return {
+                'code': 'absent', 
+                'text': attendance_info['note'], 
+                'color': 'gray',
+                'priority': 0  # Lowest priority for display
+            }
+        
+        if attendance_info['status'] == 'checked_out':
+            return {
+                'code': 'off_duty', 
+                'text': 'Off Duty (Checked Out)', 
+                'color': 'gray',
+                'priority': 1
+            }
+        
+        # Then check workload
+        if not current_assignments:
+            return {
+                'code': 'available', 
+                'text': 'Available', 
+                'color': 'green',
+                'priority': 4  # High priority for availability
+            }
+        elif len(current_assignments) == 1:
+            return {
+                'code': 'busy', 
+                'text': 'Working (1 job)', 
+                'color': 'blue',
+                'priority': 3
+            }
+        else:
+            return {
+                'code': 'overloaded', 
+                'text': f'Overloaded ({len(current_assignments)} jobs)', 
+                'color': 'red',
+                'priority': 2
+            }
+
+    def _get_mechanic_availability_with_attendance(self, mechanic, current_assignments, attendance_info):
+        """Calculate mechanic availability considering attendance and workload"""
+        # No availability if not present
+        if not attendance_info['is_present']:
+            return 0
+        
+        # Reduced availability if checked out
+        if attendance_info['status'] == 'checked_out':
+            return 0
+        
+        # Check working hours - reduced availability if worked too long
+        worked_hours = attendance_info.get('worked_hours', 0)
+        if worked_hours > 10:  # More than 10 hours worked
+            availability_penalty = 50  # 50% penalty for fatigue
+        elif worked_hours > 8:  # More than 8 hours worked  
+            availability_penalty = 25  # 25% penalty
+        else:
+            availability_penalty = 0
+        
+        # Base availability on current workload
+        assignment_count = len(current_assignments)
+        if assignment_count == 0:
+            base_availability = 100
+        elif assignment_count == 1:
+            base_availability = 50
+        elif assignment_count == 2:
+            base_availability = 20
+        else:
+            base_availability = 0
+        
+        # Apply fatigue penalty
+        final_availability = max(0, base_availability - availability_penalty)
+        
+        return final_availability
+
+    def _calculate_stall_utilization_hours(self, stall, target_date):
+        """Calculate how many hours the stall has been utilized today"""
+        # Get all orders that used this stall today
+        domain = [
+            ('stall_id', '=', stall.id),
+            ('controller_mulai_servis', '>=', fields.Datetime.to_string(datetime.combine(target_date, time.min))),
+            ('controller_mulai_servis', '<=', fields.Datetime.to_string(datetime.combine(target_date, time.max)))
+        ]
+        
+        orders = request.env['sale.order'].search(domain)
+        total_hours = 0
+        
+        for order in orders:
+            if order.controller_mulai_servis:
+                end_time = order.controller_selesai or fields.Datetime.now()
+                duration = (end_time - order.controller_mulai_servis).total_seconds() / 3600
+                total_hours += duration
+        
+        return round(total_hours, 2)
+
+    def _get_stall_schedule(self, stall, target_date):
+        """Get stall schedule for the day"""
+        # Get bookings for this stall today
+        bookings = request.env['pitcar.service.booking'].search([
+            ('stall_id', '=', stall.id),
+            ('booking_date', '=', target_date),
+            ('state', 'not in', ['cancelled'])
+        ])
+        
+        schedule = []
+        for booking in bookings:
+            schedule.append({
+                'id': booking.id,
+                'customer': booking.partner_id.name,
+                'time': self._format_booking_time(booking.booking_time),
+                'status': booking.state,
+                'service_type': booking.service_type if hasattr(booking, 'service_type') else None
+            })
+        
+        return sorted(schedule, key=lambda x: x['time'])
+
+    def _format_booking_time(self, booking_time):
+        """Format booking time to HH:MM"""
+        if not booking_time:
+            return None
+        hours = int(booking_time)
+        minutes = int((booking_time - hours) * 60)
+        return f"{hours:02d}:{minutes:02d}"
+
+    def _calculate_stall_occupation_time(self, order):
+        """Calculate how long the order has been occupying the stall"""
+        if not order.controller_mulai_servis:
+            return 0
+        
+        end_time = order.controller_selesai or fields.Datetime.now()
+        duration = (end_time - order.controller_mulai_servis).total_seconds() / 3600
+        return round(duration, 2)
+
+    def _get_detailed_order_info(self, order):
+        """Get detailed order information for job control"""
+        return {
+            'id': order.id,
+            'name': order.name,
+            'customer': {
+                'id': order.partner_id.id,
+                'name': order.partner_id.name,
+                'phone': order.partner_id.phone
+            },
+            'car': {
+                'plate': order.partner_car_id.number_plate if order.partner_car_id else None,
+                'brand': order.partner_car_brand.name if order.partner_car_brand else None,
+                'type': order.partner_car_brand_type.name if order.partner_car_brand_type else None,
+                'year': order.partner_car_year,
+                'color': order.partner_car_color
+            },
+            'service': {
+                'category': order.service_category,
+                'subcategory': order.service_subcategory,
+                'type_display': dict(order._fields['service_category'].selection).get(order.service_category, 'Unknown')
+            },
+            'staff': {
+                'mechanics': [{'id': m.id, 'name': m.name, 'position': getattr(m, 'position_code', 'mechanic')} for m in order.car_mechanic_id_new],
+                'service_advisors': [{'id': sa.id, 'name': sa.name} for sa in order.service_advisor_id]
+            },
+            'stall': {
+                'id': order.stall_id.id if order.stall_id else None,
+                'name': order.stall_id.name if order.stall_id else None,
+                'code': order.stall_id.code if order.stall_id else None
+            },
+            'timeline': {
+                'check_in': self._format_local_datetime(order.sa_jam_masuk),
+                'reception_start': self._format_local_datetime(order.sa_mulai_penerimaan),
+                'pkb_printed': self._format_local_datetime(order.sa_cetak_pkb),
+                'service_start': self._format_local_datetime(order.controller_mulai_servis),
+                'estimated_completion': self._format_local_datetime(order.controller_estimasi_selesai),
+                'actual_completion': self._format_local_datetime(order.controller_selesai)
+            },
+            'status': self._get_order_status(order),
+            'progress': order.lead_time_progress or 0,
+            'job_stops': self._get_active_job_stops(order),
+            'duration': {
+                'elapsed': self._calculate_elapsed_time(order),
+                'estimated_total': order.total_estimated_duration or 0
+            }
+        }
+
+    def _get_active_job_stops(self, order):
+        """Get currently active job stops for an order"""
+        job_stops = []
+        
+        if order.controller_tunggu_part1_mulai and not order.controller_tunggu_part1_selesai:
+            job_stops.append({
+                'type': 'tunggu_part',
+                'description': 'Menunggu Part',
+                'start_time': self._format_local_datetime(order.controller_tunggu_part1_mulai)
+            })
+        
+        if order.controller_tunggu_konfirmasi_mulai and not order.controller_tunggu_konfirmasi_selesai:
+            job_stops.append({
+                'type': 'tunggu_konfirmasi',
+                'description': 'Tunggu Konfirmasi Customer',
+                'start_time': self._format_local_datetime(order.controller_tunggu_konfirmasi_mulai)
+            })
+        
+        if order.controller_istirahat_shift1_mulai and not order.controller_istirahat_shift1_selesai:
+            job_stops.append({
+                'type': 'istirahat',
+                'description': 'Istirahat',
+                'start_time': self._format_local_datetime(order.controller_istirahat_shift1_mulai)
+            })
+        
+        return job_stops
+
+    def _calculate_elapsed_time(self, order):
+        """Calculate elapsed time since service started"""
+        if not order.controller_mulai_servis:
+            return 0
+        
+        end_time = order.controller_selesai or fields.Datetime.now()
+        duration = (end_time - order.controller_mulai_servis).total_seconds() / 3600
+        return round(duration, 2)

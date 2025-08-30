@@ -4123,7 +4123,7 @@ class LeadTimeAPIController(http.Controller):
             mechanics = request.env['pitcar.mechanic.new'].search([('active', '=', True)])
             
             # Get service advisors
-            service_advisors = request.env['pitcar.service.advisor'].search([('active', '=', True)])
+            service_advisors = request.env['pitcar.service.advisor'].search([])
             
             # Prepare stall data with detailed information
             stall_data = []

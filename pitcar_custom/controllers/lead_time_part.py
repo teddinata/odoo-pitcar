@@ -444,10 +444,47 @@ class LeadTimePartController(http.Controller):
             yield items[i:i + batch_size]
 
     @http.route('/web/part-purchase/order/<int:order_id>/toggle-need-part', type='json', auth='user', methods=['POST'])
-    def toggle_need_part(self, order_id, **kw):
+    def old_toggle_need_part(self, order_id, **kw):
         """Toggle need part purchase flag for sale order"""
         try:
             order = request.env['sale.order'].browse(order_id)
+            if not order.exists():
+                return {
+                    'status': 'error',
+                    'message': 'Sale order not found'
+                }
+
+            # Toggle flag
+            new_value = 'no' if order.need_part_purchase == 'yes' else 'yes'
+            order.write({'need_part_purchase': new_value})
+
+            return {
+                'status': 'success',
+                'data': {
+                    'id': order.id,
+                    'need_part_purchase': new_value,
+                    'status': order.part_purchase_status
+                }
+            }
+
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+
+    @http.route('/web/part-purchase/order/toggle-need-part', type='json', auth='user', methods=['POST'])
+    def toggle_need_part(self, **kw):
+        """Toggle need part purchase flag for sale order"""
+        try:
+            order_id = kw.get('order_id')
+            if not order_id:
+                return {
+                    'status': 'error',
+                    'message': 'order_id is required'
+                }
+                
+            order = request.env['sale.order'].browse(int(order_id))
             if not order.exists():
                 return {
                     'status': 'error',

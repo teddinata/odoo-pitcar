@@ -841,7 +841,7 @@ class LeadTimePartController(http.Controller):
 
     @http.route('/web/part-purchase/<int:purchase_id>/return', type='json', auth='user', methods=['POST'])
     def record_return(self, purchase_id, **kw):
-        """Record part purchase return"""
+        """Record part purchase return and auto-approve items based on completeness"""
         try:
             # Get parameters from kw
             end_time = kw.get('endTime')  # Format HH:MM
@@ -870,30 +870,92 @@ class LeadTimePartController(http.Controller):
             if notes:
                 values['notes'] = notes
 
-             # Add actual completeness
+            # Add actual completeness with validation
             if actual_completeness is not None:
-                values['actual_completeness'] = float(actual_completeness)
+                try:
+                    actual_completeness = float(actual_completeness)
+                    if not (0 <= actual_completeness <= 100):
+                        return {
+                            'status': 'error',
+                            'message': 'Actual completeness must be between 0-100%'
+                        }
+                    values['actual_completeness'] = actual_completeness
+                except (ValueError, TypeError):
+                    return {
+                        'status': 'error',
+                        'message': 'Invalid actual completeness value'
+                    }
 
             values['state'] = 'returned'
             purchase.write(values)
 
-            # Log activity
+            # Auto-approve items based on completeness
+            sale_order = purchase.sale_order_id
+            fulfilled_count = 0
+            total_responded = 0
+            
+            # Logic: jika kecocokan >= 80%, approve semua responded items
+            if actual_completeness and actual_completeness >= 80:
+                responded_items = sale_order.part_request_items_ids.filtered(
+                    lambda x: x.state == 'responded'  # Hanya yang sudah ada response dari tim part
+                )
+                total_responded = len(responded_items)
+                
+                for item in responded_items:
+                    try:
+                        item.write({
+                            'state': 'approved',
+                            'approved_date': fields.Datetime.now(),
+                            'approved_by': request.env.user.id,
+                            'approve_message': f'Auto-approved: kecocokan {actual_completeness}% melalui pembelian #{purchase.name}'
+                        })
+                        fulfilled_count += 1
+                    except Exception as e:
+                        _logger.error(f"Error approving item {item.id}: {str(e)}")
+
+            # Update sale order part purchase status (dengan error handling)
+            try:
+                if hasattr(sale_order, '_compute_part_purchase_status'):
+                    sale_order._compute_part_purchase_status()
+                # Alternative: manual recompute jika method tidak ada
+                # sale_order.invalidate_cache(['part_purchase_status', 'all_items_fulfilled'])
+            except Exception as e:
+                _logger.warning(f"Could not update part purchase status: {str(e)}")
+
+            # Log activity dengan informasi fulfillment
+            completeness_text = f"{actual_completeness}%" if actual_completeness is not None else "tidak diisi"
             msg = f"""
                 <p><strong>Partman kembali</strong></p>
                 <ul>
                     <li>Waktu: {self._format_datetime(values['return_time'])}</li>
                     <li>Tipe: {purchase.purchase_type}</li>
-                    <li>Kecocokan: {actual_completeness}%</li>
+                    <li>Kecocokan: {completeness_text}</li>
+                    <li>Items tersedia untuk approval: {total_responded}</li>
+                    <li>Items auto-approved: {fulfilled_count}</li>
                     {f'<li>Catatan: {notes}</li>' if notes else ''}
                     <li>Durasi: {purchase.duration_display}</li>
                 </ul>
             """
             purchase.message_post(body=msg)
 
+            # Success message
+            if fulfilled_count > 0:
+                success_msg = f'Return recorded successfully. {fulfilled_count} items auto-approved based on {actual_completeness}% completeness.'
+            else:
+                success_msg = 'Return recorded successfully.'
+
             return {
                 'status': 'success',
-                'data': self._get_purchase_details(purchase),
-                'message': 'Return recorded successfully'
+                'data': {
+                    'purchase': self._get_purchase_details(purchase),
+                    'fulfillment': {
+                        'auto_approved_count': fulfilled_count,
+                        'total_responded_items': total_responded,
+                        'order_status': getattr(sale_order, 'part_purchase_status', 'unknown'),
+                        'all_fulfilled': getattr(sale_order, 'all_items_fulfilled', False)
+                    }
+                },
+                'message': success_msg
             }
 
         except Exception as e:

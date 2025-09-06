@@ -1019,121 +1019,174 @@ class LeadTimePartController(http.Controller):
     def get_statistics(self, **kw):
         """Get comprehensive statistics for part purchases"""
         try:
-            # Extract parameters
-            params = kw.get('params', {})
-            date_range = params.get('date_range', 'today')  # today, week, month, year
-            start_date = params.get('start_date')
-            end_date = params.get('end_date')
+            # Extract parameters dengan fallback
+            date_range = kw.get('date_range', 'today')
+            start_date = kw.get('start_date')
+            end_date = kw.get('end_date')
+            
+            # Jika ada nested params
+            if 'params' in kw:
+                params = kw.get('params', {})
+                date_range = params.get('date_range', date_range)
+                start_date = params.get('start_date', start_date)
+                end_date = params.get('end_date', end_date)
 
+            # Akses model melalui request.env
             PartPurchase = request.env['part.purchase.leadtime']
             SaleOrderPartItem = request.env['sale.order.part.item']
             
             # Build date domain
             domain = []
-            if date_range == 'today':
-                today = fields.Date.today()
-                domain = [('create_date', '>=', today)]
-            elif date_range == 'week':
-                week_start = fields.Date.today() - timedelta(days=fields.Date.today().weekday())
-                domain = [('create_date', '>=', week_start)]
-            elif date_range == 'month':
-                month_start = fields.Date.today().replace(day=1)
-                domain = [('create_date', '>=', month_start)]
-            elif date_range == 'custom' and start_date and end_date:
-                domain = [
-                    ('create_date', '>=', start_date),
-                    ('create_date', '<=', end_date)
-                ]
+            try:
+                if date_range == 'today':
+                    today = fields.Date.today()
+                    domain = [('create_date', '>=', today)]
+                elif date_range == 'week':
+                    week_start = fields.Date.today() - timedelta(days=fields.Date.today().weekday())
+                    domain = [('create_date', '>=', week_start)]
+                elif date_range == 'month':
+                    month_start = fields.Date.today().replace(day=1)
+                    domain = [('create_date', '>=', month_start)]
+                elif date_range == 'custom' and start_date and end_date:
+                    domain = [
+                        ('create_date', '>=', start_date),
+                        ('create_date', '<=', end_date)
+                    ]
+            except Exception as e:
+                _logger.warning(f"Error building date domain: {str(e)}")
+                domain = []
 
-            # 1. Statistik Response Part Request
-            part_request_domain = domain.copy()
-            part_requests = SaleOrderPartItem.search(part_request_domain)
-            responded_requests = part_requests.filtered(lambda r: r.response_time)
-            
-            total_requests = len(part_requests)
-            total_responded = len(responded_requests)
-            
-            # Hitung response time rata-rata
-            avg_response_time = 0
-            on_time_responses = 0
-            if responded_requests:
-                response_times = []
-                for request in responded_requests:
-                    time_diff = (request.response_time - request.create_date).total_seconds() / 60  # dalam menit
-                    response_times.append(time_diff)
-                    if time_diff <= 15:  # Response dalam 15 menit
-                        on_time_responses += 1
-                avg_response_time = sum(response_times) / len(response_times)
+            # Basic stats dengan error handling
+            try:
+                total_purchases = PartPurchase.search_count(domain)
+                departed_purchases = PartPurchase.search_count(domain + [('state', '=', 'departed')])
+                completed_purchases = PartPurchase.search_count(domain + [('state', '=', 'returned')])
+                cancelled_purchases = PartPurchase.search_count(domain + [('state', '=', 'cancel')])
+            except Exception as e:
+                _logger.error(f"Error getting basic stats: {str(e)}")
+                total_purchases = departed_purchases = completed_purchases = cancelled_purchases = 0
 
-            # 2. Statistik Pemenuhan Request (Fulfillment)
-            fulfilled_requests = part_requests.filtered(lambda r: r.is_fulfilled)
-            total_fulfilled = len(fulfilled_requests)
-
-            # 3. Statistik Pembelian berdasarkan tipe
-            purchase_stats = {
-                'part': {
-                    'total': PartPurchase.search_count(domain + [('purchase_type', '=', 'part')]),
-                    'success': PartPurchase.search_count(domain + [
-                        ('purchase_type', '=', 'part'),
+            # Duration stats dengan error handling
+            avg_duration = 0
+            try:
+                completed_records = PartPurchase.search_read(
+                    domain + [
                         ('state', '=', 'returned'),
-                        ('actual_completeness', '>=', 90)  # Dianggap sukses jika completeness >= 90%
-                    ])
-                },
-                'tool': {
-                    'total': PartPurchase.search_count(domain + [('purchase_type', '=', 'tool')]),
-                    'success': PartPurchase.search_count(domain + [
-                        ('purchase_type', '=', 'tool'),
+                        ('duration', '>', 0)
+                    ], 
+                    ['duration']
+                )
+                
+                if completed_records:
+                    total_duration = sum(record['duration'] for record in completed_records)
+                    avg_duration = total_duration / len(completed_records)
+            except Exception as e:
+                _logger.error(f"Error calculating duration stats: {str(e)}")
+                avg_duration = 0
+
+            # Part Request stats dengan error handling
+            request_stats = {
+                'total_requests': 0,
+                'responded_requests': 0,
+                'response_rate': 0,
+                'avg_response_time': 0,
+                'on_time_responses': 0,
+                'on_time_rate': 0
+            }
+            
+            fulfillment_stats = {
+                'total_requests': 0,
+                'fulfilled_requests': 0,
+                'fulfillment_rate': 0
+            }
+
+            try:
+                # Statistik Response Part Request
+                part_requests = SaleOrderPartItem.search(domain)
+                responded_requests = part_requests.filtered(lambda r: r.response_time)
+                fulfilled_requests = part_requests.filtered(lambda r: r.is_fulfilled)
+                
+                total_requests = len(part_requests)
+                total_responded = len(responded_requests)
+                total_fulfilled = len(fulfilled_requests)
+                
+                # Hitung response time rata-rata
+                avg_response_time = 0
+                on_time_responses = 0
+                if responded_requests:
+                    response_times = []
+                    for req in responded_requests:
+                        time_diff = (req.response_time - req.create_date).total_seconds() / 60
+                        response_times.append(time_diff)
+                        if time_diff <= 15:
+                            on_time_responses += 1
+                    avg_response_time = sum(response_times) / len(response_times)
+
+                request_stats = {
+                    'total_requests': total_requests,
+                    'responded_requests': total_responded,
+                    'response_rate': (total_responded / total_requests * 100) if total_requests else 0,
+                    'avg_response_time': avg_response_time,
+                    'on_time_responses': on_time_responses,
+                    'on_time_rate': (on_time_responses / total_responded * 100) if total_responded else 0
+                }
+
+                fulfillment_stats = {
+                    'total_requests': total_requests,
+                    'fulfilled_requests': total_fulfilled,
+                    'fulfillment_rate': (total_fulfilled / total_requests * 100) if total_requests else 0
+                }
+                
+            except Exception as e:
+                _logger.error(f"Error calculating request stats: {str(e)}")
+
+            # Purchase type stats dengan error handling
+            purchase_type_stats = {
+                'part': {'total': 0, 'successful': 0, 'success_rate': 0},
+                'tool': {'total': 0, 'successful': 0, 'success_rate': 0}
+            }
+
+            try:
+                for purchase_type in ['part', 'tool']:
+                    total = PartPurchase.search_count(domain + [('purchase_type', '=', purchase_type)])
+                    success = PartPurchase.search_count(domain + [
+                        ('purchase_type', '=', purchase_type),
                         ('state', '=', 'returned'),
                         ('actual_completeness', '>=', 90)
                     ])
-                }
-            }
+                    
+                    purchase_type_stats[purchase_type] = {
+                        'total': total,
+                        'successful': success,
+                        'success_rate': (success / total * 100) if total else 0
+                    }
+            except Exception as e:
+                _logger.error(f"Error calculating purchase type stats: {str(e)}")
 
+            # Partman performance dengan error handling
+            partman_performance = []
+            try:
+                partman_stats = PartPurchase.read_group(
+                    domain + [('state', '=', 'returned')],
+                    ['partman_id', 'duration:avg'],
+                    ['partman_id']
+                )
+                
+                partman_performance = [{
+                    'partman_id': stat['partman_id'][0] if stat['partman_id'] else None,
+                    'partman_name': stat['partman_id'][1] if stat['partman_id'] else 'Unknown',
+                    'avg_duration': stat['duration'] or 0,
+                    'avg_duration_display': self._format_duration(stat['duration']) if stat['duration'] else '0j 0m'
+                } for stat in partman_stats if stat['partman_id']]
+            except Exception as e:
+                _logger.error(f"Error calculating partman performance: {str(e)}")
 
-            # Basic stats with date filter
-            total_purchases = PartPurchase.search_count(domain)
-            departed_purchases = PartPurchase.search_count(domain + [('state', '=', 'departed')])
-            completed_purchases = PartPurchase.search_count(domain + [('state', '=', 'returned')])
-            cancelled_purchases = PartPurchase.search_count(domain + [('state', '=', 'cancel')])
-            
-            # Duration stats
-            completed_records = PartPurchase.search_read(
-                domain + [
-                    ('state', '=', 'returned'),
-                    ('duration', '>', 0)
-                ], 
-                ['duration']
-            )
-            
-            avg_duration = 0
-            if completed_records:
-                total_duration = sum(record['duration'] for record in completed_records)
-                avg_duration = total_duration / len(completed_records)
-
-            # Partman performance
-            partman_stats = PartPurchase.read_group(
-                domain + [('state', '=', 'returned')],
-                ['partman_id', 'duration:avg'],
-                ['partman_id']
-            )
-
-            # Format time periods for display
+            # Format time periods
             period_info = {
-                'start': self._format_datetime(fields.Datetime.from_string(start_date)) if start_date else None,
-                'end': self._format_datetime(fields.Datetime.from_string(end_date)) if end_date else None,
-                'range': date_range
+                'range': date_range,
+                'start': start_date,
+                'end': end_date
             }
-
-            # Add type-specific stats
-            part_purchases = PartPurchase.search_count(domain + [('purchase_type', '=', 'part')])
-            tool_purchases = PartPurchase.search_count(domain + [('purchase_type', '=', 'tool')])
-            
-            # Add completeness stats
-            completeness_stats = PartPurchase.read_group(
-                domain + [('state', '=', 'returned')],
-                ['purchase_type', 'actual_completeness:avg'],
-                ['purchase_type']
-            )
 
             return {
                 'status': 'success',
@@ -1144,56 +1197,14 @@ class LeadTimePartController(http.Controller):
                         'departed_purchases': departed_purchases,
                         'completed_purchases': completed_purchases,
                         'cancelled_purchases': cancelled_purchases,
-
-                        # Response stats
-                        'request_stats': {
-                            'total_requests': total_requests,
-                            'responded_requests': total_responded,
-                            'response_rate': (total_responded / total_requests * 100) if total_requests else 0,
-                            'avg_response_time': avg_response_time,
-                            'on_time_responses': on_time_responses,
-                            'on_time_rate': (on_time_responses / total_responded * 100) if total_responded else 0
-                        },
-
-                        # Fulfillment stats
-                        'fulfillment_stats': {
-                            'total_requests': total_requests,
-                            'fulfilled_requests': total_fulfilled,
-                            'fulfillment_rate': (total_fulfilled / total_requests * 100) if total_requests else 0
-                        },
-
-                        # Purchase type stats
-                        'purchase_type_stats': {
-                            'part': {
-                                'total': purchase_stats['part']['total'],
-                                'successful': purchase_stats['part']['success'],
-                                'success_rate': (purchase_stats['part']['success'] / purchase_stats['part']['total'] * 100) 
-                                    if purchase_stats['part']['total'] else 0
-                            },
-                            'tool': {
-                                'total': purchase_stats['tool']['total'],
-                                'successful': purchase_stats['tool']['success'],
-                                'success_rate': (purchase_stats['tool']['success'] / purchase_stats['tool']['total'] * 100)
-                                    if purchase_stats['tool']['total'] else 0
-                            }
-                        },
-                        
-                        # Add completeness
-                        'completeness_stats': [{
-                            'type': stat['purchase_type'],
-                            'avg_completeness': stat['actual_completeness']
-                        } for stat in completeness_stats],
-                        
                         'completion_rate': (completed_purchases / total_purchases * 100) if total_purchases else 0,
                         'average_duration': avg_duration,
-                        'average_duration_display': self._format_duration(avg_duration)
+                        'average_duration_display': self._format_duration(avg_duration),
+                        'request_stats': request_stats,
+                        'fulfillment_stats': fulfillment_stats,
+                        'purchase_type_stats': purchase_type_stats
                     },
-                    'partman_performance': [{
-                        'partman_id': stat['partman_id'][0],
-                        'partman_name': stat['partman_id'][1],
-                        'avg_duration': stat['duration'],
-                        'avg_duration_display': self._format_duration(stat['duration'])
-                    } for stat in partman_stats if stat['partman_id']]
+                    'partman_performance': partman_performance
                 }
             }
 
@@ -1201,7 +1212,7 @@ class LeadTimePartController(http.Controller):
             _logger.error(f"Error in get_statistics: {str(e)}")
             return {
                 'status': 'error',
-                'message': str(e)
+                'message': f'Statistics calculation failed: {str(e)}'
             }
 
     def _format_duration(self, duration_hours):
